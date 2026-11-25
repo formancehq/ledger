@@ -175,9 +175,26 @@ message ScriptReference {
 
 message CreateTransactionPayload {
   // ...
-  ScriptReference script_reference = 9;
+  ScriptReference script_reference = 8;
 }
 ```
+
+### Metadata-only execution
+
+When an `ExecuteNumscript` action emits no postings but the merged result
+contains account metadata (from the script or from the caller's
+`accountMetadata` field), Ledger automatically treats it as a metadata-only
+execution. A successful execution writes all account metadata atomically,
+emits an auditable
+`account_metadata_updated` ledger log, and does not allocate a transaction ID,
+create `TransactionState`, or emit a `created_transaction` log. Replaying the
+audit log applies the same account metadata writes.
+
+The transaction-creation action requires postings from its Numscript and
+returns `EMPTY_TRANSACTION` without them. An `ExecuteNumscript` action that
+emits neither postings nor real account metadata also fails with
+`EMPTY_TRANSACTION`.
+Transaction metadata and transaction references are not valid in this mode.
 
 ### Resolution Flow — admission plans, the FSM resolves
 
@@ -404,7 +421,6 @@ Controller → query.ReadNumscript(versionAttr, contentAttr, reader, ledger, nam
 | Admission | `internal/application/admission/admission.go` | `plan.Coverage` declaration + script reference planning |
 | Admission overlay | `internal/application/admission/overlay.go` | Intra-bulk greatest-wins overlay |
 | Checker | `internal/application/check/checker.go` | `compareNumscripts` projection verification |
-| Rebuild | `internal/infra/backup/rebuild.go` | Projection rebuild from the audit chain |
 | Semver | `internal/pkg/semver/semver.go` | `Version`, `Parse`, `ParsePartial`, `Compare` |
 | DAL keys | `internal/domain/keys.go` | `NumscriptVersionKey`, `NumscriptEntryKey` |
 | DAL codes | `internal/storage/dal/store.go` | `SubAttrNumscriptVersion`, `SubAttrNumscriptContent` |

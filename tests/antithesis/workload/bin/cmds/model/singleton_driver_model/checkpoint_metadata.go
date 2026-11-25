@@ -110,51 +110,92 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 	if node.Addr == "" {
 		return 0, errors.New("checkpoint metadata node has no pinned address")
 	}
-	topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-	if err != nil {
-		return 0, err
+	advertisedAddr := node.PeerAddr
+	if advertisedAddr == "" {
+		advertisedAddr = node.Addr
 	}
-	// Leadership can change between the RPC's routing decision and the
-	// orchestrator sampling status. A demoted node legitimately omits Nodes.
-	switch topology.GetState() {
-	case "Leader":
-	case "Follower", "Candidate", "PreCandidate", "Shutdown":
-		return 0, status.Error(codes.Unavailable, "checkpoint metadata leader changed during identity discovery")
-	default:
-		return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
-	}
-	for _, peer := range topology.GetNodes() {
-		if peer.GetServiceAddress() != node.Addr || peer.GetId() == 0 {
-			continue
-		}
-		if node.NodeID != 0 && node.NodeID != peer.GetId() {
-			return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
-		}
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		if err != nil && status.Code(err) != codes.Unavailable {
+			if status.Code(err) == codes.DeadlineExceeded || ctx.Err() != nil {
+				return 0, status.Errorf(codes.DeadlineExceeded, "checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %v", node.Addr, advertisedAddr, err)
+			}
 
-		return peer.GetId(), nil
-	}
+			return 0, err
+		}
+		if err == nil {
+			// Membership may report voters before their service addresses are
+			// available. Wait for the address that identifies this pinned node.
+			switch topology.GetState() {
+			case "Leader":
+				for _, peer := range topology.GetNodes() {
+					if peer.GetServiceAddress() != advertisedAddr || peer.GetId() == 0 {
+						continue
+					}
+					if node.NodeID != 0 && node.NodeID != peer.GetId() {
+						return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
+					}
 
-	return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology", node.Addr)
+					return peer.GetId(), nil
+				}
+			case "Follower", "Candidate", "PreCandidate", "Shutdown":
+				return 0, status.Error(codes.Unavailable, "checkpoint metadata leader changed during identity discovery")
+			default:
+				return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return 0, status.Errorf(codes.DeadlineExceeded, "checkpoint metadata node %q has unresolved identity in leader topology (peer address %q): %v", node.Addr, advertisedAddr, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
-// Probe before changing the checkpoint baseline: an unavailable first address must not consume
-// the complete workload lifetime when another node can serve the baseline.
+// checkpointSetupProbeTimeout bounds one probe round. A leader answers
+// GetClusterState only after waiting up to 2s for each unreachable peer, and
+// the fence still needs a Barrier and its persistence after that answer.
+const checkpointSetupProbeTimeout = 15 * time.Second
+
+// Probe every node concurrently before changing the checkpoint baseline, so an
+// unreachable node cannot delay one that can serve the baseline.
 func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns) (*internal.PerNodeConn, error) {
-	failures := make(checkpointSetupProbeFailures, 0, len(nodes))
-	for _, node := range nodes {
-		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := fenceCheckpointMetadata(probeCtx, node)
-		cancel()
-		if err == nil {
-			return node, nil
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		failures = append(failures, checkpointSetupProbeFailure{addr: node.Addr, err: err})
-	}
-	if len(failures) == 0 {
+	if len(nodes) == 0 {
 		return nil, errors.New("no checkpoint setup nodes configured")
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, checkpointSetupProbeTimeout)
+	defer cancel()
+	type probeResult struct {
+		index int
+		err   error
+	}
+	results := make(chan probeResult, len(nodes))
+	for index, node := range nodes {
+		go func() {
+			results <- probeResult{index: index, err: fenceCheckpointMetadata(probeCtx, node)}
+		}()
+	}
+	errs := make([]error, len(nodes))
+	var selected *internal.PerNodeConn
+	for range nodes {
+		result := <-results
+		if result.err == nil && selected == nil {
+			selected = nodes[result.index]
+			cancel()
+		}
+		errs[result.index] = result.err
+	}
+	if selected != nil {
+		return selected, nil
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	failures := make(checkpointSetupProbeFailures, 0, len(nodes))
+	for index, node := range nodes {
+		failures = append(failures, checkpointSetupProbeFailure{addr: node.Addr, err: errs[index]})
 	}
 
 	return nil, failures

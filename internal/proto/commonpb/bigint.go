@@ -18,6 +18,10 @@ func NewBigUintFromUint256(value *uint256.Int) *BigUint {
 	return &BigUint{Magnitude: value.Bytes()}
 }
 
+func NewBigUintFromUint64(value uint64) *BigUint {
+	return NewBigUintFromUint256(uint256.NewInt(value))
+}
+
 func NewBigUint(value *big.Int) (*BigUint, error) {
 	if value == nil || value.Sign() == 0 {
 		return &BigUint{}, nil

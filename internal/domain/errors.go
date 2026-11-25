@@ -315,22 +315,16 @@ func IsFreezableFailure(k ErrorKind) bool {
 // rename an existing constant. Each constant appears in exactly one
 // Reason() implementation below.
 const (
-	ErrReasonLedgerAlreadyExists          = "LEDGER_ALREADY_EXISTS"
-	ErrReasonLedgerNotFound               = "LEDGER_NOT_FOUND"
-	ErrReasonLedgerDeleted                = "LEDGER_DELETED"
-	ErrReasonIdempotencyKeyConflict       = "IDEMPOTENCY_KEY_CONFLICT"
-	ErrReasonTransactionReferenceConflict = "TRANSACTION_REFERENCE_CONFLICT"
-	ErrReasonTransactionReferenceNotFound = "TRANSACTION_REFERENCE_NOT_FOUND"
-	ErrReasonTransactionNotFound          = "TRANSACTION_NOT_FOUND"
-	ErrReasonTransactionAlreadyReverted   = "TRANSACTION_ALREADY_REVERTED"
-	ErrReasonInsufficientFunds            = "INSUFFICIENT_FUNDS"
-	ErrReasonVolumeOverflow               = "VOLUME_OVERFLOW"
-	// ErrReasonAggregateOverflow is the wire constant for the read-side
-	// aggregator overflow. The error type itself (query.ErrAggregateOverflow)
-	// lives in internal/query — it is a query-only outcome, not FSM-emitted —
-	// but the reason string and its KindForReason classification are the
-	// shared wire contract and stay here.
-	ErrReasonAggregateOverflow             = "AGGREGATE_OVERFLOW"
+	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
+	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
+	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
+	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
+	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionReferenceNotFound  = "TRANSACTION_REFERENCE_NOT_FOUND"
+	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
+	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
+	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
 	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
@@ -622,14 +616,16 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired              = NewValidationSentinel("TARGET_REQUIRED", "target is required")
-	ErrMetadataKeyRequired         = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
-	ErrNumscriptContentRequired    = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
-	ErrScriptAndReferenceConflict  = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
-	ErrEmptyTransaction            = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict   = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
-	ErrTransactionReferenceTooLong = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
-	ErrScriptRequired              = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
+	ErrTargetRequired                  = NewValidationSentinel("TARGET_REQUIRED", "target is required")
+	ErrMetadataKeyRequired             = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrNumscriptContentRequired        = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
+	ErrScriptAndReferenceConflict      = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
+	ErrEmptyTransaction                = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict       = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
+	ErrMetadataOnlyTransactionMetadata = NewValidationSentinel("METADATA_ONLY_TRANSACTION_METADATA", "metadata-only scripts cannot set transaction metadata")
+	ErrMetadataOnlyReference           = NewValidationSentinel("METADATA_ONLY_REFERENCE", "metadata-only scripts cannot set a transaction reference")
+	ErrTransactionReferenceTooLong     = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
+	ErrScriptRequired                  = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.

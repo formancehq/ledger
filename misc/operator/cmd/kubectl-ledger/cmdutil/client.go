@@ -15,10 +15,12 @@ import (
 
 // Options holds global flags shared by all subcommands.
 type Options struct {
-	kubeconfig string
-	context    string
-	namespace  string
-	output     string
+	kubeconfig     string
+	context        string
+	namespace      string
+	output         string
+	newCRDClient   func() (client.Client, error)
+	selectResource func(string, []string) (string, error)
 }
 
 // AddFlags binds persistent flags to the root command.
@@ -64,6 +66,9 @@ func (o *Options) ResolvedNamespace() (string, error) {
 
 // CRDClient creates a controller-runtime client with the Cluster CRD scheme.
 func (o *Options) CRDClient() (client.Client, error) {
+	if o.newCRDClient != nil {
+		return o.newCRDClient()
+	}
 	rc, err := o.RESTConfig()
 	if err != nil {
 		return nil, err

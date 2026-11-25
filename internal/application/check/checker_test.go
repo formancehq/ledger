@@ -114,6 +114,8 @@ type testEngine struct {
 	numscriptContent       map[string]*commonpb.NumscriptInfo // key = NumscriptEntryKey bytes
 	numscriptLatest        map[string]string                  // key = NumscriptVersionKey bytes
 	nextLedgerID           uint32
+	nextQueryCheckpointID  uint64
+	queryCheckpointIDs     map[uint64]struct{}
 	nextAuditSequenceID    uint64
 	lastAuditHash          []byte
 	raftIndex              uint64
@@ -134,26 +136,28 @@ func newTestEngine(t *testing.T) *testEngine {
 	require.NoError(t, err)
 
 	return &testEngine{
-		t:                   t,
-		store:               store,
-		attrs:               attrs,
-		processor:           proc,
-		cache:               c,
-		clusterID:           checkerTestAuditKey,
-		nextSequenceID:      1,
-		nextLedgerID:        1,
-		ledgers:             make(map[string]*commonpb.LedgerInfo),
-		boundaries:          make(map[string]*raftcmdpb.LedgerBoundaries),
-		volumes:             make(map[string]*raftcmdpb.VolumePair),
-		metadata:            make(map[string]*commonpb.MetadataValue),
-		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
-		references:          make(map[string]*commonpb.TransactionReferenceValue),
-		transactionStates:   make(map[string]*commonpb.TransactionState),
-		reversions:          make(map[string]*bitset.Bitset),
-		numscriptContent:    make(map[string]*commonpb.NumscriptInfo),
-		numscriptLatest:     make(map[string]string),
-		nextAuditSequenceID: 1,
-		raftIndex:           1,
+		t:                     t,
+		store:                 store,
+		attrs:                 attrs,
+		processor:             proc,
+		cache:                 c,
+		clusterID:             checkerTestAuditKey,
+		nextSequenceID:        1,
+		nextLedgerID:          1,
+		nextQueryCheckpointID: 1,
+		queryCheckpointIDs:    make(map[uint64]struct{}),
+		ledgers:               make(map[string]*commonpb.LedgerInfo),
+		boundaries:            make(map[string]*raftcmdpb.LedgerBoundaries),
+		volumes:               make(map[string]*raftcmdpb.VolumePair),
+		metadata:              make(map[string]*commonpb.MetadataValue),
+		idempotency:           make(map[string]*commonpb.IdempotencyKeyValue),
+		references:            make(map[string]*commonpb.TransactionReferenceValue),
+		transactionStates:     make(map[string]*commonpb.TransactionState),
+		reversions:            make(map[string]*bitset.Bitset),
+		numscriptContent:      make(map[string]*commonpb.NumscriptInfo),
+		numscriptLatest:       make(map[string]string),
+		nextAuditSequenceID:   1,
+		raftIndex:             1,
 	}
 }
 
@@ -782,12 +786,25 @@ func (s *scopeImpl) PutNumscript(ledger string, info *commonpb.NumscriptInfo) {
 func (s *scopeImpl) SetNumscriptLatestVersion(ledger, name, version string) {
 	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())] = version
 }
-func (s *scopeImpl) GetNextQueryCheckpointID() uint64                      { return 1 }
-func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64                { return 1 }
-func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
-func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
-func (s *scopeImpl) LiveQueryCheckpointCount() uint64                      { return 0 }
-func (s *scopeImpl) QueryCheckpointExists(_ uint64) bool                   { return false }
+func (s *scopeImpl) GetNextQueryCheckpointID() uint64 { return s.engine.nextQueryCheckpointID }
+func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64 {
+	id := s.engine.nextQueryCheckpointID
+	s.engine.nextQueryCheckpointID++
+
+	return id
+}
+func (s *scopeImpl) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
+	s.engine.queryCheckpointIDs[cp.GetCheckpointId()] = struct{}{}
+}
+func (s *scopeImpl) DeleteQueryCheckpoint(id uint64) { delete(s.engine.queryCheckpointIDs, id) }
+func (s *scopeImpl) LiveQueryCheckpointCount() uint64 {
+	return uint64(len(s.engine.queryCheckpointIDs))
+}
+func (s *scopeImpl) QueryCheckpointExists(id uint64) bool {
+	_, ok := s.engine.queryCheckpointIDs[id]
+
+	return ok
+}
 func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commonpb.NumscriptInfoReader, error) {
 	info, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
 	if !ok {
@@ -1027,7 +1044,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, nil, logging.Testing())
+	checker := NewChecker(store, attrs, logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -1074,7 +1091,7 @@ func TestCheckerAuditKeyMissingCorruptOrMismatched(t *testing.T) {
 				require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, tc.key))
 			}
 			require.NoError(t, batch.Commit())
-			checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+			checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 			var findings []*servicepb.CheckStoreError
 			err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
@@ -1337,7 +1354,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 
@@ -1664,7 +1681,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the
@@ -2049,7 +2066,7 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, logging.FromContext(ctx)), store
 }
 
 // TestCompareIndexes_Identical pins the happy path: when the SubAttrIndex
@@ -2191,12 +2208,8 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 // for every registry entry, so an entry absent from `expected` is genuinely
 // unaccounted for and must be flagged rather than excused.
 //
-// This is the masking channel the EN-1458 review found: a tolerated skip here
-// accepts a stale or tampered metadata-index row, and compareReverseMapOrphans'
-// registry term then treats that row as proof the field is still indexed,
-// silencing the orphan verdict on its reverse-map rows. Both corrupted
-// projections pass Check() together. Keep this assertion: a tolerance re-opens
-// that channel.
+// A tolerated skip here would let a stale or tampered index registry row
+// pass Check() without a finding.
 func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	t.Parallel()
 
@@ -2325,7 +2338,7 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, logging.FromContext(ctx)), store
 }
 
 func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {

@@ -48,6 +48,7 @@ func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
 		WithDataDir(cfg.DataDir),
 		WithRaftPort(cfg.Ports.Raft()),
 		WithGRPCPort(cfg.Ports.GRPC()),
+		WithGRPCPeerPort(cfg.Ports.Peer()),
 		WithMaintenanceInterval(5 * time.Second),
 		WithDebug(cfg.Debug),
 		WithRaftTickInterval(cfg.TickInterval),
@@ -75,6 +76,14 @@ func WithHTTPPort(port int) testservice.InstrumentationFunc {
 func WithGRPCPort(port int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--grpc-port", strconv.Itoa(port))
+
+		return nil
+	}
+}
+
+func WithGRPCPeerPort(port int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--grpc-peer-port", strconv.Itoa(port))
 
 		return nil
 	}
@@ -354,14 +363,6 @@ func WithAuthAnonymousScopes(scopes string) testservice.InstrumentationFunc {
 func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--cache-rotation-threshold", strconv.FormatUint(threshold, 10))
-
-		return nil
-	}
-}
-
-func WithBackupMaxSegmentBytes(maxBytes int64) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--backup-max-segment-bytes", strconv.FormatInt(maxBytes, 10))
 
 		return nil
 	}

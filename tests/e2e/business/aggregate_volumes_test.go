@@ -71,13 +71,13 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				// Totals: USD input=300, output=300; EUR input=50, output=50
 				usdVol, ok := volumesByAsset["USD"]
 				g.Expect(ok).To(BeTrue(), "expected USD volumes")
-				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(300)))
-				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(300)))
+				g.Expect(usdVol.Input.DecimalString()).To(Equal("300"))
+				g.Expect(usdVol.Output.DecimalString()).To(Equal("300"))
 
 				eurVol, ok := volumesByAsset["EUR"]
 				g.Expect(ok).To(BeTrue(), "expected EUR volumes")
-				g.Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
-				g.Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(50)))
+				g.Expect(eurVol.Input.DecimalString()).To(Equal("50"))
+				g.Expect(eurVol.Output.DecimalString()).To(Equal("50"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -114,8 +114,8 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				// users:alice(in=100) + users:bob(in=200) = input=300, output=0
 				usdVol := result.Volumes[0]
 				g.Expect(usdVol.Asset).To(Equal("USD"))
-				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(300)))
-				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+				g.Expect(usdVol.Input.DecimalString()).To(Equal("300"))
+				g.Expect(usdVol.Output.DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -170,14 +170,14 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				// alice received 100 USD (input=100, output=0)
 				usdVol, ok := volumesByAsset["USD"]
 				g.Expect(ok).To(BeTrue(), "expected USD volumes")
-				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(100)))
-				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+				g.Expect(usdVol.Input.DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.Output.DecimalString()).To(Equal("0"))
 
 				// alice received 50 EUR (input=50, output=0)
 				eurVol, ok := volumesByAsset["EUR"]
 				g.Expect(ok).To(BeTrue(), "expected EUR volumes")
-				g.Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
-				g.Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+				g.Expect(eurVol.Input.DecimalString()).To(Equal("50"))
+				g.Expect(eurVol.Output.DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -251,14 +251,14 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				// Total input = 30000, same for output (double-entry, world has the output)
 				usdVol, ok := volumesByAsset["USD/4"]
 				g.Expect(ok).To(BeTrue(), "expected merged USD/4 volumes")
-				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(30000)))
-				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(30000)))
+				g.Expect(usdVol.Input.DecimalString()).To(Equal("30000"))
+				g.Expect(usdVol.Output.DecimalString()).To(Equal("30000"))
 
 				// EUR/2 unchanged
 				eurVol, ok := volumesByAsset["EUR/2"]
 				g.Expect(ok).To(BeTrue(), "expected EUR/2 volumes")
-				g.Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
-				g.Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(50)))
+				g.Expect(eurVol.Input.DecimalString()).To(Equal("50"))
+				g.Expect(eurVol.Output.DecimalString()).To(Equal("50"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -297,8 +297,8 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				usdVol := result.Volumes[0]
 				g.Expect(usdVol.Asset).To(Equal("USD/4"))
 				// alice: 100 * 10^2 = 10000, bob: 10000 → total = 20000
-				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(20000)))
-				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+				g.Expect(usdVol.Input.DecimalString()).To(Equal("20000"))
+				g.Expect(usdVol.Output.DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -342,7 +342,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				g.Expect(usersGroup.Prefix).To(Equal("users:"))
 				g.Expect(usersGroup.Volumes).To(HaveLen(1))
 				g.Expect(usersGroup.Volumes[0].Asset).To(Equal("USD"))
-				g.Expect(usersGroup.Volumes[0].Input.ToBigInt().Int64()).To(Equal(int64(300))) // 100+200
+				g.Expect(usersGroup.Volumes[0].Input.DecimalString()).To(Equal("300")) // 100+200
 
 				merchantsGroup := result.Groups[1]
 				g.Expect(merchantsGroup.Prefix).To(Equal("merchants:"))
@@ -352,8 +352,8 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				for _, v := range merchantsGroup.Volumes {
 					merchByAsset[v.Asset] = v
 				}
-				g.Expect(merchByAsset["USD"].Input.ToBigInt().Int64()).To(Equal(int64(500)))
-				g.Expect(merchByAsset["EUR"].Input.ToBigInt().Int64()).To(Equal(int64(300)))
+				g.Expect(merchByAsset["USD"].Input.DecimalString()).To(Equal("500"))
+				g.Expect(merchByAsset["EUR"].Input.DecimalString()).To(Equal("300"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -390,7 +390,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				g.Expect(usersGroup.Volumes).To(HaveLen(1))
 				g.Expect(usersGroup.Volumes[0].Asset).To(Equal("USD/4"))
 				// alice: 100 * 10^2 = 10000, bob: 10000 → total = 20000
-				g.Expect(usersGroup.Volumes[0].Input.ToBigInt().Int64()).To(Equal(int64(20000)))
+				g.Expect(usersGroup.Volumes[0].Input.DecimalString()).To(Equal("20000"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

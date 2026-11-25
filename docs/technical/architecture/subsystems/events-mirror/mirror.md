@@ -319,8 +319,8 @@ without a source date is rejected before mutation. Synthetic `FillGap` entries
 created for missing source log IDs carry no date because no source row exists.
 
 The resulting transaction, including these dates, is embedded in the persisted
-ledger log. Incremental backup exports that log row and `RebuildDelta` replays
-it into the restored transaction projection, so a post-checkpoint mirror ingest
+ledger log. The next complete checkpoint includes that log row and the
+transaction projection, so a post-checkpoint mirror ingest
 keeps the same `insertedAt` and `updatedAt` across a cross-cluster restore.
 
 For v2 `REVERTED_TRANSACTION`, the original identity comes from
@@ -442,7 +442,7 @@ Atomicity matters: if any of the orders in the batch fails (e.g. balance mismatc
 
 When the worker is fully caught up it fetches no logs, so the ingest path never runs — and that path is what normally carries both the source head and the error clear. The caught-up worker therefore publishes them on its own via a standalone `MirrorSyncUpdate` (`Worker.publishIdleStatus`). Two separate conditions trigger it, because they move independently:
 
-- **The observed head changed.** Without this the reported state stays pinned at `SYNCING`, most visibly after a restore: `RebuildDelta` reconstructs `last_mirror_v2_log_id` but not `MirrorSourceHead`, so a correctly restored mirror with nothing left to ingest would report `SYNCING` until a new source log arrived.
+- **The observed head changed.** Without this the reported state can stay pinned at `SYNCING`, including after a restore when the mirror has nothing left to ingest; the worker must publish the current source head without waiting for a new source log.
 - **A recorded error still needs clearing.** A source that fails and then recovers *without producing a new log* leaves the head unchanged, so gating on the head alone would suppress the clear and the API would keep serving a stale error indefinitely. An empty source could never clear at all.
 
 A head that has never been observed carries no information and is skipped, but an observed head of zero is a legitimate value that must still be able to clear an error — which is why the worker records *that* it has observed a head, separately from the value. Once a publication is confirmed applied, an idle mirror stops re-proposing (EN-1773).
@@ -499,7 +499,7 @@ message MirrorAssetMapping {
 The whole `MirrorSourceConfig`, including rewrite rules and asset mappings, is
 fixed at ledger creation.
 
-A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which is what the manager looks at to decide whether to spin up a worker.
+Creation in `MIRROR` mode requires a source configuration. To create a `NORMAL` ledger, omit the source. Both REST and gRPC enforce this in admission before persisting a ledger. This applies to fresh submissions and retries of a formerly accepted invalid shape; already committed entries still replay.
 
 ## Declaring indexes on a mirror ledger (operator)
 
@@ -553,7 +553,7 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 
 - **Async prefetch**: the next batch is fetched from the source while the previous batch is still applying through Raft + FSM. This overlaps source latency with consensus latency.
 - **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:710-800`), so the per-proposal preload work is amortised.
-- **Single-writer on the live path**: `last_mirror_v2_log_id` is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage. The one other writer is offline: `backup.RebuildDelta` reconstructs the mark from the replayed delta during a restore, when no worker and no FSM are running (EN-1776).
+- **Single-writer on the live path**: `last_mirror_v2_log_id` is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage. A checkpoint restore copies the persisted mark while no worker or FSM is running (EN-1776).
 
 ## What the mirror does not do
 

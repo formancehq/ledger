@@ -7,7 +7,7 @@ namespace="$1"
   "${UPGRADE_TARGET_OPERATOR_CHART:?}" "${UPGRADE_TARGET_OPERATOR_IMAGE:?}" \
   "${UPGRADE_TARGET_OPERATOR_IMAGE_ID:?}" "${UPGRADE_SOURCE_OPERATOR_IMAGE:?}" \
   "${UPGRADE_SOURCE_OPERATOR_IMAGE_ID:?}" \
-  "${UPGRADE_SOURCE_REPOSITORY:?}" "${UPGRADE_SOURCE_TAG:?}" \
+  "${UPGRADE_SOURCE_REPOSITORY:?}" "${UPGRADE_SOURCE_TAG:?}" "${UPGRADE_SOURCE_IMAGE_ID:?}" \
   "${UPGRADE_TARGET_REPOSITORY:?}" "${UPGRADE_TARGET_TAG:?}" \
   "${UPGRADE_TARGET_IMAGE_ID:?}" "${UPGRADE_EVIDENCE_DIR:?}" \
   "${UPGRADE_ROLLOUT:?}" "${UPGRADE_REJECTED_TAG:?}"
@@ -158,19 +158,89 @@ before_commit="$(committed_index)"
 record_raft before
 
 old_operator_uid="$(wait_operator "$UPGRADE_SOURCE_OPERATOR_IMAGE" "$UPGRADE_SOURCE_OPERATOR_IMAGE_ID")"
-helm upgrade ledger-operator "$UPGRADE_TARGET_OPERATOR_CHART" --namespace ledger-system \
-  --kubeconfig "$UPGRADE_KUBECONFIG" --kube-context "$UPGRADE_KUBE_CONTEXT" \
-  --set image.repository=ledger-operator --set "image.tag=${UPGRADE_TARGET_OPERATOR_IMAGE#*:}" \
-  --set image.pullPolicy=Never --set leaderElection=false \
-  --set pvcProtection.enabled=false --wait --timeout 5m
+upgrade_operator() {
+  local replicas="$1"
+  helm upgrade ledger-operator "$UPGRADE_TARGET_OPERATOR_CHART" --namespace ledger-system \
+    --kubeconfig "$UPGRADE_KUBECONFIG" --kube-context "$UPGRADE_KUBE_CONTEXT" \
+    --set image.repository=ledger-operator --set "image.tag=${UPGRADE_TARGET_OPERATOR_IMAGE#*:}" \
+    --set image.pullPolicy=Never --set leaderElection=false \
+    --set pvcProtection.enabled=false --set "replicaCount=$replicas" --wait --timeout 5m
+}
+if [ "$UPGRADE_ROLLOUT" = stopped ] && [ "$UPGRADE_SOURCE_TAG" = v3.0.0-rc.4 ]; then
+  # The old operator must be stopped before deleting objects stored under its
+  # incompatible Backup and BackupRun CRDs.
+  kubectl --kubeconfig "$UPGRADE_KUBECONFIG" --context "$UPGRADE_KUBE_CONTEXT" \
+    -n ledger-system scale deployment/ledger-operator --replicas=0
+  deadline=$(( $(date +%s) + 120 ))
+  until [ "$(operator_pod | jq '.items | length')" -eq 0 ]; do
+    [ "$(date +%s)" -lt "$deadline" ] || { echo 'source operator did not stop' >&2; exit 1; }
+    sleep 2
+  done
+  [ "$(k get jobs -o json | jq '.items | length')" -eq 0 ] || {
+    echo 'backup Job active before CRD migration' >&2; exit 1;
+  }
+  jq -n --arg cluster "$cluster" '
+    {apiVersion:"ledger.formance.com/v1alpha1",kind:"Backup",metadata:{name:"upgrade-backup"},
+     spec:{clusterRef:$cluster,destination:{driver:"s3",s3:{bucket:"upgrade-backup",region:"us-east-1",
+       endpoint:"http://minio.minio.svc.cluster.local:9000"}},schedule:{full:"0 0 * * *"}}}' | k apply -f -
+  jq -n '
+    {apiVersion:"ledger.formance.com/v1alpha1",kind:"BackupRun",metadata:{name:"upgrade-old-run"},
+     spec:{backupRef:"upgrade-backup",type:"Full"}}' | k apply -f -
+  k get backup upgrade-backup -o json | jq -e '.spec.schedule.full == "0 0 * * *"' >/dev/null
+  k get backuprun upgrade-old-run -o json | jq -e '.spec.type == "Full"' >/dev/null
+  k delete backuprun upgrade-old-run --wait=true
+  k delete backup upgrade-backup --wait=true
+  upgrade_operator 0
+  k create secret generic backup-s3-credentials \
+    --from-literal=access-key-id=minioadmin --from-literal=secret-access-key=minioadmin
+  k run mc-upgrade --rm -i --restart=Never \
+    --image=ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z \
+    --image-pull-policy=IfNotPresent --command \
+    --env=MC_HOST_minio=http://minioadmin:minioadmin@minio.minio.svc.cluster.local:9000 \
+    -- mc mb --ignore-existing minio/upgrade-backup
+  jq -n --arg cluster "$cluster" '
+    {apiVersion:"ledger.formance.com/v1alpha1",kind:"Backup",metadata:{name:"upgrade-backup"},
+     spec:{clusterRef:$cluster,destination:{driver:"s3",s3:{bucket:"upgrade-backup",region:"us-east-1",
+       endpoint:"http://minio.minio.svc.cluster.local:9000"},
+       s3AccessKeyIdFrom:{name:"backup-s3-credentials",key:"access-key-id"},
+       s3SecretAccessKeyFrom:{name:"backup-s3-credentials",key:"secret-access-key"}}}}' | k apply -f -
+  k get backup upgrade-backup -o json | jq -e '.spec.schedule == null' >/dev/null
+fi
+upgrade_operator 1
 new_operator_uid="$(wait_operator "$UPGRADE_TARGET_OPERATOR_IMAGE" "$UPGRADE_TARGET_OPERATOR_IMAGE_ID")"
 [ "$new_operator_uid" != "$old_operator_uid" ] || { echo 'operator Pod was not replaced' >&2; exit 1; }
 echo "operator upgraded before Ledger: $old_operator_uid -> $new_operator_uid"
+if [ "$UPGRADE_SOURCE_TAG" = v3.0.0-rc.4 ]; then
+  # The RC.5 operator adds the peer gRPC port to the StatefulSet template.
+  # Wait for that RC.4-image rollout before using Pod UIDs as the stopped
+  # binary-upgrade baseline.
+  deadline=$(( $(date +%s) + 120 ))
+  until k get statefulset "$statefulset" -o json | jq -e '
+    any(.spec.template.spec.containers[]; .name == "ledger" and
+      any(.env[]?; .name == "GRPC_PEER_PORT") and
+      any(.ports[]?; .name == "grpc-peer"))' >/dev/null; do
+    [ "$(date +%s)" -lt "$deadline" ] || { echo 'operator did not add the peer gRPC port' >&2; exit 1; }
+    sleep 2
+  done
+  k rollout status "statefulset/$statefulset" --timeout=180s
+fi
 wait_consistent
 check_data "$before"
 after_operator_pods="$(k get pods -o json | jq -r --arg name "$statefulset" \
   '.items[] | select(.metadata.name | startswith($name + "-")) | .metadata.name + " " + .metadata.uid' | sort)"
-[ "$after_operator_pods" = "$before_pods" ] || { echo 'Ledger Pods changed during operator upgrade' >&2; exit 1; }
+[ "$(wc -l <<<"$after_operator_pods" | tr -d ' ')" -eq 3 ] || { echo 'missing RC.4 Pods after operator upgrade' >&2; exit 1; }
+if [ "$UPGRADE_SOURCE_TAG" = v3.0.0-rc.4 ]; then
+  for ordinal in 0 1 2; do
+    k get pod "$(pod "$ordinal")" -o json | jq -e \
+      --arg image "$source_image" --arg id "$UPGRADE_SOURCE_IMAGE_ID" '
+      ([.spec.containers[] | select(.name == "ledger") | .image][0] == $image) and
+      ([.status.containerStatuses[] | select(.name == "ledger") | .imageID][0] | contains($id)) and
+      any(.status.conditions[]?; .type == "Ready" and .status == "True")' >/dev/null
+  done
+  before_pods="$after_operator_pods"
+else
+  [ "$after_operator_pods" = "$before_pods" ] || { echo 'Ledger Pods changed during operator upgrade' >&2; exit 1; }
+fi
 [ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'PVC identity changed during operator upgrade' >&2; exit 1; }
 
 # A non-adjacent downgrade stays below the local target operator version, so
@@ -272,6 +342,24 @@ if [ "$UPGRADE_ROLLOUT" = stopped ]; then
 fi
 wait_consistent
 check_data "$before"
+if [ "$UPGRADE_SOURCE_TAG" = v3.0.0-rc.4 ]; then
+  # Activate the new schedule only after Ledger is running the target binary;
+  # the old binary does not implement checkpoint-only backup.
+  k patch backup upgrade-backup --type=merge -p '{"spec":{"schedule":"0 0 1 1 *"}}'
+  k get backup upgrade-backup -o json | jq -e '.spec.schedule == "0 0 1 1 *"' >/dev/null
+  deadline=$(( $(date +%s) + 300 ))
+  until k get backup upgrade-backup -o json | jq -e '
+    .status.lastBackup.lastLogSequence > 0 and
+    any(.status.conditions[]?; .type == "BackupHealthy" and .status == "True")' >/dev/null; do
+    [ "$(date +%s)" -lt "$deadline" ] || { echo 'new operator did not complete a checkpoint' >&2; exit 1; }
+    sleep 2
+  done
+  k get backupruns -o json | jq -e '
+    any(.items[]; .spec.backupRef == "upgrade-backup" and .spec.type == null and
+      .status.phase == "Succeeded" and .status.result.lastLogSequence > 0)' >/dev/null
+  check_data "$before"
+  [ "$(pvc_ids)" = "$before_pvcs" ] || { echo 'checkpoint migration changed PVC identity' >&2; exit 1; }
+fi
 for ordinal in 0 1 2; do
   pod_json="$(k get pod "$(pod "$ordinal")" -o json)"
   jq -e --arg image "$target_image" --arg id "$UPGRADE_TARGET_IMAGE_ID" '

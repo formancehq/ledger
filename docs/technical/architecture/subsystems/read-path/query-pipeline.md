@@ -319,6 +319,11 @@ Every paged list exchanges **page tokens** built by `pkg/pagecursor`. A token is
 | Prepared queries | decimal id for TRANSACTIONS / LOGS targets, address for ACCOUNTS |
 | Index inspection | base64url of the encoded metadata value |
 
+For transaction lists, an empty key means no position. The decimal key `"0"` is
+an exclusive position at transaction ID zero, which can exist in mirror
+ledgers. Direct HTTP and gRPC reads preserve this distinction through routing;
+prepared LIST queries apply the same rule.
+
 Both directions are exclusive of the key and always return rows in the **requested** order (`reverse` included):
 
 | Token | Page served |
@@ -372,8 +377,8 @@ and account enumeration. Accounts containing only metadata contribute no volume
 rows. Any non-nil filter retains the compiled candidate-account path followed by
 per-account volume scans through `AggregateVolumes`; empty or parameterized
 filters do not qualify for the nil-filter shortcut. Both paths sum per asset at
-request time, with the same uint256 overflow checks and no precomputed aggregate
-table. The shortcut runs after the ledger and prepared-query definition have
+request time into exact totals that may exceed 2^256, with no precomputed
+aggregate table. The shortcut runs after the ledger and prepared-query definition have
 been loaded and the mode validated through the reserved main-store handle.
 It releases the event-history reservation before scanning volumes and opens no
 read-index snapshot. The controller's read barrier and the fixed main-store

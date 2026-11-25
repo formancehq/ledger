@@ -16,7 +16,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -31,13 +31,10 @@ jobs:
           username: NumaryBot
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          nix develop .#ci --command just release
+          nix develop .#release --command just release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-      - name: Build and push operator image
-        run: >
-          nix develop .#ci --command just operator-docker-build ${{ github.ref_name }}
       - name: Publish operator Helm charts
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

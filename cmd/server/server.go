@@ -116,6 +116,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().String("bind-addr", "0.0.0.0:7777", "Address to bind for Raft transport (internal inter-node communication)")
 	runCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
 	runCmd.Flags().Int("grpc-port", 8888, "gRPC port for service API (external client-facing)")
+	runCmd.Flags().Int("grpc-peer-port", 0, "gRPC port for authenticated inter-node service forwarding (default: --grpc-port + 1)")
 	runCmd.Flags().String("wal-dir", "./wal", "WAL directory for Raft")
 	runCmd.Flags().String("data-dir", "./data", "Data directory for application storage")
 	runCmd.Flags().Bool("bootstrap", false, "Initialize a new single-node cluster (mutually exclusive with --join)")
@@ -153,7 +154,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
-	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "backup-max-segment-bytes", 0, "Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "backup-max-segment-bytes", 0, "Deprecated compatibility option; checkpoint backups ignore this value")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
 	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
@@ -526,6 +527,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.Debug = getBool("debug", false)
 	cfg.HTTPPort = getInt("http-port", 9000)
 	cfg.GRPCPort = getInt("grpc-port", 8888)
+	cfg.GRPCPeerPort = getInt("grpc-peer-port", 0)
 	cfg.RaftConfig.NodeID = getUint64("node-id", 0)
 	cfg.RaftConfig.BindAddr = getString("bind-addr", "127.0.0.1:8888")
 	cfg.RaftConfig.AdvertiseAddr = getString("advertise-addr", "")
@@ -586,7 +588,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
 	cfg.SpoolSegmentMaxBytes = bytesize.Get(cmd, "spool-segment-max-bytes").Int64()
-	cfg.BackupMaxSegmentBytes = bytesize.Get(cmd, "backup-max-segment-bytes").Int64()
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
 	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
 	cfg.MaxExecutionPlanSize = getInt("max-execution-plan-size", 4096)

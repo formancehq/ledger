@@ -18,6 +18,14 @@ including initial metadata, schema and account types. Subsequent metadata saves
 still require `ledger:WriteMetadata`. HTTP, gRPC and unsigned bulk use the same
 creation scope decision.
 
+New `CreateLedger` orders also validate each initial account type's segment
+constraints and reject equal-specificity overlapping patterns before allocating
+the ledger ID. `AddAccountType` keeps its existing validation. Successful
+creations written before this change remain valid history, including definitions
+that the new rule would reject: audit replay uses the historical creation rule
+to reconstruct their original logs. New successful definitions satisfy both
+rules and produce the same replayed log.
+
 Normal and mirror ledgers both accept initial ledger metadata. This is a
 provisioning operation; it does not change restrictions on subsequent writes or
 turn mirror ingestion into a source of ledger metadata.
@@ -29,8 +37,10 @@ writes. Explicit protobuf `NullValue` follows the existing typed-value contract.
 Initial schema declarations remain index/query hints: creation stores supported
 values verbatim even when their supplied type differs from the declared type.
 
-The response remains one created ledger in the existing response envelope with
-HTTP 201, now including its initial metadata. A subsequent ledger read enriches
+By default the response remains one created ledger in the existing response
+envelope with HTTP 201, including its initial metadata. Opting into
+`skipResponse=true` retains 201 and returns only the global sequence; see
+[compact write acknowledgements](http-api.md#compact-write-acknowledgements). A subsequent ledger read enriches
 LedgerInfo from the canonical metadata keyspace. Metadata is not duplicated in
 the persisted LedgerInfo row.
 
@@ -51,9 +61,9 @@ initial metadata, so audit replay reconstructs the same creation output and
 idempotent retries retain one frozen outcome. A second SaveLedgerMetadata order
 would change authorization and log cardinality and is unnecessary.
 
-Initial ledger metadata is **rebuilt** during incremental restore: creation logs
-after the checkpoint assign their values into the ledger metadata keyspace.
-Later save/delete logs and ledger deletion retain their existing ordered folds.
+Initial ledger metadata is captured with the ledger row in each complete
+checkpoint. A second checkpoint after creation captures its metadata and later
+save/delete or ledger deletion effects together.
 The checker independently folds successful chain-verified creation, save,
 metadata deletion and ledger deletion orders. It compares stored values and
 presence in both directions, so a mutable log/projection cannot justify itself.

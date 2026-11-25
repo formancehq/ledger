@@ -38,6 +38,20 @@ func TestResolveCallerSnapshot_AuthDisabled(t *testing.T) {
 
 	ctx := withAuthenticationState(context.Background(), false, false, nil)
 	require.NotNil(t, ResolveCallerSnapshot(ctx).GetAuthDisabled())
+
+	// The same request arriving at the leader through an authenticated peer
+	// retains the auth-disabled principal instead of becoming cluster-peer.
+	peerCtx := WithClusterInternal(ctx, true)
+	require.NotNil(t, ResolveCallerSnapshot(peerCtx).GetAuthDisabled())
+	forwarded, err := attribution.New(&commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Anonymous{Anonymous: &commonpb.AnonymousCaller{}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ResolveCallerSnapshot(WithForwardedAttribution(peerCtx, forwarded)).GetAuthDisabled())
+
+	// An explicit background action still identifies its system component.
+	systemCtx := WithSystemActor(peerCtx, commands.ComponentQueryCheckpoint)
+	require.Equal(t, string(commands.ComponentQueryCheckpoint), ResolveCallerSnapshot(systemCtx).GetSystem().GetComponent())
 }
 
 func TestResolveCallerSnapshot_FromClaims_OIDC(t *testing.T) {

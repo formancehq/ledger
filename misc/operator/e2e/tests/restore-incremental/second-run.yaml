@@ -1,0 +1,6 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: BackupRun
+metadata:
+  name: second-checkpoint
+spec:
+  backupRef: ri-bk

@@ -215,15 +215,14 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(resp.GetLastAppliedIndex()).To(BeNumerically(">", 0))
 		})
 
-		It("should run incremental backup after adding more data", func() {
-			// Add more data after the full backup
+		It("should publish a second checkpoint after adding more data", func() {
+			// Add data after the first checkpoint.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("bank", "eve", big.NewInt(eveTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			// Run incremental backup
-			incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			secondResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   bootstrapS3Bucket,
 					Region:   bootstrapS3Region,
@@ -232,20 +231,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 				BucketId: bootstrapBucketID,
 			})
 			Expect(err).To(Succeed())
-			Expect(incrResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
-			Expect(incrResp.GetAuditEntriesExported()).To(BeNumerically(">", 0))
-
-			// Take a new full backup to include all data (clears exports)
-			fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
-					Bucket:   bootstrapS3Bucket,
-					Region:   bootstrapS3Region,
-					Endpoint: minioEndpoint,
-				}),
-				BucketId: bootstrapBucketID,
-			})
-			Expect(err).To(Succeed())
-			Expect(fullResp.GetTotalFiles()).To(BeNumerically(">", 0))
+			Expect(secondResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 

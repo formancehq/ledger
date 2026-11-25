@@ -149,6 +149,14 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 	buf = appendLenString(buf, entry.GetIdempotency().GetKey())
 	buf = appendU64(buf, entry.GetIdempotency().GetExpiresAt())
 	buf = appendLenBytes(buf, buildSignaturePayload(entry.GetSignature()))
+	// Legacy entries have no suffix. Preserve their exact hash preimage while
+	// binding every capability in entries that carry a declaration.
+	if capabilities := entry.GetRequiredCapabilities(); len(capabilities) > 0 {
+		buf = appendU32(buf, uint32(len(capabilities)))
+		for _, capability := range capabilities {
+			buf = appendU32(buf, capability)
+		}
+	}
 
 	return buf, nil
 }

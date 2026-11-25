@@ -27,6 +27,7 @@ enum AuthScope {
   AUTH_SCOPE_QUERY_WRITE = 12;
   AUTH_SCOPE_CLUSTER_READ = 13;
   AUTH_SCOPE_CLUSTER_WRITE = 14;
+  AUTH_SCOPE_EXECUTE_NUMSCRIPT = 15;
 }
 
 // DynamicAuthResolver names request-dependent policies that cannot be reduced
@@ -617,6 +618,9 @@ enum EventType {
   // failure (skippable_reasons) and was skipped instead of failing the whole
   // proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
   SKIPPED_ORDER = 7;
+  // Emitted for a Numscript execution that updates account metadata without
+  // creating a transaction. The payload contains metadata keyed by account.
+  ACCOUNT_METADATA_UPDATED = 8;
 }
 
 // ============================================================================
@@ -850,6 +854,7 @@ message LedgerLogPayload {
     RemovedAccountTypeLog removed_account_type = 11 [(ledger_log_is_history) = false];
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12 [(ledger_log_is_history) = false];
     OrderSkippedLog order_skipped = 13 [(ledger_log_is_history) = true];
+    AccountMetadataUpdated account_metadata_updated = 14 [(ledger_log_is_history) = true];
   }
 }
 
@@ -1010,6 +1015,8 @@ message FailureDetails {
     NumscriptScopedNegativeBalanceDetails numscript_scoped_negative_balance = 147 [(failure_reason) = ERROR_REASON_NUMSCRIPT_EXECUTION_ERROR];
     NumscriptVersionNotFoundDetails numscript_version_not_found = 148 [(failure_reason) = ERROR_REASON_NUMSCRIPT_NOT_FOUND];
     MirrorAssetMappingInvalidDetails mirror_asset_mapping_invalid = 149 [(failure_reason) = ERROR_REASON_VALIDATION];
+    MetadataOnlyTransactionMetadataDetails metadata_only_transaction_metadata = 150 [(failure_reason) = ERROR_REASON_VALIDATION];
+    MetadataOnlyReferenceDetails metadata_only_reference = 151 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -1081,6 +1088,12 @@ message ColorTooLongDetails {
 }
 
 message EmptyTransactionDetails {
+}
+
+message MetadataOnlyTransactionMetadataDetails {
+}
+
+message MetadataOnlyReferenceDetails {
 }
 
 
@@ -2181,7 +2194,9 @@ enum ErrorReason {
   // exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
   // a preparation gap, never an authoritative business verdict. See EN-1406.
   ERROR_REASON_PRELOAD_UNAVAILABLE = 59;
-  ERROR_REASON_AGGREGATE_OVERFLOW = 60;
+  // 60 was AGGREGATE_OVERFLOW; aggregate totals are exact.
+  reserved 60;
+  reserved "ERROR_REASON_AGGREGATE_OVERFLOW";
   ERROR_REASON_BALANCE_NOT_FOUND = 61;
   // ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
   // revision lower than the applied one. Deterministic rejection — a newer
@@ -2677,11 +2692,11 @@ message PreparedQuery {
 // AggregatedVolume represents aggregated input/output volumes for a single
 // (asset, color) bucket. When collapse_colors is requested on the aggregate
 // query, all entries are produced with color = "" and amounts summed across
-// colors.
+// colors. Totals are exact: a sum of buckets may exceed 2^256.
 message AggregatedVolume {
   string asset = 1;
-  Uint256 input = 2;
-  Uint256 output = 3;
+  BigUint input = 2;
+  BigUint output = 3;
   string color = 4;
 }
 
@@ -2871,7 +2886,18 @@ message ListOptions {
 
 // CapabilityActivation is intentionally small and wire-stable. IDs are fixed
 // integers owned by the producer, not hashes of implementation names.
+message CapabilityState {
+  repeated CapabilityActivation activations = 1;
+}
+
 message CapabilityActivation {
   fixed32 id = 1;
   bool active = 2;
+}
+
+// AccountMetadataUpdated records account metadata written by a metadata-only
+// Numscript execution. It is a history log entry, but it is not a transaction:
+// no transaction ID, postings, or TransactionState are created.
+message AccountMetadataUpdated {
+  map<string, MetadataMap> account_metadata = 1;
 }

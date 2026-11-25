@@ -6,7 +6,7 @@ status:
   phase: Succeeded
   (startTime != null): true
   (completionTime != null): true
-  full:
+  result:
     (time != null): true
     (totalFiles >= `0`): true
   conditions:

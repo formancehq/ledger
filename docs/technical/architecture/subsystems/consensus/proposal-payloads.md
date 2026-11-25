@@ -1,6 +1,6 @@
 # Proposal payloads
 
-`Proposal.payload` separates an execution batch from a cluster-policy control:
+`Proposal.payload` separates execution batches from operational controls:
 
 ```text
 Proposal
@@ -8,7 +8,8 @@ Proposal
                  idempotency, signature
   payload:
     batch (11): ExecutionBatch { orders (1), technical_updates (2) }
-    set_cluster_policy (12): SetClusterPolicyProposal { policy (1) }
+    set_cluster_policy (12): SetClusterPolicyProposal { policy (1), configuration_only (2) }
+    capability_activation (13): CapabilityActivation { id (1), active (2) }
 ```
 
 Policy controls persist operational state without business audit or logs. Technical updates
@@ -18,8 +19,12 @@ proposals remain consensus barriers.
 ## Upgrade boundary
 
 Producers serialize the oneof directly through the shared plan runner, including
-plan rebuilds and retries. A batch uses field 11 and a policy control uses field
-12. The deprecated fields remain available for reading historical proposals.
+plan rebuilds and retries. A batch uses field 11 and policy controls use field 12.
+Current policy producers keep field 12 and set `configuration_only=true`:
+they contain only flag-derived ClusterPolicy values, and apply merges the latest
+detached CapabilityState. Released proposals omit the marker and retain their
+original full-policy replay semantics. Capability producers use field 13.
+The deprecated fields remain available for reading historical proposals.
 
 This format requires a **full-stop upgrade** from RC.3 to RC.4. Every source
 node must stop before any target node starts. An RC.3 decoder skips the unknown
@@ -37,14 +42,18 @@ and technical updates from either the current batch or historical fields;
 The legacy order handler shares the policy transition for historical WAL and
 audit replay. Accepted messages and their pooled buffers remain unchanged.
 Internal producers own payload construction; admission and processors own
-business validation. There is no transitional shape check, old-format write
-adapter, capability registry, or activation flag.
+business validation. There is no transitional shape check or old-format write
+adapter. The RC.4 to RC.5 stopped boundary additionally introduces targeted
+configuration and capability controls, independent configuration revisions,
+and direct monotonic activation controls. Its startup migration and automatic activation
+are specified in the [control-state contract](../storage/control-state.md).
 
 ## Execution and technical updates
 
-Admission constructs policy controls with the `cluster-policy` system caller
+Admission constructs operational controls with the `cluster-policy` system caller
 and no client idempotency or signature data. The policy processor decides
-revision, no-op, conflict and stale-policy outcomes. Native
+revision, no-op, conflict and stale-policy outcomes for configuration. Capability
+transitions are idempotent and monotonic without consuming that revision. Native
 controls update the replicated policy without consuming a business log or audit
 sequence, freezing an idempotency outcome, or advancing business HLC. No new
 policy is converted into a historical order. A native control may apply during
@@ -86,15 +95,13 @@ wire decoding and pool release, not FSM processing.
 ## Persistence, restore, and rollback
 
 The migration reads both formats and writes the new format after the full stop.
-Existing WAL, snapshots, and backups need no rewrite or backfill. Released field
-numbers and historical audit bytes remain intact. Full checkpoints include the
-policy row. Incremental manifests carry an optional `clusterPolicy` snapshot
-with the deterministic protobuf bytes and source applied index, taken from the
-same read snapshot as the history exports. This also captures policy-only
-changes. Restore folds released history first, then applies this operational
-snapshot to the staging store. Older manifests continue to restore their
-checkpoint and historical policy logs. See the
-[incremental restore contract](../backup/incremental-restore-contract.md#operational-cluster-policy).
+Existing WAL and snapshots need no rewrite or backfill. Released field numbers
+and historical audit bytes remain intact. Complete checkpoints include the
+policy row, including policy-only changes made since the preceding backup.
+Restore reads that row with the rest of the checkpoint. Old manifests with a
+separate `clusterPolicy` snapshot are rejected; take a new checkpoint backup
+before restore. See the
+[checkpoint restore contract](../backup/incremental-restore-contract.md#operational-cluster-policy).
 
 Do not restart RC.3 on volumes used by the target binary. The first payload
 entry appended to the WAL closes the rollback window, including a technical
@@ -109,7 +116,7 @@ new operational policy changes no longer appear in business audit listings.
 Unit tests cover payload immutability, historical audit integrity and native policy audit omission,
 coverage targets, actual payload serialization on failed-then-successful retries,
 old/new outcome and recovery parity, technical-only HLC behavior, mirror rollback,
-checkpoint boundaries, and incremental restore.
+checkpoint boundaries, and checkpoint restore.
 
 The three-node e2e test intercepts Raft log replication, requires batch and
 policy payloads without legacy fields, transfers leadership, restarts nodes,

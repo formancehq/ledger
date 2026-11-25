@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
@@ -19,29 +20,45 @@ import (
 // accepted with garbage semantics. On error it writes the response and returns
 // ok=false; the caller must return immediately.
 //
-// The RFC3339 coercion + pre-epoch rejection is the same one the DSL date/
-// timestamp fields use (commonpb.CoerceDatetimeMicros, EN-1544); this transport
-// helper adds the 400-writing on top. Unlike the DSL coercion it rejects raw
-// microseconds: startDate/endDate are documented RFC3339-only convenience
-// parameters, so a bare integer is a client error here.
+// Both comparisons, >= startDate and < endDate, use the first stored
+// microsecond at or after the requested instant. Flooring a fractional bound
+// would include one extra microsecond for startDate, or exclude one for endDate.
+// The convenience parameters accept only RFC3339, not raw microseconds.
 //
 // Shared by handleListTransactions and handleListLedgerLogs so both list
 // endpoints validate startDate/endDate identically (EN-1542).
 func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bool) {
-	if _, err := time.Parse(time.RFC3339, raw); err != nil {
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, expected RFC3339 format", param))
 
 		return 0, false
 	}
 
-	micros, err := commonpb.CoerceDatetimeMicros(raw)
-	if err != nil {
+	micros := parsed.UnixMicro()
+	if micros < 0 {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, dates before 1970-01-01 are not supported", param))
 
 		return 0, false
 	}
 
-	return micros, true
+	// time.Parse rounds down after nanoseconds. Inspect the original fraction
+	// to account for nonzero digits beyond six decimal places, including any
+	// that the parser did not retain. The timestamp is already validated, so
+	// the first non-digit here is the timezone separator.
+	if fraction := strings.IndexAny(raw, ".,"); fraction >= 0 {
+		for i := fraction + 1; i < len(raw); i++ {
+			digit := raw[i]
+			if digit < '0' || digit > '9' {
+				break
+			}
+			if i-fraction > 6 && digit != '0' {
+				return uint64(micros) + 1, true
+			}
+		}
+	}
+
+	return uint64(micros), true
 }
 
 // combineFilters AND-combines the non-nil filters into a single QueryFilter.

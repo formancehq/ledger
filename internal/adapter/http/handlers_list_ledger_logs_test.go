@@ -297,6 +297,28 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 				maxExclusive: true,
 			},
 		},
+		{
+			name:        "fractional bounds preserve start-inclusive and end-exclusive comparisons",
+			query:       "startDate=1970-01-01T00:00:00.123456500Z&endDate=1970-01-01T00:00:00.1234570001Z",
+			wantStatus:  http.StatusOK,
+			wantBackend: true,
+			bound: &expectBound{
+				min:          new(uint64(123457)),
+				max:          new(uint64(123458)),
+				maxExclusive: true,
+			},
+		},
+		{
+			name:        "exact fractional bounds with a UTC offset stay unchanged",
+			query:       "startDate=1970-01-01T05:30:00.12%2B05:30&endDate=1970-01-01T05:30:00.1234560000%2B05:30",
+			wantStatus:  http.StatusOK,
+			wantBackend: true,
+			bound: &expectBound{
+				min:          new(uint64(120000)),
+				max:          new(uint64(123456)),
+				maxExclusive: true,
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

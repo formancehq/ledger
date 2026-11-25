@@ -154,8 +154,6 @@ func TestTransactionsCreateInteractiveAmount(t *testing.T) {
 				_, err := terminal.WriteString(text)
 				require.NoError(t, err)
 			}
-			expect("How do you want to create this transaction?")
-			send("\r")
 			for _, input := range []struct{ prompt, value string }{
 				{"Source account", "world"}, {"Destination account", "alice"}, {"Amount", tc.amount},
 			} {

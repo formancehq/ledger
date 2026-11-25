@@ -26,7 +26,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		Target *string         `json:"target"`
 		Filter json.RawMessage `json:"filter"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodePreparedQueryBody(r.Body, &body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return

@@ -73,6 +73,16 @@ protocol revision (40), and requires no data migration. Upgrade receiving HTTP
 nodes before clients send signing headers. Existing retained-key replay,
 unkeyed execution and expired-key behavior remain unchanged.
 
+The atomic HTTP Apply route uses the same boundary for all exposed command
+variants. Its wrapper `request` is `{requests:[...]}` and the header carries the
+single key. It checks every operation scope and compares the complete batch
+before invoking the existing service Apply once. It does not add signature
+verification to the HTTP codec or bypass mandatory admission policy. Unlike
+legacy transaction acknowledgements, its returned logs preserve the service's
+optional response-signature envelopes except for credential-redacted sink and
+mirror-ledger creation logs. See
+[atomic HTTP Apply](../api/http-api.md#atomic-http-apply).
+
 ### Response signature: per log
 
 For every log that ends up in the response, the server signs a `Log` derived from it (with the `response_signature` field cleared). The signature is then attached back on `log.response_signature` as a `SignedLog`. A client first verifies the signature over the envelope's exact payload bytes, decodes those authenticated bytes as a `Log`, and compares that value with the visible log after clearing its `response_signature`. A valid envelope alone does not authenticate the separately supplied visible fields. `ledgerctl` rejects the response before consuming a mismatched log. Comparing decoded values also permits equivalent protobuf wire encodings without requiring client and server serialization to be byte-identical.
@@ -130,14 +140,14 @@ Registration is an upsert rather than an insert: nothing rejects a duplicate key
 
 `RevokeSigningKey` with `cascade` removes the revoked key and its entire descendant subtree, and records the descendants in `RevokedSigningKeyLog.cascaded_key_ids`.
 
-Which keys are descendants is decided by the **effective** parent relation: the committed key store with the current batch's staged signing updates folded over it **in order**, last write per key ID winning (`state.WriteSet.GetSigningKeyChildren`). That is the same sequence `WriteSet.Merge` replays into Pebble and the in-memory `KeyStore`, and the same one `backup.RebuildDelta` replays on restore, so all three agree on which keys a cascade reached.
+Which keys are descendants is decided by the **effective** parent relation: the committed key store with the current batch's staged signing updates folded over it **in order**, last write per key ID winning (`state.WriteSet.GetSigningKeyChildren`). That is the same sequence `WriteSet.Merge` replays into Pebble and the in-memory `KeyStore`. Checkpoint restore copies the persisted state directly.
 
 Two consequences inside a single signed batch, both following from "the last registration decides":
 
 - A key revoked earlier in the batch and then **re-registered** under the revoke target **is** cascaded. The registration supersedes the removal, so the key is back in the subtree when the cascade runs.
 - A key **reassigned** earlier in the batch is cascaded or not according to where its new parent sits. Reassignment removes the old edge, so the key is no longer reachable through it — but the walk is transitive, so a new parent that is *itself* inside the revoked subtree still carries the cascade to it. Only a new parent the cascade never reaches takes the key out of range.
 
-Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery and `RebuildDelta` both rebuild roots from parent-less persisted rows.
+Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery rebuilds roots from parent-less persisted rows.
 
 A batch boundary does not change either answer: the same ordered operations produce the same surviving key set whether they are submitted as one signed batch or several. Deriving the cascade from an unordered view of the staged updates is what made those two disagree (EN-2011).
 

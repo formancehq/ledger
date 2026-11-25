@@ -95,6 +95,15 @@ back to that proto. A new filter field must be added to both decoders, to
 | `ledger` | logs | `ledger == main`, `$param` | `{"$match":{"ledger":"main"}}` |
 | audit fields (§7) | audit | `outcome == failure`, `seq between 1 and 9` | `{"$match":{"outcome":"failure"}}`, `$gte`… |
 
+For textual metadata comparisons, quotes preserve the literal type. For
+example, `metadata[code] == "true"` matches a string, whereas
+`metadata[enabled] == true` compares a boolean. The same rule applies to
+`!=` and `in`. Use bare signed 64-bit numbers for integer comparisons and range
+bounds; quoted bounds are strings and are rejected. Quote numeric identifiers
+that are stored as strings, including identifiers outside the signed 64-bit
+range. This affects newly parsed text; stored
+Protobuf filters are not rewritten.
+
 On the uint fields, `$match` is an equality: it decodes to the closed range from the
 value to itself, the proto textual `==` builds. A closed range written as two bounds
 (`id > 3 and id < 9`, or a JSON `$and` of `$gt` and `$lt`) folds into one range
@@ -176,7 +185,10 @@ narrows identically, and does so independently of any empty combinator.
 ## 6. Typed date coercion
 
 `startDate`/`endDate` are RFC3339-only convenience shorthands that map to a
-builtin timestamp/date range. They are not the only way to express a date bound:
+builtin timestamp/date range. Stored dates have microsecond precision. Round
+either RFC3339 bound up to the first stored microsecond on or after it before
+applying the inclusive lower and exclusive upper comparisons. A bound already
+on a microsecond is unchanged. These shorthands are not the only way to express a date bound:
 the DSL `date`/`timestamp` fields **also** accept RFC3339 (EN-1544) *and* raw
 microseconds. Pre-epoch values are rejected (EN-1542). Do not read this section as
 "the structured DSL lacks date coercion" — it does not; only the top-level

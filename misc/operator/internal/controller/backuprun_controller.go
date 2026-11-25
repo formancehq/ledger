@@ -73,10 +73,6 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	if run.Spec.Type == "" {
-		run.Spec.Type = ledgerv1alpha1.BackupRunTypeFull
-	}
-
 	var backup ledgerv1alpha1.Backup
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      run.Spec.BackupRef,
@@ -177,10 +173,13 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("reading backup result: %v", err))
 	}
 
-	completion := metav1.Now()
+	completedAt := time.Now()
+	completion := metav1.NewTime(completedAt)
 	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseSucceeded
 	run.Status.Message = ""
 	run.Status.CompletionTime = &completion
+	run.Status.Result.Time = &completion
+	run.Status.Result.CompletionUnixNano = completedAt.UnixNano()
 	meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
 		Type:               "BackupCompleted",
 		Status:             metav1.ConditionTrue,
@@ -222,7 +221,6 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	if !apierrors.IsNotFound(err) {
 		return nil, fmt.Errorf("looking up Job: %w", err)
 	}
-
 	// Desired spec may already omit TLS while the live workload is optional.
 	// Resolve both transport and trust from the same owned workload snapshot.
 	// Absence during orphan/recreate is retryable, never a plaintext fallback.
@@ -316,45 +314,27 @@ func (r *BackupRunReconciler) applyJobResult(
 
 	now := metav1.Now()
 
-	switch run.Spec.Type {
-	case ledgerv1alpha1.BackupRunTypeFull:
-		var result fullBackupResult
-		if err := parseBackupResult(payload, run.Spec.Type, &result); err != nil {
-			return err
-		}
-
-		run.Status.Full = &ledgerv1alpha1.FullBackupStatus{
-			Time:              &now,
-			FilesUploaded:     result.FilesUploaded,
-			FilesDeleted:      result.FilesDeleted,
-			OrphansDeleted:    result.OrphansDeleted,
-			TotalFiles:        result.TotalFiles,
-			DurationMs:        result.DurationMs,
-			LastLogSequence:   result.LastLogSequence,
-			LastAuditSequence: result.LastAuditSequence,
-			LastAppliedIndex:  result.LastAppliedIndex,
-		}
-	case ledgerv1alpha1.BackupRunTypeIncremental:
-		var result incrementalBackupResult
-		if err := parseBackupResult(payload, run.Spec.Type, &result); err != nil {
-			return err
-		}
-
-		run.Status.Incremental = &ledgerv1alpha1.IncrementalBackupStatus{
-			Time:                 &now,
-			LogEntriesExported:   result.LogEntriesExported,
-			AuditEntriesExported: result.AuditEntriesExported,
-			SegmentsUploaded:     result.SegmentsUploaded,
-			OrphansDeleted:       result.OrphansDeleted,
-			DurationMs:           result.DurationMs,
-			LastLogSequence:      result.LastLogSequence,
-			LastAuditSequence:    result.LastAuditSequence,
-		}
-	default:
-		return fmt.Errorf("unsupported backup type %q", run.Spec.Type)
+	var result checkpointResult
+	if err := parseBackupResult(payload, &result); err != nil {
+		return err
 	}
+	run.Status.Result = backupResult(result, &now)
 
 	return nil
+}
+
+func backupResult(result checkpointResult, now *metav1.Time) *ledgerv1alpha1.BackupResult {
+	return &ledgerv1alpha1.BackupResult{
+		Time:              now,
+		FilesUploaded:     result.FilesUploaded,
+		FilesDeleted:      result.FilesDeleted,
+		OrphansDeleted:    result.OrphansDeleted,
+		TotalFiles:        result.TotalFiles,
+		DurationMs:        result.DurationMs,
+		LastLogSequence:   result.LastLogSequence,
+		LastAuditSequence: result.LastAuditSequence,
+		LastAppliedIndex:  result.LastAppliedIndex,
+	}
 }
 
 // backupResultReadError distinguishes unavailable evidence from an acquired

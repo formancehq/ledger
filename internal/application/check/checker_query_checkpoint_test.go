@@ -9,6 +9,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -57,7 +58,7 @@ func derivedLog(id uint64) *commonpb.CreatedQueryCheckpointLog {
 func collectQueryCheckpointEvents(t *testing.T, store *dal.Store, derived map[uint64]*commonpb.CreatedQueryCheckpointLog) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -203,7 +204,7 @@ func TestCheck_QueryCheckpointProjection_EmptyAuditWiring(t *testing.T) {
 	store := createTestStore(t)
 	writeQueryCheckpointRow(t, store, 1)
 
-	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), logging.Testing())
 
 	var got []*servicepb.CheckStoreError
 	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
@@ -215,4 +216,69 @@ func TestCheck_QueryCheckpointProjection_EmptyAuditWiring(t *testing.T) {
 	require.Len(t, got, 1, "a stored query checkpoint with no audited creation must be reported")
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, got[0].GetErrorType())
 	require.Contains(t, got[0].GetMessage(), "not justified by the audit chain")
+}
+
+func TestCheck_QueryCheckpointCounterAndScheduleCorruption(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	checkpointOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}},
+	}}}
+	scheduleOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{Cron: "*/5 * * * *"}},
+	}}}
+	logs := engine.processAndCommit(checkpointOrder)
+	require.Len(t, logs, 1)
+	cp := logs[0].GetPayload().GetCreatedQueryCheckpoint()
+	require.Equal(t, uint64(1), cp.GetCheckpointId())
+	engine.processAndCommit(scheduleOrder)
+
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
+		CheckpointId: cp.GetCheckpointId(), MaxSequence: cp.GetMaxSequence(), CreatedAt: cp.GetCreatedAt(), AppliedIndex: cp.GetAppliedIndex(),
+	}))
+	require.NoError(t, state.StoreNextQueryCheckpointID(batch, 2))
+	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "*/5 * * * *"))
+	require.NoError(t, batch.Commit())
+	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs))
+
+	batch = engine.store.OpenWriteSession()
+	require.NoError(t, state.StoreNextQueryCheckpointID(batch, 1))
+	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "*/10 * * * *"))
+	require.NoError(t, batch.Commit())
+
+	findings := errorsOfType(collectCheckErrors(t, engine.store, engine.attrs), servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH)
+	require.Len(t, findings, 2)
+	require.Contains(t, findings[0].GetMessage()+findings[1].GetMessage(), "next query checkpoint ID")
+	require.Contains(t, findings[0].GetMessage()+findings[1].GetMessage(), "query checkpoint schedule")
+
+	// Repair the two rows, then commit audited deletions. The allocator must
+	// remain above the deleted ID, while the schedule returns to its default.
+	batch = engine.store.OpenWriteSession()
+	require.NoError(t, state.StoreNextQueryCheckpointID(batch, 2))
+	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "*/5 * * * *"))
+	require.NoError(t, batch.Commit())
+	deleteCheckpointOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{CheckpointId: 1}},
+	}}}
+	deleteScheduleOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{}},
+	}}}
+	engine.processAndCommit(deleteCheckpointOrder)
+	engine.processAndCommit(deleteScheduleOrder)
+	batch = engine.store.OpenWriteSession()
+	require.NoError(t, state.DeleteQueryCheckpointFromBatch(batch, 1))
+	require.NoError(t, state.DeleteQueryCheckpointScheduleFromBatch(batch))
+	require.NoError(t, batch.Commit())
+	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs))
+
+	batch = engine.store.OpenWriteSession()
+	require.NoError(t, state.StoreNextQueryCheckpointID(batch, 1))
+	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "*/10 * * * *"))
+	require.NoError(t, batch.Commit())
+	findings = errorsOfType(collectCheckErrors(t, engine.store, engine.attrs), servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH)
+	require.Len(t, findings, 2)
+	require.Contains(t, findings[0].GetMessage()+findings[1].GetMessage(), "next query checkpoint ID")
+	require.Contains(t, findings[0].GetMessage()+findings[1].GetMessage(), "query checkpoint schedule")
 }

@@ -23,6 +23,7 @@ Events map directly to the global log payload types:
 | `COMMITTED_TRANSACTION` | Transaction created | `CreatedTransaction` |
 | `REVERTED_TRANSACTION` | Transaction reverted | `RevertedTransaction` |
 | `SAVED_METADATA` | Metadata saved on account or transaction | `SavedMetadata` |
+| `ACCOUNT_METADATA_UPDATED` | Numscript updates account metadata without creating a transaction | `AccountMetadataUpdated` |
 | `DELETED_METADATA` | Metadata key deleted | `DeletedMetadata` |
 | `CREATED_LEDGER` | Ledger created | `CreatedLedgerLog` |
 | `DELETED_LEDGER` | Ledger deleted | `DeletedLedgerLog` |
@@ -36,6 +37,7 @@ The event types align with `github.com/formancehq/ledger` where applicable:
 |---|---|---|
 | `COMMITTED_TRANSACTIONS` | `COMMITTED_TRANSACTION` | Singular (one event per log) |
 | `SAVED_METADATA` | `SAVED_METADATA` | Identical semantics |
+| _(none)_ | `ACCOUNT_METADATA_UPDATED` | New event for metadata-only Numscript execution; it has no single target |
 | `REVERTED_TRANSACTION` | `REVERTED_TRANSACTION` | Identical semantics |
 | `DELETED_METADATA` | `DELETED_METADATA` | Identical semantics |
 | `INSERTED_SCHEMA` | `CREATED_LEDGER` | Renamed (no schema concept in v3) |
@@ -53,13 +55,22 @@ message Event {
   string ledger = 2;                 // Ledger name (empty for system events like CREATED_LEDGER)
   common.Timestamp date = 3;         // Event timestamp (HLC)
   fixed64 log_sequence = 4;          // Global log sequence (monotonic, unique)
-  common.Log log = 5;                // Full log entry with payload
+  common.Log log = 5;                // Public projection of log entry with payload
   string app = 6;                    // Stable producer identifier: "ledger"
   string version = 7;                // Event envelope generation: "v3"
 }
 ```
 
-The event carries the full `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. This avoids duplicating payload definitions and ensures events always carry the complete log data.
+The event carries the `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. Created-ledger events use a detached public projection: annotated mirror credentials are masked and unknown protobuf fields are removed. The committed log remains unchanged. Consumers retain the event type, sequence, and non-sensitive payload fields, but must not use a created-ledger event as an exact copy of the audit log.
+
+For mirror-ledger creation, PostgreSQL DSN passwords, HTTP source URL credentials, OAuth client secrets, and token-endpoint credentials are redacted in both JSON and protobuf events. Sink-configuration logs have no event type and are not published. This changes observable created-ledger event payload values while retaining existing protobuf field numbers and types; no service protocol revision or persisted-state migration is needed. Deployments that previously published created-ledger events should assess already delivered credentials in downstream retention and rotate affected secrets as appropriate.
+
+`SAVED_METADATA` retains its target-scoped payload. A metadata-only Numscript
+execution emits `ACCOUNT_METADATA_UPDATED` instead: its log payload contains an
+account-address-to-metadata map and no single target or transaction ID. Its
+analytical projection has no `targetType` or `targetId`. Event-type allow-lists
+must include `ACCOUNT_METADATA_UPDATED` to receive these events; selecting only
+`SAVED_METADATA` does not include them.
 
 `app` and `version` are routing and decoding metadata for broker consumers. Ledger v2's `publish.EventMessage` constructors emitted `app="ledger"` and `version="v2"`; the v3 envelope preserves the producer identity and reports its distinct contract as `version="v3"`. The emitter sets both fields before any sink-specific serialization, so NATS and Kafka publish the same values in JSON and Protobuf formats.
 
@@ -458,7 +469,7 @@ fallback is provided. The configured topic remains the operator's subject prefix
 Publication still waits for each JetStream acknowledgement. On failure, the
 emitter retains the pending batch's cursor, reports the error and retries;
 other named sinks advance independently. This change does not alter persisted
-state, audit payloads, FSM application or incremental restore behavior.
+state, audit payloads, FSM application or checkpoint restore behavior.
 
 ## Configuration
 

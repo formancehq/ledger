@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1409,9 +1410,19 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Native policy controls are operational consensus state: no business log,
 	// audit sequence, idempotency outcome or HLC advancement.
-	if control, ok := proposal.GetPayload().(*raftcmdpb.Proposal_SetClusterPolicy); ok {
-		if err := fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy.GetPolicy(), scopeFactory); err != nil {
-			result.Error = &domain.BusinessError{Err: err}
+	var controlErr domain.Describable
+	isControl := true
+	switch control := proposal.GetPayload().(type) {
+	case *raftcmdpb.Proposal_SetClusterPolicy:
+		controlErr = fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy, scopeFactory)
+	case *raftcmdpb.Proposal_CapabilityActivation:
+		controlErr = fsm.processor.ProcessCapabilityTransition(control.CapabilityActivation, scopeFactory)
+	default:
+		isControl = false
+	}
+	if isControl {
+		if controlErr != nil {
+			result.Error = &domain.BusinessError{Err: controlErr}
 
 			return result, nil
 		}
@@ -1490,8 +1501,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Compute the effective date using the HLC to guarantee monotonicity.
 	// Keep the previous value: a proposal that returns without an audit entry
-	// must not advance the durable clock, because incremental restore rebuilds
-	// post-checkpoint HLC progress from audited timestamps alone.
+	// must not advance the durable clock, so an uncommitted rejection cannot
+	// change the effective date of a later accepted proposal.
 	previousTimestamp := fsm.State.LastAppliedTimestamp
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
@@ -1900,6 +1911,7 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 		entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
 	}
 	entry.Signature = proposal.GetSignature()
+	entry.RequiredCapabilities = slices.Clone(proposal.GetRequiredCapabilities())
 
 	items := buildAuditItems(serializedOrders, logs)
 

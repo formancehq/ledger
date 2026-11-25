@@ -504,7 +504,7 @@ go -C tests/antithesis/workload test ./bin/cmds/main/parallel_driver_reference_c
 
 ### Backup destination contention and recovery
 
-Full and incremental backups share a replicated destination slot. A committed
+Checkpoint backups share a replicated destination slot. A committed
 Start with a lost acknowledgment, or a lost terminal Fail/Complete proposal,
 can leave that slot RUNNING after the local executor has exited. The next RPC
 then correctly returns `FailedPrecondition` with
@@ -512,8 +512,7 @@ then correctly returns `FailedPrecondition` with
 manifest; a short busy observation does not prove a deadlock. The leader's
 orphan cleanup normally scans every 30 seconds and skips live executors.
 
-Both backup drivers use `internal.RetryBackup` for all four stages: standalone
-full, pre-incremental full, first incremental and second incremental. It matches
+The backup driver uses `internal.RetryBackup` for each checkpoint capture. It matches
 that exact busy suffix and status code, then waits using the existing bounded
 backoff. A two-minute window starts at the first busy result and bounds starting
 further retries. Admitted RPCs retain the caller's deadline, so a healthy large
@@ -540,18 +539,17 @@ busy rejection and recover after the cleanup cadence using a simulated clock.
 Application tests drive the real Orchestrator and Cleanup through lost Fail,
 lost Complete and lost Start acknowledgments, including one failed cleanup
 proposal before recovery. They verify attempts, durable history, executor/slot
-and temporary-checkpoint cleanup, and exact restored history/projections from a
-full checkpoint plus non-empty incremental exports. A committed Complete with
+and temporary-checkpoint cleanup. The restore cycle validates history and
+projections after a second checkpoint containing later transactions. A committed Complete with
 only its acknowledgment lost is a separate control: its slot is already free.
 These are deterministic proposal-seam tests, not a replay of Raft elections or
 network faults. Driver subprocess tests also inspect actual SDK assertions to
-verify that concurrent caller cancellation cannot hide server errors in any of
-the four stages. Run them with:
+verify that concurrent caller cancellation cannot hide server errors. Run them with:
 
 ```bash
 go test -race ./internal/application/backup -run TestBackupRecovery -count=1
 go -C tests/antithesis/workload test -race ./internal -run TestRetryBackup -count=1
-go -C tests/antithesis/workload test -race ./bin/cmds/main/singleton_driver_backup ./bin/cmds/main/singleton_driver_incremental_backup -count=1
+go -C tests/antithesis/workload test -race ./bin/cmds/main/singleton_driver_backup -count=1
 ```
 
 ### Lifecycle & context

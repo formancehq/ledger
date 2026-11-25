@@ -6,7 +6,7 @@ info:
     Signed and ordinary transaction mutations use application/json, including
     MIME parameters. Either Formance-Signing-Key-Id or Formance-Signature header,
     even if empty, selects the signed wrapper containing request and payload on
-    the five supporting operations. Both headers are then required exactly once
+    the supporting operations. Both headers are then required exactly once
     and nonempty. With neither header present, the ordinary unsigned REST body applies.
     Signing headers with a non-JSON or missing content type, or on other /v3
     operations, reject with HTTP 415 and an ErrorResponse JSON body.
@@ -24,6 +24,131 @@ security:
   - {}
 
 paths:
+  /v3/_/apply:
+    post:
+      summary: Apply one atomic batch
+      operationId: v3Apply
+      x-speakeasy-name-override: Apply
+      tags:
+        - Apply
+      description: |
+        Applies an ordered nonempty batch across ledgers and configuration
+        operations through the existing service Apply handler. Always atomic;
+        no query parameters are accepted. Every request's required granular
+        scope is checked before dispatch. Ledger/index/numscript operations
+        require ledger:WriteLedger; transactions ledger:WriteTransaction;
+        Numscript execution requires ledger:ExecuteNumscript;
+        metadata/schema/account types ledger:WriteMetadata; prepared queries
+        ledger:WriteQuery; signing/events/maintenance ledger:WriteOps; query
+        checkpoints and schedules ledger:WriteCluster. Initial ledger metadata
+        shares the creation scope. Configured anonymous and auth-disabled
+        behavior remains supported.
+
+        Supply at most one Idempotency-Key header for the entire ordered batch.
+        Body or per-operation keys and transport-only caller/skip-response fields
+        are rejected. Retained matching content replays; changed content conflicts.
+        Unkeyed or expired-key retries can execute again.
+
+        Input uses canonical camelCase protobuf command fields, explicit typed
+        metadata and protobuf enum names/numbers. Posting amounts are exact
+        unsigned decimal integer tokens or strings; timestamps are RFC3339.
+        Unknown fields, snake_case aliases, duplicate keys, explicit nulls,
+        missing/multiple request/action variants, and trailing JSON are rejected.
+        The complete body is limited to 4 MiB and nesting to 64 containers; the
+        configured bulk operation limit also applies.
+
+        Either Formance signing header selects {request, payload} under
+        application/json (MIME parameters accepted). Both headers must occur
+        exactly once and be nonempty; the signature is standard-base64 Ed25519
+        with 64 decoded bytes. The complete decoded signed protobuf ApplyBatch
+        must equal the HTTP-derived ordered requests and header key. Original
+        bytes go to admission for verification and mandatory-signing policy.
+        Invalid wrappers/headers are 400; semantic mismatch is 403; a signed
+        request with missing/non-JSON content type is 415.
+
+        An unskipped business failure commits no business mutation from the
+        batch. Explicit per-action allowed skippableReasons retain existing
+        gRPC skip semantics, emitting skipped logs. Definitive failures may
+        still be audited and frozen. Success returns ordered public logs,
+        including optional server response signatures. A post-commit readiness,
+        signing, encoding or transport failure cannot roll back committed work.
+        This operation does not change the existing ledger bulk modes.
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/Consistency'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
+        - $ref: '#/components/parameters/BigIntAsString'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/AtomicApplyBatch'
+                - $ref: '#/components/schemas/SignedAtomicApplyBatch'
+            examples:
+              crossLedger:
+                value:
+                  requests:
+                    - apply:
+                        ledger: source
+                        action:
+                          createTransaction:
+                            postings:
+                              - source: bank
+                                destination: world
+                                asset: USD
+                                amount: '100'
+                    - apply:
+                        ledger: destination
+                        action:
+                          createTransaction:
+                            postings:
+                              - source: world
+                                destination: bank
+                                asset: USD
+                                amount: '100'
+                            metadata:
+                              transfer:
+                                stringValue: transfer-pair-1
+      responses:
+        '200':
+          description: Atomic batch applied, or its retained outcome replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AtomicApplyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: Full body exceeds 4 MiB (BODY_TOO_LARGE), or request count exceeds configured bulk limit (BULK_SIZE_EXCEEDED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/:
     get:
       summary: List all ledgers
@@ -217,6 +342,8 @@ paths:
         named `_` would be unreachable over REST. Creating it is rejected with a
         validation error. The exact name `_system` is also reserved for system
         events and rejected. Other underscore-prefixed names remain valid.
+        MIRROR requires mirrorSource. NORMAL, including when mode is omitted,
+        must omit mirrorSource. A mismatch returns HTTP 400 without creating a ledger.
       operationId: v3CreateLedger
       x-speakeasy-name-override: CreateLedger
       tags:
@@ -225,6 +352,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -239,40 +367,42 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateLedgerResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateLedgerResponse'
           links:
             GetCreatedLedger:
               operationId: v3GetLedger
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             DeleteCreatedLedger:
               operationId: v3DeleteLedger
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             GetLedgerStats:
               operationId: v3GetLedgerStats
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             CreateTransactionInLedger:
               operationId: v3CreateTransaction
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             ListLedgerAccounts:
               operationId: v3ListAccounts
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             ListLedgerLogs:
               operationId: v3ListLedgerLogs
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             SaveNumscriptInLedger:
               operationId: v3SaveNumscript
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
             BulkInLedger:
               operationId: v3BulkOperations
               parameters:
-                ledgerName: '$response.body#/data/name'
+                ledgerName: '$request.path.ledgerName'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -418,6 +548,7 @@ paths:
             format: date-time
           description: |
             Filter logs with date >= startDate (inclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
             dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
@@ -428,6 +559,7 @@ paths:
             format: date-time
           description: |
             Filter logs with date < endDate (exclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
             dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
@@ -651,6 +783,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '201':
@@ -658,7 +791,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PromoteLedgerResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/PromoteLedgerResponse'
         '400':
           description: The request is invalid, or the ledger is not in mirror mode (`LEDGER_NOT_IN_MIRROR_MODE`).
           content:
@@ -688,11 +823,73 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/numscripts/execute:
+    post:
+      summary: Execute a Numscript
+      description: |
+        Executes an inline or saved Numscript. Returns a transaction when the
+        script produces postings, or updates account metadata without a
+        transaction when it produces no postings. An optional transaction
+        reference applies only when postings are produced. Metadata-only results
+        reject it after reference length and uniqueness checks pass. Requires
+        `ledger:write` scope. Signed requests use the
+        same signing headers and batch verification as transaction creation.
+      operationId: v3ExecuteNumscript
+      x-speakeasy-name-override: ExecuteNumscript
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/BigIntAsString'
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SigningKeyId'
+        - $ref: '#/components/parameters/RequestSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/ExecuteNumscriptRequest'
+                - $ref: '#/components/schemas/SignedExecuteNumscriptRequest'
+      responses:
+        '201':
+          description: Transaction created by the script
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        '204':
+          description: Account metadata updated without creating a transaction
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/ResourceExhausted'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
       description: |
-        Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
+        Creates a new transaction in the specified ledger. A Numscript supplied here must produce postings. Requires `ledger:write` scope.
         Signed requests use `application/json` (including MIME parameters) with
         `request` and standard-base64 `payload`. Either signing header, even if
         empty, selects this wrapper; with neither header present, the ordinary REST body applies.
@@ -716,6 +913,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -735,7 +933,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateTransactionResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateTransactionResponse'
           links:
             GetCreatedTransaction:
               operationId: v3GetTransaction
@@ -824,6 +1024,7 @@ paths:
             format: date-time
           description: |
             Filter transactions with timestamp >= startDate (inclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - name: endDate
           in: query
@@ -832,6 +1033,7 @@ paths:
             format: date-time
           description: |
             Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
+            A sub-microsecond bound is rounded up to the next stored microsecond.
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
         - $ref: '#/components/parameters/QueryProfile'
@@ -1466,6 +1668,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -1486,7 +1689,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RevertedTransactionResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/RevertedTransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1988,6 +2193,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
@@ -2007,19 +2213,27 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetNumscriptResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/GetNumscriptResponse'
           links:
             GetSavedNumscript:
               operationId: v3GetNumscript
               parameters:
                 ledgerName: '$request.path.ledgerName'
-                name: '$response.body#/data/name'
+                name: '$request.path.name'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '400':
           description: Bad request (version not an explicit full semver, parse error, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ledger not found (`LEDGER_NOT_FOUND`).
           content:
             application/json:
               schema:
@@ -2233,6 +2447,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/BigIntAsString'
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -2360,6 +2575,8 @@ paths:
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
         filter that can be executed later with parameter substitution. Requires `ledger:WriteQuery` scope.
+        A supplied body must contain a single complete JSON value. Trailing
+        whitespace is allowed and counts toward the 4 MiB body limit.
       operationId: v3CreatePreparedQuery
       x-speakeasy-name-override: CreatePreparedQuery
       tags:
@@ -2395,6 +2612,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '405':
@@ -2441,6 +2660,8 @@ paths:
       summary: Update a prepared query
       description: |
         Updates the filter of an existing prepared query. Requires `ledger:WriteQuery` scope.
+        A supplied body must contain a single complete JSON value. Trailing
+        whitespace is allowed and counts toward the 4 MiB body limit.
       operationId: v3UpdatePreparedQuery
       x-speakeasy-name-override: UpdatePreparedQuery
       tags:
@@ -2476,6 +2697,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '405':
@@ -2527,6 +2750,8 @@ paths:
         AGGREGATE_VOLUMES ignores pageSize and aggregates all matching accounts. Also
         accepts pageSize, cursor and reverse as query parameters. Supplied pageSize and
         reverse values, and nonempty cursor values, override the body. Requires `ledger:ReadQuery` scope.
+        A supplied body must contain a single complete JSON value. Trailing
+        whitespace is allowed and counts toward the 4 MiB body limit.
       operationId: v3ExecutePreparedQuery
       x-speakeasy-name-override: ExecutePreparedQuery
       tags:
@@ -2593,6 +2818,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '405':
@@ -2929,6 +3156,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -2940,19 +3168,21 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '201':
-          description: Event sink created successfully. Only its name is returned.
+          description: Event sink created successfully. Returns its name by default, or the compact sequence acknowledgement with skipResponse=true.
           content:
             application/json:
               schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [name]
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - type: object
+                    required: [data]
                     properties:
-                      name:
-                        type: string
+                      data:
+                        type: object
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3356,6 +3586,7 @@ paths:
         - BearerAuth: []
         - {}
       parameters:
+        - $ref: '#/components/parameters/SkipResponse'
         - $ref: '#/components/parameters/LedgerName'
         - name: Idempotency-Key
           in: header
@@ -3383,13 +3614,16 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '201':
           description: |
-            Index creation queued. The body carries the canonical id of the
-            created index (round-trip normalized), usable directly on the
+            Index creation queued. With skipResponse=true the body carries only
+            the compact sequence acknowledgement. Otherwise it carries the
+            canonical id of the created index (round-trip normalized), usable directly on the
             follow-up GET/DELETE `/v3/{ledgerName}/indexes/{canonicalId}` routes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateIndexResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/CompactWriteResponse'
+                  - $ref: '#/components/schemas/CreateIndexResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3637,6 +3871,26 @@ components:
         the `PageToken` schema). Omit for the first page. Pass the same
         `reverse` and `filter` on every page of a walk.
 
+    SkipResponse:
+      name: skipResponse
+      in: query
+      required: false
+      description: |
+        Suppress successful business response data. Supply exactly one lowercase
+        true or false; empty, repeated or other values return 400 INVALID_REQUEST
+        before execution. Omitted or false preserves the existing response.
+        Single writes retain 201 and return data.sequence, the global unsigned
+        log sequence, without a signed receipt. Bulk retains responseType,
+        logID, status, errors and skip diagnostics; successful entries add
+        sequence and omit ordinary operation data. Empty bulk remains {}.
+        This option changes HTTP presentation only, including on keyed replay.
+        Older nodes reject this query name; upgrade every HTTP-serving node
+        before enabling it. Sequence remains a JSON number even with the
+        Formance-Bigint-As-String header; clients must preserve uint64 precision.
+      schema:
+        type: boolean
+        default: false
+
     BigIntAsString:
       name: Formance-Bigint-As-String
       in: header
@@ -3662,7 +3916,9 @@ components:
       required: true
       schema:
         type: string
-      description: Name of the ledger
+      description: |
+        Name of the ledger. This path segment is decoded once before validation.
+        For example, test%3Aledger selects the ledger named test:ledger.
 
     TransactionId:
       name: transactionId
@@ -3976,6 +4232,1917 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    AtomicApplyBatch:
+      type: object
+      additionalProperties: false
+      required: [requests]
+      description: |
+        One atomic service batch. The single idempotency key belongs exclusively
+        to the Idempotency-Key header. Only canonical camelCase command fields
+        are accepted; all nested objects reject unknown keys and explicit null.
+        Protobuf scalar presence/defaults and business validation remain owned
+        by admission. This input is separate from legacy REST bulk and output logs.
+      properties:
+        requests:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AtomicApplyRequest'
+    SignedAtomicApplyBatch:
+      type: object
+      additionalProperties: false
+      required: [request, payload]
+      properties:
+        request:
+          $ref: '#/components/schemas/AtomicApplyBatch'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+    AtomicApplyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [logs]
+          properties:
+            logs:
+              type: array
+              description: |
+                Ordered service logs using public system/ledger projections.
+                All named system payload variants and optional response signatures
+                are preserved. Created-ledger payloads include assigned id and
+                initial metadata as well as the existing configuration fields.
+                Bigint response negotiation applies inside every payload.
+                An addEventsSink log or a created-ledger log with a mirror source
+                has redacted credentials and omits responseSignature because
+                its original signed payload contains the credentials. Other
+                logs retain their signatures.
+              items:
+                $ref: '#/components/schemas/SystemLog'
+
+    AtomicApplyAccountHasAssetCondition:
+      additionalProperties: false
+      properties:
+        assetBase:
+          type: string
+        precision:
+          format: uint32
+          maximum: 4294967295
+          minimum: 0
+          type: integer
+      type: object
+    AtomicApplyAccountType:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        pattern:
+          type: string
+        persistence:
+          anyOf:
+            - enum:
+                - ACCOUNT_TYPE_NORMAL
+                - ACCOUNT_TYPE_EPHEMERAL
+                - ACCOUNT_TYPE_TRANSIENT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        segmentTypes:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplySegmentType'
+          type: object
+      type: object
+    AtomicApplyAddAccountTypeLedgerRequest:
+      additionalProperties: false
+      properties:
+        accountType:
+          $ref: '#/components/schemas/AtomicApplyAccountType'
+        ledger:
+          type: string
+      type: object
+    AtomicApplyAddAccountTypeRequest:
+      additionalProperties: false
+      properties:
+        accountType:
+          $ref: '#/components/schemas/AtomicApplyAccountType'
+      type: object
+    AtomicApplyAddEventsSinkRequest:
+      additionalProperties: false
+      properties:
+        config:
+          $ref: '#/components/schemas/AtomicApplySinkConfig'
+      type: object
+    AtomicApplyAddressMatch:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - hardcodedPrefix
+            - required:
+                - hardcodedExact
+            - required:
+                - paramPrefix
+            - required:
+                - paramExact
+            - additionalProperties: false
+              properties:
+                role:
+                  anyOf:
+                    - enum:
+                        - ADDRESS_ROLE_ANY
+                        - ADDRESS_ROLE_SOURCE
+                        - ADDRESS_ROLE_DESTINATION
+                      type: string
+                    - format: int32
+                      type: integer
+                  description: Protobuf enum name or numeric enum value; admission validates supported values.
+              type: object
+      properties:
+        hardcodedExact:
+          type: string
+        hardcodedPrefix:
+          type: string
+        paramExact:
+          type: string
+        paramPrefix:
+          type: string
+        role:
+          anyOf:
+            - enum:
+                - ADDRESS_ROLE_ANY
+                - ADDRESS_ROLE_SOURCE
+                - ADDRESS_ROLE_DESTINATION
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyAndFilter:
+      additionalProperties: false
+      properties:
+        filters:
+          items:
+            $ref: '#/components/schemas/AtomicApplyQueryFilter'
+          type: array
+      type: object
+    AtomicApplyAnyVariantAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - rewriteAddress
+            - required:
+                - drop
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        drop:
+          $ref: '#/components/schemas/AtomicApplyDropAction'
+        rewriteAddress:
+          $ref: '#/components/schemas/AtomicApplyRewriteAddressAction'
+      type: object
+    AtomicApplyAnyVariantRule:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/AtomicApplyAnyVariantAction'
+          type: array
+        match:
+          type: string
+      type: object
+    AtomicApplyAuditCondition:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - stringCond
+            - required:
+                - uintCond
+            - required:
+                - stringPrefix
+            - additionalProperties: false
+              properties:
+                field:
+                  anyOf:
+                    - enum:
+                        - AUDIT_FIELD_UNSPECIFIED
+                        - AUDIT_FIELD_SEQUENCE
+                        - AUDIT_FIELD_PROPOSAL_ID
+                        - AUDIT_FIELD_TIMESTAMP
+                        - AUDIT_FIELD_LOG_SEQUENCE
+                        - AUDIT_FIELD_OUTCOME
+                        - AUDIT_FIELD_CALLER_SUBJECT
+                        - AUDIT_FIELD_LEDGER
+                        - AUDIT_FIELD_ORDER_TYPE
+                        - AUDIT_FIELD_IDEMPOTENCY_KEY
+                      type: string
+                    - format: int32
+                      type: integer
+                  description: Protobuf enum name or numeric enum value; admission validates supported values.
+              type: object
+      properties:
+        field:
+          anyOf:
+            - enum:
+                - AUDIT_FIELD_UNSPECIFIED
+                - AUDIT_FIELD_SEQUENCE
+                - AUDIT_FIELD_PROPOSAL_ID
+                - AUDIT_FIELD_TIMESTAMP
+                - AUDIT_FIELD_LOG_SEQUENCE
+                - AUDIT_FIELD_OUTCOME
+                - AUDIT_FIELD_CALLER_SUBJECT
+                - AUDIT_FIELD_LEDGER
+                - AUDIT_FIELD_ORDER_TYPE
+                - AUDIT_FIELD_IDEMPOTENCY_KEY
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        stringCond:
+          $ref: '#/components/schemas/AtomicApplyStringCondition'
+        stringPrefix:
+          type: string
+        uintCond:
+          $ref: '#/components/schemas/AtomicApplyUintCondition'
+      type: object
+    AtomicApplyBoolCondition:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - hardcoded
+            - required:
+                - param
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        hardcoded:
+          type: boolean
+        param:
+          type: string
+      type: object
+    AtomicApplyBuiltinUintCondition:
+      additionalProperties: false
+      properties:
+        cond:
+          $ref: '#/components/schemas/AtomicApplyUintCondition'
+        field:
+          anyOf:
+            - enum:
+                - TX_BUILTIN_INDEX_REFERENCE
+                - TX_BUILTIN_INDEX_TIMESTAMP
+                - TX_BUILTIN_INDEX_ID
+                - TX_BUILTIN_INDEX_ADDRESS
+                - TX_BUILTIN_INDEX_SOURCE_ADDRESS
+                - TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+                - TX_BUILTIN_INDEX_INSERTED_AT
+                - TX_BUILTIN_INDEX_REVERTED_AT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyBytesConstraint:
+      additionalProperties: false
+      properties: {}
+      type: object
+    AtomicApplyClickHouseSinkConfig:
+      additionalProperties: false
+      properties:
+        dsn:
+          type: string
+        table:
+          type: string
+      type: object
+    AtomicApplyCreateIndexRequest:
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/AtomicApplyIndexID'
+        ledger:
+          type: string
+      type: object
+    AtomicApplyCreateLedgerRequest:
+      additionalProperties: false
+      description: LEDGER_MODE_MIRROR requires mirrorSource. A normal ledger must omit it.
+      properties:
+        accountTypes:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyAccountType'
+          type: object
+        defaultEnforcementMode:
+          anyOf:
+            - enum:
+                - CHART_ENFORCEMENT_STRICT
+                - CHART_ENFORCEMENT_AUDIT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        initialSchema:
+          items:
+            $ref: '#/components/schemas/AtomicApplySetMetadataFieldTypeCommand'
+          type: array
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        mirrorSource:
+          $ref: '#/components/schemas/AtomicApplyMirrorSourceConfig'
+        mode:
+          anyOf:
+            - enum:
+                - LEDGER_MODE_NORMAL
+                - LEDGER_MODE_MIRROR
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        name:
+          type: string
+      type: object
+    AtomicApplyCreatePreparedQueryRequest:
+      additionalProperties: false
+      properties:
+        ledger:
+          type: string
+        query:
+          $ref: '#/components/schemas/AtomicApplyPreparedQuery'
+      type: object
+    AtomicApplyCreateQueryCheckpointRequest:
+      additionalProperties: false
+      properties: {}
+      type: object
+    AtomicApplyCreateTransactionPayload:
+      additionalProperties: false
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataMap'
+          type: object
+        force:
+          type: boolean
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        postings:
+          items:
+            $ref: '#/components/schemas/AtomicApplyPosting'
+          type: array
+        reference:
+          type: string
+        script:
+          $ref: '#/components/schemas/AtomicApplyScript'
+        scriptReference:
+          $ref: '#/components/schemas/AtomicApplyScriptReference'
+        timestamp:
+          description: RFC3339 timestamp, decoded to microsecond precision by the existing HTTP timestamp codec.
+          format: date-time
+          type: string
+      type: object
+    AtomicApplyExecuteNumscriptPayload:
+      additionalProperties: false
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataMap'
+          type: object
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        reference:
+          type: string
+        script:
+          $ref: '#/components/schemas/AtomicApplyScript'
+        scriptReference:
+          $ref: '#/components/schemas/AtomicApplyScriptReference'
+        timestamp:
+          description: RFC3339 timestamp, decoded to microsecond precision by the existing HTTP timestamp codec.
+          format: date-time
+          type: string
+      type: object
+    AtomicApplyCreatedTransactionAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - rewriteAddress
+            - required:
+                - setMetadata
+            - required:
+                - deleteMetadata
+            - required:
+                - setAccountMetadata
+            - required:
+                - deleteAccountMetadata
+            - required:
+                - setAccountMetadataFromAddress
+            - required:
+                - drop
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        deleteAccountMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeleteAccountMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/AtomicApplyDropAction'
+        rewriteAddress:
+          $ref: '#/components/schemas/AtomicApplyRewriteAddressAction'
+        setAccountMetadata:
+          $ref: '#/components/schemas/AtomicApplySetAccountMetadataAction'
+        setAccountMetadataFromAddress:
+          $ref: '#/components/schemas/AtomicApplySetAccountMetadataFromAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/AtomicApplySetMetadataAction'
+      type: object
+    AtomicApplyCreatedTransactionRule:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/AtomicApplyCreatedTransactionAction'
+          type: array
+        match:
+          type: string
+      type: object
+    AtomicApplyDatabricksOAuthM2M:
+      additionalProperties: false
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+      type: object
+    AtomicApplyDatabricksSinkConfig:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - token
+            - required:
+                - oauthM2m
+            - additionalProperties: false
+              properties:
+                catalog:
+                  type: string
+                httpPath:
+                  type: string
+                port:
+                  format: int32
+                  type: integer
+                schema:
+                  type: string
+                serverHostname:
+                  type: string
+                table:
+                  type: string
+              type: object
+      properties:
+        catalog:
+          type: string
+        httpPath:
+          type: string
+        oauthM2m:
+          $ref: '#/components/schemas/AtomicApplyDatabricksOAuthM2M'
+        port:
+          format: int32
+          type: integer
+        schema:
+          type: string
+        serverHostname:
+          type: string
+        table:
+          type: string
+        token:
+          type: string
+      type: object
+    AtomicApplyDeleteAccountMetadataAction:
+      additionalProperties: false
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+      type: object
+    AtomicApplyDeleteLedgerMetadataRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+      type: object
+    AtomicApplyDeleteLedgerRequest:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+      type: object
+    AtomicApplyDeleteMetadataAction:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+      type: object
+    AtomicApplyDeleteMetadataCommand:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        target:
+          $ref: '#/components/schemas/AtomicApplyTarget'
+      type: object
+    AtomicApplyDeletePreparedQueryRequest:
+      additionalProperties: false
+      properties:
+        ledger:
+          type: string
+        name:
+          type: string
+      type: object
+    AtomicApplyDeleteQueryCheckpointRequest:
+      additionalProperties: false
+      properties:
+        checkpointId:
+          anyOf:
+            - pattern: ^[0-9]+$
+              type: string
+            - format: uint64
+              minimum: 0
+              type: integer
+          description: Protobuf unsigned 64-bit integer. Prefer a decimal string to preserve precision.
+      type: object
+    AtomicApplyDeleteQueryCheckpointScheduleRequest:
+      additionalProperties: false
+      properties: {}
+      type: object
+    AtomicApplyDeletedMetadataAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - rewriteAddress
+            - required:
+                - drop
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        drop:
+          $ref: '#/components/schemas/AtomicApplyDropAction'
+        rewriteAddress:
+          $ref: '#/components/schemas/AtomicApplyRewriteAddressAction'
+      type: object
+    AtomicApplyDeletedMetadataRule:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/AtomicApplyDeletedMetadataAction'
+          type: array
+        match:
+          type: string
+      type: object
+    AtomicApplyDropAction:
+      additionalProperties: false
+      properties: {}
+      type: object
+    AtomicApplyDropIndexRequest:
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/AtomicApplyIndexID'
+        ledger:
+          type: string
+      type: object
+    AtomicApplyExistsCondition:
+      additionalProperties: false
+      properties:
+        includeNull:
+          type: boolean
+      type: object
+    AtomicApplyFieldCondition:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - stringCond
+            - required:
+                - intCond
+            - required:
+                - uintCond
+            - required:
+                - boolCond
+            - required:
+                - existsCond
+            - additionalProperties: false
+              properties:
+                field:
+                  $ref: '#/components/schemas/AtomicApplyFieldRef'
+              type: object
+      properties:
+        boolCond:
+          $ref: '#/components/schemas/AtomicApplyBoolCondition'
+        existsCond:
+          $ref: '#/components/schemas/AtomicApplyExistsCondition'
+        field:
+          $ref: '#/components/schemas/AtomicApplyFieldRef'
+        intCond:
+          $ref: '#/components/schemas/AtomicApplyIntCondition'
+        stringCond:
+          $ref: '#/components/schemas/AtomicApplyStringCondition'
+        uintCond:
+          $ref: '#/components/schemas/AtomicApplyUintCondition'
+      type: object
+    AtomicApplyFieldRef:
+      additionalProperties: false
+      properties:
+        metadata:
+          type: string
+      type: object
+    AtomicApplyHttpMirrorSourceConfig:
+      additionalProperties: false
+      properties:
+        baseUrl:
+          type: string
+        oauth2ClientCredentials:
+          $ref: '#/components/schemas/AtomicApplyOAuth2ClientCredentials'
+      type: object
+    AtomicApplyHttpSinkConfig:
+      additionalProperties: false
+      properties:
+        endpoint:
+          type: string
+        secret:
+          type: string
+      type: object
+    AtomicApplyIndexID:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - txBuiltin
+            - required:
+                - logBuiltin
+            - required:
+                - accountBuiltin
+            - required:
+                - metadata
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        accountBuiltin:
+          anyOf:
+            - enum:
+                - ACCT_BUILTIN_INDEX_UNSPECIFIED
+                - ACCT_BUILTIN_INDEX_ASSET
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        logBuiltin:
+          anyOf:
+            - enum:
+                - LOG_BUILTIN_INDEX_UNSPECIFIED
+                - LOG_BUILTIN_INDEX_DATE
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        metadata:
+          $ref: '#/components/schemas/AtomicApplyMetadataIndexID'
+        txBuiltin:
+          anyOf:
+            - enum:
+                - TX_BUILTIN_INDEX_REFERENCE
+                - TX_BUILTIN_INDEX_TIMESTAMP
+                - TX_BUILTIN_INDEX_ID
+                - TX_BUILTIN_INDEX_ADDRESS
+                - TX_BUILTIN_INDEX_SOURCE_ADDRESS
+                - TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+                - TX_BUILTIN_INDEX_INSERTED_AT
+                - TX_BUILTIN_INDEX_REVERTED_AT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyIntCondition:
+      additionalProperties: false
+      properties:
+        max:
+          anyOf:
+            - pattern: ^-?[0-9]+$
+              type: string
+            - format: int64
+              type: integer
+          description: Protobuf signed 64-bit integer. Prefer a decimal string to preserve precision.
+        maxExclusive:
+          type: boolean
+        min:
+          anyOf:
+            - pattern: ^-?[0-9]+$
+              type: string
+            - format: int64
+              type: integer
+          description: Protobuf signed 64-bit integer. Prefer a decimal string to preserve precision.
+        minExclusive:
+          type: boolean
+        paramMax:
+          type: string
+        paramMin:
+          type: string
+      type: object
+    AtomicApplyKafkaSinkConfig:
+      additionalProperties: false
+      properties:
+        brokers:
+          items:
+            type: string
+          type: array
+        saslMechanism:
+          type: string
+        saslPassword:
+          type: string
+        saslUsername:
+          type: string
+        tls:
+          type: boolean
+        topic:
+          type: string
+      type: object
+    AtomicApplyLedgerAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - createTransaction
+            - required:
+                - executeNumscript
+            - required:
+                - addMetadata
+            - required:
+                - revertTransaction
+            - required:
+                - deleteMetadata
+            - required:
+                - addAccountType
+            - required:
+                - removeAccountType
+            - required:
+                - setDefaultEnforcementMode
+      properties:
+        addAccountType:
+          $ref: '#/components/schemas/AtomicApplyAddAccountTypeRequest'
+        addMetadata:
+          $ref: '#/components/schemas/AtomicApplySaveMetadataCommand'
+        createTransaction:
+          $ref: '#/components/schemas/AtomicApplyCreateTransactionPayload'
+        deleteMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeleteMetadataCommand'
+        executeNumscript:
+          $ref: '#/components/schemas/AtomicApplyExecuteNumscriptPayload'
+        removeAccountType:
+          $ref: '#/components/schemas/AtomicApplyRemoveAccountTypeRequest'
+        revertTransaction:
+          $ref: '#/components/schemas/AtomicApplyRevertTransactionPayload'
+        setDefaultEnforcementMode:
+          $ref: '#/components/schemas/AtomicApplySetDefaultEnforcementModeRequest'
+      type: object
+    AtomicApplyLedgerApplyRequest:
+      additionalProperties: false
+      properties:
+        action:
+          $ref: '#/components/schemas/AtomicApplyLedgerAction'
+        ledger:
+          type: string
+        skippableReasons:
+          description: Opt-in business skip reasons, validated against the selected action whitelist. Omission is fail-fast. Names retain the ERROR_REASON_ prefix; numeric enum values are also accepted.
+          items:
+            anyOf:
+              - enum:
+                  - ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+                  - ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+                  - ERROR_REASON_METADATA_NOT_FOUND
+                  - ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+                  - ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+                type: string
+              - format: int32
+                type: integer
+          type: array
+      required:
+        - action
+      type: object
+    AtomicApplyLedgerCondition:
+      additionalProperties: false
+      properties:
+        cond:
+          $ref: '#/components/schemas/AtomicApplyStringCondition'
+      type: object
+    AtomicApplyLogBuiltinUintCondition:
+      additionalProperties: false
+      properties:
+        cond:
+          $ref: '#/components/schemas/AtomicApplyUintCondition'
+        field:
+          anyOf:
+            - enum:
+                - LOG_BUILTIN_INDEX_UNSPECIFIED
+                - LOG_BUILTIN_INDEX_DATE
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyLogIdCondition:
+      additionalProperties: false
+      properties:
+        cond:
+          $ref: '#/components/schemas/AtomicApplyUintCondition'
+      type: object
+    AtomicApplyMetadataIndexID:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        target:
+          anyOf:
+            - enum:
+                - TARGET_TYPE_ACCOUNT
+                - TARGET_TYPE_TRANSACTION
+                - TARGET_TYPE_LEDGER
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyMetadataMap:
+      additionalProperties: false
+      properties:
+        values:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+      type: object
+    AtomicApplyMetadataValue:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - stringValue
+            - required:
+                - intValue
+            - required:
+                - boolValue
+            - required:
+                - nullValue
+            - required:
+                - uintValue
+            - required:
+                - datetimeValue
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        boolValue:
+          type: boolean
+        datetimeValue:
+          anyOf:
+            - pattern: ^-?[0-9]+$
+              type: string
+            - format: int64
+              type: integer
+          description: Protobuf signed 64-bit integer. Prefer a decimal string to preserve precision.
+        intValue:
+          anyOf:
+            - pattern: ^-?[0-9]+$
+              type: string
+            - format: int64
+              type: integer
+          description: Protobuf signed 64-bit integer. Prefer a decimal string to preserve precision.
+        nullValue:
+          $ref: '#/components/schemas/AtomicApplyNullValue'
+        stringValue:
+          type: string
+        uintValue:
+          anyOf:
+            - pattern: ^[0-9]+$
+              type: string
+            - format: uint64
+              minimum: 0
+              type: integer
+          description: Protobuf unsigned 64-bit integer. Prefer a decimal string to preserve precision.
+      type: object
+    AtomicApplyMirrorAssetMapping:
+      additionalProperties: false
+      properties:
+        asset:
+          type: string
+        color:
+          type: string
+        sourceAsset:
+          type: string
+      type: object
+    AtomicApplyMirrorRewriteRule:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - createdTransaction
+            - required:
+                - revertedTransaction
+            - required:
+                - savedMetadata
+            - required:
+                - deletedMetadata
+            - required:
+                - anyVariant
+            - additionalProperties: false
+              properties:
+                stop:
+                  type: boolean
+              type: object
+      properties:
+        anyVariant:
+          $ref: '#/components/schemas/AtomicApplyAnyVariantRule'
+        createdTransaction:
+          $ref: '#/components/schemas/AtomicApplyCreatedTransactionRule'
+        deletedMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeletedMetadataRule'
+        revertedTransaction:
+          $ref: '#/components/schemas/AtomicApplyRevertedTransactionRule'
+        savedMetadata:
+          $ref: '#/components/schemas/AtomicApplySavedMetadataRule'
+        stop:
+          type: boolean
+      type: object
+    AtomicApplyMirrorSourceConfig:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - http
+            - required:
+                - postgres
+            - additionalProperties: false
+              properties:
+                assetMappings:
+                  items:
+                    $ref: '#/components/schemas/AtomicApplyMirrorAssetMapping'
+                  type: array
+                batchSize:
+                  format: uint32
+                  maximum: 4294967295
+                  minimum: 0
+                  type: integer
+                ledgerName:
+                  type: string
+                rewriteRules:
+                  items:
+                    $ref: '#/components/schemas/AtomicApplyMirrorRewriteRule'
+                  type: array
+              type: object
+      properties:
+        assetMappings:
+          items:
+            $ref: '#/components/schemas/AtomicApplyMirrorAssetMapping'
+          type: array
+        batchSize:
+          format: uint32
+          maximum: 4294967295
+          minimum: 0
+          type: integer
+        http:
+          $ref: '#/components/schemas/AtomicApplyHttpMirrorSourceConfig'
+        ledgerName:
+          type: string
+        postgres:
+          $ref: '#/components/schemas/AtomicApplyPostgresMirrorSourceConfig'
+        rewriteRules:
+          items:
+            $ref: '#/components/schemas/AtomicApplyMirrorRewriteRule'
+          type: array
+      type: object
+    AtomicApplyNatsSinkConfig:
+      additionalProperties: false
+      properties:
+        topic:
+          type: string
+        url:
+          type: string
+      type: object
+    AtomicApplyNotFilter:
+      additionalProperties: false
+      properties:
+        filter:
+          $ref: '#/components/schemas/AtomicApplyQueryFilter'
+      type: object
+    AtomicApplyNullValue:
+      additionalProperties: false
+      properties:
+        original:
+          type: string
+      type: object
+    AtomicApplyOAuth2ClientCredentials:
+      additionalProperties: false
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+        scopes:
+          items:
+            type: string
+          type: array
+        tokenEndpoint:
+          type: string
+      type: object
+    AtomicApplyOrFilter:
+      additionalProperties: false
+      properties:
+        filters:
+          items:
+            $ref: '#/components/schemas/AtomicApplyQueryFilter'
+          type: array
+      type: object
+    AtomicApplyPostgresAwsIamAuth:
+      additionalProperties: false
+      properties:
+        assumeRoleArn:
+          type: string
+        region:
+          type: string
+      type: object
+    AtomicApplyPostgresMirrorSourceConfig:
+      additionalProperties: false
+      properties:
+        awsIamAuth:
+          $ref: '#/components/schemas/AtomicApplyPostgresAwsIamAuth'
+        dsn:
+          type: string
+      type: object
+    AtomicApplyPosting:
+      additionalProperties: false
+      properties:
+        amount:
+          $ref: '#/components/schemas/PostingAmount'
+        asset:
+          type: string
+        color:
+          type: string
+        destination:
+          type: string
+        source:
+          type: string
+      type: object
+    AtomicApplyPreparedQuery:
+      additionalProperties: false
+      properties:
+        filter:
+          $ref: '#/components/schemas/AtomicApplyQueryFilter'
+        name:
+          type: string
+        target:
+          anyOf:
+            - enum:
+                - QUERY_TARGET_ACCOUNTS
+                - QUERY_TARGET_TRANSACTIONS
+                - QUERY_TARGET_LOGS
+                - QUERY_TARGET_AUDIT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyPromoteLedgerRequest:
+      additionalProperties: false
+      properties:
+        ledger:
+          type: string
+      type: object
+    AtomicApplyQueryFilter:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - field
+            - required:
+                - address
+            - required:
+                - and
+            - required:
+                - or
+            - required:
+                - not
+            - required:
+                - reference
+            - required:
+                - builtinUint
+            - required:
+                - ledger
+            - required:
+                - logId
+            - required:
+                - logBuiltinUint
+            - required:
+                - accountHasAsset
+            - required:
+                - reverted
+            - required:
+                - audit
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        accountHasAsset:
+          $ref: '#/components/schemas/AtomicApplyAccountHasAssetCondition'
+        address:
+          $ref: '#/components/schemas/AtomicApplyAddressMatch'
+        and:
+          $ref: '#/components/schemas/AtomicApplyAndFilter'
+        audit:
+          $ref: '#/components/schemas/AtomicApplyAuditCondition'
+        builtinUint:
+          $ref: '#/components/schemas/AtomicApplyBuiltinUintCondition'
+        field:
+          $ref: '#/components/schemas/AtomicApplyFieldCondition'
+        ledger:
+          $ref: '#/components/schemas/AtomicApplyLedgerCondition'
+        logBuiltinUint:
+          $ref: '#/components/schemas/AtomicApplyLogBuiltinUintCondition'
+        logId:
+          $ref: '#/components/schemas/AtomicApplyLogIdCondition'
+        not:
+          $ref: '#/components/schemas/AtomicApplyNotFilter'
+        or:
+          $ref: '#/components/schemas/AtomicApplyOrFilter'
+        reference:
+          $ref: '#/components/schemas/AtomicApplyReferenceCondition'
+        reverted:
+          $ref: '#/components/schemas/AtomicApplyRevertedCondition'
+      type: object
+    AtomicApplyReferenceCondition:
+      additionalProperties: false
+      properties:
+        cond:
+          $ref: '#/components/schemas/AtomicApplyStringCondition'
+      type: object
+    AtomicApplyRegisterSigningKeyRequest:
+      additionalProperties: false
+      properties:
+        keyId:
+          type: string
+        publicKey:
+          format: byte
+          type: string
+      type: object
+    AtomicApplyRemoveAccountTypeLedgerRequest:
+      additionalProperties: false
+      properties:
+        ledger:
+          type: string
+        name:
+          type: string
+      type: object
+    AtomicApplyRemoveAccountTypeRequest:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+      type: object
+    AtomicApplyRemoveEventsSinkRequest:
+      additionalProperties: false
+      properties:
+        controllerId:
+          type: string
+        name:
+          type: string
+      type: object
+    AtomicApplyRemoveMetadataFieldTypeRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+        targetType:
+          anyOf:
+            - enum:
+                - TARGET_TYPE_ACCOUNT
+                - TARGET_TYPE_TRANSACTION
+                - TARGET_TYPE_LEDGER
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplyRequest:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - apply
+            - required:
+                - createLedger
+            - required:
+                - deleteLedger
+            - required:
+                - registerSigningKey
+            - required:
+                - revokeSigningKey
+            - required:
+                - setSigningConfig
+            - required:
+                - addEventsSink
+            - required:
+                - removeEventsSink
+            - required:
+                - setMaintenanceMode
+            - required:
+                - setMetadataFieldType
+            - required:
+                - removeMetadataFieldType
+            - required:
+                - promoteLedger
+            - required:
+                - createPreparedQuery
+            - required:
+                - updatePreparedQuery
+            - required:
+                - deletePreparedQuery
+            - required:
+                - createIndex
+            - required:
+                - dropIndex
+            - required:
+                - saveNumscript
+            - required:
+                - addAccountType
+            - required:
+                - removeAccountType
+            - required:
+                - setDefaultEnforcementMode
+            - required:
+                - createQueryCheckpoint
+            - required:
+                - deleteQueryCheckpoint
+            - required:
+                - setQueryCheckpointSchedule
+            - required:
+                - deleteQueryCheckpointSchedule
+            - required:
+                - saveLedgerMetadata
+            - required:
+                - deleteLedgerMetadata
+      properties:
+        addAccountType:
+          $ref: '#/components/schemas/AtomicApplyAddAccountTypeLedgerRequest'
+        addEventsSink:
+          $ref: '#/components/schemas/AtomicApplyAddEventsSinkRequest'
+        apply:
+          $ref: '#/components/schemas/AtomicApplyLedgerApplyRequest'
+        createIndex:
+          $ref: '#/components/schemas/AtomicApplyCreateIndexRequest'
+        createLedger:
+          $ref: '#/components/schemas/AtomicApplyCreateLedgerRequest'
+        createPreparedQuery:
+          $ref: '#/components/schemas/AtomicApplyCreatePreparedQueryRequest'
+        createQueryCheckpoint:
+          $ref: '#/components/schemas/AtomicApplyCreateQueryCheckpointRequest'
+        deleteLedger:
+          $ref: '#/components/schemas/AtomicApplyDeleteLedgerRequest'
+        deleteLedgerMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeleteLedgerMetadataRequest'
+        deletePreparedQuery:
+          $ref: '#/components/schemas/AtomicApplyDeletePreparedQueryRequest'
+        deleteQueryCheckpoint:
+          $ref: '#/components/schemas/AtomicApplyDeleteQueryCheckpointRequest'
+        deleteQueryCheckpointSchedule:
+          $ref: '#/components/schemas/AtomicApplyDeleteQueryCheckpointScheduleRequest'
+        dropIndex:
+          $ref: '#/components/schemas/AtomicApplyDropIndexRequest'
+        promoteLedger:
+          $ref: '#/components/schemas/AtomicApplyPromoteLedgerRequest'
+        registerSigningKey:
+          $ref: '#/components/schemas/AtomicApplyRegisterSigningKeyRequest'
+        removeAccountType:
+          $ref: '#/components/schemas/AtomicApplyRemoveAccountTypeLedgerRequest'
+        removeEventsSink:
+          $ref: '#/components/schemas/AtomicApplyRemoveEventsSinkRequest'
+        removeMetadataFieldType:
+          $ref: '#/components/schemas/AtomicApplyRemoveMetadataFieldTypeRequest'
+        revokeSigningKey:
+          $ref: '#/components/schemas/AtomicApplyRevokeSigningKeyRequest'
+        saveLedgerMetadata:
+          $ref: '#/components/schemas/AtomicApplySaveLedgerMetadataRequest'
+        saveNumscript:
+          $ref: '#/components/schemas/AtomicApplySaveNumscriptRequest'
+        setDefaultEnforcementMode:
+          $ref: '#/components/schemas/AtomicApplySetDefaultEnforcementModeLedgerRequest'
+        setMaintenanceMode:
+          $ref: '#/components/schemas/AtomicApplySetMaintenanceModeRequest'
+        setMetadataFieldType:
+          $ref: '#/components/schemas/AtomicApplySetMetadataFieldTypeRequest'
+        setQueryCheckpointSchedule:
+          $ref: '#/components/schemas/AtomicApplySetQueryCheckpointScheduleRequest'
+        setSigningConfig:
+          $ref: '#/components/schemas/AtomicApplySetSigningConfigRequest'
+        updatePreparedQuery:
+          $ref: '#/components/schemas/AtomicApplyUpdatePreparedQueryRequest'
+      type: object
+    AtomicApplyRevertTransactionPayload:
+      additionalProperties: false
+      properties:
+        atEffectiveDate:
+          type: boolean
+        force:
+          type: boolean
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        transactionId:
+          anyOf:
+            - pattern: ^[0-9]+$
+              type: string
+            - format: uint64
+              minimum: 0
+              type: integer
+          description: Protobuf unsigned 64-bit integer. Prefer a decimal string to preserve precision.
+      type: object
+    AtomicApplyRevertedCondition:
+      additionalProperties: false
+      properties:
+        value:
+          type: boolean
+      type: object
+    AtomicApplyRevertedTransactionAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - rewriteAddress
+            - required:
+                - setMetadata
+            - required:
+                - deleteMetadata
+            - required:
+                - drop
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        deleteMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/AtomicApplyDropAction'
+        rewriteAddress:
+          $ref: '#/components/schemas/AtomicApplyRewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/AtomicApplySetMetadataAction'
+      type: object
+    AtomicApplyRevertedTransactionRule:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/AtomicApplyRevertedTransactionAction'
+          type: array
+        match:
+          type: string
+      type: object
+    AtomicApplyRevokeSigningKeyRequest:
+      additionalProperties: false
+      properties:
+        cascade:
+          type: boolean
+        keyId:
+          type: string
+      type: object
+    AtomicApplyRewriteAddressAction:
+      additionalProperties: false
+      properties:
+        pattern:
+          type: string
+        replacement:
+          type: string
+      type: object
+    AtomicApplySaveLedgerMetadataRequest:
+      additionalProperties: false
+      properties:
+        ledger:
+          type: string
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+      type: object
+    AtomicApplySaveMetadataCommand:
+      additionalProperties: false
+      properties:
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AtomicApplyMetadataValue'
+          type: object
+        target:
+          $ref: '#/components/schemas/AtomicApplyTarget'
+      type: object
+    AtomicApplySaveNumscriptRequest:
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+        ledger:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+      type: object
+    AtomicApplySavedMetadataAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - rewriteAddress
+            - required:
+                - setMetadata
+            - required:
+                - deleteMetadata
+            - required:
+                - drop
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        deleteMetadata:
+          $ref: '#/components/schemas/AtomicApplyDeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/AtomicApplyDropAction'
+        rewriteAddress:
+          $ref: '#/components/schemas/AtomicApplyRewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/AtomicApplySetMetadataAction'
+      type: object
+    AtomicApplySavedMetadataRule:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/AtomicApplySavedMetadataAction'
+          type: array
+        match:
+          type: string
+      type: object
+    AtomicApplyScript:
+      additionalProperties: false
+      properties:
+        contentHash:
+          format: byte
+          type: string
+        plain:
+          type: string
+        vars:
+          additionalProperties:
+            type: string
+          type: object
+      type: object
+    AtomicApplyScriptReference:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        vars:
+          additionalProperties:
+            type: string
+          type: object
+        version:
+          type: string
+      type: object
+    AtomicApplySegmentType:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - regex
+            - required:
+                - uuid
+            - required:
+                - uint64
+            - required:
+                - bytes
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        bytes:
+          $ref: '#/components/schemas/AtomicApplyBytesConstraint'
+        regex:
+          type: string
+        uint64:
+          $ref: '#/components/schemas/AtomicApplyUint64Constraint'
+        uuid:
+          $ref: '#/components/schemas/AtomicApplyUUIDConstraint'
+      type: object
+    AtomicApplySetAccountMetadataAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - value
+            - required:
+                - valueExpr
+            - additionalProperties: false
+              properties:
+                account:
+                  type: string
+                key:
+                  type: string
+                type:
+                  type: string
+              type: object
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        valueExpr:
+          type: string
+      type: object
+    AtomicApplySetAccountMetadataFromAddressAction:
+      additionalProperties: false
+      properties:
+        pattern:
+          type: string
+        replacements:
+          items:
+            $ref: '#/components/schemas/AtomicApplySetAccountMetadataFromAddressReplacement'
+          type: array
+      type: object
+    AtomicApplySetAccountMetadataFromAddressReplacement:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        replacement:
+          type: string
+        type:
+          type: string
+      type: object
+    AtomicApplySetDefaultEnforcementModeLedgerRequest:
+      additionalProperties: false
+      properties:
+        enforcementMode:
+          anyOf:
+            - enum:
+                - CHART_ENFORCEMENT_STRICT
+                - CHART_ENFORCEMENT_AUDIT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        ledger:
+          type: string
+      type: object
+    AtomicApplySetDefaultEnforcementModeRequest:
+      additionalProperties: false
+      properties:
+        enforcementMode:
+          anyOf:
+            - enum:
+                - CHART_ENFORCEMENT_STRICT
+                - CHART_ENFORCEMENT_AUDIT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplySetMaintenanceModeRequest:
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+      type: object
+    AtomicApplySetMetadataAction:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - value
+            - required:
+                - valueExpr
+            - additionalProperties: false
+              properties:
+                key:
+                  type: string
+                type:
+                  type: string
+              type: object
+      properties:
+        key:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        valueExpr:
+          type: string
+      type: object
+    AtomicApplySetMetadataFieldTypeCommand:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        targetType:
+          anyOf:
+            - enum:
+                - TARGET_TYPE_ACCOUNT
+                - TARGET_TYPE_TRANSACTION
+                - TARGET_TYPE_LEDGER
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        type:
+          anyOf:
+            - enum:
+                - METADATA_TYPE_STRING
+                - METADATA_TYPE_INT64
+                - METADATA_TYPE_BOOL
+                - METADATA_TYPE_UINT64
+                - METADATA_TYPE_INT8
+                - METADATA_TYPE_INT16
+                - METADATA_TYPE_INT32
+                - METADATA_TYPE_UINT8
+                - METADATA_TYPE_UINT16
+                - METADATA_TYPE_UINT32
+                - METADATA_TYPE_DATETIME
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplySetMetadataFieldTypeRequest:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        ledger:
+          type: string
+        targetType:
+          anyOf:
+            - enum:
+                - TARGET_TYPE_ACCOUNT
+                - TARGET_TYPE_TRANSACTION
+                - TARGET_TYPE_LEDGER
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+        type:
+          anyOf:
+            - enum:
+                - METADATA_TYPE_STRING
+                - METADATA_TYPE_INT64
+                - METADATA_TYPE_BOOL
+                - METADATA_TYPE_UINT64
+                - METADATA_TYPE_INT8
+                - METADATA_TYPE_INT16
+                - METADATA_TYPE_INT32
+                - METADATA_TYPE_UINT8
+                - METADATA_TYPE_UINT16
+                - METADATA_TYPE_UINT32
+                - METADATA_TYPE_DATETIME
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+    AtomicApplySetQueryCheckpointScheduleRequest:
+      additionalProperties: false
+      properties:
+        cron:
+          type: string
+      type: object
+    AtomicApplySetSigningConfigRequest:
+      additionalProperties: false
+      properties:
+        requireSignatures:
+          type: boolean
+      type: object
+    AtomicApplySinkConfig:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - nats
+            - required:
+                - clickhouse
+            - required:
+                - kafka
+            - required:
+                - http
+            - required:
+                - databricks
+            - additionalProperties: false
+              properties:
+                batchDelayMs:
+                  anyOf:
+                    - pattern: ^-?[0-9]+$
+                      type: string
+                    - format: int64
+                      type: integer
+                  description: Protobuf signed 64-bit integer. Prefer a decimal string to preserve precision.
+                batchSize:
+                  format: int32
+                  type: integer
+                controllerId:
+                  type: string
+                eventTypes:
+                  items:
+                    anyOf:
+                      - enum:
+                          - EVENT_TYPE_UNSPECIFIED
+                          - COMMITTED_TRANSACTION
+                          - REVERTED_TRANSACTION
+                          - SAVED_METADATA
+                          - DELETED_METADATA
+                          - CREATED_LEDGER
+                          - DELETED_LEDGER
+                          - SKIPPED_ORDER
+                        type: string
+                      - format: int32
+                        type: integer
+                    description: Protobuf enum name or numeric enum value; admission validates supported values.
+                  type: array
+                format:
+                  type: string
+                name:
+                  type: string
+              type: object
+      properties:
+        batchDelayMs:
+          anyOf:
+            - pattern: ^-?[0-9]+$
+              type: string
+            - format: int64
+              type: integer
+          description: Protobuf signed 64-bit integer. Prefer a decimal string to preserve precision.
+        batchSize:
+          format: int32
+          type: integer
+        clickhouse:
+          $ref: '#/components/schemas/AtomicApplyClickHouseSinkConfig'
+        controllerId:
+          type: string
+        databricks:
+          $ref: '#/components/schemas/AtomicApplyDatabricksSinkConfig'
+        eventTypes:
+          items:
+            anyOf:
+              - enum:
+                  - EVENT_TYPE_UNSPECIFIED
+                  - COMMITTED_TRANSACTION
+                  - REVERTED_TRANSACTION
+                  - SAVED_METADATA
+                  - DELETED_METADATA
+                  - CREATED_LEDGER
+                  - DELETED_LEDGER
+                  - SKIPPED_ORDER
+                type: string
+              - format: int32
+                type: integer
+            description: Protobuf enum name or numeric enum value; admission validates supported values.
+          type: array
+        format:
+          type: string
+        http:
+          $ref: '#/components/schemas/AtomicApplyHttpSinkConfig'
+        kafka:
+          $ref: '#/components/schemas/AtomicApplyKafkaSinkConfig'
+        name:
+          type: string
+        nats:
+          $ref: '#/components/schemas/AtomicApplyNatsSinkConfig'
+      type: object
+    AtomicApplyStringCondition:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - hardcoded
+            - required:
+                - param
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        hardcoded:
+          type: string
+        param:
+          type: string
+      type: object
+    AtomicApplyTarget:
+      additionalProperties: false
+      allOf:
+        - oneOf:
+            - required:
+                - account
+            - required:
+                - transactionId
+            - additionalProperties: false
+              properties: {}
+              type: object
+      properties:
+        account:
+          $ref: '#/components/schemas/AtomicApplyTargetAccount'
+        transactionId:
+          anyOf:
+            - pattern: ^[0-9]+$
+              type: string
+            - format: uint64
+              minimum: 0
+              type: integer
+          description: Protobuf unsigned 64-bit integer. Prefer a decimal string to preserve precision.
+      type: object
+    AtomicApplyTargetAccount:
+      additionalProperties: false
+      properties:
+        addr:
+          type: string
+      type: object
+    AtomicApplyUUIDConstraint:
+      additionalProperties: false
+      properties: {}
+      type: object
+    AtomicApplyUint64Constraint:
+      additionalProperties: false
+      properties: {}
+      type: object
+    AtomicApplyUintCondition:
+      additionalProperties: false
+      properties:
+        max:
+          anyOf:
+            - pattern: ^[0-9]+$
+              type: string
+            - format: uint64
+              minimum: 0
+              type: integer
+          description: Protobuf unsigned 64-bit integer. Prefer a decimal string to preserve precision.
+        maxExclusive:
+          type: boolean
+        min:
+          anyOf:
+            - pattern: ^[0-9]+$
+              type: string
+            - format: uint64
+              minimum: 0
+              type: integer
+          description: Protobuf unsigned 64-bit integer. Prefer a decimal string to preserve precision.
+        minExclusive:
+          type: boolean
+        paramMax:
+          type: string
+        paramMin:
+          type: string
+      type: object
+    AtomicApplyUpdatePreparedQueryRequest:
+      additionalProperties: false
+      properties:
+        filter:
+          $ref: '#/components/schemas/AtomicApplyQueryFilter'
+        ledger:
+          type: string
+        name:
+          type: string
+        target:
+          anyOf:
+            - enum:
+                - QUERY_TARGET_ACCOUNTS
+                - QUERY_TARGET_TRANSACTIONS
+                - QUERY_TARGET_LOGS
+                - QUERY_TARGET_AUDIT
+              type: string
+            - format: int32
+              type: integer
+          description: Protobuf enum name or numeric enum value; admission validates supported values.
+      type: object
+
     PageToken:
       type: string
       description: |
@@ -4119,6 +6286,7 @@ components:
             - COMMITTED_TRANSACTION
             - REVERTED_TRANSACTION
             - SAVED_METADATA
+            - ACCOUNT_METADATA_UPDATED
             - DELETED_METADATA
             - CREATED_LEDGER
             - DELETED_LEDGER
@@ -4304,6 +6472,7 @@ components:
             - ADDED_ACCOUNT_TYPE
             - REMOVED_ACCOUNT_TYPE
             - UPDATED_DEFAULT_ENFORCEMENT_MODE
+            - ACCOUNT_METADATA_UPDATED
         data:
           type: object
           additionalProperties: true
@@ -4315,7 +6484,9 @@ components:
             TRANSACTION) and targetId: an account-address string or an unsigned
             64-bit transaction integer, including zero. SET_METADATA also
             contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
-            contains reason and optional context. Other types carry the fields
+            contains reason and optional context. ACCOUNT_METADATA_UPDATED
+            is an account-address-to-metadata map written by a metadata-only script;
+            its data object has account addresses as direct keys. Other types carry the fields
             of their corresponding operation directly. FILL_GAP contains originalId,
             a uint64 encoded as a decimal JSON number. Transaction IDs,
             revertedTransactionId and transaction targetId are JSON numbers;
@@ -4400,7 +6571,7 @@ components:
             - NORMAL
             - MIRROR
           default: NORMAL
-          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
+          description: Ledger mode. MIRROR requires mirrorSource and creates a read-only ledger that syncs from an external v2 source. NORMAL must omit mirrorSource. Values are case-sensitive; any other value is rejected with 400 INVALID_REQUEST.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
         defaultEnforcementMode:
@@ -4613,6 +6784,18 @@ components:
         payload:
           $ref: '#/components/schemas/SignedBatchPayload'
 
+    SignedExecuteNumscriptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request
+        - payload
+      properties:
+        request:
+          $ref: '#/components/schemas/ExecuteNumscriptRequest'
+        payload:
+          $ref: '#/components/schemas/SignedBatchPayload'
+
     SignedRevertTransactionRequest:
       type: object
       additionalProperties: false
@@ -4676,7 +6859,7 @@ components:
         A transaction must declare exactly one content source: explicit
         `postings`, an inline `script`, or a `scriptReference`. The
         `postings` array cannot be combined with `script` or
-        `scriptReference`. Idempotency is controlled exclusively via the
+        `scriptReference`. A script must produce postings. Idempotency is controlled exclusively via the
         `Idempotency-Key` HTTP header — there is no body-level key.
       properties:
         accountMetadata:
@@ -4720,6 +6903,41 @@ components:
           type: boolean
           default: false
           description: Skip the balance check, so the transaction commits even when a source account has insufficient funds.
+
+    ExecuteNumscriptRequest:
+      type: object
+      oneOf:
+        - required: [script]
+        - required: [scriptReference]
+      description: |
+        Execute a Numscript independently of transaction creation. Specify
+        exactly one of `script` and `scriptReference`. As with transaction
+        creation, unrecognized properties are ignored. `postings` has no effect
+        on this action. A transaction `reference` applies when the script emits
+        postings; a metadata-only result rejects it after reference length and
+        uniqueness checks pass.
+      properties:
+        accountMetadata:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              $ref: '#/components/schemas/MetadataValue'
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MetadataValue'
+          description: Transaction metadata, accepted only when the script produces postings.
+        reference:
+          type: string
+          description: Transaction reference, accepted only when the script produces postings.
+        script:
+          $ref: '#/components/schemas/Script'
+        scriptReference:
+          $ref: '#/components/schemas/ScriptReference'
 
     PostingRequest:
       type: object
@@ -4796,12 +7014,13 @@ components:
           type: string
           enum:
             - CREATE_TRANSACTION
+            - EXECUTE_NUMSCRIPT
             - ADD_METADATA
             - REVERT_TRANSACTION
             - DELETE_METADATA
           description: |
             The type of operation to perform. The REST bulk endpoint accepts
-            these four actions only; account-type actions
+            these five actions only; account-type actions
             (`ADD_ACCOUNT_TYPE` / `REMOVE_ACCOUNT_TYPE`) are gRPC-only and
             are rejected here.
         ik:
@@ -4809,8 +7028,9 @@ components:
           maxLength: 256
           description: Idempotency key for this operation
         data:
-          oneOf:
+          anyOf:
             - $ref: '#/components/schemas/CreateTransactionRequest'
+            - $ref: '#/components/schemas/ExecuteNumscriptRequest'
             - $ref: '#/components/schemas/AddMetadataRequest'
             - $ref: '#/components/schemas/RevertTransactionRequest'
             - $ref: '#/components/schemas/DeleteMetadataRequest'
@@ -4833,6 +7053,7 @@ components:
             / internal reasons) are rejected at admission. Accepted
             reasons per action on this REST endpoint:
               - `CREATE_TRANSACTION` → `TRANSACTION_REFERENCE_CONFLICT`
+              - `EXECUTE_NUMSCRIPT` → `TRANSACTION_REFERENCE_CONFLICT`
               - `REVERT_TRANSACTION` → `TRANSACTION_ALREADY_REVERTED`
               - `DELETE_METADATA`    → `METADATA_NOT_FOUND`
             The FSM also supports skipping `ADD_ACCOUNT_TYPE`
@@ -4934,6 +7155,31 @@ components:
           type: string
           description: Metadata key to delete
 
+    CompactWriteSequence:
+      type: integer
+      format: uint64
+      minimum: 1
+      maximum: 18446744073709551615
+      description: |
+        Global committed log sequence, distinct from transaction IDs and
+        ledger-local logID. A numeric unsigned acknowledgement, without a
+        cryptographic signature or signed-log receipt. Decode without loss of
+        uint64 precision; large-integer response negotiation does not change it.
+
+    CompactWriteResponse:
+      description: Successful single-write acknowledgement with skipResponse=true.
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [sequence]
+          properties:
+            sequence:
+              $ref: '#/components/schemas/CompactWriteSequence'
+
     BulkResponse:
       type: object
       properties:
@@ -4957,6 +7203,14 @@ components:
         - $ref: '#/components/schemas/BulkResponse'
         - $ref: '#/components/schemas/ErrorResponse'
 
+    BulkAccountMetadataResult:
+      type: object
+      description: Account addresses mapped to their updated metadata fields.
+      additionalProperties:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/MetadataValue'
+
     BulkResult:
       type: object
       properties:
@@ -4967,6 +7221,8 @@ components:
           type: integer
           format: int64
           description: Log ID of the applied operation (0 on error)
+        sequence:
+          $ref: '#/components/schemas/CompactWriteSequence'
         errorCode:
           type: string
           description: Error code (present only on error)
@@ -4979,21 +7235,29 @@ components:
             error codes and the bulk response shape are preserved.
         data:
           description: |
-            Operation result data. Shape depends on the originating action:
-              - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
-                created Transaction object.
+            With skipResponse=true, ordinary successful operation data is
+            omitted; skips retain their complete OrderSkippedResponse. Errors
+            and aborted entries have no sequence. Omitted/false preserves the
+            existing operation data. Shape depends on the originating action:
+              - `CREATE_TRANSACTION` success, or `EXECUTE_NUMSCRIPT` success
+                with postings: a `TransactionResponse` — the created Transaction
+                object.
+              - `EXECUTE_NUMSCRIPT` success without postings: a
+                `BulkAccountMetadataResult` mapping account addresses directly
+                to their updated metadata fields.
               - Any skippable action skip (when the item opted into
                 `skippableReasons` and the FSM matched one): an
                 `OrderSkippedResponse` with `skipped: true`, `reason`, and
                 reason-specific `context`. Emitted for every REST-supported
-                skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
+                skippable action — CREATE_TRANSACTION, EXECUTE_NUMSCRIPT, REVERT_TRANSACTION,
                 DELETE_METADATA — not just create.
-              - Other successful non-create actions: `null`.
+              - Other successful actions: `data` is omitted.
             Branch on `OrderSkippedResponse.skipped` to distinguish a skip
             from a successful transaction.
           nullable: true
           oneOf:
             - $ref: '#/components/schemas/TransactionResponse'
+            - $ref: '#/components/schemas/BulkAccountMetadataResult'
             - $ref: '#/components/schemas/OrderSkippedResponse'
 
     CreateTransactionResponse:
@@ -5220,6 +7484,8 @@ components:
         Prepared-query `AGGREGATE_VOLUMES` responses (under the `aggregateResult`
         envelope of `ExecutePreparedQueryResponse`) use this exact shape:
         header-negotiated monetary amounts, a computed `balance`, and `color` always present.
+        Totals are exact: a sum across accounts, colors, prefixes or rescaled precisions
+        may exceed 2^256.
       required:
         - asset
         - color
@@ -6729,9 +8995,11 @@ components:
         firstSeen:
           type: string
           format: date-time
+          description: Earliest transaction timestamp in the pattern, in RFC3339 with its microseconds. Omitted when unknown.
         lastSeen:
           type: string
           format: date-time
+          description: Latest transaction timestamp in the pattern, in RFC3339 with its microseconds. Omitted when unknown.
         transactionsPerDay:
           type: number
           format: double
@@ -6818,8 +9086,24 @@ components:
         parameters:
           type: object
           additionalProperties:
-            type: string
-          description: Parameter values for the query (substituted into filter placeholders)
+            oneOf:
+              - type: string
+              - type: boolean
+              - type: integer
+                format: int64
+                minimum: -9223372036854775808
+                maximum: -1
+              - type: integer
+                format: uint64
+                minimum: 0
+                maximum: 18446744073709551615
+          description: >-
+            Typed values substituted into filter placeholders. JSON integral
+            numbers are parsed exactly: negative values use int64 and zero or
+            positive values use uint64. Integral decimal and exponent spellings
+            are accepted; values outside those ranges, fractions, and null are
+            rejected. Use a lossless JSON number
+            serializer for integers above 2^53.
         pageSize:
           type: integer
           format: uint32
@@ -7312,6 +9596,12 @@ components:
           type: integer
           format: uint32
           description: Hash algorithm version
+        requiredCapabilities:
+          type: array
+          description: Committed proposal-level semantic capability IDs; absent for legacy proposals
+          items:
+            type: integer
+            format: uint32
         callerSnapshot:
           type: object
           additionalProperties: true

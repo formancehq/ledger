@@ -208,7 +208,7 @@ func auditParentTestKey(sequence uint64) []byte {
 
 func runAuditItemsTest(ctx context.Context, reader dal.PebbleReader) ([]*servicepb.CheckStoreError, error) {
 	var findings []*servicepb.CheckStoreError
-	checker := NewChecker(nil, attributes.New(), nil, logging.Testing())
+	checker := NewChecker(nil, attributes.New(), logging.Testing())
 	err := checker.verifyAuditItems(ctx, reader, func(event *servicepb.CheckStoreEvent) {
 		if finding := event.GetError(); finding != nil {
 			findings = append(findings, finding)
@@ -240,7 +240,7 @@ func BenchmarkVerifyAuditItems(b *testing.B) {
 			reader, err := store.NewReadHandle()
 			require.NoError(b, err)
 			defer func() { require.NoError(b, reader.Close()) }()
-			checker := NewChecker(nil, attributes.New(), nil, logging.Testing())
+			checker := NewChecker(nil, attributes.New(), logging.Testing())
 			counted := &auditItemsTestReader{PebbleReader: reader}
 			callback := func(*servicepb.CheckStoreEvent) { b.Fatal("healthy scan emitted finding") }
 			b.ReportAllocs()

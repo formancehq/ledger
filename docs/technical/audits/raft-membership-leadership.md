@@ -77,6 +77,32 @@ question rather than inventing a membership guarantee.
 
 ### Capability evidence and policy activation
 
+Configuration and capability state use independent control payloads and
+revisions. ClusterPolicy remains the flag-derived aggregate at its original
+key; current field-12 controls set `configuration_only` and merge committed
+capabilities, while omitted-marker historical controls keep their replay meaning.
+Automatic discovery must check every voter and learner; final
+serialized admission must recheck activation against current membership.
+Activation uses one entry, without durable intermediate intent. Membership is
+fenced through durable apply; active IDs then become membership requirements.
+After leadership loss, admission and consensus-based membership changes wait
+for the current-term no-op to apply before reevaluating current evidence.
+Business proposals wait from readiness through activation, including
+after drain release, but ordinary configuration controls continue. Retrying a
+pre-submission activation barrier must release preparation guards, respect the
+caller deadline, preserve one caller action count, and never replay a submitted
+future. Schema-3 migration is stopped, atomic and synchronized before serving;
+active state survives replay, snapshot and incremental restore. Exercise an
+uncommitted interrupted attempt, a committed activation with lost response,
+reopen, and an incompatible membership change winning before final admission.
+ForceRemoveNode is an emergency exception: it uses raw Raft leadership without
+WaitLeaderReady. It shares the membership coordinator with activation and
+serializes peer removal with final proposal admission. Previously admitted
+proposals may commit after the removal.
+Self routing refreshes on restart or snapshot install must not add positive
+support evidence. Require the leader's own ConfChange refresh before automatic
+activation, including single-member recovery and transient refresh failures.
+
 For bootstrap join, restart refresh, promotion, and membership changes, record
 the member's `(node_id, instance_id)`, advertised capability IDs, committed
 membership row, and the policy revision and active capabilities on every
@@ -443,7 +469,7 @@ Historical replay must retain exact audit bytes and hashes. Native policy
 controls are operational and emit neither audit nor business logs; they are never
 lowered to orders. Compare final state across formats, verify each chain and its
 expected audit count, and preserve the historical prefix byte-for-byte. Preserve
-coverage, HLC semantics and checkpoint boundaries. Test policy-only incremental
-manifest publication and mixed historical/native delta restore. Current policy
+coverage, HLC semantics and checkpoint boundaries. Test policy-only second
+checkpoint publication and mixed historical/native policy recovery. Current policy
 and operational quotas are explicitly outside business checker scope.
 See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).

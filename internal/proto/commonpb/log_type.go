@@ -22,6 +22,7 @@ const (
 	AddedAccountTypeLogType              LogType = 10 // "ADDED_ACCOUNT_TYPE"
 	RemovedAccountTypeLogType            LogType = 11 // "REMOVED_ACCOUNT_TYPE"
 	UpdatedDefaultEnforcementModeLogType LogType = 12 // "UPDATED_DEFAULT_ENFORCEMENT_MODE"
+	AccountMetadataUpdatedLogType        LogType = 13 // "ACCOUNT_METADATA_UPDATED"
 )
 
 type LogType int16
@@ -96,6 +97,8 @@ func (lt LogType) String() string {
 		return "REMOVED_ACCOUNT_TYPE"
 	case UpdatedDefaultEnforcementModeLogType:
 		return "UPDATED_DEFAULT_ENFORCEMENT_MODE"
+	case AccountMetadataUpdatedLogType:
+		return "ACCOUNT_METADATA_UPDATED"
 	}
 
 	return ""
@@ -129,6 +132,8 @@ func LogTypeFromString(logType string) (LogType, error) {
 		return RemovedAccountTypeLogType, nil
 	case "UPDATED_DEFAULT_ENFORCEMENT_MODE":
 		return UpdatedDefaultEnforcementModeLogType, nil
+	case "ACCOUNT_METADATA_UPDATED":
+		return AccountMetadataUpdatedLogType, nil
 	}
 
 	return 0, fmt.Errorf("invalid log type: %q", logType)
@@ -167,6 +172,8 @@ func GetLogType(payload *LedgerLogPayload) LogType {
 		return RemovedAccountTypeLogType
 	case *LedgerLogPayload_UpdatedDefaultEnforcementMode:
 		return UpdatedDefaultEnforcementModeLogType
+	case *LedgerLogPayload_AccountMetadataUpdated:
+		return AccountMetadataUpdatedLogType
 	default:
 		return -1
 	}

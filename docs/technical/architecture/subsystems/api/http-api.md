@@ -35,6 +35,15 @@ inputs; invalid source or version returns typed diagnostics in a 200 response.
 The operation is independent of ledger state. See the
 [scripting contract](../scripting/numscript-library.md#read-only-source-analysis).
 
+`POST /v3/{ledgerName}/transactions` accepts explicit postings or a Numscript
+that produces postings. `POST /v3/{ledgerName}/numscripts/execute` accepts an
+inline or saved Numscript with an optional transaction reference. A reference
+requires postings. A metadata-only result returns `METADATA_ONLY_REFERENCE` if
+the reference passes length and uniqueness checks first. The endpoint returns 201 with
+the created transaction when the script produces postings, or 204 when it only
+updates account metadata. Both routes use the same Apply admission and audit
+path; the Numscript execution is a distinct `LedgerAction` on the gRPC Apply RPC.
+
 ### Base URL
 
 By default: `http://localhost:9000`
@@ -85,7 +94,7 @@ path segment themselves.
 ### Encoded path identifiers
 
 The single-decoding rule also applies to every free-form identifier carried in
-a path segment: account addresses (`GET /accounts/{address}` and the account
+a path segment: ledger names, account addresses (`GET /accounts/{address}` and the account
 metadata POST/DELETE routes), numscript names, prepared-query names,
 account-type names and events sink names. The adapter extracts them with
 `requirePathParameter`, never with a raw `chi.URLParam`. For example,
@@ -93,6 +102,21 @@ account-type names and events sink names. The adapter extracts them with
 decoding, an encoded address would read an empty account with HTTP 200, or be
 rejected by admission on metadata writes. A double-encoded `users%253Aa`
 selects the literal `users%3Aa`, which is not a valid account address.
+Similarly, `test%3Aledger` selects the ledger named `test:ledger`, while
+`test%253Aledger` is rejected because the decoded name still contains `%`.
+
+### Prepared-query bodies and parameters
+
+Create, update, and execute consume the complete HTTP body before making a
+backend call. A supplied body must contain one JSON value followed only by
+whitespace. An empty execute body is allowed. The entire body counts toward the
+4 MiB limit, including trailing whitespace or invalid trailing data.
+
+Execute parameters accept strings, booleans and exact JSON integers within the signed 64-bit minimum to
+unsigned 64-bit maximum range; the filter type can further narrow that range.
+Use a decimal string if the client cannot represent the integer exactly.
+Supplying `null` yields `400 INVALID_PARAMETERS`; use an explicit empty string
+when the filter is intended to match one.
 
 ### Ledger information
 
@@ -139,6 +163,11 @@ scope each one requires, and it enforces the table two ways:
 - **End-to-end probes** — for each guarded route, a token carrying the declared scope must be
   admitted, and a token carrying **every** other granular scope must be refused with 403. That proves
   exactly one scope opens each route.
+
+Bulk and atomic Apply are explicit dynamic-scope entries: they check every
+operation with `RequiredScopeForRequest` rather than declaring one fixed route
+scope. Their routed tests must prove mixed-batch denial before dispatch and
+per-operation authorized controls.
 
 **When you add a route, add its table row.** The test names the route and tells you what to add.
 
@@ -189,10 +218,11 @@ value. Ops routes (`/health`, `/readyz`, `/clusterz`, …) do not parse the
 header. `TestReadConsistency_InstalledOnEveryBusinessRoute` requires the
 middleware on every `/v3` route and forbids it on ops routes.
 
-### Signed transaction requests
+### Signed mutation requests
 
-The transaction create, revert, metadata-save and metadata-delete routes and
-atomic bulk use `application/json` for signed and ordinary unsigned bodies;
+The transaction create, Numscript execute, revert, metadata-save,
+metadata-delete, atomic bulk and atomic Apply routes use `application/json`
+for signed and ordinary unsigned bodies;
 MIME parameters are accepted. The presence of either `Formance-Signing-Key-Id`
 or `Formance-Signature`, even if empty, selects the signed wrapper. When
 neither header is present, the ordinary unsigned REST body is used.
@@ -204,7 +234,7 @@ signature; the adapter assembles the existing `SignedApplyBatch`. Both headers
 are required exactly once with nonempty values, and the decoded signature must
 be 64 bytes. Other business routes reject either signing header with 415;
 signing headers with a non-JSON or missing content type also return 415,
-preventing unsigned fallback. The five supporting route registrations install
+preventing unsigned fallback. The supporting route registrations install
 wrapper decoding before their ordinary query-name validation; unsupported routes
 reject signing headers in that validation boundary. Header presence cannot grant
 signing support to other operations. OpenAPI uses `anyOf` for the ordinary body
@@ -270,6 +300,15 @@ Trailing JSON whitespace is allowed, but counts towards the limit; exceeding
 it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
+
+Prepared-query execution decodes each JSON parameter before calling the read
+backend. Strings and booleans retain their types. Negative integral values map
+to signed 64-bit values; zero and positive integral values map to unsigned 64-bit values.
+The adapter parses the decimal lexeme exactly, including values above 2^53.
+Integral decimal and exponent spellings are accepted; fractions, overflow,
+and null values return `400 INVALID_PARAMETERS`. Clients must serialize large
+integers without losing precision before sending the request. No persisted or
+Raft format changes.
 
 #### Large integers and the string opt-in
 
@@ -343,6 +382,71 @@ router; see `tests/sdk/README.md`. Generation requires Speakeasy authentication.
 }
 ```
 
+#### Compact write acknowledgements
+
+HTTP ingestion clients can select `skipResponse=true` on these operations:
+
+| Method | Path |
+| --- | --- |
+| POST | `/v3/{ledgerName}/transactions` |
+| POST | `/v3/{ledgerName}/transactions/{transactionId}/revert` |
+| POST | `/v3/{ledgerName}/bulk` |
+| POST | `/v3/{ledgerName}` |
+| POST | `/v3/{ledgerName}/promote` |
+| PUT | `/v3/{ledgerName}/numscripts/{name}` |
+| POST | `/v3/_/events-sinks` |
+| POST | `/v3/{ledgerName}/indexes` |
+
+Supply exactly one lowercase `true` or `false`. Omission and `false` preserve
+existing bodies. Empty, repeated, uppercase, whitespace-padded and other values
+return `400 INVALID_REQUEST` before backend execution. Other routes retain
+their query-name contract and existing no-content success responses.
+
+Each single operation retains HTTP 201 and returns only:
+
+```json
+{"data":{"sequence":123}}
+```
+
+`sequence` is the outer global committed log sequence, not a transaction ID or
+ledger-local log ID. It is a JSON uint64 number and is unaffected by
+`Formance-Bigint-As-String`. Decoders must preserve its full range, including
+values above 2^53. Speakeasy CLI 1.762.0 / generator 2.882.0 maps this
+`integer/uint64` schema to a TypeScript `number`; its ordinary JSON decoding
+rounds 2^53+1 and uint64 maximum. Clients requiring that range must use a
+lossless JSON decoder or retain the raw sequence token, rather than converting
+an already rounded number to bigint. The acknowledgement is unsigned and contains no signed-log
+receipt. Full internal logs remain available until outcome validation and
+response projection complete; the projection does not modify those logs.
+The OpenAPI links for created ledgers and saved numscripts use request path
+parameters and work in either response mode. Created-transaction links require
+the generated transaction ID in the full response, so they apply only when
+`skipResponse` is omitted or false.
+
+gRPC requests, signatures, accepted business payloads, audit, persistence and
+idempotency identity are unchanged. A retained keyed retry can change the HTTP
+response mode and still receives the original outcome and sequence.
+
+For bulk, compact successful elements retain `responseType` and ledger-local
+`logID`, add global `sequence`, and omit ordinary successful operation `data`.
+Skipped elements retain complete `data.skipped`, reason, code and facts
+alongside their sequence. Errors and aborted elements retain their existing
+fields without a success sequence. Atomicity, `continueOnFailure`, status
+rollup, `Retry-After` and both batch and element identity rules are unchanged.
+Processing-error responses retain their per-element outcomes. Empty bulk still
+returns `{}`. Default/false retains existing data, including existing nulls.
+
+Savings cover final HTTP business bytes and JSON serialization. Controller
+result construction, Raft/WAL/audit work and forwarded gRPC signing and
+serialization still use full logs. Bulk projection remains linear in the
+number of outcomes plus retained skip/error detail; no throughput improvement
+is guaranteed by this contract.
+
+Older HTTP nodes reject the query name. Upgrade every HTTP-serving node before
+clients enable the option, or route opted-in clients exclusively to upgraded
+nodes. Existing callers need no change. This HTTP presentation addition does
+not change the service protocol revision or persisted formats.
+
 #### Paged list
 
 The paged lists (`GET /v3/` for ledgers, `/v3/{ledgerName}/accounts`,
@@ -413,11 +517,13 @@ and `internal/domain/processing/processor.go` (`IncrementNextSequenceID`).
 
 | Method | Path | 429 body |
 | --- | --- | --- |
+| POST | `/_/apply` | `ErrorResponse` |
 | POST | `/_/events-sinks` | `ErrorResponse` |
 | DELETE | `/_/events-sinks/{sinkName}` | `ErrorResponse` |
 | POST, DELETE | `/{ledgerName}` | `ErrorResponse` |
 | POST | `/{ledgerName}/promote` | `ErrorResponse` |
 | PUT | `/{ledgerName}/numscripts/{name}` | `ErrorResponse` |
+| POST | `/{ledgerName}/numscripts/execute` | `ErrorResponse` |
 | POST | `/{ledgerName}/indexes` | `ErrorResponse` |
 | DELETE | `/{ledgerName}/indexes/{canonicalId}` | `ErrorResponse` |
 | POST | `/{ledgerName}/transactions` | `ErrorResponse` |
@@ -584,7 +690,7 @@ audited branch, which requires `SerializableError` and fails the apply loudly
 otherwise. A separate
 `PublicFailureFacts()` implementation may provide a
 public code and facts without admitting the error to the audit chain. This is
-used for admission and read failures such as plan-size and aggregate overflow.
+used for admission and read failures such as plan size.
 The FSM can also reject a committed proposal before audit capture for
 maintenance mode or malformed caller attribution. Maintenance mode remains a
 public operational error; malformed caller attribution is internal-only and
@@ -783,6 +889,155 @@ Clients should:
 - **Write operations**: Must go through the leader, so will fail during leader elections
 - **Idempotency**: Ensure write operations are idempotent to safely retry after leader election
 - **Monitoring**: Track `503` responses to monitor cluster health and leader election frequency
+
+## Atomic HTTP Apply
+
+`POST /v3/_/apply` exposes the existing `BucketService.Apply` atomic batch to
+HTTP clients that need ordered cross-ledger or configuration writes. The
+ledger-scoped bulk route cannot express that composition. The new adapter
+constructs one service request and invokes the existing service handler once,
+preserving admission, checkpoint readiness, forwarding, signing and replay.
+It does not split the batch or add a second transaction mechanism.
+
+Send `Content-Type: application/json` and an object with a nonempty `requests`
+array. Each element has exactly one canonical camelCase `Request` variant from
+`misc/proto/bucket.proto`; `apply` contains `ledger`, `action` (one
+`LedgerAction` variant), and optional `skippableReasons`. All 27 current request
+variants and seven ledger actions are represented in `openapi.yml`. For example:
+
+```http
+POST /v3/_/apply
+Content-Type: application/json
+Idempotency-Key: transfer-pair-1
+
+{
+  "requests": [
+    {"apply": {"ledger": "source", "action": {"createTransaction": {
+      "postings": [{"source": "bank", "destination": "world", "asset": "USD", "amount": "100"}]
+    }}}},
+    {"apply": {"ledger": "destination", "action": {"createTransaction": {
+      "postings": [{"source": "world", "destination": "bank", "asset": "USD", "amount": "100"}],
+      "metadata": {"transfer": {"stringValue": "transfer-pair-1"}}
+    }}}}
+  ]
+}
+```
+
+The ledgers in this example must already exist and source funds must be
+available. Different ledger names share the same atomic batch. Business
+validation remains owned by the existing service/admission/FSM path, including
+which request compositions are valid; exposing every request variant does not
+make every combination admissible.
+
+### Input and identity
+
+This is a protobuf-shaped command input, not the legacy bulk `action/data/ik`
+array or a public log projection. Fields use only canonical camelCase names.
+Protobuf enums accept their full symbolic names or defined numeric values;
+undefined numbers are rejected before admission. Protobuf 64-bit scalars accept
+decimal strings or exact JSON integer numbers. Bytes use base64. Metadata retains its
+explicit protobuf type, for example `{ "intValue": "9007199254740993" }` or
+`{ "uintValue": "18446744073709551615" }`; plain REST metadata strings are
+not substituted for these tagged values. Nested maps such as `accountMetadata`
+retain their protobuf `MetadataMap.values` wrapper.
+
+The typed input normalizer uses protojson to preserve protobuf field semantics;
+responses always use the option-aware public JSON writer.
+
+The HTTP exceptions are posting amounts and other big-integer message types,
+which accept exact decimal tokens/strings through the existing HTTP codecs,
+and timestamps, which use RFC3339 strings with microsecond precision. Posting
+amounts remain bounded by uint256; no float conversion is introduced.
+
+Unknown fields, snake_case aliases, duplicate object keys, explicit nulls,
+missing/multiple operation variants and malformed/trailing JSON reject with
+`400 INVALID_REQUEST`. The full body, including whitespace and a signed
+wrapper, is bounded at 4 MiB (`413 BODY_TOO_LARGE`); nesting is limited to 64.
+The configured bulk element limit applies to `requests` (`413
+BULK_SIZE_EXCEEDED`). No query parameters are accepted: `atomic`,
+`continueOnFailure`, `parallel`, `dryRun` and transport-only options cannot
+alter this endpoint's semantics.
+
+One optional `Idempotency-Key` header identifies the complete ordered batch.
+Repeated headers reject; a body `idempotencyKey` and per-operation keys reject
+even when empty. Preserve the header and identical content on retries.
+Retained matching outcomes replay, changed content conflicts, and absent or
+expired keys provide no deduplication guarantee. HTTP exposes neither
+`forwardedCallerSnapshot` nor `skipResponse`.
+
+### Authorization and signing
+
+Authentication runs normally, then every operation's existing
+`RequiredScopeForRequest` decision is checked before the single service call.
+The `/_` path does not impose an unrelated read-ops or universal write scope.
+
+| Operations | Required scope |
+| --- | --- |
+| Ledger create/delete/promote, indexes, numscripts | `ledger:WriteLedger` |
+| Transaction create/revert | `ledger:WriteTransaction` |
+| Metadata/schema and account-type changes | `ledger:WriteMetadata` |
+| Prepared-query changes | `ledger:WriteQuery` |
+| Signing keys/config, event sinks, maintenance | `ledger:WriteOps` |
+| Query checkpoints and their schedule | `ledger:WriteCluster` |
+
+Initial metadata on ledger creation remains part of `ledger:WriteLedger`.
+Configured anonymous scopes and authentication-disabled mode retain their
+existing behavior. Any denied element prevents dispatch of the whole batch.
+A signing key does not replace JWT scopes or the authenticated caller.
+
+Either signing header selects the existing JSON `{request, payload}` wrapper;
+`request` is the complete object above, and `payload` is standard-base64 exact
+serialized protobuf `ApplyBatch`. Both signing headers must occur exactly once
+and be nonempty. The adapter requires full decoded-message equality, including
+all operation fields, count/order, typed metadata, skip reasons and the header
+key, before forwarding original signed bytes unchanged to admission. Admission
+owns key lookup, Ed25519 verification and mandatory-signing policy. See
+[HTTP request signing](../../../../ops/signing.md#http-request-signing).
+
+### Atomicity and returned logs
+
+Success is `200` with `{ "data": { "logs": [...] } }`, in service log order.
+Logs retain their named system payload variants, public ledger-log projections,
+optional `responseSignature`. Ledger creation includes
+all nine committed fields: `name`, `createdAt`, `metadataSchema`, `mode`,
+`mirrorSource`, `accountTypes`, `defaultEnforcementMode`, `id` and `metadata`,
+subject to normal omission rules. Mirror-source credentials are redacted in the
+creation log, and its `responseSignature` is omitted because the signed payload
+contains the original credentials. `Formance-Bigint-As-String` applies throughout
+nested log payloads. Response encoding is checked before sending success headers.
+For `addEventsSink`, the HTTP response uses the same detached credential-redacted
+configuration as the sink GET endpoint and omits `responseSignature` for that
+log. The service signature contains the original protobuf log bytes, including
+credentials, so it cannot be returned with the public projection. Other logs
+in the batch retain their service signatures.
+Response signature bytes authenticate the protobuf log; clients must verify
+those exact bytes and bind their decoded public projection to the visible log.
+The JSON projection is not a lossless protobuf reconstruction format.
+
+An unskipped business failure discards all staged business mutations in this
+batch. Explicit allowed `skippableReasons` retain the existing gRPC semantics:
+a matching failure becomes an audited skipped-order log and the batch succeeds.
+There is no `continueOnFailure` mode. Definitive failed outcomes may still be
+audited/frozen by the existing pipeline; all-or-nothing business mutation does
+not mean that a failed request leaves no audit record.
+
+Errors use the ordinary top-level `ErrorResponse`, not per-element bulk
+outcomes. A post-commit checkpoint readiness, response-signing, encoding or
+transport failure cannot roll back a committed batch. Preserve its identity
+and retry according to the existing retention contract when the outcome is
+ambiguous. The service call retains checkpoint readiness and historical-replay
+behavior; calling a controller directly would skip these guarantees.
+
+Adapter input space is O(request bytes), bounded by the body/depth/count
+limits. The input normalizer sorts JSON object keys when re-encoding, so its
+time is O(request bytes + sum(k log k)) for the object key counts k. Response
+work scales with returned log bytes. Signed requests additionally decode and
+compare the complete batch; base64 and duplicated JSON/protobuf content share
+the body budget. Existing admission/preload costs depend on the same operations and
+script dependencies as gRPC. No new store scan, persistence format, Raft apply
+behavior or consensus-spanning lock is introduced. Service revision stays 40;
+no migration is required. Roll out receiving HTTP nodes before using the new
+route. Existing `/v3/{ledgerName}/bulk` modes and response contracts are unchanged.
 
 ## Bulk identity and response contract
 
@@ -1250,7 +1505,10 @@ backend execution. Authentication failures use the standard `401`/`403` errors.
 
 The request body is a configuration object directly, without a `data` or
 `config` wrapper. `name` and exactly one of `nats`, `clickhouse`, `kafka`, `http`
-or `databricks` are required. Configuration fields use protobuf JSON camelCase,
+or `databricks` are required. Shared admission also validates that each new
+`Apply(AddEventsSink)` has a name and a type. This applies to native gRPC and
+bucket-wide REST Apply. Old committed entries remain replayable.
+Configuration fields use protobuf JSON camelCase,
 as in the existing GET response. Unknown fields, duplicate fields, multiple
 sink types and malformed JSON return `400 INVALID_REQUEST`. The complete
 request, including trailing whitespace, is subject to the 4 MiB HTTP body
@@ -1271,8 +1529,9 @@ Content-Type: application/json
 {"data":{"name":"primary"}}
 ```
 
-The acknowledgement contains the committed sink name and does not echo
-credentials. This means the configuration was committed, not that the external
+By default the acknowledgement contains the committed sink name and does not
+echo credentials. With `skipResponse=true`, it contains only the global
+sequence described in [compact write acknowledgements](#compact-write-acknowledgements). This means the configuration was committed, not that the external
 sink has connected or delivered events. Use GET to inspect delivery status.
 The GET envelope and protobuf JSON representation follow the current read
 contract: annotated sensitive fields and credentials in annotated URL/DSN
@@ -1311,7 +1570,8 @@ and `controllerId`. Omitted or zero batching values use emitter defaults
 64-bit integer: clients should send a decimal string; a JSON integer is also
 accepted. `eventTypes` accepts protobuf enum names; an omitted or empty array
 selects all events. The current event names are `COMMITTED_TRANSACTION`,
-`REVERTED_TRANSACTION`, `SAVED_METADATA`, `DELETED_METADATA`, `CREATED_LEDGER`,
+`REVERTED_TRANSACTION`, `SAVED_METADATA`, `ACCOUNT_METADATA_UPDATED`,
+`DELETED_METADATA`, `CREATED_LEDGER`,
 `DELETED_LEDGER` and `SKIPPED_ORDER`. Business validation remains owned by Apply:
 for example, `batchSize > 100000` returns `400 SINK_BATCH_SIZE_TOO_LARGE`.
 This adapter does not introduce new validation of external URLs or credentials.

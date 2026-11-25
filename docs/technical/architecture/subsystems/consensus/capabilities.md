@@ -32,6 +32,15 @@ blocks admission of capability-dependent writes until that member is reachable
 again. Once a capability is active, every new membership announcement must
 include that capability.
 
+Restart and snapshot self-address refreshes cannot add support IDs: they retain
+only the intersection of the persisted same-incarnation evidence and the local
+binary's supported IDs. The activation worker first commits any missing leader
+self evidence through RefreshMembership, including in a single-member cluster.
+A failed or merely proposed refresh cannot make an activation ready. Address
+refresh still writes routing before publishing its cache; a failed write leaves
+the old cache unchanged. Snapshot refresh intersects the newly installed rows,
+not the pre-snapshot cache, before rehydration.
+
 A proposal that declares a capability is admitted only when that capability is
 active and every member advertises it. Proposals with no declared capability
 remain unaffected. FSM apply never consults node-local capability flags.
@@ -43,11 +52,39 @@ trust model of this barrier.
 
 ## Capabilities that change FSM semantics
 
-A capability can describe a protocol or semantic behavior, not only a payload
-feature. For example, `MirrorIngestRejectInvalidAssetV2` can identify the
-behavior that rejects an asset which an older FSM accepted.
+Active state lives in a separate bounded aggregate. Activation commits directly
+in one Raft entry and never consumes a configuration revision.
+SetClusterPolicy retains its original identity and uses a configuration-only
+marker to merge with the latest applied capability state inside the
+FSM, so concurrent configuration cannot overwrite activation. Repeated activation
+is idempotent; deactivation is rejected. A historical inactive entry is eligible
+for automatic activation once membership is ready. There is no durable intent
+before activation commits.
 
-The capability has two roles in this case:
+The membership coordinator fences membership changes through apply, and the
+serialized Node.Propose gate rechecks member evidence before index allocation.
+The same gate pauses all audited order batches whenever all current members
+support a locally implemented but inactive capability. The capability remains
+inactive in the committed view until activation applies, and membership is
+locked through apply, so this barrier covers the entire in-flight interval.
+This includes operational orders such as maintenance-mode changes and query
+checkpoints. Native configuration and capability controls bypass this barrier. This
+conservative MVP avoids feature-specific admission predicates and closes the
+drain-release interval for every future capability. Admission retries only a
+pre-submission activation-pending rejection, after releasing preparation guards.
+New membership announcements must support active IDs. Before activation is
+submitted, an incompatible membership change may win serialization; the final
+support check then refuses activation. After submission, membership waits for
+durable apply and must respect the active ID. A new leader waits for its FSM
+readiness barrier before admission: inherited activation is either applied or
+absent, then current membership is reevaluated. Lost responses and restart never
+cause a committed activation to be undone. No intermediate `requested` state is
+needed; the unreleased draft field is removed without reassigning its number.
+
+The supported registry remains empty in this change. A feature must separately
+register its stable ID, select its proposal marker at preparation, and dispatch
+deterministic apply from that persisted marker. This infrastructure change does
+not introduce the account-type validation feature from PR #2552.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
@@ -103,6 +140,43 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
+EN-2915 strengthens initial account-type validation in `CreateLedger` without
+registering a capability. RC.4 accepted invalid constraints and conflicting
+patterns; those successful creations remain committed business history. The
+operator-required RC.4-to-RC.5 stopped upgrade drains every member and waits
+for its durable FSM cursor to pass the admission cutoff, so RC.4 business
+entries finish applying under RC.4 before RC.5 starts. RC.5 applies the
+strengthened rule to new orders. Audit replay explicitly uses the historical
+creation rule to reproduce successful old orders; successful new creations
+satisfy both rules and yield the same logs. The proposal payload and capability
+registry remain unchanged. A mixed-version rollout across this boundary is
+unsupported.
+
+Forwarded preload gaps also change apply at the same boundary without a
+capability. RC.4 rejects a keyed batch carrying an order marked
+`OrderTechnical.preload_unavailable` with the uncommitted `PRELOAD_UNAVAILABLE`
+before executing any order. RC.5 executes the batch in sequence and fails the
+marked order at its own position, so an earlier definitive rejection is
+audited and frozen. RC.4 audited no such batch, so audit replay meets only
+RC.5 outcomes. The same stopped-upgrade drain applies every RC.4 entry under
+RC.4 before RC.5 starts. The proposal payload and capability registry remain
+unchanged.
+
+A change confined to read paths needs no capability either, even when it
+touches a file the capability-contract gate watches. `common.proto` also
+defines service response types that no order carries, and `internal/infra/plan`
+also serves non-FSM reads. For example, the exact aggregate totals change
+(EN-3332) retypes the `AggregatedVolume` response totals, which the mirror
+stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
+order, proposal, or apply rule changes.
+
+The sink and mirror source shape checks are admission-only. They reject
+incomplete sink configurations and a mirror source on a normal ledger before
+proposing the order. A voter running the change still applies every
+committed order under the same rules as an older voter, including historically
+accepted shapes. No capability, persisted migration, wire revision, or
+stopped-upgrade boundary is needed for these checks.
+
 ## Rollout and recovery
 
 Deploy the barrier-aware binary to every member, stop the cluster, and restart
@@ -152,6 +226,12 @@ pass an immutable admission snapshot instead of widening the lock.
 
 ## Restart refresh
 
+The rc.4-to-rc.5 peer service port migration changes the endpoint stored in
+membership, not the capability evidence carried by a member or the Raft
+`ConfChange` schema. The membership format revision limits address normalization
+to legacy rows; committed member capabilities and the active `ClusterPolicy`
+remain unchanged. This transport change therefore requires no new capability ID.
+
 A normal restart does not run `JoinAsLearner`: the node restores its existing
 WAL `ConfState` and keeps the same `(node_id, instance_id)` incarnation. After
 the node and its Raft gRPC server are started, a node whose WAL carries
@@ -175,5 +255,9 @@ uses `JoinAsLearner` and `ConfChangeAddLearnerNode`.
 
 The cluster-policy reconciler preserves committed capability activations while
 reconciling ordinary policy configuration; it does not arm capabilities from
-membership advertisements. A future feature must define its activation policy
-explicitly and enable it only after the coordinated restart has completed.
+membership advertisements. The separate activation worker automatically
+commits activation once every member has committed support evidence after
+the coordinated restart. A future feature must register a stable activation ID,
+stamp its final persisted proposals, and provide deterministic replay semantics.
+The generic pending-admission fence already covers all audited order batches;
+features must not add a separate activation switch.

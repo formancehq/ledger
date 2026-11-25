@@ -113,12 +113,50 @@ func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.
 
 // ProcessClusterPolicy applies operational state without allocating business logs.
 // The released order handler above retains its original audited replay behavior.
-func (p *RequestProcessor) ProcessClusterPolicy(policy *commonpb.ClusterPolicy, factory ScopeFactory) domain.Describable {
+func (p *RequestProcessor) ProcessClusterPolicy(proposal *raftcmdpb.SetClusterPolicyProposal, factory ScopeFactory) domain.Describable {
+	policy := proposal.GetPolicy()
+	if proposal.GetConfigurationOnly() && (policy == nil || len(policy.GetCapabilityActivations()) != 0) {
+		return &domain.ErrClusterPolicyInvalid{Detail: "cluster policy cannot contain capabilities"}
+	}
 	scope, err := factory.NewScope(nil)
 	if err != nil {
 		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
 	}
+	if proposal.GetConfigurationOnly() {
+		policy = policy.CloneVT()
+		policy.CapabilityActivations = scope.GetClusterPolicy().CloneVT().GetCapabilityActivations()
+	}
 	_, processErr := applyClusterPolicy(policy, scope)
 
 	return processErr
+}
+
+func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.CapabilityActivation, factory ScopeFactory) domain.Describable {
+	if transition == nil || transition.GetId() == 0 {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition requires a non-zero id"}
+	}
+	if !transition.GetActive() {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition must activate"}
+	}
+	scope, err := factory.NewScope(nil)
+	if err != nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	desired := scope.GetClusterPolicy().CloneVT()
+	for _, current := range desired.GetCapabilityActivations() {
+		if current.GetId() != transition.GetId() {
+			continue
+		}
+		if current.GetActive() {
+			return nil
+		}
+		current.Active = true
+		scope.SetClusterPolicy(desired)
+
+		return nil
+	}
+	desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: transition.GetId(), Active: true})
+	scope.SetClusterPolicy(desired)
+
+	return nil
 }

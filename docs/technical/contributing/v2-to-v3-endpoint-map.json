@@ -76,9 +76,10 @@
       "operationId": "runScript",
       "status": "changed",
       "v3": [
-        "POST /v3/{ledgerName}/transactions"
+        "POST /v3/{ledgerName}/transactions",
+        "POST /v3/{ledgerName}/numscripts/execute"
       ],
-      "notes": "Send the program in the `script` field (`plain` and `vars`), or reference a saved program with `scriptReference`. `preview` is not accepted.",
+      "notes": "Use `/transactions` when the script must create a transaction with postings; it rejects scripts without postings. Use `/numscripts/execute` for standalone execution: it returns a transaction for postings or updates account metadata without a transaction when the script only changes account metadata. Both accept an inline `script` (`plain` and `vars`) or a saved `scriptReference`. `preview` is not accepted.",
       "docs": "/modules/ledger/migration/update-clients#update-transaction-writes"
     },
     "GET /{ledger}/stats": {
@@ -205,7 +206,7 @@
       "v3": [
         "POST /v3/{ledgerName}"
       ],
-      "notes": "`bucket` and `features` are not accepted. The body takes `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` and `accountTypes`. Returns `201`.",
+      "notes": "`bucket` and `features` are not accepted. The body takes `metadata`, `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` and `accountTypes`. `MIRROR` requires `mirrorSource`; `NORMAL` must omit it. Returns `201` on success.",
       "docs": "/modules/ledger/migration/removed-capabilities"
     },
     "POST /v2/{ledger}/schemas/{version}": {
@@ -217,7 +218,7 @@
         "PUT /v3/{ledgerName}/numscripts/{name}",
         "POST /v3/{ledgerName}/prepared-queries"
       ],
-      "notes": "Write each part of the schema to its own resource. There is no version to insert.",
+      "notes": "Write each part of the schema to its own resource. There is no version to insert. Saving a numscript for a missing ledger returns `404 LEDGER_NOT_FOUND`.",
       "docs": "/modules/ledger/migration/update-clients#replace-ledger-schema-workflows"
     },
     "GET /v2/{ledger}/schemas/{version}": {

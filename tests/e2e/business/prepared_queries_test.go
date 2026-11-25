@@ -959,14 +959,14 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			// alice received 100 USD (input=100, output=0)
 			usdVol, ok := volumesByAsset["USD"]
 			Expect(ok).To(BeTrue(), "expected USD volumes")
-			Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(100)))
-			Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+			Expect(usdVol.Input.DecimalString()).To(Equal("100"))
+			Expect(usdVol.Output.DecimalString()).To(Equal("0"))
 
 			// alice received 50 EUR (input=50, output=0)
 			eurVol, ok := volumesByAsset["EUR"]
 			Expect(ok).To(BeTrue(), "expected EUR volumes")
-			Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
-			Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+			Expect(eurVol.Input.DecimalString()).To(Equal("50"))
+			Expect(eurVol.Output.DecimalString()).To(Equal("0"))
 		})
 
 		It("Should create and update filterless queries with direct aggregation parity", func() {

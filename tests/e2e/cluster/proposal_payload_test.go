@@ -47,6 +47,9 @@ var _ = Describe("Proposal payload replication", func() {
 				if len(p.GetBatch().GetOrders()) > 0 {
 					batches.Add(1)
 				}
+				if policy := p.GetSetClusterPolicy(); policy != nil && (!policy.GetConfigurationOnly() || len(policy.GetPolicy().GetCapabilityActivations()) != 0) {
+					invalid.Store(true)
+				}
 				if p.GetSetClusterPolicy().GetPolicy().GetRevision() == 100 {
 					policies.Add(1)
 				}

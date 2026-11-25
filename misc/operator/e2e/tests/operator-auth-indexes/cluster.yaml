@@ -1,0 +1,16 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: auth-indexes
+spec:
+  replicas: 1
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  tls:
+    enabled: true
+    secretName: auth-indexes-certs
+    caSecretKey: ca.crt
+  auth:
+    enabled: true

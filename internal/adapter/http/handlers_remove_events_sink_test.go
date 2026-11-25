@@ -41,7 +41,7 @@ func TestHandleRemoveEventsSink(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodDelete, tc.target, nil)
 			r.Header.Set("Idempotency-Key", "key")
-			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(w, r)
+			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil).ServeHTTP(w, r)
 			require.Equal(t, http.StatusNoContent, w.Code)
 			require.Empty(t, w.Body.String())
 			require.Empty(t, w.Header().Get("Content-Type"))

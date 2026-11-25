@@ -17,6 +17,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestMetadataOnlyRejectionsBuildAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		err  domain.SerializableError
+		code string
+	}{
+		{"transaction metadata", domain.ErrMetadataOnlyTransactionMetadata, "METADATA_ONLY_TRANSACTION_METADATA"},
+		{"reference", domain.ErrMetadataOnlyReference, "METADATA_ONLY_REFERENCE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failure := buildAuditFailure(tc.err)
+			require.Equal(t, tc.code, commonpb.FailureDetailsCode(failure.GetDetails()))
+			require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+		})
+	}
+}
+
 // TestIdempotencyFailureFactsMatchAudit pins the equality the checker's
 // idempotencyMismatch depends on: the reason, code, and facts frozen into the
 // SubIdempKeys projection by recordIdempotencyFailure must equal the ones
@@ -594,7 +613,7 @@ func (k describableTypeKey) String() string { return k.pkg + "." + k.name }
 // internal/infra/state holds the FSM-local ones (ErrCoverageMiss). Every other
 // implementation in the tree — admission's errIdempotencyKeyTooLong /
 // errIdempotencyKeyInvalidUTF8 / errCheckpointOrderNotLast,
-// query.ErrAggregateOverflow, grpc.validationError — is produced before a
+// grpc.validationError — is produced before a
 // proposal exists or on the read path, so it never reaches the audit chain. If
 // one of them ever becomes FSM-reachable, add its directory here.
 var describableScanDirs = map[string]string{

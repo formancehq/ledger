@@ -113,6 +113,7 @@ func bindClaimed(port int) (net.Listener, error) {
 type NodePorts struct {
 	http      int
 	grpc      int
+	peer      int
 	raft      int
 	allocated bool
 }
@@ -122,6 +123,9 @@ func (p NodePorts) HTTP() int { return p.http }
 
 // GRPC returns the node's external service gRPC port.
 func (p NodePorts) GRPC() int { return p.grpc }
+
+// Peer returns the authenticated inter-node service gRPC port.
+func (p NodePorts) Peer() int { return p.peer }
 
 // Raft returns the node's inter-node Raft transport port.
 func (p NodePorts) Raft() int { return p.raft }
@@ -139,11 +143,11 @@ func (p NodePorts) Allocated() bool { return p.allocated }
 // free to use this one.
 type CommandFactory func(network.Bindings) *cobra.Command
 
-// NodeLease owns one test node's three loopback ports and hands the server a
+// NodeLease owns one test node's four loopback ports and hands the server a
 // freshly bound listener generation for every start.
 //
 // The point is that a port number never travels alone. AllocateNodeLease binds
-// the three sockets and keeps them open, so from the moment a spec learns its
+// the four sockets and keeps them open, so from the moment a spec learns its
 // node's ports — while it builds join addresses, gateway peer lists and phantom
 // peers, before any server exists — nothing else on the machine can take them.
 // The lifecycle adopts those very sockets, so there is no probe-then-bind
@@ -163,7 +167,7 @@ type NodeLease struct {
 	consumed bool
 }
 
-// AllocateNodeLease binds the three ports one test node needs.
+// AllocateNodeLease binds the four ports one test node needs.
 //
 // It panics rather than returning an error: every caller is a test fixture that
 // cannot proceed without a node, and a bind failure here means the machine is
@@ -176,18 +180,21 @@ type NodeLease struct {
 func AllocateNodeLease() *NodeLease {
 	httpListener := mustBindFresh("HTTP")
 	serviceListener := mustBindFresh("service gRPC")
+	peerListener := mustBindFresh("peer gRPC")
 	raftListener := mustBindFresh("Raft")
 
 	return &NodeLease{
 		ports: NodePorts{
 			http:      listenerPort(httpListener),
 			grpc:      listenerPort(serviceListener),
+			peer:      listenerPort(peerListener),
 			raft:      listenerPort(raftListener),
 			allocated: true,
 		},
 		current: network.Bindings{
 			HTTP:    httpListener,
 			Service: serviceListener,
+			Peer:    peerListener,
 			Raft:    raftListener,
 		},
 	}
@@ -231,6 +238,7 @@ func (l *NodeLease) NextGeneration() network.Bindings {
 		l.current = network.Bindings{
 			HTTP:    mustBindClaimed("HTTP", l.ports.http),
 			Service: mustBindClaimed("service gRPC", l.ports.grpc),
+			Peer:    mustBindClaimed("peer gRPC", l.ports.peer),
 			Raft:    mustBindClaimed("Raft", l.ports.raft),
 		}
 	}

@@ -51,6 +51,18 @@ type blockingRefreshServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
 }
 
+type capturingRefreshServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
+	requests chan *clusterbootstrappb.RefreshMembershipRequest
+}
+
+func (s *capturingRefreshServer) RefreshMembership(_ context.Context, req *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
+	s.requests <- req
+
+	return &clusterbootstrappb.RefreshMembershipResponse{}, nil
+}
+
 func (blockingRefreshServer) RefreshMembership(ctx context.Context, _ *clusterbootstrappb.RefreshMembershipRequest) (*clusterbootstrappb.RefreshMembershipResponse, error) {
 	<-ctx.Done()
 
@@ -91,6 +103,20 @@ func refreshTestConfig(t *testing.T, peerAddress string) Config {
 			Peers:         []node.Peer{{ID: 1, Address: peerAddress}},
 		},
 	}
+}
+
+func TestTryRefreshMembershipAdvertisesPeerServicePort(t *testing.T) {
+	t.Parallel()
+
+	peer := &capturingRefreshServer{requests: make(chan *clusterbootstrappb.RefreshMembershipRequest, 1)}
+	cfg := refreshTestConfig(t, serveRefreshMembership(t, peer))
+	cfg.GRPCPort = 8888
+	cfg.GRPCPeerPort = 9999
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	require.NoError(t, tryRefreshMembershipOnce(ctx, cfg, cfg.TLSConfig, logging.Testing()))
+	require.Equal(t, "127.0.0.1:9999", (<-peer.requests).GetServiceAddress())
 }
 
 func TestTryRefreshMembershipRetriesUnimplementedUntilPeerSupportsRPC(t *testing.T) {

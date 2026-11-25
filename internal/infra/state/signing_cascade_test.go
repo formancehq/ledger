@@ -360,7 +360,7 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 		},
 		{
 			// Admission only ever emits an empty ParentKeyId for the unsigned
-			// bootstrap registration, but recovery and RebuildDelta both rebuild
+			// bootstrap registration, but recovery rebuilds
 			// roots from parent-less rows, so the FSM must resolve one the same way.
 			name: "a child re-registered as a root leaves the subtree",
 			orders: func(replacement []byte) []*raftcmdpb.Order {

@@ -109,6 +109,34 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
+		It("Should replay a referenced Numscript transaction and commit the following order", func() {
+			const reference = "numscript-replay-ref"
+			scriptAction := func() *servicepb.Request {
+				req := actions.ExecuteScriptAction(skipLedger, `send [USD/2 100] (source = @world destination = @numscript:replay)`, nil)
+				req.GetApply().GetAction().GetExecuteNumscript().Reference = reference
+				return actions.WithSkippableReasons(req, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+			}
+			first, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", scriptAction()))
+			Expect(err).To(Succeed())
+			original := first.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction()
+			Expect(original.GetReference()).To(Equal(reference))
+
+			replay, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", scriptAction(),
+				actions.SaveAccountMetadataAction(skipLedger, "connectivity:cursor", map[string]string{"offset": "42"})))
+			Expect(err).To(Succeed())
+			Expect(replay.Logs).To(HaveLen(2))
+			skipped := replay.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
+			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
+			Expect(skipped.GetFacts()["existingTransactionId"]).To(Equal(strconv.FormatUint(original.GetId(), 10)))
+			Expect(replay.Logs[1].GetPayload().GetApply().GetLog().GetData().GetSavedMetadata()).NotTo(BeNil())
+			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{Ledger: skipLedger, Address: "numscript:replay"})
+			Expect(err).To(Succeed())
+			Expect(account.FindVolume("USD/2", "").GetInput().DecimalString()).To(Equal("100"))
+			cursor, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{Ledger: skipLedger, Address: "connectivity:cursor"})
+			Expect(err).To(Succeed())
+			Expect(cursor.GetMetadata()["offset"].GetStringValue()).To(Equal("42"))
+		})
+
 		It("Should succeed normally when the reference does not pre-exist (skip is a no-op)", func() {
 			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
 				actions.WithReference(

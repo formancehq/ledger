@@ -186,6 +186,7 @@ func expectedRouteScopes() []routeScope {
 
 		// --- Transactions write, requireTransactionsWrite (handler.go:182-185) ---
 		{http.MethodPost, "/v3/{ledgerName}/transactions", kindGuarded, internalauth.ScopeTransactionsWrite, false},
+		{http.MethodPost, "/v3/{ledgerName}/numscripts/execute", kindGuarded, internalauth.ScopeExecuteNumscript, false},
 		{http.MethodPost, "/v3/{ledgerName}/transactions/{transactionId}/revert", kindGuarded, internalauth.ScopeTransactionsWrite, false},
 
 		// --- Metadata write, requireMetadataWrite (handler.go:188-200) ---
@@ -204,6 +205,7 @@ func expectedRouteScopes() []routeScope {
 		// --- Bulk: no route-level gate; handleBulk checks each element
 		// (handler.go:203, handlers_bulk.go:64) ---
 		{http.MethodPost, "/v3/{ledgerName}/bulk", kindPerElement, "", false},
+		{http.MethodPost, "/v3/_/apply", kindPerElement, "", false},
 
 		// --- Prepared queries read, requireQueriesRead (handler.go:206-209) ---
 		{http.MethodGet, "/v3/{ledgerName}/prepared-queries", kindGuarded, internalauth.ScopeQueriesRead, false},
@@ -330,7 +332,7 @@ func newScopedHandler(t *testing.T, keySet oidc.KeySet) http.Handler {
 		Issuers:      []string{testAuthIssuer},
 		Service:      "ledger",
 		ScopeMapping: internalauth.DefaultMapping("ledger"),
-	}, version.Info{})
+	}, version.Info{}, nil)
 }
 
 // walkRoutes enumerates every (method, pattern) the router registers.

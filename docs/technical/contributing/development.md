@@ -72,7 +72,6 @@ ledger/
 │   ├── scenario/          # Scenario helpers
 │   └── testserver/        # Test helpers
 ├── misc/                   # Miscellaneous files
-│   ├── demo/              # VHS tape files for CLI demos
 │   ├── devenv/            # Development environment
 │   ├── numscript/         # Numscript examples
 │   ├── pg-import/         # PostgreSQL import tools

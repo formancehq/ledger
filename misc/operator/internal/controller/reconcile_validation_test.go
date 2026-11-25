@@ -8,9 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -32,12 +34,17 @@ func TestReconcile_EvenReplicas(t *testing.T) {
 		return cond != nil && cond.Status == metav1.ConditionFalse
 	}, "ConfigValid should be False for even replicas")
 
-	assert.Equal(t, "Degraded", updated.Status.Phase)
+	assert.Equal(t, "Error", updated.Status.Phase)
+	condition := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
+	require.NotNil(t, condition)
+	assert.Equal(t, "ValidationFailed", condition.Reason)
+	assert.Equal(t, "replicas must be odd for Raft consensus, got 4", condition.Message)
+	assert.Equal(t, updated.Generation, condition.ObservedGeneration)
 
 	// StatefulSet should NOT be created
 	sts := &appsv1.StatefulSet{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-even", Namespace: ns}, sts)
-	assert.Error(t, err, "StatefulSet should not be created with even replicas")
+	assert.True(t, apierrors.IsNotFound(err), "StatefulSet should not be created with even replicas: %v", err)
 }
 
 func TestReconcile_IngressEnabledNoHosts(t *testing.T) {
@@ -47,19 +54,12 @@ func TestReconcile_IngressEnabledNoHosts(t *testing.T) {
 		Enabled: true,
 		// No hosts → validation error
 	}
-	require.NoError(t, k8sClient.Create(ctx, ls))
-
-	updated := &ledgerv1alpha1.Cluster{}
-	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ing-nohosts", Namespace: ns}, updated); err != nil {
-			return false
-		}
-		cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-		return cond != nil && cond.Status == metav1.ConditionFalse
-	}, "ConfigValid should be False when ingress is enabled with no hosts")
-
-	cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-	assert.Contains(t, cond.Message, "ingress")
+	err := k8sClient.Create(ctx, ls)
+	require.True(t, apierrors.IsInvalid(err), "missing ingress hosts must fail API admission: %v", err)
+	require.Contains(t, err.Error(), "spec.ingress: Invalid value:")
+	require.Contains(t, err.Error(), "hosts are required when ingress is enabled")
+	require.True(t, apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: ls.Name, Namespace: ns}, &ledgerv1alpha1.Cluster{})))
+	require.True(t, apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-" + ls.Name, Namespace: ns}, &appsv1.StatefulSet{})))
 }
 
 func TestReconcile_IngressGrpcEnabledNoHosts(t *testing.T) {
@@ -69,19 +69,12 @@ func TestReconcile_IngressGrpcEnabledNoHosts(t *testing.T) {
 		Enabled: true,
 		// No hosts → validation error
 	}
-	require.NoError(t, k8sClient.Create(ctx, ls))
-
-	updated := &ledgerv1alpha1.Cluster{}
-	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "grpc-nohosts", Namespace: ns}, updated); err != nil {
-			return false
-		}
-		cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-		return cond != nil && cond.Status == metav1.ConditionFalse
-	}, "ConfigValid should be False when ingressGrpc is enabled with no hosts")
-
-	cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-	assert.Contains(t, cond.Message, "ingressGrpc")
+	err := k8sClient.Create(ctx, ls)
+	require.True(t, apierrors.IsInvalid(err), "missing gRPC ingress hosts must fail API admission: %v", err)
+	require.Contains(t, err.Error(), "spec.ingressGrpc: Invalid value:")
+	require.Contains(t, err.Error(), "hosts are required when gRPC ingress is enabled")
+	require.True(t, apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: ls.Name, Namespace: ns}, &ledgerv1alpha1.Cluster{})))
+	require.True(t, apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-" + ls.Name, Namespace: ns}, &appsv1.StatefulSet{})))
 }
 
 func TestReconcile_ValidationFixed(t *testing.T) {
@@ -102,10 +95,14 @@ func TestReconcile_ValidationFixed(t *testing.T) {
 	}, "ConfigValid should be False initially")
 
 	// Fix the spec
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "fix-val", Namespace: ns}, updated))
-	fixed := int32(3)
-	updated.Spec.Replicas = &fixed
-	require.NoError(t, k8sClient.Update(ctx, updated))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "fix-val", Namespace: ns}, updated); err != nil {
+			return err
+		}
+		fixed := int32(3)
+		updated.Spec.Replicas = &fixed
+		return k8sClient.Update(ctx, updated)
+	}))
 
 	// Wait for ConfigValid=True and StatefulSet
 	requireEventually(t, func() bool {

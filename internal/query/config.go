@@ -78,12 +78,47 @@ func ReadAuditKey(reader dal.PebbleGetter) ([]byte, error) {
 	return key, nil
 }
 
-// ReadClusterPolicy loads the replicated cluster policy from the given reader.
-// Returns nil if the key does not exist (no policy committed yet).
+// ReadClusterPolicy assembles the compatibility view from one read snapshot.
+// Released single-row stores remain readable until startup migration.
 func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error) {
+	if store, ok := reader.(*dal.Store); ok {
+		handle, err := store.NewReadHandle()
+		if err != nil {
+			return nil, err
+		}
+		policy, readErr := ReadClusterPolicy(handle)
+
+		return policy, errors.Join(readErr, handle.Close())
+	}
 	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
 	if err != nil {
 		return nil, fmt.Errorf("loading cluster policy: %w", err)
+	}
+	capabilityState, err := dal.ReadProto[*commonpb.CapabilityState](reader, []byte{dal.ZoneGlobal, dal.SubGlobCapabilityState})
+	if err != nil {
+		return nil, fmt.Errorf("loading capability state: %w", err)
+	}
+	if capabilityState != nil {
+		if policy == nil || len(policy.GetCapabilityActivations()) != 0 {
+			return nil, errors.New("incomplete or invalid split control state")
+		}
+		seen := make(map[uint32]bool)
+		for _, activation := range capabilityState.GetActivations() {
+			if activation.GetId() == 0 || seen[activation.GetId()] {
+				return nil, errors.New("invalid persisted capability identity")
+			}
+			seen[activation.GetId()] = true
+		}
+		policy.CapabilityActivations = capabilityState.GetActivations()
+
+		return policy, nil
+	}
+	config, err := ReadPersistedConfig(reader)
+	if err != nil {
+		return nil, err
+	}
+	if config.GetStorageSchemaVersion() >= 3 {
+		return nil, errors.New("incomplete control state: schema 3 is missing capability state")
 	}
 
 	return policy, nil

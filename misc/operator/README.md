@@ -2,17 +2,22 @@
 
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
-The embedded operator can require a complete StatefulSet stop when an image
-upgrade crosses a listed release boundary. RC.3 to RC.4 crosses a mandatory
-boundary because RC.3 cannot execute native proposal payloads and encodes
-mirror asset mappings differently. The operator
-uses the drain barrier available from RC.3 to stop writes and wait for durable replication,
+The embedded operator requires a complete StatefulSet stop when an image
+upgrade crosses one of its listed release boundaries (`mandatoryStopVersions`).
+The [server upgrade guide](../../docs/ops/upgrades.md#release-requirement-from-v300-rc1)
+lists each boundary and why it needs a stop. At such a boundary the operator
+uses the drain barrier to stop writes and wait for durable replication,
 retains the existing PVCs, waits for the old StatefulSet and Pods to disappear,
 then recreates the StatefulSet with the requested image. See the
 [stopped restart procedure](../../docs/ops/upgrades.md#operator-required-stopped-restart)
-for preflight, recovery and rollback limits. The rc.1-to-rc.2 transition
-uses a [maintenance-barrier rolling procedure](../../docs/ops/upgrades.md#account-metadata-address-validation):
-writes pause while voters are replaced one at a time. RC.2 to RC.3 remains rolling.
+for preflight, recovery and rollback limits. Other adjacent RC upgrades roll;
+the same guide names the transitions that also need a maintenance barrier.
+
+RC.4 to RC.5 is a second mandatory stopped boundary for the schema-3 control
+state migration and new native configuration/capability proposals. Keep the PVCs
+and existing server flags. Activation is automatic after all members advertise
+support; there is no activation setting in the Cluster CRD. Binary rollback
+closes when a volume's schema migration commits, not when a capability activates.
 
 ## Overview
 
@@ -28,7 +33,8 @@ The Ledger Operator manages `Cluster` and `EventSink` custom resources to automa
 
 For release-tagged Ledger images, the Cluster controller rejects a server
 version newer than the running Ledger Operator before creating or updating the
-StatefulSet. See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
+StatefulSet. CI development tags use their base release for this comparison.
+See [deployment](../../docs/ops/deployment.md#creating-a-ledger-cluster)
 for the status conditions and the limits of tag-based comparison.
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
@@ -257,10 +263,15 @@ selected interval at startup, including values supplied through that override.
 
 ## Backup scheduling
 
+`Backup.spec.schedule` is one optional cron string for checkpoint backups.
+`BackupRun.spec` contains only the immutable `backupRef`; a successful run
+records its checkpoint in `status.result`. The previous per-type CRD fields
+are removed. See the [CRD migration steps](../../docs/ops/backup-restore.md#crd-migration-for-checkpoint-only-scheduling)
+before upgrading an operator with existing Backup resources.
+
 Manual `BackupRun` resources use `spec.backupRef` to identify their parent in
 the same namespace. The reference is immutable from creation; create a new run
-to select another parent. Follow the [admission upgrade procedure](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission)
-for existing runs before updating CRDs. Association labels and owner references are not required
+to select another parent. Association labels and owner references are not required
 for parent accounting, history retention or sibling exclusion. Events from
 unowned runs also reconcile their referenced parent.
 
@@ -1251,6 +1262,11 @@ kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
 
+Interactive resource selection reports fetch progress synchronously, without
+starting a background spinner. `explain` reads the installed Cluster CRD once
+for both spec and status fields; each missing section independently falls back
+to the compiled schema.
+
 ### Examples
 
 ```bash
@@ -1289,6 +1305,13 @@ the Ledger image tag configured on the Operator (`ledgerImage.tag`, or the
 chart's `appVersion`). Set `image.tag` explicitly to select a different
 compatible release.
 
+The plugin's `--set` paths support dotted keys and zero-based array indices
+from `0` through `65536`, inclusive. Escape literal dots with `\.` or quote
+the key segment, for example
+`--set 'ingress.annotations."traefik.ingress.kubernetes.io/router.tls"=true'`.
+Malformed paths are rejected instead of applying only part of the path.
+Values remain strings until conversion to the target spec field type.
+
 Plain `kubectl rollout restart statefulset/<name>` also works: the operator
 preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
 the pod template instead of reverting it on the next reconcile. Prefer
@@ -1302,6 +1325,16 @@ stops after the first pod. In that configuration, restart through the CR only
 (`kubectl ledger restart`, or bump the annotation value in the CR).
 
 ## Development
+
+### Internal reconciliation
+
+The Cluster controller delegates the stopped-upgrade phase machine to
+`stoppedUpgradeReconciler`, which receives explicit Kubernetes client, REST
+configuration, clientset, stop-version list, pod-exec dependencies, and narrow
+callbacks for claim finalization and adoption. The actor owns upgrade retention
+and claim checks; the Cluster controller keeps the ordinary workload
+reconciliation and claim finalizer entry points. Upgrade status patches commit
+before the in-memory status and resource version advance.
 
 ### Setup
 
@@ -1326,12 +1359,38 @@ just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
 
+From the repository root, run the complete API-server integration suite with
+the race detector and Kubernetes 1.32.x envtest assets:
+
+```bash
+nix develop .#operator-tests --command just operator-test-integration
+```
+
+`just operator-test-admission` in the same Nix shell runs the fast admission
+and BackupRun recovery subset. CI runs both recipes. Envtest does not run a
+kubelet, StatefulSet controller, or CSI driver. The Kind E2E suite below
+exercises kubelet and StatefulSet behavior with the `rancher.io/local-path`
+provisioner. Validate CSI driver behavior separately on a cluster with the
+intended CSI driver installed.
+
 ### End-to-end tests
 
-From `misc/operator/`, run `just test-e2e` to build the images, create the kind
-cluster, and run the Chainsaw scenarios. The scenarios using the opaque `e2e`
-Ledger tag run with the development Operator. The stopped rc.3-to-rc.4 upgrade
-scenario then runs with an Operator built as `v3.0.0-rc.4`, so the release
+From the repository root, enter the pinned E2E toolchain, then run the tests:
+
+```sh
+nix develop .#upgrade
+cd misc/operator
+just test-e2e
+```
+
+The `upgrade` shell provides Chainsaw, kind, kubectl, and the Docker client;
+a running Docker daemon is required. The recipes do not install missing
+Chainsaw binaries automatically.
+
+`just test-e2e` builds the images, creates the kind cluster, and runs the
+Chainsaw scenarios. The scenarios using the opaque `e2e` Ledger tag run with
+the development Operator. The stopped rc.4-to-rc.5 upgrade scenario then runs
+with an Operator built as `v3.0.0-rc.5`, so the release
 version admission check is exercised. After the images are loaded, use
 `just test-e2e-only` to rerun both groups without rebuilding the cluster.
 Use `just e2e-cluster-down` to remove it.

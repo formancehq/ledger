@@ -7,10 +7,11 @@ manages Kubernetes Cluster resources. When `kubectl ledger create` omits
 `--set image.tag`, the Cluster inherits the Ledger image tag configured on its
 Operator. Use `--set image.tag=<release-tag>` to pin a specific release; a
 release Operator requires a semantic release tag no newer than its own version.
+The plugin's `--set` paths use dotted keys and zero-based array indices from
+`0` through `65536`. Escape literal dots with `\.` or quote the key segment.
+Malformed paths return an error instead of applying a truncated path.
 
 ## Getting Started
-
-![Getting Started](../../misc/demo/demo_getting_started.gif)
 
 ## Installation
 
@@ -1133,8 +1134,6 @@ refund     1.0.0     2025-01-15T10:30:00Z
 
 ### accounts
 
-![Metadata Demo](../../misc/demo/demo_metadata.gif)
-
 Manage accounts in a ledger.
 
 **Aliases:** `account`, `acc`, `a`
@@ -1534,8 +1533,6 @@ ledgerctl accounts analyze --ledger my-ledger --json
 
 ### transactions
 
-![Transactions Demo](../../misc/demo/demo_transactions.gif)
-
 Manage transactions in a ledger.
 
 **Aliases:** `transaction`, `tx`, `t`
@@ -1633,8 +1630,6 @@ ledgerctl transactions create [flags]
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
 | `--posting` | | Posting in format: `source,destination,amount,asset[,color]` (can be repeated) |
-| `--script` | | Path to a Numscript file (mutually exclusive with `--posting`) |
-| `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
 | `--reference` | | Transaction reference |
 | `--metadata` | | Metadata key=value pairs |
 | `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
@@ -1687,50 +1682,12 @@ every colored bucket of the same asset into a single uncolored entry, pass
 `?collapseColors=true` on the HTTP endpoint (the CLI surfaces the raw,
 segregated view by design).
 
-**Creating transactions with Numscript:**
-
-```bash
-# Simple script
-ledgerctl transactions create --ledger my-ledger \
-  --script transfer.num \
-  --var "source=users:alice" \
-  --var "destination=users:bob" \
-  --var "amount=USD/2 100"
-
-# Using example scripts
-ledgerctl transactions create --ledger my-ledger \
-  --script numscript/examples/world_funding.num \
-  --var "destination=bank" \
-  --var "amount=USD/2 10000"
-```
-
 **Interactive mode:**
 
-```bash
-# Will prompt for postings
-ledgerctl transactions create --ledger my-ledger
+Run `ledgerctl transactions create --ledger my-ledger` without postings to enter them interactively.
 
-# With script - will prompt for missing variables
-ledgerctl transactions create --ledger my-ledger \
-  --script numscript/examples/simple_transfer.num
-# -> Prompts for: $source (account), $destination (account), $amount (monetary)
-
-# Partial variables - will prompt only for missing ones
-ledgerctl transactions create --ledger my-ledger \
-  --script numscript/examples/simple_transfer.num \
-  --var "source=users:alice"
-# -> Prompts for: $destination (account), $amount (monetary)
-```
-
-**Interactive variable prompting:**
-
-When using `--script`, the CLI parses the Numscript file and detects required variables. For any variable not provided via `--var`, it will interactively prompt you with the expected type and format hints:
-
-- **account**: e.g., `users:alice`, `merchants:shop`
-- **monetary**: e.g., `USD/2 1000`, `EUR/2 50`
-- **string**: e.g., `order-123`, `ref-abc`
-- **number**: e.g., `42`, `100`
-- **portion**: e.g., `1/4`, `25%`, `0.25`
+**Migration:** `transactions create --script` and `--var` were removed. Use
+`numscripts execute --file` to run a Numscript (see below).
 
 #### transactions revert
 
@@ -2090,8 +2047,6 @@ ledgerctl store dump /path/to/data --raw
 
 ### store
 
-![Operations Demo](../../misc/demo/demo_operations.gif)
-
 Storage operations.
 
 **Aliases:** `s`
@@ -2336,10 +2291,9 @@ ledgerctl store backup [flags]
 
 **Behavior:**
 - Creates a fresh Pebble checkpoint on the leader node
-- Diffs SST files against the previous checkpoint in the manifest
-- Uploads new/changed files, deletes stale files
-- Cleans up old incremental export segments (they become obsolete)
-- Writes updated manifest with checkpoint metadata and empty exports list
+- Flushes Pebble memtables and includes every checkpoint file, including Pebble WAL files if present
+- Reuses content-addressed objects already present and uploads missing files
+- Publishes the new manifest, then prunes objects no longer referenced
 - Response includes `lastLogSequence`, `lastAuditSequence`, `lastAppliedIndex`
 
 **Example:**
@@ -2358,66 +2312,25 @@ ledgerctl store backup --driver azure --azure-account-name myaccount --azure-acc
 ledgerctl s bk --driver s3 --s3-bucket my-bucket
 ```
 
-#### store incremental-backup
+#### store incremental-backup (deprecated alias)
 
-Export new log and audit entries since the last backup to S3 or Azure Blob Storage. **Forwarded to the leader**: the FSM tracks each backup under a per-destination lock, so only the leader can drive a job — concurrent requests against the same destination get `FailedPrecondition` (`ErrBackupInProgress`).
-
-**Aliases:** `ibk`
-
-```bash
-ledgerctl store incremental-backup [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--driver` | `s3` | Storage driver: `s3` or `azure` |
-| `--bucket-id` | cluster-id | Namespace prefix for backup files |
-| `--s3-bucket` | | S3 bucket name (required when `driver=s3`) |
-| `--s3-region` | | AWS region for S3 bucket |
-| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
-| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
-| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
-| `--azure-account-name` | | Azure storage account name (required when `driver=azure`) |
-| `--azure-account-key` | | Azure storage account key (omit to use `DefaultAzureCredential`) |
-| `--azure-container` | | Azure Blob Storage container name (required when `driver=azure`) |
-| `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
-| `--timeout` | `1000s` | Request timeout |
-
-**Behavior:**
-- Requires a prior full backup (fails if no checkpoint exists in manifest)
-- Takes a point-in-time Pebble snapshot for consistent reads
-- Streams new log entries (`{0x04, 0x01}`) and audit entries (`{0x04, 0x02}`) as KV stream segments
-- Appends new export segments to the manifest
-- No-op if no new entries since last export
-- Response includes `logEntriesExported`, `auditEntriesExported`, `lastLogSequence`, `lastAuditSequence`
-
-**Example:**
+This hidden compatibility command invokes the same full checkpoint path as
+`store backup`. It accepts the same destination flags and prints the normal
+checkpoint result, including `filesUploaded` and `totalFiles`. Use `store backup`
+for new automation.
 
 ```bash
-# Incremental backup to S3
-ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
-
-# Incremental backup to Azure Blob Storage
-ledgerctl store incremental-backup --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups
-
-# Short form
-ledgerctl s ibk --driver s3 --s3-bucket my-bucket
-```
-
-**Typical workflow:**
-
-```bash
-# Initial full backup (infrequent, leader-only)
-ledgerctl store backup --driver s3 --s3-bucket my-bucket
-
-# Periodic incremental backups (frequent, forwarded to the leader)
 ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket
-
-# After many incrementals, take a new full backup to reset the base
-ledgerctl store backup --driver s3 --s3-bucket my-bucket
 ```
+
+For periodic backups, schedule `ledgerctl store backup` at the desired
+frequency. Each run publishes a complete checkpoint and reuses unchanged
+content-addressed objects.
+
+For operator-managed backups, `kubectl ledger backup trigger [backup-name]`
+creates a checkpoint `BackupRun`. The former `--type` flag is removed; set
+`Backup.spec.schedule` to one cron string for scheduled checkpoints.
+
 
 ---
 
@@ -2452,21 +2365,21 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
 2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
-3. Applies export segments and rebuilds derived state from logs (if any)
+3. Rejects manifests with legacy exports or cluster-policy overrides; the checkpoint already contains the complete persisted state
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)
-7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
+7. Clears source cluster identity, peers, backup jobs and cache; drops persisted Bloom blocks; and writes the checkpoint's applied index as the destination genesis boundary (fallback 1 for a genesis checkpoint). Global business and governance state and the attribute zone remain intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 
-Every attempt resets staging, including export-only restores. This command
+Every attempt resets staging before downloading the checkpoint. This command
 requires exclusive offline use of the target directory. Reset failure aborts
-before replay or publication and may leave old staging partly removed or absent.
-Download root handles close before replay and preview. Download/rebuild failures
-or confirmation EOF may leave new partial or fully rebuilt staging; the next
-attempt discards it and starts from the backup again so additive projections
-are not replayed twice. A successful finalization places the checkpoint before
+before publication and may leave old staging partly removed or absent.
+Download root handles close before preview. Download failures
+or confirmation EOF may leave partial or fully downloaded checkpoint staging;
+the next attempt discards it so stale files cannot mix with the current
+checkpoint. A successful finalization places the checkpoint before
 writing the `RESTORED` commit marker, then removes staging. A marked restore
 cannot be overwritten by retrying this command.
 
@@ -3488,8 +3401,6 @@ ledgerctl --server other:8888 ledgers list
 
 ### signing
 
-![Signing Demo](../../misc/demo/demo_signing.gif)
-
 Manage Ed25519 signing keys and signature configuration.
 
 Signing keys are managed dynamically via the gRPC API (not server-side config files).
@@ -3615,7 +3526,7 @@ ledgerctl signing require false --signing-key /path/to/seed
 
 ### numscripts
 
-Manage the numscript library (per-ledger reusable scripts with semver versioning).
+Execute Numscript files or manage the per-ledger library of reusable scripts.
 
 **Aliases:** `numscript`, `ns`
 
@@ -3624,6 +3535,29 @@ Manage the numscript library (per-ledger reusable scripts with semver versioning
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Name of the ledger |
+
+#### numscripts execute
+
+Execute a Numscript from a file or a saved library version. The result may be a
+new transaction or an account metadata update without a transaction. JSON and
+YAML output contain the corresponding result object.
+
+```bash
+ledgerctl numscripts execute --ledger my-ledger --file transfer.num --var "amount=USD/2 1000" --idempotency-key transfer-42
+ledgerctl numscripts execute --ledger my-ledger --name transfer --version 1.0.0 --var "amount=USD/2 1000" --metadata receipt=invoice-42
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file` | | Path to a Numscript file; exclusive with `--name` |
+| `--name` | | Saved Numscript name; exclusive with `--file` |
+| `--version` | `latest` | Saved script version; only with `--name` |
+| `--var` | | Variable in `name=value` format; repeat for multiple variables |
+| `--metadata` | | Transaction metadata in `key=value` format; requires a transaction-producing script |
+| `--reference` | | Transaction reference; requires postings. A metadata-only result returns `METADATA_ONLY_REFERENCE` if the reference passes length and uniqueness checks first. |
+| `--idempotency-key` | | Reuse the same batch key when retrying an execution |
+| `--json`, `--yaml` | `false` | Structured result output |
+| `--timeout` | `10s` | Request timeout |
 
 #### numscripts list
 
@@ -3824,6 +3758,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--timeout` | `10s` | Request timeout, applied to each page request |
 
 **Behavior:**
+- List results for accounts, transactions, and logs appear in the selected human, JSON, or YAML output format
 - In list mode without `--all`, the CLI prints one page and asks before it loads the next one. With `--json` or `--yaml`, it prints only the first page
 - With `--all`, the CLI sends one request per page of `--page-size` results. It follows the response cursor until the server reports no more results, then prints every result in one table or one JSON/YAML array
 - With `--all --analyze`, the profile shown is the profile of the last page request
@@ -4116,14 +4051,20 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 | `--metadata-max-entity-bytes` | uint64 | `65536` | Maximum total metadata bytes one command may carry for a single entity. Must be greater than zero and not exceed `--metadata-max-command-bytes`. |
 | `--metadata-max-command-bytes` | uint64 | `1048576` | Maximum total metadata bytes one command may carry across every entity it touches. Must be greater than zero. |
 
+Capability activation is independent of this revision and requires no flag.
+The leader activates implemented IDs after every voter and learner advertises
+support. See [migration and rollback](upgrades.md#configuration-and-capability-state).
+
 To change a policy value, raise `--cluster-policy-revision` so the new policy supersedes the applied one:
 
 ```bash
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
 
-The metadata ceilings follow the same rule: raising one without bumping
-`--cluster-policy-revision` logs a payload-divergence error and changes nothing.
+The metadata ceilings and `--idempotency-ttl` follow the same rule: changing one
+without bumping `--cluster-policy-revision` logs a payload-divergence error and
+changes nothing. With the operator, the `Cluster` CRD rejects such an update,
+and a decrease of `spec.clusterPolicyRevision`, at admission time.
 They are enforced for HTTP, public gRPC and bulk admission, mirror batches before
 proposal and during apply, and metadata a Numscript program merges in. Public
 API violations return HTTP 400 / gRPC
@@ -4361,7 +4302,10 @@ ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other fl
 For server startup, `--advertise-addr` supplies the host shared by the Raft
 and service endpoints; `--grpc-port` supplies the service port. For example,
 `--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` advertises
-`[2001:db8::1]:8888` for service RPCs. See [deployment](deployment.md#command-structure).
+`[2001:db8::1]:8888` for public service RPCs. The peer service port defaults
+to `--grpc-port + 1` (`8889` here); set `--grpc-peer-port` to override it.
+The peer port must differ from the public gRPC, HTTP, and Raft bind ports.
+See [deployment](deployment.md#command-structure).
 
 ### Server Raft Consensus Flags
 
@@ -4376,7 +4320,7 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-processing-tick-interval` | duration | `tick-interval/10` | Idle Ready polling interval, retained after Ready drains (0 = effective tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
-| `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
+| `--backup-max-segment-bytes` | ByteSize | `4Gi` | Deprecated legacy export setting; checkpoint backups do not use it |
 
 Both intervals reject negative durations. With zero processing interval, positive
 Raft ticks from `1ns` through `9ns` are rejected because division by ten would
@@ -4392,9 +4336,6 @@ ledger run --raft-compaction-margin 5000 [other flags...]
 
 # Smaller spool segments (rotate/seal more often, e.g. for chaos testing)
 ledger run --spool-segment-max-bytes 256Ki [other flags...]
-
-# Smaller incremental-backup export segments
-ledger run --backup-max-segment-bytes 1Gi [other flags...]
 
 # More frequent maintenance (WAL snapshot + Pebble checkpoint)
 ledger run --maintenance-interval 15s [other flags...]
@@ -4671,7 +4612,8 @@ ledger run --snapshot-session-ttl 15m [other flags...]
 Raft transport streams and the `ClusterBootstrapService` RPCs used by `--join`
 carry the cluster ID as metadata; a call whose value does not match the
 receiver's `--cluster-id` is rejected with `codes.PermissionDenied`. The
-snapshot service relies on the cluster secret alone.
+snapshot service relies on the cluster secret over TLS. During an `optional`
+TLS migration, legacy plaintext peers are admitted without it.
 
 **Joining fails fast on a cluster-id mismatch.** A node started with `--join`
 and a `--cluster-id` the target cluster does not accept aborts immediately,
@@ -4691,26 +4633,32 @@ the value configured on the existing cluster nodes
 |------|------|---------|-------------|
 | `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication. Requires TLS (`--tls-mode` other than `disabled`). Multi-node deployments must set it |
 
-When `--cluster-secret` is set, every inter-node gRPC call (Raft transport,
+When `--cluster-secret` is set, inter-node gRPC calls over TLS (Raft transport,
 snapshot transfer, cluster bootstrap, and follower-to-leader forwarding on the
-service API) carries this shared secret as a bearer token. The value must be
-the same on all nodes in the cluster.
+dedicated peer service API) carry this shared secret as a transport
+credential. Raft and bootstrap use the `authorization` metadata; the peer
+service API uses `x-ledger-peer-auth`. The value must be the same on all nodes
+in the cluster. During the `optional` rollout, connections to legacy
+plaintext peers omit the secret and receive no forwarding trust.
+
+`--cluster-secret` is not a `ledgerctl` credential. Calls to the public
+service API with it are rejected; only the dedicated peer service API and the
+Raft plane may use it. User JWTs remain in the standard `authorization`
+metadata when a request is forwarded and are evaluated by the terminal node.
 
 The cluster secret and `--auth-enabled` are separate mechanisms:
 
 - `--auth-enabled` authenticates external clients on the service API with
   JWT or Ed25519 tokens.
-- `--cluster-secret` authenticates nodes to each other. The server does not
-  require it when `--auth-enabled` is set, and `--auth-enabled` does not
-  protect the Raft port.
+- `--cluster-secret` authenticates nodes to each other. It is required when
+  `--auth-enabled` is set, and `--auth-enabled` does not protect the Raft port.
 
 The two flags interact in one place. When `--auth-enabled` is set, a follower
 forwards writes to the leader with the original caller's identity. The leader
 accepts that identity only from a peer that presents the cluster secret on the
-service API. In a multi-node cluster with `--auth-enabled` and no cluster
-secret, writes sent to a follower fail with `PermissionDenied`.
-
-The server does not check at startup that a multi-node cluster has a secret.
+service API. Authentication therefore fails at startup if `--auth-enabled` is
+set without `--cluster-secret`, rather than allowing a partially configured
+multi-node cluster to start.
 The Kubernetes operator creates a random secret and injects `CLUSTER_SECRET`
 into every pod whenever TLS is active (`optional` or `required`), whether
 authentication is enabled or not. Manual deployments must set the flag
@@ -4723,12 +4671,14 @@ independently on each node; followers do not forward an auth-disabled snapshot.
 if a cluster secret is configured without TLS (`--tls-cert-file` and
 `--tls-key-file`), because the secret would be sent in plaintext otherwise.
 
-**The Raft transport server enforces the secret on every RPC.** When
+**The Raft transport server enforces the secret on every TLS RPC.** When
 `--cluster-secret` is set, the Raft gRPC server (transport stream + snapshot
 service + the `ClusterBootstrapService` used by `--join`) installs a
 server-side interceptor that rejects any call whose `authorization: Bearer …`
 metadata does not match the configured secret with `codes.Unauthenticated`.
-The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
+The `optional` listener also accepts legacy plaintext calls without the
+secret until the rollout reaches `required`. The comparison is constant-time.
+Leaving `--cluster-secret` empty preserves the
 historical unauthenticated behavior for single-node setups; multi-node
 deployments **MUST** set it. Without a secret, the Raft port has no
 authentication. The `ClusterBootstrapService` checks only the `--cluster-id`
@@ -4739,8 +4689,8 @@ secret.
 
 Peer discovery also fails immediately when a discovered member has a missing or malformed 16-byte `instance_id`; retrying cannot repair this invalid cluster identity. Transient discovery failures still use exponential backoff.
 
-**Joining fails fast on a secret mismatch.** A node started with `--join`
-against a cluster whose RaftServer requires a secret will **not** retry
+**Joining fails fast on a TLS secret mismatch.** A node started with `--join`
+over TLS against a cluster whose RaftServer requires a secret will **not** retry
 indefinitely if its own secret is missing or wrong — that is a
 misconfiguration, never a transient condition. The joining node's startup
 aborts immediately with an actionable error instead of the raw gRPC status:
@@ -4755,9 +4705,9 @@ the value configured on the existing cluster nodes (and --tls-mode, which
 
 If the joining node *does* pass a secret but it does not match, the hint
 instead tells you to verify the secret against the existing cluster nodes. The
-Kubernetes operator injects `CLUSTER_SECRET` into every pod whenever TLS is
-active, so this failure surfaces only in manual/non-operator deployments where
-one node's secret drifted from the rest of the cluster.
+Kubernetes operator injects the cluster secret for inter-node transport and
+keeps it separate from user-facing `ledgerctl` credentials. Operator
+maintenance commands use a scoped `Credentials` JWT instead.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
@@ -5050,8 +5000,6 @@ ledgerctl --server ledger.example.com:8888 --insecure ledgers list
 
 ## Numscript Support
 
-![Numscript Demo](../../misc/demo/demo_numscript.gif)
-
 The CLI supports creating transactions using Numscript files. All experimental Numscript features are **enabled by default**.
 
 For complete documentation, see:
@@ -5084,14 +5032,14 @@ For complete documentation, see:
 ledgerctl ledgers create demo
 
 # 2. Fund the bank from world
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/world_funding.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/world_funding.num \
   --var "destination=bank" \
   --var "amount=USD/2 100000"
 
 # 3. Transfer to a user
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/simple_transfer.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/simple_transfer.num \
   --var "source=bank" \
   --var "destination=users:alice" \
   --var "amount=USD/2 1000"
@@ -5603,7 +5551,6 @@ partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
 
-Incremental backup restoration also applies operational policy from the manifest,
-including a policy-only update with zero history segments. The offline
-`ledgerctl store bootstrap` and server restore paths use the same reconstruction
-routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).
+Checkpoint restoration includes operational policy directly from Pebble. Both
+`ledgerctl store bootstrap` and server restore reject legacy manifests with a
+separate policy override; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).

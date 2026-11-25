@@ -25,6 +25,7 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	ledgerName   string
 	pageSize     uint32
 	after        T
+	hasAfter     bool
 	filter       *commonpb.QueryFilter
 	reverse      bool
 	schema       map[string]*commonpb.MetadataFieldSchema
@@ -172,8 +173,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 
 	var after []byte
 
-	var zero T
-	if params.after != zero {
+	if params.hasAfter {
 		after = params.afterToBytes(params.after)
 	}
 
@@ -192,8 +192,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	var before []byte
 
-	var zero T
-	if params.after != zero {
+	if params.hasAfter {
 		before = params.afterToBytes(params.after)
 	}
 
@@ -318,8 +317,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 
 	var before []byte
 
-	var zero T
-	if params.after != zero {
+	if params.hasAfter {
 		before = params.afterToBytes(params.after)
 	}
 

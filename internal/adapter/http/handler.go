@@ -16,6 +16,7 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // APIVersionPrefix is the URL prefix under which business API routes are
@@ -26,7 +27,7 @@ const APIVersionPrefix = "/v3"
 // NewHandler creates a new HTTP handler (router) for the ledger service.
 // The authCfg parameter controls JWT authentication with read/write scopes:
 // when Enabled is false, requests pass through without authentication.
-func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
+func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
 	r := chi.NewRouter()
 
 	// Granular scope-bound middleware helpers
@@ -34,6 +35,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireLedgersWrite := internalauth.RequireScope(authCfg, internalauth.ScopeLedgersWrite)
 	requireTransactionsRead := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsRead)
 	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
+	requireNumscriptExecute := internalauth.RequireScope(authCfg, internalauth.ScopeExecuteNumscript)
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
 	requireAuditRead := internalauth.RequireScope(authCfg, internalauth.ScopeAuditRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
@@ -111,6 +113,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	// Business API routes: mounted under APIVersionPrefix.
 	registerAPIRoutes := func(r chi.Router) {
 		r.With(contentTypeMiddleware, utf8PathParamValidator, readConsistency).Group(func(r chi.Router) {
+			r.Post("/_/apply", signedRequest(knownQuery(server.handleAtomicApply(applyService))))
+
 			// Profiled reads (EN-1859). Declared here, outside the scope groups
 			// below, because chi applies group middleware BEFORE route
 			// middleware: inside `r.With(requireXRead).Group(…)` the scope guard
@@ -197,7 +201,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Ops mutations use the same scope as their gRPC Apply requests.
 			r.With(requireOpsWrite).Group(func(r chi.Router) {
-				r.Post("/_/events-sinks", knownQuery(server.handleAddEventsSink))
+				r.Post("/_/events-sinks", knownMutationQuery(server.handleAddEventsSink))
 				r.Delete("/_/events-sinks/{sinkName}", knownQuery(server.handleRemoveEventsSink, "controllerId"))
 			})
 
@@ -213,19 +217,20 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Ledgers write scope
 			r.With(requireLedgersWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}", knownQuery(server.handleCreateLedger))
+				r.Post("/{ledgerName}", knownMutationQuery(server.handleCreateLedger))
 				r.Delete("/{ledgerName}", knownQuery(server.handleDeleteLedger))
-				r.Post("/{ledgerName}/promote", knownQuery(server.handlePromoteLedger))
-				r.Put("/{ledgerName}/numscripts/{name}", knownQuery(server.handleSaveNumscript))
-				r.Post("/{ledgerName}/indexes", knownQuery(server.handleCreateIndex))
+				r.Post("/{ledgerName}/promote", knownMutationQuery(server.handlePromoteLedger))
+				r.Put("/{ledgerName}/numscripts/{name}", knownMutationQuery(server.handleSaveNumscript))
+				r.Post("/{ledgerName}/indexes", knownMutationQuery(server.handleCreateIndex))
 				r.Delete("/{ledgerName}/indexes/{canonicalId}", knownQuery(server.handleDropIndex))
 			})
 
 			// Transactions write scope
 			r.With(requireTransactionsWrite).Group(func(r chi.Router) {
-				r.Post("/{ledgerName}/transactions", signedRequest(knownQuery(server.handleCreateTransaction)))
-				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownQuery(server.handleRevertTransaction)))
+				r.Post("/{ledgerName}/transactions", signedRequest(knownMutationQuery(server.handleCreateTransaction)))
+				r.Post("/{ledgerName}/transactions/{transactionId}/revert", signedRequest(knownMutationQuery(server.handleRevertTransaction)))
 			})
+			r.With(requireNumscriptExecute).Post("/{ledgerName}/numscripts/execute", signedRequest(knownQuery(server.handleExecuteNumscript)))
 
 			// Metadata write scope
 			r.With(requireMetadataWrite).Group(func(r chi.Router) {
@@ -243,7 +248,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			})
 
 			// Bulk endpoint: per-element scope check handled inside the handler
-			r.Post("/{ledgerName}/bulk", signedRequest(knownQuery(server.handleBulk, "continueOnFailure", "atomic")))
+			r.Post("/{ledgerName}/bulk", signedRequest(knownMutationQuery(server.handleBulk, "continueOnFailure", "atomic")))
 
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {

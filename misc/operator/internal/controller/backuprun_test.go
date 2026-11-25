@@ -1,57 +1,91 @@
 package controller
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func TestRefreshStatusSummaries_SuccessesInSameSecondAfterPruning(t *testing.T) {
+	t.Parallel()
+
+	// Round-trip through the API representation: metav1.Time loses subsecond
+	// precision, while the success ordering must survive pruning and restart.
+	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	run := func(name string, nanos int64, sequence uint64) ledgerv1alpha1.BackupRun {
+		completed := metav1.NewTime(base.Add(time.Duration(nanos)))
+
+		return ledgerv1alpha1.BackupRun{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Status: ledgerv1alpha1.BackupRunStatus{
+				Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &completed,
+				Result: &ledgerv1alpha1.BackupResult{
+					Time: &completed, CompletionUnixNano: completed.UnixNano(), LastLogSequence: sequence,
+				},
+			},
+		}
+	}
+	roundTrip := func(v, out any) {
+		data, err := json.Marshal(v)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(data, out))
+	}
+	var first, second ledgerv1alpha1.BackupRun
+	roundTrip(run("first", 100, 41), &first)
+	roundTrip(run("second", 200, 42), &second)
+	require.True(t, first.Status.CompletionTime.Equal(second.Status.CompletionTime))
+
+	reconciler := &BackupReconciler{}
+	backup := &ledgerv1alpha1.Backup{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{first})
+	require.Equal(t, uint64(41), backup.Status.LastBackup.LastLogSequence)
+	require.Len(t, excessRuns([]ledgerv1alpha1.BackupRun{first}, ledgerv1alpha1.BackupRunPhaseSucceeded, 0), 1)
+
+	var persisted ledgerv1alpha1.Backup
+	roundTrip(backup, &persisted)
+	reconciler.refreshStatusSummaries(&persisted, []ledgerv1alpha1.BackupRun{second})
+	require.Equal(t, uint64(42), persisted.Status.LastBackup.LastLogSequence)
+	require.Len(t, excessRuns([]ledgerv1alpha1.BackupRun{second}, ledgerv1alpha1.BackupRunPhaseSucceeded, 0), 1)
+	reconciler.refreshStatusSummaries(&persisted, nil)
+	require.Equal(t, uint64(42), persisted.Status.LastBackup.LastLogSequence)
+}
 
 func TestHasRunningRun_TreatsPendingAndEmptyAsRunning(t *testing.T) {
 	t.Parallel()
 
 	runs := []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:   ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhasePending},
 		},
 	}
-	assert.True(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull), "Pending must block scheduling")
+	assert.True(t, hasRunningRun(runs), "Pending must block scheduling")
 
 	runs = []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:   ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{Phase: ""},
 		},
 	}
-	assert.True(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull), "uninitialized phase must block scheduling")
+	assert.True(t, hasRunningRun(runs), "uninitialized phase must block scheduling")
 
 	runs = []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:   ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded},
 		},
 	}
-	assert.False(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull))
+	assert.False(t, hasRunningRun(runs))
 }
 
-func TestHasRunningRun_IgnoresOtherTypes(t *testing.T) {
-	t.Parallel()
-
-	runs := []ledgerv1alpha1.BackupRun{
-		{
-			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
-			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseRunning},
-		},
-	}
-	assert.False(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull),
-		"a Running incremental should not block scheduling of a full")
-}
-
-func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
+func TestLatestRunInPhase_PicksMostRecentSucceeded(t *testing.T) {
 	t.Parallel()
 
 	older := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
@@ -60,7 +94,7 @@ func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
 	runs := []ledgerv1alpha1.BackupRun{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "old"},
-			Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:       ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{
 				Phase:          ledgerv1alpha1.BackupRunPhaseSucceeded,
 				CompletionTime: &older,
@@ -68,7 +102,7 @@ func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "new"},
-			Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:       ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{
 				Phase:          ledgerv1alpha1.BackupRunPhaseSucceeded,
 				CompletionTime: &newer,
@@ -76,10 +110,116 @@ func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
 		},
 	}
 
-	latest := latestSucceededRun(runs, ledgerv1alpha1.BackupRunTypeFull)
+	latest := latestRunInPhase(runs, ledgerv1alpha1.BackupRunPhaseSucceeded)
 	if assert.NotNil(t, latest) {
 		assert.Equal(t, "new", latest.Name)
 	}
+}
+
+func TestRefreshStatusSummaries_SkipsSucceededRunWithoutResult(t *testing.T) {
+	t.Parallel()
+
+	old := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	middle := metav1.NewTime(old.Add(time.Hour))
+	newest := metav1.NewTime(middle.Add(time.Hour))
+	runs := []ledgerv1alpha1.BackupRun{
+		{Status: ledgerv1alpha1.BackupRunStatus{
+			Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &old,
+			Result: &ledgerv1alpha1.BackupResult{Time: &old, FilesUploaded: 1},
+		}},
+		{Status: ledgerv1alpha1.BackupRunStatus{
+			Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &newest,
+		}},
+		{Status: ledgerv1alpha1.BackupRunStatus{
+			Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &middle,
+			Result: &ledgerv1alpha1.BackupResult{Time: &middle, FilesUploaded: 2},
+		}},
+	}
+
+	backup := &ledgerv1alpha1.Backup{}
+	(&BackupReconciler{}).refreshStatusSummaries(backup, runs)
+	if assert.NotNil(t, backup.Status.LastBackup) {
+		assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
+		assert.Equal(t, &middle, backup.Status.LastBackup.Time)
+	}
+}
+
+func TestRefreshStatusSummaries_LatestOutcomeSurvivesPruning(t *testing.T) {
+	t.Parallel()
+
+	old := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	newer := metav1.NewTime(old.Add(time.Hour))
+	success := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &old,
+		Result: &ledgerv1alpha1.BackupResult{Time: &old, FilesUploaded: 1},
+	}}
+	failure := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseFailed, CompletionTime: &newer, Message: "upload failed",
+	}}
+	backup := &ledgerv1alpha1.Backup{}
+	reconciler := &BackupReconciler{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	reconciler.refreshCompletionCursors(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+	assert.Equal(t, "upload failed", meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Message)
+	assert.NotNil(t, backup.Status.LastBackup)
+
+	// A zero failure history limit removes the latest run. The retained older
+	// success must not make the persisted health condition healthy again.
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+
+	success.Status.CompletionTime = &newer
+	success.Status.Result = &ledgerv1alpha1.BackupResult{Time: &newer, FilesUploaded: 2}
+	failure.Status.CompletionTime = &old
+	backup = &ledgerv1alpha1.Backup{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{failure, success})
+	reconciler.refreshCompletionCursors(backup, []ledgerv1alpha1.BackupRun{failure, success})
+	assert.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+	assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
+
+	// A zero success history limit must not resurrect the older failure.
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{failure})
+	assert.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+	assert.Equal(t, uint32(2), backup.Status.LastBackup.FilesUploaded)
+}
+
+func TestRefreshStatusSummaries_FailureWinsEqualCompletionTimeAfterPruning(t *testing.T) {
+	t.Parallel()
+
+	completed := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	success := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &completed,
+		Result: &ledgerv1alpha1.BackupResult{Time: &completed, FilesUploaded: 1},
+	}}
+	failure := ledgerv1alpha1.BackupRun{Status: ledgerv1alpha1.BackupRunStatus{
+		Phase: ledgerv1alpha1.BackupRunPhaseFailed, CompletionTime: &completed, Message: "upload failed",
+	}}
+	backup := &ledgerv1alpha1.Backup{}
+	reconciler := &BackupReconciler{}
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	reconciler.refreshCompletionCursors(backup, []ledgerv1alpha1.BackupRun{success, failure})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+
+	// Once retention removes the failure, the equal-time success must not
+	// overwrite the durable failure outcome or its diagnostic message.
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	condition := meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy")
+	assert.Equal(t, metav1.ConditionFalse, condition.Status)
+	assert.Equal(t, "upload failed", condition.Message)
+
+	// With equal timestamps, a newly observed success cannot prove that it
+	// followed the recorded failure, so health remains conservatively false.
+	success.Status.Result.FilesUploaded = 2
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	assert.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
+
+	// A later completion can establish a fresh healthy outcome.
+	later := metav1.NewTime(completed.Add(time.Second))
+	success.Status.CompletionTime = &later
+	success.Status.Result.Time = &later
+	reconciler.refreshStatusSummaries(backup, []ledgerv1alpha1.BackupRun{success})
+	assert.Equal(t, metav1.ConditionTrue, meta.FindStatusCondition(backup.Status.Conditions, "BackupHealthy").Status)
 }
 
 func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {
@@ -90,7 +230,7 @@ func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {
 
 		return ledgerv1alpha1.BackupRun{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:       ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{
 				Phase:          ledgerv1alpha1.BackupRunPhaseSucceeded,
 				CompletionTime: &t,
@@ -107,7 +247,7 @@ func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {
 		mkRun("e", base.Add(4*time.Minute)),
 	}
 
-	excess := excessRuns(runs, ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunPhaseSucceeded, 2)
+	excess := excessRuns(runs, ledgerv1alpha1.BackupRunPhaseSucceeded, 2)
 	if assert.Len(t, excess, 3) {
 		// Oldest first: a, b, c
 		assert.Equal(t, "a", excess[0].Name)
@@ -122,12 +262,12 @@ func TestExcessRuns_UnderLimitReturnsNone(t *testing.T) {
 	t1 := metav1.NewTime(time.Now())
 	runs := []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Spec:   ledgerv1alpha1.BackupRunSpec{},
 			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &t1},
 		},
 	}
 
-	assert.Empty(t, excessRuns(runs, ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunPhaseSucceeded, 3))
+	assert.Empty(t, excessRuns(runs, ledgerv1alpha1.BackupRunPhaseSucceeded, 3))
 }
 
 func TestIsTerminal(t *testing.T) {

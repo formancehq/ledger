@@ -15,8 +15,8 @@ func TestAggregateVolumesTable(t *testing.T) {
 	vol := func(asset string, input, output uint64) *commonpb.AggregatedVolume {
 		return &commonpb.AggregatedVolume{
 			Asset:  asset,
-			Input:  commonpb.NewUint256FromUint64(input),
-			Output: commonpb.NewUint256FromUint64(output),
+			Input:  commonpb.NewBigUintFromUint64(input),
+			Output: commonpb.NewBigUintFromUint64(output),
 		}
 	}
 

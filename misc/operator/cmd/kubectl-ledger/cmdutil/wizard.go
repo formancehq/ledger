@@ -2,12 +2,12 @@ package cmdutil
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/pterm/pterm"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ResolveClusterName returns the ledger name from args or by interactive selection.
@@ -18,51 +18,23 @@ func ResolveClusterName(ctx context.Context, opts *Options, args []string) (name
 	if err != nil {
 		return "", "", fmt.Errorf("resolving namespace: %w", err)
 	}
+	name, err = resolveResourceName(opts, args, "Cluster", "ledger", ns, func(c client.Client) ([]string, error) {
+		list, err := ListClusters(ctx, c, ns)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, len(list.Items))
+		for index := range list.Items {
+			names[index] = list.Items[index].Name
+		}
 
-	if len(args) > 0 {
-		return args[0], ns, nil
-	}
-
-	crdClient, err := opts.CRDClient()
+		return names, nil
+	})
 	if err != nil {
-		return "", "", fmt.Errorf("creating client: %w", err)
+		return "", "", err
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster resources...")
-
-	ledgers, err := ListClusters(ctx, crdClient, ns)
-	if err != nil {
-		spinner.Fail("Failed to list Cluster resources")
-
-		return "", "", fmt.Errorf("listing ledgers: %w", err)
-	}
-
-	_ = spinner.Stop()
-
-	if len(ledgers.Items) == 0 {
-		return "", "", fmt.Errorf("no Cluster resources found in namespace %q", ns)
-	}
-
-	names := make([]string, len(ledgers.Items))
-	for i := range ledgers.Items {
-		names[i] = ledgers.Items[i].Name
-	}
-
-	if len(names) == 1 {
-		pterm.Info.Printfln("Using ledger: %s", pterm.Cyan(names[0]))
-
-		return names[0], ns, nil
-	}
-
-	selected, err := pterm.DefaultInteractiveSelect.
-		WithOptions(names).
-		WithDefaultText("Select a Cluster").
-		Show()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to select ledger: %w", err)
-	}
-
-	return selected, ns, nil
+	return name, ns, nil
 }
 
 // ResolveBackupName returns the Backup name from args or by interactive selection.
@@ -71,97 +43,82 @@ func ResolveBackupName(ctx context.Context, opts *Options, args []string) (name,
 	if err != nil {
 		return "", "", fmt.Errorf("resolving namespace: %w", err)
 	}
+	name, err = resolveResourceName(opts, args, "Backup", "backup", ns, func(c client.Client) ([]string, error) {
+		list, err := ListBackups(ctx, c, ns)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, len(list.Items))
+		for index := range list.Items {
+			names[index] = list.Items[index].Name
+		}
 
-	if len(args) > 0 {
-		return args[0], ns, nil
-	}
-
-	crdClient, err := opts.CRDClient()
+		return names, nil
+	})
 	if err != nil {
-		return "", "", fmt.Errorf("creating client: %w", err)
+		return "", "", err
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Backup resources...")
-
-	backups, err := ListBackups(ctx, crdClient, ns)
-	if err != nil {
-		spinner.Fail("Failed to list Backup resources")
-
-		return "", "", fmt.Errorf("listing backups: %w", err)
-	}
-
-	_ = spinner.Stop()
-
-	if len(backups.Items) == 0 {
-		return "", "", fmt.Errorf("no Backup resources found in namespace %q", ns)
-	}
-
-	names := make([]string, len(backups.Items))
-	for i := range backups.Items {
-		names[i] = backups.Items[i].Name
-	}
-
-	if len(names) == 1 {
-		pterm.Info.Printfln("Using backup: %s", pterm.Cyan(names[0]))
-
-		return names[0], ns, nil
-	}
-
-	selected, err := pterm.DefaultInteractiveSelect.
-		WithOptions(names).
-		WithDefaultText("Select a Backup").
-		Show()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to select backup: %w", err)
-	}
-
-	return selected, ns, nil
+	return name, ns, nil
 }
 
 // ResolveCredentialsName returns the Credentials name from args
 // or by interactive selection. Credentials is cluster-scoped so no namespace needed.
 func ResolveCredentialsName(ctx context.Context, opts *Options, args []string) (string, error) {
+	return resolveResourceName(opts, args, "Credentials", "credentials", "", func(c client.Client) ([]string, error) {
+		list, err := ListCredentials(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, len(list.Items))
+		for index := range list.Items {
+			names[index] = list.Items[index].Name
+		}
+
+		return names, nil
+	})
+}
+
+func resolveResourceName(opts *Options, args []string, kind, noun, namespace string, listNames func(client.Client) ([]string, error)) (string, error) {
 	if len(args) > 0 {
 		return args[0], nil
 	}
-
 	crdClient, err := opts.CRDClient()
 	if err != nil {
 		return "", fmt.Errorf("creating client: %w", err)
 	}
-
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
-
-	credentials, err := ListCredentials(ctx, crdClient)
+	pterm.Info.Printfln("Fetching %s resources...", kind)
+	names, err := listNames(crdClient)
 	if err != nil {
-		spinner.Fail("Failed to list Credentials resources")
+		pterm.Error.Printfln("Failed to list %s resources", kind)
+		plural := noun + "s"
+		if kind == "Credentials" {
+			plural = noun
+		}
 
-		return "", fmt.Errorf("listing credentials: %w", err)
+		return "", fmt.Errorf("listing %s: %w", plural, err)
 	}
+	if len(names) == 0 {
+		if namespace == "" {
+			return "", fmt.Errorf("no %s resources found", kind)
+		}
 
-	_ = spinner.Stop()
-
-	if len(credentials.Items) == 0 {
-		return "", errors.New("no Credentials resources found")
+		return "", fmt.Errorf("no %s resources found in namespace %q", kind, namespace)
 	}
-
-	names := make([]string, len(credentials.Items))
-	for i := range credentials.Items {
-		names[i] = credentials.Items[i].Name
-	}
-
 	if len(names) == 1 {
-		pterm.Info.Printfln("Using credentials: %s", pterm.Cyan(names[0]))
+		pterm.Info.Printfln("Using %s: %s", noun, pterm.Cyan(names[0]))
 
 		return names[0], nil
 	}
-
-	selected, err := pterm.DefaultInteractiveSelect.
-		WithOptions(names).
-		WithDefaultText("Select a Credentials").
-		Show()
+	prompt := "Select a " + kind
+	var selected string
+	if opts.selectResource != nil {
+		selected, err = opts.selectResource(prompt, names)
+	} else {
+		selected, err = pterm.DefaultInteractiveSelect.WithOptions(names).WithDefaultText(prompt).Show()
+	}
 	if err != nil {
-		return "", fmt.Errorf("failed to select credentials: %w", err)
+		return "", fmt.Errorf("failed to select %s: %w", noun, err)
 	}
 
 	return selected, nil
@@ -221,32 +178,6 @@ func ValidateReplicas(replicas int32) error {
 	}
 
 	return nil
-}
-
-// PromptBool prompts the user to select a boolean value or unset it.
-// Returns nil if the user selects "<unset>".
-func PromptBool(prompt string, currentValue *bool) (*bool, error) {
-	options := []string{"true", "false", "<unset>"}
-	defaultOpt := "<unset>"
-	if currentValue != nil {
-		defaultOpt = strconv.FormatBool(*currentValue)
-	}
-
-	selected, err := pterm.DefaultInteractiveSelect.
-		WithOptions(options).
-		WithDefaultText(prompt).
-		WithDefaultOption(defaultOpt).
-		Show()
-	if err != nil {
-		return nil, fmt.Errorf("failed to select value: %w", err)
-	}
-
-	if selected == "<unset>" {
-		return nil, nil //nolint:nilnil // nil means "unset"
-	}
-	v := selected == "true"
-
-	return &v, nil
 }
 
 // PromptConfirm prompts the user for a yes/no confirmation.

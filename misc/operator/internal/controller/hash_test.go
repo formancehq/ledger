@@ -4,10 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	appsv1 "k8s.io/api/apps/v1"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -73,32 +72,41 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	assert.Equal(t, baseHash, computeSpecHash(withAccessMode), "claim access-mode declarations do not affect running Pods")
 }
 
-func TestPreserveStorageSpecHash_LegacyMigration(t *testing.T) {
+func TestResolveStorageSpecHash_LegacyMigration(t *testing.T) {
 	t.Parallel()
-	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "migration", Namespace: "default"}}
-	applyDefaults(cluster)
+	f := newClaimRecoveryFixture(t)
+	cluster := f.ledger
+	cluster.Spec.Persistence.WAL.Size = resource.MustParse("10Gi")
+	cluster.Spec.Persistence.Data.Size = resource.MustParse("100Gi")
 	legacyHash := computePodSpecHash(&cluster.Spec, false)
-	sts := &appsv1.StatefulSet{Spec: buildStatefulSetSpec(cluster, legacyHash, nil, tlsModeDisabled)}
+	sts := f.source
+	sts.Spec = buildStatefulSetSpec(cluster, legacyHash, nil, tlsModeDisabled)
+	require.NoError(t, f.client.Update(t.Context(), sts))
 	before := sts.Spec.Template.DeepCopy()
 	cluster.Spec.Persistence.Data.Size = resource.MustParse("200Gi")
 	cluster.Spec.Persistence.WAL.VolumeAttributesClassName = "fast"
 	hash := computeSpecHash(&cluster.Spec)
+	require.NotEqual(t, legacyHash, hash, "released and canonical hashes must differ to exercise preservation")
 	desired := buildStatefulSetSpec(cluster, hash, nil, tlsModeDisabled)
-	got := preserveStorageSpecHash(cluster, sts, desired.Template, hash)
+	got, err := f.reconciler(f.client).resolveStorageSpecHash(t.Context(), cluster, sts, desired.Template, hash)
+	require.NoError(t, err)
 	assert.Equal(t, *before, got, "first size/profile edit must preserve a hash produced by the released operator")
 
 	// The source template floor/profile changes after recreation, so the
 	// metadata hash must preserve this decision on every subsequent pass.
-	sts.Annotations = map[string]string{annotationPodConfigHash: hash, annotationPodConfigSpecHash: hash}
+	recordPodConfigHash(sts, hash)
+	require.Equal(t, legacyHash, sts.Annotations[annotationPodConfigSpecHash])
 	sts.Spec.VolumeClaimTemplates = desired.VolumeClaimTemplates
-	got = preserveStorageSpecHash(cluster, sts, desired.Template, hash)
+	got, err = f.reconciler(f.client).resolveStorageSpecHash(t.Context(), cluster, sts, desired.Template, hash)
+	require.NoError(t, err)
 	assert.Equal(t, *before, got)
 	assert.Equal(t, corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("200Gi")}, desired.VolumeClaimTemplates[1].Spec.Resources.Requests)
 
 	cluster.Spec.Debug = !cluster.Spec.Debug
 	newHash := computeSpecHash(&cluster.Spec)
 	newDesired := buildStatefulSetSpec(cluster, newHash, nil, tlsModeDisabled)
-	got = preserveStorageSpecHash(cluster, sts, newDesired.Template, newHash)
+	got, err = f.reconciler(f.client).resolveStorageSpecHash(t.Context(), cluster, sts, newDesired.Template, newHash)
+	require.NoError(t, err)
 	assert.Equal(t, newHash, got.Annotations[annotationSpecHash], "a real workload change must still roll out")
 }
 

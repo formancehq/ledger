@@ -25,18 +25,21 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-var testStopVersions = []string{"v3.0.0-rc.4"}
+var testStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
 	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters before peer port, schema, controls, aggregate and forwarded-order apply changes")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions), "a moving tag could cross the rc.5 boundary")
 	for _, tt := range []struct {
 		source, target string
 		stop           bool
@@ -45,16 +48,19 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		{"v3.0.0-rc.2", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.1", "v3.0.0-rc.3", false}, // Admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.4", true},
+		{"v3.0.0-rc.4", "v3.0.0-rc.5", true},
 		{"v3.0.0-rc.2", "v3.0.0-rc.4", true}, // Selection crosses the boundary; admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.4", "v3.0.0-rc.3", false},
 		{"latest", "v3.0.0-rc.4", false},
+		{"latest", "v3.0.0-rc.5", false},
 	} {
 		require.Equal(t, tt.stop, requiresStoppedUpgrade(tt.source, tt.target, testStopVersions), "%s -> %s", tt.source, tt.target)
 	}
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
 	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", testStopVersions))
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.5", "latest", testStopVersions))
 	for _, tt := range []struct {
 		source, target string
 		block          bool
@@ -62,6 +68,7 @@ func TestMandatoryStopVersionBoundary(t *testing.T) {
 		{"latest", "v3.0.0", true},
 		{"", "v3.0.0", true}, // Digest or unreadable source image.
 		{"latest", "v3.0.0-rc.4", true},
+		{"latest", "v3.0.0-rc.5", true},
 		{"latest", "v3.0.0-rc.3", false},
 		{"latest", "latest", false},
 		{"latest", "main", false},
@@ -310,7 +317,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	released := false
 	durable := false
 	var commands []string
-	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
+	exec := func(_ context.Context, config *rest.Config, clients kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
+		require.Same(t, r.Config, config)
+		require.Same(t, r.Clientset, clients)
 		cmd := command[len(command)-1]
 		commands = append(commands, cmd)
 		switch {
@@ -359,6 +368,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NotEqual(t, computeSpecHash(&cluster.Spec), cluster.Status.Upgrade.TargetSpecHash)
 	require.NotEmpty(t, cluster.Status.Upgrade.DrainEpoch)
 	require.False(t, drained)
+	persisted := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer, "claims are detached only after the finalizer is durable")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
@@ -521,20 +533,48 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	replacement.UID = types.UID("newer-sts")
 	require.NoError(t, c.Create(ctx, replacement))
 	require.NoError(t, c.Status().Update(ctx, replacement))
-	for _, phase := range []string{"Verifying", "Unblocking"} {
+	for _, phase := range []string{"Verifying", "Unblocking", "Adopting"} {
 		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 		require.NoError(t, err)
 		require.False(t, proceed)
 		require.Equal(t, phase, cluster.Status.Upgrade.Phase)
 	}
+	require.False(t, drained)
+	require.True(t, released)
+	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.NoError(t, c.Get(ctx, key, replacement))
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+	// Ordinary reconciliation recreates a missing replacement with the requested
+	// policy while the claim inventory stays recorded.
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+	// Until the replacement owns every recorded claim, Cluster deletion still
+	// needs the finalizer and the claim inventory.
+	for _, name := range []string{claimName, dataClaimName} {
+		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+		require.NoError(t, err)
+		require.False(t, proceed)
+		require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+		require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer)
+		adopted := &corev1.PersistentVolumeClaim{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, adopted))
+		adopted.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: replacement.Name, UID: replacement.UID}}
+		require.NoError(t, c.Update(ctx, adopted))
+	}
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
 	require.Nil(t, cluster.Status.Upgrade)
-	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
-	require.False(t, drained)
-	require.True(t, released)
-	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.NotContains(t, persisted.Finalizers, upgradeClaimsFinalizer)
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
@@ -617,7 +657,7 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: sts.Namespace,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: sts.Name, UID: sts.UID, Controller: new(true)}}}}
-	r := &ClusterReconciler{Config: &rest.Config{}, Clientset: kubernetesfake.NewSimpleClientset(pod)}
+	actor := &stoppedUpgradeReconciler{config: &rest.Config{}, clientset: kubernetesfake.NewSimpleClientset(pod)}
 	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
 		require.Contains(t, command[len(command)-1], ":8888")
 		require.NotContains(t, command[len(command)-1], ":9999")
@@ -626,8 +666,161 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	}
 	live, err := drainClusterFromWorkload(cluster, sts)
 	require.NoError(t, err)
-	_, err = r.upgradeDrainCluster(live, sts, exec).run(t.Context(), 0, "cluster", "status", "--json")
+	actor.exec = exec
+	_, err = actor.upgradeDrainCluster(live, sts).run(t.Context(), 0, "cluster", "status", "--json")
 	require.NoError(t, err)
+}
+
+func TestStoppedUpgradeWiresBoundaryOverrides(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name         string
+		stopVersions []string
+		blocked      bool
+	}{
+		{name: "released defaults", blocked: true},
+		{name: "explicitly disabled", stopVersions: []string{}},
+		{name: "custom boundary", stopVersions: []string{"v3.0.0-rc.3"}},
+		{name: "custom future boundary", stopVersions: []string{"v3.0.0-rc.5"}, blocked: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Image.Tag = "latest"
+			reconciler := &ClusterReconciler{stopVersions: test.stopVersions}
+			proceed, _, err := reconciler.reconcileRequiredUpgrade(t.Context(), cluster, rcStatefulSet("ledger:v3.0.0-rc.3", true))
+			if test.blocked {
+				require.ErrorContains(t, err, "pin a canonical version tag")
+				require.False(t, proceed)
+			} else {
+				require.NoError(t, err)
+				require.True(t, proceed)
+			}
+		})
+	}
+}
+
+func TestStoppedUpgradeStatusPatchFailurePreservesLocalState(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"start", "advance", "clear"} {
+		t.Run(operation, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.ResourceVersion = "42"
+			state := &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", Phase: "Preflighting", DrainEpoch: "pinned-epoch"}
+			if operation != "start" {
+				cluster.Status.Upgrade = state.DeepCopy()
+				meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: "Preflighting", Message: "persisted progress"})
+			}
+			before := cluster.DeepCopy()
+			failure := errors.New("status patch unavailable")
+			attempts := 0
+			wrapped := interceptor.NewClient(fake.NewClientBuilder().Build(), interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, _ client.Client, subresource string, obj client.Object, patch client.Patch, _ ...client.SubResourcePatchOption) error {
+					attempts++
+					require.Equal(t, "status", subresource)
+					data, err := patch.Data(obj)
+					require.NoError(t, err)
+					var body map[string]any
+					require.NoError(t, json.Unmarshal(data, &body))
+					require.Equal(t, "42", body["metadata"].(map[string]any)["resourceVersion"])
+					obj.SetResourceVersion("uncommitted")
+
+					return failure
+				},
+			})
+			actor := &stoppedUpgradeReconciler{client: wrapped}
+			var err error
+			switch operation {
+			case "start":
+				err = actor.persistUpgrade(t.Context(), cluster, state)
+			case "advance":
+				err = actor.advanceUpgrade(t.Context(), cluster, "Draining")
+			case "clear":
+				err = actor.persistUpgrade(t.Context(), cluster, nil)
+			}
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "persisting stopped upgrade state")
+			require.Equal(t, 1, attempts)
+			require.Equal(t, before, cluster)
+		})
+	}
+}
+
+func TestStoppedUpgradeFinalizerPatchFailureBlocksReconcile(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		upgrading bool
+	}{
+		{name: "release after upgrade"},
+		{name: "ensure during upgrade", upgrading: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			if test.upgrading {
+				cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Phase: "Preflighting"}
+			} else {
+				cluster.Finalizers = []string{upgradeClaimsFinalizer}
+			}
+			before := cluster.DeepCopy()
+			failure := errors.New("finalizer patch unavailable")
+			attempts := 0
+			wrapped := interceptor.NewClient(fake.NewClientBuilder().Build(), interceptor.Funcs{
+				Patch: func(_ context.Context, _ client.WithWatch, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+					attempts++
+					require.IsType(t, &ledgerv1alpha1.Cluster{}, obj)
+
+					return failure
+				},
+			})
+			reconciler := &ClusterReconciler{Client: wrapped}
+			proceed, _, err := reconciler.reconcileRequiredUpgradeWithExec(t.Context(), cluster, nil, nil)
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "patching Cluster finalizers")
+			require.False(t, proceed)
+			require.Equal(t, 1, attempts)
+			require.Equal(t, before, cluster)
+		})
+	}
+}
+
+func TestStoppedUpgradeUsesClaimLifecycleCallbacks(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	actor := &stoppedUpgradeReconciler{}
+	calls := make([]string, 0, 3)
+	adoptionFailure := errors.New("adoption callback")
+	claims := stoppedUpgradeClaimLifecycle{
+		releaseFinalizer: func(context.Context, *ledgerv1alpha1.Cluster) error {
+			calls = append(calls, "release")
+
+			return nil
+		},
+		ensureFinalizer: func(context.Context, *ledgerv1alpha1.Cluster) error {
+			calls = append(calls, "ensure")
+
+			return nil
+		},
+		adoptClaims: func(context.Context, *ledgerv1alpha1.Cluster, *appsv1.StatefulSet) (bool, ctrl.Result, error) {
+			calls = append(calls, "adopt")
+
+			return false, ctrl.Result{}, adoptionFailure
+		},
+	}
+
+	proceed, _, err := actor.reconcile(t.Context(), cluster, nil, claims)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, []string{"release"}, calls)
+
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Phase: "Adopting", Target: cluster.Spec.Image.Tag}
+	proceed, _, err = actor.reconcile(t.Context(), cluster, nil, claims)
+	require.ErrorIs(t, err, adoptionFailure)
+	require.False(t, proceed)
+	require.Equal(t, []string{"release", "ensure", "adopt"}, calls)
 }
 
 func TestStoppedUpgradeResumesReleasedIntentAndRejectsClaimDeclarationChanges(t *testing.T) {

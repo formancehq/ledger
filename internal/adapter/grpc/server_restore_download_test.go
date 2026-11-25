@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -66,6 +67,30 @@ func newServerForTest(t *testing.T, factory storageFactory) *RestoreServiceServe
 func staticFactory(mock backup.Storage) storageFactory {
 	return func(_ *restorepb.StartDownloadBackupRequest) (backup.Storage, error) {
 		return mock, nil
+	}
+}
+
+func TestPrepareDownloadRejectsLegacyManifest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		manifest backup.Manifest
+	}{
+		{name: "exports", manifest: backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: checkpointFilesFor(1)}, Exports: []backup.ExportSegment{{Type: "log", StartSeq: 1, EndSeq: 1, Key: "old"}}}},
+		{name: "policy", manifest: backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: checkpointFilesFor(1)}, ClusterPolicy: &backup.ClusterPolicySnapshot{AppliedIndex: 1, Data: []byte{1}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			data, err := json.Marshal(tc.manifest)
+			require.NoError(t, err)
+			mock := NewMockStorage(gomock.NewController(t))
+			mock.EXPECT().GetFile(gomock.Any(), backup.ManifestKey(testRestoreClusterID)).Return(io.NopCloser(strings.NewReader(string(data))), nil)
+			s := newServerForTest(t, staticFactory(mock))
+			_, _, err = s.prepareDownload(context.Background(), &restorepb.StartDownloadBackupRequest{}, staticFactory(mock))
+			require.Equal(t, codes.FailedPrecondition, status.Code(err))
+			require.Contains(t, err.Error(), "incremental backup manifests")
+		})
 	}
 }
 

@@ -61,9 +61,9 @@ done
 
 case "$RESTORE" in ''|0|off|false|no) RESTORE=0 ;; *) RESTORE=1 ;; esac
 # The restore cycle periodically backs the node up, restores the backup into a
-# fresh store (exercising RebuildDelta), and relaunches the node on it while the
-# driver keeps running -- its ordinary checks validate the rebuilt state. Only
-# single-node is wired: a whole-store swap keeps the served state == RebuildDelta's
+# fresh checkpoint store, and relaunches the node on it while the
+# driver keeps running -- its ordinary checks validate the restored state. Only
+# single-node is wired: a whole-store swap keeps the served state equal to the checkpoint's
 # output (a cluster rejoin would snapshot-install over it).
 if [ "$RESTORE" = 1 ] && [ "$NODES" -ne 1 ]; then
 	echo "ERROR: --restore is only supported with a single node (got --nodes $NODES)" >&2
@@ -123,11 +123,12 @@ MODEL_HARNESS_REPO="${MODEL_HARNESS_REPO:-$REPO}"
 # Randomized port bands per run: a leaked node/driver from a killed shell can
 # never reach a new run's cluster (fixed ports would let an orphan corrupt a
 # later run with concurrent traffic). grpc = base+i, raft = base+100+i,
-# http = base+200+i.
+# http = base+200+i, peer gRPC = base+400+i.
 GRPC_BASE="${GRPC_BASE:-$(( 20000 + RANDOM % 10000 ))}"
 RAFT_BASE=$(( GRPC_BASE + 100 ))
 HTTP_BASE=$(( GRPC_BASE + 200 ))
 MINIO_PORT=$(( GRPC_BASE + 300 ))
+PEER_BASE=$(( GRPC_BASE + 400 ))
 # Formance's digest-pinned MinIO mirror; it ships both minio and mc.
 MINIO_IMAGE="ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9"
 
@@ -160,11 +161,12 @@ S3_FLAGS=(
 	--bucket-id "$CLUSTER_ID"
 )
 
-GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=()
+GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() PEER_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=()
 for i in $(seq 0 $(( NODES - 1 ))); do
 	GRPC_PORTS+=( $(( GRPC_BASE + i )) )
 	RAFT_PORTS+=( $(( RAFT_BASE + i )) )
 	HTTP_PORTS+=( $(( HTTP_BASE + i )) )
+	PEER_PORTS+=( $(( PEER_BASE + i )) )
 	NODE_DIRS+=( "$WORKDIR/n$i" )
 	SERVER_LOGS+=( "$WORKDIR/server-$i.log" )
 	SERVER_PIDS+=( "" )
@@ -208,23 +210,22 @@ start_minio() {
 stop_minio() { docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1; }
 
 # --- Restore orchestrator (single-node) -----------------------------------
-# One cycle: incremental-backup the (quiesced) node, kill it, bootstrap the
-# backup into a fresh store (RebuildDelta), then relaunch on it. The driver is
+# One cycle: checkpoint-backup the (quiesced) node, kill it, bootstrap the
+# backup into a fresh store, then relaunch on it. The driver is
 # paused across this and resumes against the restored node.
 do_one_restore() {
 	local srv="127.0.0.1:${GRPC_PORTS[0]}" out
-	out="$("$LEDGERCTL_BIN" store incremental-backup --insecure --server "$srv" \
+	out="$("$LEDGERCTL_BIN" store backup --insecure --server "$srv" \
 		"${S3_FLAGS[@]}" --json --timeout 120s 2>&1)" \
-		|| { log "restore: incremental-backup failed: $(printf '%s' "$out" | tail -1)"; return 1; }
+		|| { log "restore: backup failed: $(printf '%s' "$out" | tail -1)"; return 1; }
 
-	# RebuildDelta only runs when the manifest carries exports; a cycle that
-	# produced none would silently test nothing, so skip it loudly.
+	# A successful checkpoint can reuse every existing object. Require a
+	# nonempty manifest, not a nonzero upload count.
 	if command -v jq >/dev/null 2>&1; then
-		local segs logs
-		segs="$(printf '%s' "$out" | jq -r '.segmentsUploaded // 0' 2>/dev/null)"
-		logs="$(printf '%s' "$out" | jq -r '.logEntriesExported // 0' 2>/dev/null)"
-		if [ "${segs:-0}" = 0 ] && [ "${logs:-0}" = 0 ]; then
-			log "restore: incremental produced no exports (RebuildDelta would be a no-op); skipping"
+		local files
+		files="$(printf '%s' "$out" | jq -r '.totalFiles // 0' 2>/dev/null)"
+		if [ "${files:-0}" = 0 ]; then
+			log "restore: backup manifest has no checkpoint files; skipping"
 			return 1
 		fi
 	fi
@@ -249,7 +250,7 @@ do_one_restore() {
 	mv "$RESTORED_DATA" "${NODE_DIRS[0]}/data"
 	start_node 0 bootstrap
 	wait_leader 0 "$log_offset" || return 1
-	log "restore: node back up on restored (RebuildDelta) store"
+	log "restore: node back up on restored checkpoint store"
 }
 
 # service_restore_request handles one pending request, if any. Runs in the main
@@ -297,6 +298,7 @@ start_node() {
 		--bind-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--advertise-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--grpc-port "${GRPC_PORTS[$i]}" \
+		--grpc-peer-port "${PEER_PORTS[$i]}" \
 		--http-port "${HTTP_PORTS[$i]}" \
 		--wal-dir "${NODE_DIRS[$i]}/wal" \
 		--data-dir "${NODE_DIRS[$i]}/data" \
@@ -505,20 +507,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Restore setup (--restore): MinIO + one full backup as the checkpoint every
-# per-cycle incremental exports beyond (so bootstrap replays through RebuildDelta).
+# Restore setup (--restore): MinIO; each cycle publishes a complete checkpoint.
 # ---------------------------------------------------------------------------
 if [ "$RESTORE" = 1 ]; then
 	log "starting MinIO (:$MINIO_PORT) for backup storage..."
 	if ! start_minio; then echo "ERROR: MinIO did not start" >&2; exit 2; fi
-	log "taking initial full backup..."
-	if ! "$LEDGERCTL_BIN" store backup --insecure --server "127.0.0.1:${GRPC_PORTS[0]}" \
-		"${S3_FLAGS[@]}" --timeout 120s >>"$WORKDIR/restore.log" 2>&1; then
-		echo "ERROR: initial backup failed (see $WORKDIR/restore.log)" >&2
-		[ -n "${KEEP_WORKDIR:-}" ] || cat "$WORKDIR/restore.log" >&2
-		exit 2
-	fi
-	command -v jq >/dev/null 2>&1 || log "WARNING: jq not found; cannot verify each cycle produced exports"
+	command -v jq >/dev/null 2>&1 || log "WARNING: jq not found; cannot verify checkpoint file count"
 	log "restore cycle armed (interval ~${RESTORE_INTERVAL}s)"
 fi
 
@@ -526,9 +520,13 @@ fi
 # Run the driver against all node(s).
 # ---------------------------------------------------------------------------
 ADDR_LIST="127.0.0.1:${GRPC_PORTS[0]}"
+PEER_ADDR_LIST="127.0.0.1:${PEER_PORTS[0]}"
 # A C-style loop, not `seq 1 $((NODES-1))`: BSD seq counts DOWN on an inverted
 # range, so a single-node run would index a port that does not exist.
-for (( i = 1; i < NODES; i++ )); do ADDR_LIST="$ADDR_LIST,127.0.0.1:${GRPC_PORTS[$i]}"; done
+for (( i = 1; i < NODES; i++ )); do
+	ADDR_LIST="$ADDR_LIST,127.0.0.1:${GRPC_PORTS[$i]}"
+	PEER_ADDR_LIST="$PEER_ADDR_LIST,127.0.0.1:${PEER_PORTS[$i]}"
+done
 
 log "running driver for ${DURATION}s against $ADDR_LIST ..."
 # MODEL_MAX_SECONDS makes the driver self-terminate even if this script never
@@ -551,6 +549,7 @@ exec 5<> "$driver_pid_pipe" || exit 2
 	child=""
 	trap '[ -n "$child" ] && kill "$child" 2>/dev/null; [ -n "$child" ] && kill -9 "$child" 2>/dev/null; wait 2>/dev/null; exit 130' INT TERM
 	LEDGER_GRPC_ADDR="$ADDR_LIST" \
+	LEDGER_PER_NODE_PEER_ADDR="$PEER_ADDR_LIST" \
 	ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
 	MODEL_DEBUG="${MODEL_DEBUG:-}" \
 	MODEL_DUMP_BATCHES="${MODEL_DUMP_BATCHES:-}" \
@@ -726,7 +725,7 @@ if ! has_verified_model_outcome && [ "$findings" -eq 0 ]; then
 fi
 
 # 7. --restore ran zero cycles: the restore path was never exercised, so a
-# green run says nothing about RebuildDelta -- that vacuous pass is itself a
+# green run says nothing about checkpoint restore -- that vacuous pass is itself a
 # failure. Skipped when a finding already stopped the run early (fail-fast
 # legitimately preempts the first cycle).
 if [ "$RESTORE" = 1 ] && [ "$RESTORE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; then
@@ -736,7 +735,7 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; t
 	findings=$((findings + 1))
 fi
 
-# 8. A restore cycle failed mid-run (backup RPC, no exports, bootstrap, or the
+# 8. A restore cycle failed mid-run (backup RPC, no checkpoint files, bootstrap, or the
 # post-restore leader wait). The driver resumes so later cycles still run, but
 # a broken restore path is a defect regardless of how many cycles succeeded.
 if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then

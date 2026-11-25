@@ -11,6 +11,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -38,9 +39,15 @@ func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 	assert.Equal(t, "ledger", np.Spec.PodSelector.MatchLabels[labelName])
 	assert.Equal(t, "np-basic", np.Spec.PodSelector.MatchLabels[labelInstance])
 
-	// Verify policy types.
-	require.Len(t, np.Spec.PolicyTypes, 1)
-	assert.Equal(t, networkingv1.PolicyTypeEgress, np.Spec.PolicyTypes[0])
+	// Verify policy types and ingress isolation.
+	require.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}, np.Spec.PolicyTypes)
+	require.Len(t, np.Spec.Ingress, 2)
+	assert.Empty(t, np.Spec.Ingress[0].From)
+	assert.Equal(t, int32(8888), np.Spec.Ingress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(9000), np.Spec.Ingress[0].Ports[1].Port.IntVal)
+	require.Len(t, np.Spec.Ingress[1].From, 1)
+	assert.Equal(t, "np-basic", np.Spec.Ingress[1].From[0].PodSelector.MatchLabels[labelInstance])
+	assert.Equal(t, int32(8889), np.Spec.Ingress[1].Ports[1].Port.IntVal)
 
 	// Verify 3 egress rules.
 	require.Len(t, np.Spec.Egress, 3)
@@ -50,10 +57,11 @@ func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 	require.Len(t, interNode.To, 1)
 	require.NotNil(t, interNode.To[0].PodSelector)
 	assert.Equal(t, "np-basic", interNode.To[0].PodSelector.MatchLabels[labelInstance])
-	require.Len(t, interNode.Ports, 3)
+	require.Len(t, interNode.Ports, 4)
 	assert.Equal(t, int32(7777), interNode.Ports[0].Port.IntVal)
 	assert.Equal(t, int32(8888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(9000), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(8889), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(9000), interNode.Ports[3].Port.IntVal)
 	tcp := corev1.ProtocolTCP
 	assert.Equal(t, &tcp, interNode.Ports[0].Protocol)
 
@@ -115,9 +123,13 @@ func TestReconcile_NetworkPolicyDisabledCleansUp(t *testing.T) {
 
 	// Disable NetworkPolicy.
 	updated := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "np-cleanup", Namespace: ns}, updated))
-	updated.Spec.NetworkPolicy.Enabled = false
-	require.NoError(t, k8sClient.Update(ctx, updated))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "np-cleanup", Namespace: ns}, updated); err != nil {
+			return err
+		}
+		updated.Spec.NetworkPolicy.Enabled = false
+		return k8sClient.Update(ctx, updated)
+	}))
 
 	// Wait for NetworkPolicy deletion.
 	requireEventually(t, func() bool {
@@ -148,6 +160,10 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 	ls.Spec.Service.RaftPort = 17777
 	ls.Spec.Service.GrpcPort = 18888
 	ls.Spec.Service.HttpPort = 19000
+	ls.Spec.BindAddr = "0.0.0.0:27777"
+	ls.Spec.GrpcPort = 28888
+	ls.Spec.GrpcPeerPort = 28889
+	ls.Spec.HttpPort = 29000
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled: true,
 	}
@@ -160,10 +176,11 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 
 	require.Len(t, np.Spec.Egress, 3)
 	interNode := np.Spec.Egress[0]
-	require.Len(t, interNode.Ports, 3)
-	assert.Equal(t, int32(17777), interNode.Ports[0].Port.IntVal)
-	assert.Equal(t, int32(18888), interNode.Ports[1].Port.IntVal)
-	assert.Equal(t, int32(19000), interNode.Ports[2].Port.IntVal)
+	require.Len(t, interNode.Ports, 4)
+	assert.Equal(t, int32(27777), interNode.Ports[0].Port.IntVal)
+	assert.Equal(t, int32(28888), interNode.Ports[1].Port.IntVal)
+	assert.Equal(t, int32(28889), interNode.Ports[2].Port.IntVal)
+	assert.Equal(t, int32(29000), interNode.Ports[3].Port.IntVal)
 }
 
 func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
@@ -185,9 +202,13 @@ func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 
 	// Update to custom CIDR.
 	updated := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "np-update", Namespace: ns}, updated))
-	updated.Spec.NetworkPolicy.ExternalCIDRExcept = []string{"10.0.0.0/8"}
-	require.NoError(t, k8sClient.Update(ctx, updated))
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "np-update", Namespace: ns}, updated); err != nil {
+			return err
+		}
+		updated.Spec.NetworkPolicy.ExternalCIDRExcept = []string{"10.0.0.0/8"}
+		return k8sClient.Update(ctx, updated)
+	}))
 
 	// Wait for CIDR to be updated.
 	requireEventually(t, func() bool {

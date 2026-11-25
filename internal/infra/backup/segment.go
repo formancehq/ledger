@@ -1,42 +1,6 @@
 package backup
 
-import (
-	"fmt"
-	"strings"
-)
-
-// A single incremental range is split into one or more size-bounded parts
-// (see maxExportSegmentBytes). All parts of a range share the [startSeq, endSeq]
-// prefix so they group together under exports/, and a zero-padded part index
-// makes each object key unique. The manifest's ExportSegment records the exact
-// per-part sub-range; the filename range is the overall incremental range.
-
-// ExportLogSegmentKey returns the S3 key for part `part` of a log export.
-func ExportLogSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/exports/logs-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
-}
-
-// ExportAuditSegmentKey returns the S3 key for part `part` of an audit-entry export.
-func ExportAuditSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/exports/audit-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
-}
-
-// ExportAuditItemSegmentKey returns the S3 key for part `part` of an audit-item
-// export. Audit items (the per-order detail the audit hash is computed over)
-// live in a separate subzone from audit entries and must be exported alongside
-// them, or a restored incremental backup cannot reconstruct the hash chain.
-func ExportAuditItemSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/exports/audit-items-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
-}
-
-// ExportAppliedProposalSegmentKey returns the S3 key for part `part` of an
-// AppliedProposal export. AppliedProposal sequences are 1:1 with AuditEntry on
-// the success path, so the segment shares the audit range — restoring a backup
-// without this segment would leave the index builder unable to learn the
-// transient-account exclusion set for replayed logs.
-func ExportAppliedProposalSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/exports/applied-proposals-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
-}
+import "strings"
 
 // CheckpointFileKey returns the content-addressed S3 key for a checkpoint file.
 // The contentHash (hex sha256 of the file bytes) is appended to the local
@@ -74,14 +38,14 @@ func ExportPrefix(bucketID string) string {
 // So a prune never deletes "whatever the listing returned". It deletes only
 // keys this chain's own writers could have produced, recognised below. Both
 // recognisers require a single path segment under the root, which is what the
-// builders above always emit; anything deeper belongs to a nested chain.
+// checkpoint writer and the legacy export writer emitted; anything deeper
+// belongs to a nested chain.
 
 // sha256HexLen is the length of the hex-encoded sha256 CheckpointFileKey
 // appends to every checkpoint object key.
 const sha256HexLen = 64
 
-// exportSegmentExt is the suffix every Export*SegmentKey builder emits.
-// TestExportBuildersProduceOwnedKeys pins this to the builders.
+// exportSegmentExt is the suffix of legacy export objects eligible for cleanup.
 const exportSegmentExt = ".bin"
 
 // ownsCheckpointKey reports whether key is one CheckpointFileKey could have
@@ -109,9 +73,8 @@ func checkpointKeyHash(key string) (string, bool) {
 	return key[dot+1:], true
 }
 
-// ownsExportKey reports whether key is one the Export*SegmentKey builders could
-// have written for bucketID: one path segment under the export root carrying
-// the suffix they all emit.
+// ownsExportKey reports whether key has the legacy export shape for bucketID:
+// one path segment under the export root with the .bin suffix.
 func ownsExportKey(bucketID, key string) bool {
 	name, found := strings.CutPrefix(key, ExportPrefix(bucketID))
 	if !found || strings.Contains(name, "/") {

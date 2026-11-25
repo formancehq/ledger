@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
@@ -41,13 +40,10 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	// Decode the body whenever one is present. Don't gate on ContentLength
 	// because chunked / unknown-length requests report ContentLength == -1;
 	// io.EOF means "no body" and is the only acceptable empty case.
-	if r.Body != nil {
-		err := json.NewDecoder(r.Body).Decode(&body)
-		if err != nil && !errors.Is(err, io.EOF) {
-			writeBadRequest(w, "INVALID_REQUEST", err)
+	if err := decodePreparedQueryBody(r.Body, &body); err != nil && !errors.Is(err, io.EOF) {
+		writeBadRequest(w, "INVALID_REQUEST", err)
 
-			return
-		}
+		return
 	}
 
 	// Also accept ?pageSize= for GET-like usage. The QS form takes precedence
@@ -125,7 +121,12 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	envelope := executePreparedQueryResponseJSON{}
 	switch result := resp.GetResult().(type) {
 	case *servicepb.ExecutePreparedQueryResponse_Aggregate:
-		envelope.AggregateResult = toAggregateVolumesJSON(result.Aggregate)
+		envelope.AggregateResult, err = toAggregateVolumesJSON(result.Aggregate)
+		if err != nil {
+			handleError(w, r, err)
+
+			return
+		}
 	case *servicepb.ExecutePreparedQueryResponse_Cursor:
 		envelope.Cursor = result.Cursor
 	}
@@ -164,34 +165,38 @@ func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb
 }
 
 func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error) {
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
+	switch {
+	case len(raw) == 0:
+		return nil, errors.New("expected a string, boolean, or integer")
+	case raw[0] == '"':
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, err
+		}
+
 		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}, nil
-	}
-
-	var b bool
-	if err := json.Unmarshal(raw, &b); err == nil {
-		// Distinguish from number 0/1: raw must be "true" or "false"
-		trimmed := string(raw)
-		if trimmed == "true" || trimmed == "false" {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: b}}, nil
-		}
-	}
-
-	var f float64
-	if err := json.Unmarshal(raw, &f); err == nil {
-		if f != math.Trunc(f) {
-			return nil, fmt.Errorf("floating-point values are not supported, got %v", f)
+	case string(raw) == "true" || string(raw) == "false":
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: string(raw) == "true"}}, nil
+	case raw[0] == '-' || (raw[0] >= '0' && raw[0] <= '9'):
+		// Reuse the exact integer conversion used by metadata JSON. It retains
+		// full-width values and accepts integral decimal/exponent notation
+		// without rounding a float64 or allocating up to the exponent's value.
+		number, err := commonpb.MetadataValueFromAny(json.Number(raw))
+		if err != nil {
+			return nil, fmt.Errorf("invalid integer value: %w", err)
 		}
 
-		if f < 0 {
-			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: int64(f)}}, nil
+		switch n := number.GetType().(type) {
+		case *commonpb.MetadataValue_IntValue:
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: n.IntValue}}, nil
+		case *commonpb.MetadataValue_UintValue:
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: n.UintValue}}, nil
+		default:
+			return nil, fmt.Errorf("integer conversion returned unexpected type %T", n)
 		}
-
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: uint64(f)}}, nil
+	default:
+		return nil, errors.New("expected a string, boolean, or integer")
 	}
-
-	return nil, fmt.Errorf("unsupported value type: %s", string(raw))
 }
 
 // parseQueryMode maps the wire string to a QueryMode enum value. The empty

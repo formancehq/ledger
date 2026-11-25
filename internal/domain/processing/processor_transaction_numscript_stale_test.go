@@ -46,10 +46,6 @@ func newNumscriptProducer() *numscriptPostingProducer {
 	}
 }
 
-func staleOrder() *raftcmdpb.CreateTransactionOrder {
-	return &raftcmdpb.CreateTransactionOrder{}
-}
-
 // TestProduce_ChangedValueWithCompletedResolutionIsStale is regression #1: a
 // COMPLETED apply-time re-resolution whose recorded balance differs from the one
 // admission bound (hash mismatch) must reject with the retryable
@@ -72,9 +68,8 @@ func TestProduce_ChangedValueWithCompletedResolutionIsStale(t *testing.T) {
 	volumes.expectGet(domain.NewVolumeKey("test", "wallet", "USD/2", ""), walletVol.AsReader(), nil)
 
 	producer := newNumscriptProducer()
-	order := staleOrder()
 
-	_, err := producer.produce(mockStore, "test", order, &commonpb.Script{Plain: staleScript})
+	_, err := producer.produceExecution(mockStore, "test", false, &commonpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, domain.ErrStaleInputsResolution,
@@ -101,9 +96,8 @@ func TestProduce_CoverageMissDuringResolutionIsLoudNotStale(t *testing.T) {
 	})
 
 	producer := newNumscriptProducer()
-	order := staleOrder()
 
-	_, err := producer.produce(mockStore, "test", order, &commonpb.Script{Plain: staleScript})
+	_, err := producer.produceExecution(mockStore, "test", false, &commonpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
@@ -132,9 +126,8 @@ func TestProduce_InvalidExecutionPlanDuringResolutionIsLoudNotStale(t *testing.T
 	})
 
 	producer := newNumscriptProducer()
-	order := staleOrder()
 
-	_, err := producer.produce(mockStore, "test", order, &commonpb.Script{Plain: staleScript})
+	_, err := producer.produceExecution(mockStore, "test", false, &commonpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)

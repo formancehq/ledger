@@ -45,6 +45,13 @@ import (
 
 var bucketTracer = otel.Tracer("grpc.bucket")
 
+type httpApplyContextKey struct{}
+
+// HTTPApplyContext identifies an HTTP request calling the shared Apply service.
+func HTTPApplyContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, httpApplyContextKey{}, true)
+}
+
 const (
 	metadataKeyApplyReplayed      = "ledger-apply-replayed"
 	metadataKeyQueryProfile       = "x-query-profile"
@@ -74,7 +81,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Float64Histogram("grpc.apply.duration",
 		metric.WithUnit("s"),
-		metric.WithDescription("Total duration of the gRPC Apply handler (forwarded identity + ctrl.Apply + signing)"),
+		metric.WithDescription("Total duration of the shared Apply handler (forwarded identity + ctrl.Apply + signing), labelled by transport"),
 		metric.WithExplicitBucketBoundaries(
 			0, 0.0001, 0.0005, 0.002, 0.01, 0.05, 0.2, 1,
 		),
@@ -114,8 +121,12 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		if returned && err == nil {
 			status = "success"
 		}
+		transport := "grpc"
+		if ctx.Value(httpApplyContextKey{}) != nil {
+			transport = "http"
+		}
 		impl.applyDuration.Record(ctx, time.Since(start).Seconds(),
-			metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status)))
+			metric.WithAttributes(attribute.Int("batch_size", batchSize), attribute.String("status", status), attribute.String("transport", transport)))
 	}()
 
 	resp, err = impl.apply(ctx, req, &batchSize)
@@ -132,7 +143,16 @@ func (impl *BucketServiceServerImpl) apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	*batchSize, _ = ctx.Value(applyBatchSizeKey{}).(int)
+	var sizeKnown bool
+	*batchSize, sizeKnown = ctx.Value(applyBatchSizeKey{}).(int)
+	if !sizeKnown {
+		// HTTP calls this service after its own authorization, without the
+		// gRPC interceptor's context value. Inspection is only for telemetry;
+		// admission remains responsible for authenticating the payload.
+		if batch, peekErr := servicepb.PeekBatch(req); peekErr == nil {
+			*batchSize = len(batch.GetRequests())
+		}
+	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("Apply request received with %d requests", *batchSize)
@@ -256,7 +276,7 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 
 	if !internalauth.IsClusterInternal(ctx) {
 		impl.logger.Errorf("rejecting forwarded caller snapshot on a non-cluster-internal connection; " +
-			"cluster secret is likely unset or mismatched between peers")
+			"peer transport authentication is likely missing or mismatched")
 
 		return ctx, status.Error(codes.PermissionDenied,
 			"forwarded caller snapshot on a non-cluster-internal connection")
@@ -512,11 +532,11 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		defer cleanup()
 
 		profile.EnterExecute()
-		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
+		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, transactionAfterID(page.Key, afterTxID), opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	} else {
 		profile.EnterExecute()
-		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), reverse)
+		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, transactionAfterID(page.Key, afterTxID), opts.GetFilter(), reverse)
 		profile.LeaveExecute()
 	}
 
@@ -761,7 +781,7 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesReque
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
-	checker := check.NewChecker(impl.store, impl.attrs, impl.readStore, impl.logger)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
@@ -1190,8 +1210,8 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 	// Barrier proposes a no-op through Raft and waits for it to apply, so it
 	// consumes consensus capacity like a write. Require an authenticated scope
 	// (ledger:ReadOps) so it can't be used anonymously as a DoS amplifier or a
-	// commit-index timing side channel. Leader-forwarded calls carry the
-	// cluster secret, which grants all scopes.
+	// commit-index timing side channel. Leader-forwarded calls carry the peer
+	// transport credential and the original caller token.
 	commitIndex, err := impl.ctrl.Barrier(ctx)
 	if err != nil {
 		return nil, err
@@ -1305,4 +1325,13 @@ func profileToMetadata(profile *query.QueryProfile) metadata.MD {
 
 func RegisterBucketService(registrar ggrpc.ServiceRegistrar, ledgerServiceServer servicepb.BucketServiceServer) {
 	servicepb.RegisterBucketServiceServer(registrar, ledgerServiceServer)
+}
+
+// transactionAfterID keeps an explicit zero distinct from an empty cursor.
+func transactionAfterID(key string, id uint64) *uint64 {
+	if key == "" {
+		return nil
+	}
+
+	return &id
 }

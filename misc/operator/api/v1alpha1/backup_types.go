@@ -44,17 +44,6 @@ type BackupDestination struct {
 	S3SecretAccessKeyFrom *SecretKeyRef `json:"s3SecretAccessKeyFrom,omitempty"`
 }
 
-// BackupSchedule defines cron schedules for full and incremental backups.
-type BackupSchedule struct {
-	// Full is the cron expression for full backups (e.g. "0 2 * * 0" for weekly Sunday 2am).
-	// +optional
-	Full string `json:"full,omitempty"`
-
-	// Incremental is the cron expression for incremental backups (e.g. "0 * * * *" for hourly).
-	// +optional
-	Incremental string `json:"incremental,omitempty"`
-}
-
 // BackupSpec defines the desired state of a Backup.
 type BackupSpec struct {
 	// ClusterRef is the name of the Cluster in the same namespace.
@@ -65,28 +54,27 @@ type BackupSpec struct {
 	// +kubebuilder:validation:Required
 	Destination BackupDestination `json:"destination"`
 
-	// Schedule defines cron schedules for full and incremental backups.
-	// Both entries are optional; a Backup without any schedule is valid
+	// Schedule is the cron expression for checkpoint backups.
+	// It is optional; a Backup without a schedule is valid
 	// and acts as a backup configuration template for manual BackupRun resources.
 	// +optional
-	Schedule BackupSchedule `json:"schedule,omitempty"`
+	Schedule string `json:"schedule,omitempty"`
 
 	// SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun
-	// resources to keep per type (full/incremental). Older runs are garbage-collected.
+	// resources to keep. Older runs are garbage-collected.
 	// Defaults to 3.
 	// +kubebuilder:default=3
 	// +optional
 	SuccessfulRunsHistoryLimit *int32 `json:"successfulRunsHistoryLimit,omitempty"`
 
 	// FailedRunsHistoryLimit is the maximum number of failed BackupRun
-	// resources to keep per type (full/incremental). Older runs are garbage-collected.
+	// resources to keep. Older runs are garbage-collected.
 	// Defaults to 1.
 	// +kubebuilder:default=1
 	// +optional
 	FailedRunsHistoryLimit *int32 `json:"failedRunsHistoryLimit,omitempty"`
 
-	// Timeout caps how long the `ledgerctl store backup` /
-	// `ledgerctl store incremental-backup` RPC may run before the client
+	// Timeout caps how long the `ledgerctl store backup` RPC may run before the client
 	// aborts. The operator forwards it as `--timeout` to the Job's
 	// ledgerctl invocation; tune it for the size of the ledger and the
 	// throughput of the destination bucket. Defaults to 1h, which is
@@ -96,23 +84,28 @@ type BackupSpec struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 }
 
-// FullBackupStatus holds the result of the last full backup.
-type FullBackupStatus struct {
-	// Time is when the last full backup completed.
+// BackupResult holds the result of a completed checkpoint backup.
+type BackupResult struct {
+	// Time is when the last checkpoint completed.
 	// +optional
 	Time *metav1.Time `json:"time,omitempty"`
 
-	// FilesUploaded is the number of files uploaded in the last full backup.
+	// CompletionUnixNano orders successful runs whose Kubernetes timestamps
+	// have the same second. It is preserved with LastBackup after run pruning.
+	// +optional
+	CompletionUnixNano int64 `json:"completionUnixNano,omitempty"`
+
+	// FilesUploaded is the number of files uploaded in the last checkpoint.
 	// +optional
 	FilesUploaded uint32 `json:"filesUploaded,omitempty"`
 
-	// FilesDeleted is the number of stale files deleted in the last full backup
+	// FilesDeleted is the number of stale files deleted in the last checkpoint
 	// (the diff between the previous manifest and the new checkpoint).
 	// +optional
 	FilesDeleted uint32 `json:"filesDeleted,omitempty"`
 
 	// OrphansDeleted is the number of orphan files pruned from storage in the
-	// last full backup. Orphans are leftovers from previous failed runs that
+	// last checkpoint. Orphans are leftovers from previous failed runs that
 	// crashed before writing a manifest.
 	// +optional
 	OrphansDeleted uint32 `json:"orphansDeleted,omitempty"`
@@ -121,7 +114,7 @@ type FullBackupStatus struct {
 	// +optional
 	TotalFiles uint32 `json:"totalFiles,omitempty"`
 
-	// DurationMs is the duration of the last full backup in milliseconds.
+	// DurationMs is the duration of the last checkpoint in milliseconds.
 	// +optional
 	DurationMs int64 `json:"durationMs,omitempty"`
 
@@ -138,42 +131,6 @@ type FullBackupStatus struct {
 	LastAppliedIndex uint64 `json:"lastAppliedIndex,omitempty"`
 }
 
-// IncrementalBackupStatus holds the result of the last incremental backup.
-type IncrementalBackupStatus struct {
-	// Time is when the last incremental backup completed.
-	// +optional
-	Time *metav1.Time `json:"time,omitempty"`
-
-	// LogEntriesExported is the number of log entries exported.
-	// +optional
-	LogEntriesExported uint64 `json:"logEntriesExported,omitempty"`
-
-	// AuditEntriesExported is the number of audit entries exported.
-	// +optional
-	AuditEntriesExported uint64 `json:"auditEntriesExported,omitempty"`
-
-	// SegmentsUploaded is the number of segments uploaded.
-	// +optional
-	SegmentsUploaded uint32 `json:"segmentsUploaded,omitempty"`
-
-	// OrphansDeleted is the number of orphan export segments pruned from
-	// storage in the last incremental backup.
-	// +optional
-	OrphansDeleted uint32 `json:"orphansDeleted,omitempty"`
-
-	// DurationMs is the duration of the last incremental backup in milliseconds.
-	// +optional
-	DurationMs int64 `json:"durationMs,omitempty"`
-
-	// LastLogSequence is the last log sequence in the incremental backup.
-	// +optional
-	LastLogSequence uint64 `json:"lastLogSequence,omitempty"`
-
-	// LastAuditSequence is the last audit sequence in the incremental backup.
-	// +optional
-	LastAuditSequence uint64 `json:"lastAuditSequence,omitempty"`
-}
-
 // BackupStatus defines the observed state of a Backup.
 type BackupStatus struct {
 	// Phase is the current lifecycle phase.
@@ -184,31 +141,18 @@ type BackupStatus struct {
 	// +optional
 	Message string `json:"message,omitempty"`
 
-	// LastFullBackup holds the result of the last full backup.
+	// LastBackup holds the result of the last successful checkpoint.
 	// +optional
-	LastFullBackup *FullBackupStatus `json:"lastFullBackup,omitempty"`
+	LastBackup *BackupResult `json:"lastBackup,omitempty"`
 
-	// LastIncrementalBackup holds the result of the last incremental backup.
-	// +optional
-	LastIncrementalBackup *IncrementalBackupStatus `json:"lastIncrementalBackup,omitempty"`
-
-	// LastFullRunCompletionTime is the latest observed terminal full run completion,
+	// LastRunCompletionTime is the latest observed terminal run completion,
 	// successful or failed. It is preserved independently of run history retention.
 	// +optional
-	LastFullRunCompletionTime *metav1.Time `json:"lastFullRunCompletionTime,omitempty"`
+	LastRunCompletionTime *metav1.Time `json:"lastRunCompletionTime,omitempty"`
 
-	// LastIncrementalRunCompletionTime is the latest observed terminal incremental
-	// run completion, successful or failed, independent of run history retention.
+	// NextBackupTime is the next scheduled checkpoint time.
 	// +optional
-	LastIncrementalRunCompletionTime *metav1.Time `json:"lastIncrementalRunCompletionTime,omitempty"`
-
-	// NextFullBackupTime is the next scheduled time for a full backup.
-	// +optional
-	NextFullBackupTime *metav1.Time `json:"nextFullBackupTime,omitempty"`
-
-	// NextIncrementalBackupTime is the next scheduled time for an incremental backup.
-	// +optional
-	NextIncrementalBackupTime *metav1.Time `json:"nextIncrementalBackupTime,omitempty"`
+	NextBackupTime *metav1.Time `json:"nextBackupTime,omitempty"`
 
 	// Conditions represent the latest available observations.
 	// +optional
@@ -220,8 +164,7 @@ type BackupStatus struct {
 // +kubebuilder:resource:shortName=bk
 // +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterRef`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Last Full",type=date,JSONPath=`.status.lastFullBackup.time`
-// +kubebuilder:printcolumn:name="Last Incremental",type=date,JSONPath=`.status.lastIncrementalBackup.time`
+// +kubebuilder:printcolumn:name="Last Backup",type=date,JSONPath=`.status.lastBackup.time`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Backup manages scheduled backups of a Cluster to S3 via ledgerctl.

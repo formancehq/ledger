@@ -2,7 +2,7 @@
 
 The Kubernetes `Backup` controller schedules `BackupRun` resources; the
 `BackupRun` controller executes them through Jobs. This is control-plane
-operational state, outside Ledger's audited store and exported backup data.
+operational state, outside Ledger's audited store and checkpoint backup data.
 Restoring Ledger data into another cluster does not restore these Kubernetes
 objects or their scheduling cursors.
 
@@ -47,7 +47,13 @@ histories still increase reconciliation cost.
 The association change does not provide atomic execution exclusion across
 concurrent reconcilers; it preserves the existing Running-reservation policy.
 
-### Upgrading parent admission
+### Historical parent-admission upgrade
+
+This procedure applied to the earlier RC parent-admission change. It is not an
+alternative to the current checkpoint-only CRD migration, which requires
+deleting old BackupRun and Backup resources before installing the new CRDs.
+Follow [the current migration steps](../../../../ops/backup-restore.md#crd-migration-for-checkpoint-only-scheduling)
+when upgrading to checkpoint-only scheduling.
 
 The rule freezes the currently stored reference on existing runs; it cannot
 recover a reference changed before installation. Stop the operator before
@@ -67,38 +73,47 @@ protocol revision.
 ## Retention must not reset the schedule (EN-2000)
 
 History limits control retained Kubernetes execution records. Deleting those
-records must not cause an early execution or disable an incremental schedule.
+records must not cause an early execution or disable the checkpoint schedule.
 Previously the scheduler derived its only execution cursor from retained
 terminal children. Zero successful or failed retention erased that cursor,
 so the next reconciliation, including after restart, ran immediately.
 
-`Backup.status.lastFullRunCompletionTime` and
-`Backup.status.lastIncrementalRunCompletionTime` retain the greatest observed
-terminal completion time per type, for both successful and failed runs,
+`Backup.status.lastRunCompletionTime` retains the greatest observed
+terminal completion time for both successful and failed runs,
 including manual runs. They never move backwards when the remaining history
 contains only older completions. They advance even when a schedule is disabled.
 The first execution is immediate when no completion has been observed; later
 executions use the first cron occurrence strictly after the completion cursor.
 A changed cron expression is evaluated against the same cursor.
 
-`lastFullBackup` and `lastIncrementalBackup` remain successful-result summaries;
-failed runs never manufacture those summaries. Incremental scheduling requires
-a successful full summary, which survives pruning. `nextFullBackupTime` and
-`nextIncrementalBackupTime` remain derived next-deadline information, cleared
-when their schedule is absent (or the incremental prerequisite is missing).
-They are not scheduling cursors: while a run is active they describe the next
+`lastBackup` is the last successful checkpoint result; failed runs never
+manufacture a summary. `BackupRun.status.result` holds the corresponding
+per-run result. Successful results also persist the completion time in Unix
+nanoseconds. Kubernetes serializes the public completion timestamp to seconds;
+the nanosecond value lets the parent keep the newer success when two runs finish
+in that second, including after the older run has been pruned. `BackupHealthy`
+reports the latest observed terminal outcome,
+including failures after an earlier success. The persisted completion cursor
+prevents an older retained run from reversing that condition after history
+pruning, even when either history limit is zero. A failure wins when completion
+timestamps tie; an equal-time success cannot clear a recorded failure after
+pruning. A later completion can restore healthy status. `spec.schedule` is the optional
+checkpoint cron expression.
+`nextBackupTime` is the derived next deadline. It is not a scheduling cursor:
+while a run is active it describes the next
 cron occurrence after the current reconciliation time.
 
 ## Reconciliation and failure ordering
 
 1. Read the Backup directly from the API server, validate the Cluster and cron
-   expressions, then list child runs directly from the API server. A failed direct
+   expression, then list child runs directly from the API server. A failed direct
    read stops reconciliation before any scheduling or pruning.
-2. Refresh completion cursors monotonically and successful-result summaries in
-   memory from the observed children.
-3. Evaluate schedules and create due runs. A same-type Pending, Running, or
-   not-yet-initialized child prevents another scheduled run. The BackupRun
-   controller separately gates execution on Running siblings across both types.
+2. Refresh the successful-result summary and health condition against the
+   persisted completion cursor, then advance that cursor monotonically from
+   the observed children.
+3. Evaluate the checkpoint schedule and create a due run. Any Pending, Running,
+   or not-yet-initialized child prevents another scheduled run. The BackupRun
+   controller separately gates execution on Running siblings.
 4. Persist the complete Backup status, including cursors, summaries, next
    deadlines, phase and conditions.
 5. Only after that write succeeds, prune terminal children exceeding the
@@ -122,17 +137,17 @@ causes the final status write to conflict and retry.
 This ordering protects controller-managed history deletion; it does not make
 external deletion of execution evidence transactional with reconciliation.
 
-The CRD schema and generated deepcopy code must carry both cursor fields,
-including the Helm CRD copy. This API change preceded `v3.0.0-rc.1` and had no
-migration from earlier development formats. It changes no Ledger service RPC or
-protocol revision.
+The CRD schema and generated deepcopy code carry the single cursor and result
+fields, including the Helm CRD copy. Earlier RC operator CRD shapes are
+intentionally unsupported; see the migration steps in `docs/ops/backup-restore.md`.
+This changes no Ledger service RPC or protocol revision.
 
 ## Regression evidence
 
 `misc/operator/internal/controller/backup_scheduling_test.go` combines daily
 scheduling, zero retention, successful and failed completion, and fresh
 reconciler instances before and at the next deadline. Additional cases cover
-write/delete failures, active runs, independent incremental progress, disabled
+write/delete failures, active runs, disabled
 and changed schedules, older retained history, and a parent informer lagging
 behind child deletion.
 
@@ -158,8 +173,8 @@ or resubmission for permanently unavailable result evidence, and historical Fail
 runs are not reopened.
 
 The result-recovery regressions in `backuprun_result_recovery_test.go` exercise
-full and incremental runs, one-time Pod-list errors and missing Pods, fresh
-reconcilers, sibling exclusion, parent accounting, incremental eligibility and zero
+checkpoint runs, one-time Pod-list errors and missing Pods, fresh
+reconcilers, sibling exclusion, parent accounting and zero
 retention. `backuprun_result_logs_test.go` exercises fallback log opening and read
 failures followed by complete valid summaries. These client/HTTP fixtures prove
 controller decisions, not kubelet execution or Kubernetes garbage collection.

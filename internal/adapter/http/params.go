@@ -37,10 +37,14 @@ func maxBodySizeMiddleware(maxBytes int64) func(http.Handler) http.Handler {
 	}
 }
 
-// requireLedgerName extracts and validates the ledgerName URL parameter.
+// requireLedgerName decodes and validates the ledgerName URL parameter.
 // Returns the ledger name and true on success; writes a 400 response and returns false on failure.
 func requireLedgerName(w http.ResponseWriter, r *http.Request) (string, bool) {
-	ledgerName := chi.URLParam(r, "ledgerName")
+	ledgerName, ok := requirePathParameter(w, r, "ledgerName", "ledger name")
+	if !ok {
+		return "", false
+	}
+
 	if err := domain.ValidateLedgerName(ledgerName); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

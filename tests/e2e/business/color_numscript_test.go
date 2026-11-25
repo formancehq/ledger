@@ -222,21 +222,21 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 
 			usdUncolored := byKey[key{"USD/2", ""}]
 			g.Expect(usdUncolored).NotTo(BeNil())
-			g.Expect(usdUncolored.Input.ToBigInt().Int64()).To(Equal(int64(10)))
-			g.Expect(usdUncolored.Output.ToBigInt().Int64()).To(Equal(int64(10)),
+			g.Expect(usdUncolored.Input.DecimalString()).To(Equal("10"))
+			g.Expect(usdUncolored.Output.DecimalString()).To(Equal("10"),
 				"world's output for USD/2 uncolored must match alice's input")
 
 			usdGrants := byKey[key{"USD/2", "GRANTS"}]
 			g.Expect(usdGrants).NotTo(BeNil())
-			g.Expect(usdGrants.Input.ToBigInt().Int64()).To(Equal(int64(100)))
+			g.Expect(usdGrants.Input.DecimalString()).To(Equal("100"))
 
 			usdOps := byKey[key{"USD/2", "OPS"}]
 			g.Expect(usdOps).NotTo(BeNil())
-			g.Expect(usdOps.Input.ToBigInt().Int64()).To(Equal(int64(40)))
+			g.Expect(usdOps.Input.DecimalString()).To(Equal("40"))
 
 			eurGrants := byKey[key{"EUR/2", "GRANTS"}]
 			g.Expect(eurGrants).NotTo(BeNil())
-			g.Expect(eurGrants.Input.ToBigInt().Int64()).To(Equal(int64(50)))
+			g.Expect(eurGrants.Input.DecimalString()).To(Equal("50"))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
@@ -259,13 +259,13 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 
 			usd := byAsset["USD/2"]
 			g.Expect(usd).NotTo(BeNil())
-			g.Expect(usd.Input.ToBigInt().Int64()).To(Equal(int64(150)))
-			g.Expect(usd.Output.ToBigInt().Int64()).To(Equal(int64(150)),
+			g.Expect(usd.Input.DecimalString()).To(Equal("150"))
+			g.Expect(usd.Output.DecimalString()).To(Equal("150"),
 				"world's output must collapse the same way alice's input does")
 
 			eur := byAsset["EUR/2"]
 			g.Expect(eur).NotTo(BeNil())
-			g.Expect(eur.Input.ToBigInt().Int64()).To(Equal(int64(50)))
+			g.Expect(eur.Input.DecimalString()).To(Equal("50"))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 })

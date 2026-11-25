@@ -29,8 +29,8 @@ const (
 	backupJobLabelRun = "ledger.formance.com/backup-run"
 )
 
-// fullBackupResult holds the parsed JSON output from `ledgerctl store backup`.
-type fullBackupResult struct {
+// checkpointResult holds the parsed JSON output from `ledgerctl store backup`.
+type checkpointResult struct {
 	FilesUploaded     uint32 `json:"filesUploaded"`
 	FilesDeleted      uint32 `json:"filesDeleted"`
 	OrphansDeleted    uint32 `json:"orphansDeleted"`
@@ -39,17 +39,6 @@ type fullBackupResult struct {
 	LastLogSequence   uint64 `json:"lastLogSequence"`
 	LastAuditSequence uint64 `json:"lastAuditSequence"`
 	LastAppliedIndex  uint64 `json:"lastAppliedIndex"`
-}
-
-// incrementalBackupResult holds the parsed JSON output from `ledgerctl store incremental-backup`.
-type incrementalBackupResult struct {
-	LogEntriesExported   uint64 `json:"logEntriesExported"`
-	AuditEntriesExported uint64 `json:"auditEntriesExported"`
-	SegmentsUploaded     uint32 `json:"segmentsUploaded"`
-	OrphansDeleted       uint32 `json:"orphansDeleted"`
-	DurationMs           int64  `json:"durationMs"`
-	LastLogSequence      uint64 `json:"lastLogSequence"`
-	LastAuditSequence    uint64 `json:"lastAuditSequence"`
 }
 
 // backupFlags builds the common ledgerctl flags for backup commands.
@@ -121,16 +110,14 @@ func backupJobName(run *ledgerv1alpha1.BackupRun) string {
 }
 
 // buildBackupJob renders the desired batchv1.Job for a BackupRun. The
-// Job runs `ledgerctl store backup` (or incremental-backup) in a one-shot
+// Job runs `ledgerctl store backup` in a one-shot
 // pod that connects to the Cluster over its cluster DNS.
 //
 // tlsMode mirrors the running pod's TLS_MODE so the Job's ledgerctl negotiates
 // the same transport. Pre-existing volumes/secrets from the ledger StatefulSet
-// are reused (TLS secret, cluster-secret); the Job uses the same
-// ServiceAccount. ledgerImage is the image from that owned StatefulSet, so a
-// Cluster whose image tag is defaulted in memory still produces a valid Job.
-// Ambient S3 authentication is resolved on the Ledger server, which performs
-// the upload.
+// are reused (TLS secret, operator Credentials); the Job uses the same
+// ServiceAccount. Ambient S3 authentication is resolved on the Ledger server,
+// which performs the upload.
 //
 // The caller is expected to set the owner reference on the returned Job
 // (BackupRun → Job) for cascade deletion.
@@ -141,12 +128,7 @@ func buildBackupJob(
 	tlsMode string,
 	ledgerImage string,
 ) (*batchv1.Job, error) {
-	subcmd, err := backupSubcommand(run.Spec.Type)
-	if err != nil {
-		return nil, err
-	}
-
-	args := []string{"store", subcmd}
+	args := []string{"store", "backup"}
 	args = append(args, backupFlags(&backup.Spec.Destination)...)
 	args = append(args, "--json")
 	// Mirror the JSON result to /dev/termination-log so the kubelet surfaces
@@ -185,19 +167,22 @@ func buildBackupJob(
 	)
 
 	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
-		// The cluster-secret only exists when TLS is at least partially
-		// active (the ledger operator deletes it when TLS is off), and it
-		// must never travel in plaintext — so the bearer is gated together
-		// with TLS.
-		env = append(env, corev1.EnvVar{
-			Name: "CLUSTER_SECRET",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls.Name)},
-					Key:                  clusterSecretKey,
-				},
-			},
-		})
+		if ls.Spec.Auth != nil && ls.Spec.Auth.Enabled != nil && *ls.Spec.Auth.Enabled {
+			credentialsName := operatorCredentialsName(ls)
+			volumes = append(volumes, corev1.Volume{
+				Name: "operator-credentials",
+				VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+					SecretName: operatorCredentialsSecretName(credentialsName),
+				}},
+			})
+			mounts = append(mounts, corev1.VolumeMount{
+				Name: "operator-credentials", MountPath: "/operator-credentials", ReadOnly: true,
+			})
+			env = append(env,
+				strEnv("OPERATOR_SIGNING_KEY", "/operator-credentials/seed.hex"),
+				secretKeyEnv("OPERATOR_SIGNING_KEY_ID", operatorCredentialsSecretName(credentialsName), "key-id"),
+			)
+		}
 
 		if ls.Spec.TLS != nil && ls.Spec.TLS.SecretName != "" {
 			volumes = append(volumes, corev1.Volume{
@@ -266,17 +251,6 @@ func buildBackupJob(
 	}
 
 	return job, nil
-}
-
-func backupSubcommand(t ledgerv1alpha1.BackupRunType) (string, error) {
-	switch t {
-	case ledgerv1alpha1.BackupRunTypeFull:
-		return "backup", nil
-	case ledgerv1alpha1.BackupRunTypeIncremental:
-		return "incremental-backup", nil
-	}
-
-	return "", fmt.Errorf("unsupported backup type %q", t)
 }
 
 // jobTerminalCondition reports whether the Job has reached a terminal state
@@ -412,8 +386,7 @@ func fetchPodLogs(ctx context.Context, clientset kubernetes.Interface, namespace
 }
 
 // parseBackupResult extracts the JSON summary from a payload produced by
-// `ledgerctl --json` and unmarshals it into the result type matching the
-// BackupRunType.
+// `ledgerctl --json` and unmarshals it into a checkpoint result.
 //
 // The payload is typically the kubelet-captured terminationMessage (a
 // standalone JSON object), but may also be the merged stdout+stderr log
@@ -422,7 +395,7 @@ func fetchPodLogs(ctx context.Context, clientset kubernetes.Interface, namespace
 // anchors from right to left and unmarshal from the first one whose suffix
 // parses cleanly. This handles both compact and pretty-printed JSON
 // (ledgerctl uses json.MarshalIndent) and tolerates any non-JSON preamble.
-func parseBackupResult(payload string, runType ledgerv1alpha1.BackupRunType, out any) error {
+func parseBackupResult(payload string, out any) error {
 	trimmed := strings.TrimRightFunc(payload, unicode.IsSpace)
 
 	for end := len(trimmed); end > 0; {
@@ -439,5 +412,5 @@ func parseBackupResult(payload string, runType ledgerv1alpha1.BackupRunType, out
 		end = idx
 	}
 
-	return fmt.Errorf("no JSON summary found in %s output", runType)
+	return errors.New("no JSON summary found in backup output")
 }

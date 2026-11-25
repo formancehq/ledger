@@ -132,7 +132,7 @@ func (r *ExecutorRegistry) IsAlive(jobID uint64) bool {
 //
 // Backups run under a leadership-scoped context. When leadership
 // transfers, OnLeadershipChange(false) cancels that context, which
-// propagates to every in-flight RunFull/RunIncremental, aborts the
+// propagates to every in-flight RunFull, aborts the
 // S3 SDK request mid-flight, and lets the goroutine exit promptly.
 // Without this, an old leader's executor would keep writing to S3
 // while the new leader's cleanup loop frees the destination slot —
@@ -144,11 +144,7 @@ type Orchestrator struct {
 	nodeID   uint64
 	registry *ExecutorRegistry
 
-	// maxSegmentBytes caps each incremental export segment before it splits.
-	// 0 lets RunIncrementalBackup pick its default.
-	maxSegmentBytes int64
-
-	// mu guards leaderCtx / leaderCancel. RunFull/RunIncremental read
+	// mu guards leaderCtx / leaderCancel. RunFull reads
 	// leaderCtx once and derive a child context for the run; the read
 	// is under the lock so a concurrent OnLeadershipChange cannot
 	// swap leaderCtx in the middle of the read.
@@ -162,24 +158,23 @@ type Orchestrator struct {
 // job.
 //
 // The orchestrator starts in a non-leader state: leaderCtx is an
-// already-cancelled context, so any RunFull/RunIncremental called
+// already-cancelled context, so any RunFull called
 // before OnLeadershipChange(true) returns immediately with the
 // cancellation error. Bootstrap calls OnLeadershipChange on startup
 // (and on every transition thereafter) so the orchestrator's state
 // tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
+func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry) *Orchestrator {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	return &Orchestrator{
-		proposer:        proposer,
-		store:           store,
-		logger:          logger.WithField("cmp", "backup-orchestrator"),
-		nodeID:          nodeID,
-		registry:        registry,
-		maxSegmentBytes: maxSegmentBytes,
-		leaderCtx:       cancelled,
-		leaderCancel:    cancel,
+		proposer:     proposer,
+		store:        store,
+		logger:       logger.WithField("cmp", "backup-orchestrator"),
+		nodeID:       nodeID,
+		registry:     registry,
+		leaderCtx:    cancelled,
+		leaderCancel: cancel,
 	}
 }
 
@@ -189,7 +184,7 @@ func (o *Orchestrator) Registry() *ExecutorRegistry { return o.registry }
 
 // OnLeadershipChange is wired by bootstrap onto every node leadership
 // transition. On gain: install a fresh leaderCtx so subsequent
-// RunFull / RunIncremental calls run under a context that survives
+// RunFull calls run under a context that survives
 // only while this node is leader. On loss: cancel that context — every
 // in-flight upload's runCtx unblocks, the S3 SDK aborts its request,
 // the executor goroutine returns runErr and deregisters itself. The
@@ -304,53 +299,11 @@ func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestina
 	return result, nil
 }
 
-// RunIncremental mirrors RunFull for the incremental pipeline.
-func (o *Orchestrator) RunIncremental(ctx context.Context, dst *raftcmdpb.BackupDestination, storage backup.Storage) (*backup.IncrementalBackupResult, error) {
-	jobID := commands.GenerateRandomID()
-
-	runCtx, cancelRun := o.runContext(ctx)
-	defer cancelRun()
-
-	// See RunFull for the tryRegister rationale — same reasoning.
-	deregisterOnExit := o.registry.tryRegister(jobID)
-	defer func() {
-		if deregisterOnExit {
-			o.registry.deregister(jobID)
-		}
-	}()
-
-	if err := o.proposeAndWait(runCtx, incrementalStart(jobID, dst, o.nodeID)); err != nil {
-		return nil, fmt.Errorf("propose incremental start: %w", err)
-	}
-
-	result, runErr := backup.RunIncrementalBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), o.maxSegmentBytes)
-	if runErr != nil {
-		o.proposeTerminal(incrementalFail(jobID, runErr.Error()), jobID, "incremental fail")
-
-		return nil, runErr
-	}
-
-	termCtx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
-	defer cancel()
-
-	if err := o.proposeAndWait(termCtx, incrementalComplete(jobID, result)); err != nil {
-		o.logger.WithFields(map[string]any{
-			"jobID": jobID,
-			"error": err,
-		}).Errorf("propose incremental complete failed (job stays RUNNING until cleanup)")
-
-		return nil, fmt.Errorf("propose incremental complete: %w", err)
-	}
-
-	return result, nil
-}
-
-// proposeTerminal pushes a terminal Fail proposal under a bounded
-// background context. Used when the upload itself has already failed:
-// by the time we get here there is no upstream caller left to surface
-// a propose-level error to, so we log and continue. The bounded
-// context (vs bare context.Background) caps how long a stuck propose
-// can keep the handler goroutine alive if leadership is lost.
+// proposeTerminal submits a Fail order after an upload error. Its bounded
+// background context lets the proposal outlive caller cancellation without
+// leaving the handler stuck indefinitely. A proposal error is logged rather
+// than replacing the upload error returned by RunFull; cleanup handles a job
+// that remains RUNNING.
 func (o *Orchestrator) proposeTerminal(populate func(*raftcmdpb.Proposal), jobID uint64, kind string) {
 	ctx, cancel := context.WithTimeout(context.Background(), TerminalProposeTimeout)
 	defer cancel()
@@ -404,15 +357,6 @@ func wrapFullBackupOrder(order *raftcmdpb.BackupOrder) func(*raftcmdpb.Proposal)
 	}
 }
 
-// wrapIncrementalBackupOrder is the incremental-pipeline counterpart.
-func wrapIncrementalBackupOrder(order *raftcmdpb.IncrementalBackupOrder) func(*raftcmdpb.Proposal) {
-	return func(p *raftcmdpb.Proposal) {
-		p.GetBatch().TechnicalUpdates = append(p.GetBatch().TechnicalUpdates, &raftcmdpb.TechnicalUpdate{
-			Kind: &raftcmdpb.TechnicalUpdate_IncrementalBackupOrder{IncrementalBackupOrder: order},
-		})
-	}
-}
-
 func fullStart(jobID uint64, dst *raftcmdpb.BackupDestination, executor uint64) func(*raftcmdpb.Proposal) {
 	return wrapFullBackupOrder(&raftcmdpb.BackupOrder{
 		Op: &raftcmdpb.BackupOrder_Start{Start: &raftcmdpb.BackupOrderStart{
@@ -444,32 +388,19 @@ func fullFail(jobID uint64, message string) func(*raftcmdpb.Proposal) {
 	})
 }
 
-func incrementalStart(jobID uint64, dst *raftcmdpb.BackupDestination, executor uint64) func(*raftcmdpb.Proposal) {
-	return wrapIncrementalBackupOrder(&raftcmdpb.IncrementalBackupOrder{
-		Op: &raftcmdpb.IncrementalBackupOrder_Start{Start: &raftcmdpb.BackupOrderStart{
-			JobId:          jobID,
-			Destination:    dst,
-			ExecutorNodeId: executor,
-		}},
-	})
-}
-
-func incrementalComplete(jobID uint64, result *backup.IncrementalBackupResult) func(*raftcmdpb.Proposal) {
-	return wrapIncrementalBackupOrder(&raftcmdpb.IncrementalBackupOrder{
-		Op: &raftcmdpb.IncrementalBackupOrder_Complete{Complete: &raftcmdpb.BackupOrderComplete{
-			JobId:             jobID,
-			LastLogSequence:   result.LastLogSequence,
-			LastAuditSequence: result.LastAuditSequence,
-			SegmentsUploaded:  uint64(result.SegmentsUploaded),
-		}},
-	})
-}
-
+// incrementalFail releases an orphaned incremental job from an older RC leader.
+// New leaders never start incremental jobs, but must clean up their persisted
+// reservations during a rolling upgrade.
 func incrementalFail(jobID uint64, message string) func(*raftcmdpb.Proposal) {
-	return wrapIncrementalBackupOrder(&raftcmdpb.IncrementalBackupOrder{
-		Op: &raftcmdpb.IncrementalBackupOrder_Fail{Fail: &raftcmdpb.BackupOrderFail{
-			JobId:   jobID,
-			Message: message,
-		}},
-	})
+	return func(p *raftcmdpb.Proposal) {
+		p.GetBatch().TechnicalUpdates = append(p.GetBatch().TechnicalUpdates, &raftcmdpb.TechnicalUpdate{
+			Kind: &raftcmdpb.TechnicalUpdate_IncrementalBackupOrder{
+				IncrementalBackupOrder: &raftcmdpb.IncrementalBackupOrder{
+					Op: &raftcmdpb.IncrementalBackupOrder_Fail{Fail: &raftcmdpb.BackupOrderFail{
+						JobId: jobID, Message: message,
+					}},
+				},
+			},
+		})
+	}
 }

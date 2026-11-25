@@ -109,5 +109,5 @@ func TestAggregateVolumesMainStoreOnlyFilterDoesNotWaitForReadProjection(t *test
 	require.NoError(t, err,
 		"a main-store-only aggregation must remain independent of a lagging projection")
 	require.Len(t, result.GetVolumes(), 1)
-	require.Equal(t, uint64(10), result.GetVolumes()[0].GetInput().GetV0())
+	require.Equal(t, commonpb.NewBigUintFromUint64(10).GetMagnitude(), result.GetVolumes()[0].GetInput().GetMagnitude())
 }

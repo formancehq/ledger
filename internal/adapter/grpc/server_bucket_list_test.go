@@ -111,11 +111,37 @@ func TestListLedgers(t *testing.T) {
 func TestListTransactions(t *testing.T) {
 	t.Parallel()
 
+	t.Run("zero cursor forwarded as a position", func(t *testing.T) {
+		t.Parallel()
+		impl, mockCtrl := newListHandlerHarness(t)
+		zero := uint64(0)
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(2), &zero, nil, true).
+			Return(page(&commonpb.Transaction{Id: 1}), nil)
+		req := &servicepb.ListTransactionsRequest{Ledger: "main", Options: &commonpb.ListOptions{
+			PageSize: 1, Reverse: true, Cursor: pagecursor.Cursor{Key: "0"}.Encode(),
+		}}
+		require.NoError(t, impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t)))
+	})
+
+	t.Run("back from zero excludes the cursor row", func(t *testing.T) {
+		t.Parallel()
+		impl, mockCtrl := newListHandlerHarness(t)
+		zero := uint64(0)
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), &zero, nil, true).
+			Return(page(&commonpb.Transaction{Id: 1}, &commonpb.Transaction{Id: 2}), nil)
+		stream := newFakeServerStream[commonpb.Transaction](t)
+		req := &servicepb.ListTransactionsRequest{Ledger: "main", Options: &commonpb.ListOptions{
+			PageSize: 2, Cursor: pagecursor.Cursor{Key: "0", Back: true}.Encode(),
+		}}
+		require.NoError(t, impl.ListTransactions(req, stream))
+		require.Equal(t, []uint64{2, 1}, sentTxIDs(stream))
+	})
+
 	t.Run("peek fires → trailer is tx id as decimal", func(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), uint64(0), gomock.Any(), false).
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), nil, gomock.Any(), false).
 			Return(page(
 				&commonpb.Transaction{Id: 1},
 				&commonpb.Transaction{Id: 2},
@@ -173,7 +199,7 @@ func TestListTransactions(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		// The default transaction order is reverse=false at the API; a back
 		// page reads it the other way, then returns the rows flipped back.
-		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), uint64(10), gomock.Any(), true).
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), gomock.Any(), gomock.Any(), true).
 			Return(page(&commonpb.Transaction{Id: 9}, &commonpb.Transaction{Id: 8}, &commonpb.Transaction{Id: 7}), nil)
 
 		stream := newFakeServerStream[commonpb.Transaction](t)
@@ -194,7 +220,7 @@ func TestListTransactions(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", gomock.Any(), uint64(42), gomock.Any(), gomock.Any()).
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(page[commonpb.Transaction](), nil)
 
 		req := &servicepb.ListTransactionsRequest{

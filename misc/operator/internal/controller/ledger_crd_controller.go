@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -424,11 +425,6 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 		return nil, 0, err
 	}
 
-	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
-	if err != nil || !found || port == 0 {
-		port = clusterGRPCPort
-	}
-
 	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 		Type:               conditionEndpointResolved,
 		Status:             metav1.ConditionTrue,
@@ -436,7 +432,7 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 		ObservedGeneration: ledger.Generation,
 	})
 
-	return cluster, int32(port), nil
+	return cluster, cmp.Or(cluster.Spec.GrpcPort, clusterGRPCPort), nil
 }
 
 // clusterFromUnstructured converts a Cluster read through the dynamic client
@@ -650,24 +646,12 @@ func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, cluster *ledgerv1a
 // errClusterRuntimeAbsent, errResourceNameConflict or errPodNotOwned and runs
 // nothing.
 func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, cluster *ledgerv1alpha1.Cluster, grpcPort int32, args ...string) (string, error) {
-	sts, err := fetchClusterStatefulSet(ctx, r.Client, cluster)
-	if err != nil {
-		return "", fmt.Errorf("resolving the StatefulSet of Cluster %q: %w", cluster.Name, err)
-	}
-
-	serverAddr := podSelfServerAddr(headlessServiceName(cluster.Name), grpcPort)
-	cmd := ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...)
-
 	exec := r.exec
 	if exec == nil {
 		exec = podExec
 	}
-	res, err := ownedPodExec(sts, exec)(ctx, r.Config, r.Clientset, cluster.Namespace, podName(cluster.Name, 0), ledgerContainer, cmd)
-	if err != nil {
-		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
-	}
 
-	return res.Stdout, nil
+	return execLedgerctlOutput(ctx, r.Client, r.Config, r.Clientset, exec, cluster, grpcPort, args...)
 }
 
 // resolveCluster reads the referenced Cluster and its gRPC port from the
@@ -682,12 +666,7 @@ func (r *LedgerReconciler) resolveCluster(ctx context.Context, namespace, cluste
 		return nil, 0, err
 	}
 
-	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
-	if err != nil || !found || port == 0 {
-		return cluster, clusterGRPCPort, nil
-	}
-
-	return cluster, int32(port), nil
+	return cluster, cmp.Or(cluster.Spec.GrpcPort, clusterGRPCPort), nil
 }
 
 func (r *LedgerReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -724,23 +703,6 @@ func isLedgerNotFound(err error) bool {
 	}
 
 	return strings.Contains(strings.ToLower(err.Error()), "not found")
-}
-
-// unstructuredNestedInt64 extracts an int64 from an unstructured object.
-func unstructuredNestedInt64(obj map[string]any, fields ...string) (int64, bool, error) {
-	val, found, err := nestedFieldNoCopy(obj, fields...)
-	if !found || err != nil {
-		return 0, found, err
-	}
-
-	switch v := val.(type) {
-	case int64:
-		return v, true, nil
-	case float64:
-		return int64(v), true, nil
-	default:
-		return 0, false, fmt.Errorf("unexpected type %T for %v", val, fields)
-	}
 }
 
 // nestedFieldNoCopy traverses a map by the given path.

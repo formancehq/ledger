@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -312,12 +313,18 @@ func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair
 		}
 
 		p := &aggPair{}
-		av.GetInput().IntoUint256(&p.in)
-		av.GetOutput().IntoUint256(&p.out)
+		wrapUint256(av.GetInput(), &p.in)
+		wrapUint256(av.GetOutput(), &p.out)
 		out[key] = p
 	}
 
 	return out, true
+}
+
+// wrapUint256 reduces an exact server total modulo 2^256, matching the
+// model's wrapping uint256 sums.
+func wrapUint256(total *commonpb.BigUint, dst *uint256.Int) {
+	_ = dst.SetFromBig(new(big.Int).SetBytes(total.GetMagnitude())) // the overflow flag is the intended truncation
 }
 
 // serverAggregateGroups decodes the grouped arm of a result, preserving the

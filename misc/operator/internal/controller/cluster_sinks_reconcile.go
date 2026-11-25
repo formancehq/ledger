@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -17,18 +16,5 @@ const (
 // Like LedgerReconciler.ledgerctlExecOutput, it execs only into a pod-0
 // controlled by the Cluster's own StatefulSet.
 func (r *ClusterReconciler) ledgerctlExecOutput(ctx context.Context, cluster *ledgerv1alpha1.Cluster, grpcPort int32, args ...string) (string, error) {
-	sts, err := fetchClusterStatefulSet(ctx, r.Client, cluster)
-	if err != nil {
-		return "", fmt.Errorf("resolving the StatefulSet of Cluster %q: %w", cluster.Name, err)
-	}
-
-	serverAddr := podSelfServerAddr(headlessServiceName(cluster.Name), grpcPort)
-	cmd := ledgerctlCommand(serverAddr, currentTLSModeFromStatefulSet(sts), args...)
-
-	res, err := ownedPodExec(sts, podExec)(ctx, r.Config, r.Clientset, cluster.Namespace, podName(cluster.Name, 0), ledgerContainer, cmd)
-	if err != nil {
-		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
-	}
-
-	return res.Stdout, nil
+	return execLedgerctlOutput(ctx, r.Client, r.Config, r.Clientset, podExec, cluster, grpcPort, args...)
 }

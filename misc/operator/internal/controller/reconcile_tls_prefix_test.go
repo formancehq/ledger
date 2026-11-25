@@ -51,7 +51,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 	}
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "bk-manual-abc", Namespace: namespace},
-		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "bk", Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "bk"},
 	}
 
 	makeSTS := func(name string) *appsv1.StatefulSet {

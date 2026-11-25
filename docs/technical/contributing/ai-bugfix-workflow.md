@@ -1,17 +1,12 @@
-# AI bugfix workflow
+# Bugfix workflow
 
-Runtime bugfixes follow a fail-closed sequence:
+Runtime bugfixes follow this sequence:
 
-`DISCOVER → REPRODUCE → FIX → VALIDATE → PRE-COMMIT → REVIEW → GUARDED PUSH`
+`DISCOVER → REPRODUCE → FIX → VALIDATE → REVIEW`
 
-Discovery must record one of `DIRECT_FIX`, `PARTIAL_FIX`,
-`RELATED_BUT_DIFFERENT`, `STALE_OR_INVALID`, `ALREADY_FIXED`, or
-`NO_EXISTING_WORK`. A bugfix evidence record must also contain:
-
-```text
-BEFORE_FIX: BUG_REPRODUCED | REPRODUCTION_BLOCKED | ALREADY_FIXED
-AFTER_FIX: PASS
-```
+Record the original failure and verify that the regression test fails before
+the fix and passes after it. If reproduction is blocked, explain why and state
+what evidence supports the fix.
 
 When a validation failure occurs, classify it as
 `BASELINE_FAILURE`, `CANDIDATE_CAUSED`, `ENVIRONMENTAL`, or `UNKNOWN` before
@@ -25,11 +20,7 @@ declared by the repository `go.mod`, then reports the selected binary and
 repository environment. Being inside `nix develop` alone is not evidence of
 the effective toolchain.
 
-Before exact review, the loop runs applicable base-pinned normalization to a
-one-replay fixpoint. Exact-state targeted validation after review must leave the
-candidate clean; the workflow never resets generated changes to hide them and
-does not replay an identical pre-commit again before push. The launcher then
-performs one final target/head refresh and requires the target to remain at the
-run's immutable base before leased publication.
-Any target advance requires explicit synchronization and a fresh trust pipeline,
-regardless of whether the changed paths overlap the candidate.
+Before review, run `bash scripts/agent-check` and the focused tests appropriate
+to the fix. For a PR candidate, run `AI_REVIEW_BASE_SHA=<base-sha> bash
+scripts/agent-check-pr` against the exact target base. Inspect any generated
+changes before publishing.

@@ -37,6 +37,13 @@ Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_
 
 ## Regenerating Code
 
+`just generate-proto` also runs `scripts/fix-vtproto-capability-length.go` to
+reject malformed packed `fixed32` capability declarations in the generated
+AuditEntry and Proposal decoders. The pinned vtprotobuf generator checks the
+outer message length rather than the packed field boundary; the postprocessor
+fails if its expected generated shape changes. Keep the malformed-wire tests
+in both protobuf packages when updating the generator.
+
 ```bash
 just generate-proto
 ```
@@ -78,7 +85,9 @@ migration. Follow the [upgrade policy](../../ops/upgrades.md#release-requirement
 CI enforces the service wire freeze with
 `PROTOCOL_BASE_SHA=<target-sha> just check-protocol-version`. It fails if the
 revision changes or `buf breaking` finds a wire-incompatible change in a type
-reachable from a gated service. Run it locally before pushing a `.proto`
+reachable from a gated service. An accepted break must be a
+[listed wire exception](../architecture/subsystems/api/protocol-compatibility.md#wire-exceptions)
+behind a mandatory stopped upgrade. Run it locally before pushing a `.proto`
 change; review behavior changes separately for client impact.
 
 1. Edit the `.proto` file in `misc/proto/`.
@@ -205,7 +214,8 @@ See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wir
 totals and `SignedBigInt` for balances. These response and audited-projection
 types are deliberately arbitrary precision: an individual persisted color
 bucket is bounded by `Uint256`, but `collapseColors` may sum multiple buckets
-past 256 bits. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
+past 256 bits. `AggregatedVolume` uses `BigUint` for the same reason: it sums
+buckets across accounts, colors, prefixes and precisions. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
 (empty for zero, never prefixed with a zero octet). `SignedBigInt` adds a sign;
 its zero has no magnitude and can never be negative. Public HTTP JSON uses
 exact decimal number tokens by default, matching v2. Clients can opt in to
@@ -255,3 +265,52 @@ Examples of this pattern:
 - `common.ClusterConfig`
 
 These updates are processed by the FSM alongside orders but do not produce ledger `Log` entries and do not carry client idempotency keys.
+
+## Read-only protobuf views
+
+`AsReader()` returns a borrowed view, protecting cached configuration and accepted
+business payloads from mutation through read access. Singular messages and
+message collections expose reader interfaces; scalar slices and bytes are
+copied defensively. `Mutate()` returns an owned deep clone through `CloneVT()`.
+A borrowed view is live, not a snapshot or synchronization boundary: an owner
+that retains the raw message must not mutate it while readers use it.
+
+Oneof readers expose typed arm getters, never protoc's mutable group wrapper.
+For example, `ProposalReader.GetBatch()` returns `ExecutionBatchReader`, and
+`GetSetClusterPolicy()` returns `SetClusterPolicyProposalReader`. Nested getters
+retain the same reader and defensive-copy rules. Use `WhichPayload()` to
+compare with `Proposal_PayloadReaderCase_Batch`,
+`Proposal_PayloadReaderCase_SetClusterPolicy`, or
+`Proposal_PayloadReaderCase_Unset`. Each generated `<Message>_<Group>ReaderCase`
+uses the arm's protobuf field number; zero means unset. Selection is independent
+of the payload value: false, zero, empty, selected nil messages and typed-nil
+wrappers retain their selected case. Arm getters safely return nil or protoc's
+scalar default for an absent, inactive or typed-nil arm. A nil message's
+`AsReader()` returns a nil interface. Name collisions between generated case
+declarations and schema/reader declarations fail generation explicitly.
+
+The discriminator and message/scalar arm getters add constant-time type checks
+and pointer conversions without heap allocation. Existing defensive-copy
+exceptions still cost proportionally to the copied bytes or slice length;
+`Mutate()` intentionally copies the reachable graph. Collection-reader slice
+interface boxing can still allocate when the compiler cannot inline traversal;
+zero allocation is not a blanket guarantee for arbitrary collection chains.
+With the pinned Go 1.27.3 toolchain on darwin/arm64, the existing transaction
+`BenchmarkReader_GetChain` uses 24 B/one allocation both before and after this
+change. The new policy-arm benchmark uses zero allocations; full Proposal batch
+traversal across orders and postings uses 48 B/two allocations. The optimized
+traversal allocation assertion remains zero. Imported message arms
+require the corresponding generated reader API in their Go package, just like
+ordinary message fields.
+
+This changes the internal Go reader API only. Raw protobuf dispatch, descriptors,
+serialization, persisted state, the service protocol revision and the proposal
+payload upgrade boundary are unaffected. Update reader consumers from mutable
+group switches to the generated discriminator and typed getters, then regenerate
+with `just generate-proto`; never edit generated facades manually.
+
+Regression coverage lives in `tools/protoc-gen-reader/main_test.go` (descriptor
+generation and executable cross-package fixtures), the protobuf packages'
+`reader_oneof_test.go` files (actual Order/Proposal variants, clone isolation and
+allocation assertions), and account-type reader validation tests. The existing
+reader immutability and allocation tests remain applicable.
