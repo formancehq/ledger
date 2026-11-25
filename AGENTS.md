@@ -17,12 +17,9 @@ current StatefulSet image tag with the requested Cluster image tag. RC upgrades
 are rolling unless the embedded operator lists a mandatory stopped-upgrade
 boundary. Such a boundary must preserve committed data and prove non-empty
 replay. Old and new voters must apply entries identically whenever they coexist.
-The RC.3 to RC.4 proposal payload cutover is a mandatory stopped boundary:
-the operator must stop every RC.3 voter before starting an RC.4 voter.
-The RC.4 to RC.5 upgrade is another mandatory stopped boundary: the peer-service
-port and control-state migrations (schema 3 and native configuration/capability
-controls) cannot coexist with RC.4. RC.5 also retypes `AggregatedVolume` totals
-as a wire exception at the unchanged service protocol revision.
+The operator's `mandatoryStopVersions` lists those boundaries; the
+[upgrade guide](docs/ops/upgrades.md#release-requirement-from-v300-rc1) gives
+each one's reason and procedure.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.

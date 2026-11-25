@@ -152,6 +152,16 @@ satisfy both rules and yield the same logs. The proposal payload and capability
 registry remain unchanged. A mixed-version rollout across this boundary is
 unsupported.
 
+Forwarded preload gaps also change apply at the same boundary without a
+capability. RC.4 rejects a keyed batch carrying an order marked
+`OrderTechnical.preload_unavailable` with the uncommitted `PRELOAD_UNAVAILABLE`
+before executing any order. RC.5 executes the batch in sequence and fails the
+marked order at its own position, so an earlier definitive rejection is
+audited and frozen. RC.4 audited no such batch, so audit replay meets only
+RC.5 outcomes. The same stopped-upgrade drain applies every RC.4 entry under
+RC.4 before RC.5 starts. The proposal payload and capability registry remain
+unchanged.
+
 A change confined to read paths needs no capability either, even when it
 touches a file the capability-contract gate watches. `common.proto` also
 defines service response types that no order carries, and `internal/infra/plan`
