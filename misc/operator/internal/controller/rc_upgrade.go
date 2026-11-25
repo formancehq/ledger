@@ -83,9 +83,13 @@ func ledgerContainerTag(containers []corev1.Container) (string, error) {
 // cannot be verified from a complete StatefulSet rollout, including moving
 // image tags that could cross a mandatory stopped-upgrade boundary.
 func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
+	return validateRCUpgradeWithoutStatefulSet(ctx, r.Client, r.storageAPIReader(), ledger)
+}
+
+func validateRCUpgradeWithoutStatefulSet(ctx context.Context, c client.Client, storageReader client.Reader, ledger *ledgerv1alpha1.Cluster) error {
 	name := resourceName(ledger.Name)
 	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
+	if err := c.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
 		return fmt.Errorf("listing Pods for RC upgrade validation: %w", err)
 	}
 	matchingPod := false
@@ -108,7 +112,7 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 	// PVCs are read uncached: the operator has no watch RBAC on them, so a
 	// cached List starts an informer that never syncs.
 	claims := &corev1.PersistentVolumeClaimList{}
-	if err := r.storageAPIReader().List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
+	if err := storageReader.List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
 		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
 	}
 	for _, claim := range claims.Items {

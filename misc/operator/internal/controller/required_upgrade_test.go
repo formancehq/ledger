@@ -825,7 +825,7 @@ func TestStoppedUpgradeFinalizerPatchFailureBlocksReconcile(t *testing.T) {
 func TestStoppedUpgradeUsesClaimLifecycleCallbacks(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
-	actor := &stoppedUpgradeReconciler{}
+	actor := &stoppedUpgradeReconciler{client: fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build()}
 	calls := make([]string, 0, 3)
 	adoptionFailure := errors.New("adoption callback")
 	claims := stoppedUpgradeClaimLifecycle{
