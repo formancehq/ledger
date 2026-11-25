@@ -176,6 +176,7 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodDelete, "/v3/_/cluster/nodes/{nodeId}", kindGuarded, internalauth.ScopeClusterWrite, false},
 		{http.MethodPost, "/v3/_/cluster/compactions/primary", kindGuarded, internalauth.ScopeClusterWrite, false},
 		{http.MethodPost, "/v3/_/cluster/compactions/secondary", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/backups", kindGuarded, internalauth.ScopeClusterWrite, false},
 
 		// --- Accounts read, requireAccountsRead (handler.go:160-169) ---
 		{http.MethodGet, "/v3/{ledgerName}/accounts", kindGuarded, internalauth.ScopeAccountsRead, false},

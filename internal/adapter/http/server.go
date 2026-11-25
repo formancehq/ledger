@@ -92,6 +92,7 @@ type ClusterAdmin interface {
 	GetDrainStatus(ctx context.Context, req *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error)
 	CompactPrimary(ctx context.Context, req *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error)
 	CompactSecondary(ctx context.Context, req *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error)
+	Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error)
 }
 
 var _ ClusterAdmin = (clusterpb.ClusterServiceServer)(nil)

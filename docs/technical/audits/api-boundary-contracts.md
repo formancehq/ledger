@@ -588,3 +588,16 @@ tests, `TestClusterAdmin_ErrorMapping` and `TestOpenAPI_ClusterAdmin` establish
 conversion and spec conformance. Schemathesis excludes these routes because
 they drain or reconfigure its single-node server. Membership and drain
 correctness remain in `raft-membership-leadership`.
+
+## HTTP backup and restore
+
+`POST /v3/_/cluster/backups` decodes `{bucketId, storage}` strictly and
+requires exactly one of `s3` or `azure`; `basePath` is not part of the HTTP
+contract. Backup-in-progress renders 409 whether the leader returns the raw
+sentinel or a follower returns the forwarded status. Restore-mode routes call
+the in-process `RestoreService`. Validation streams NDJSON: proto event lines,
+then one `result` line. The status is final after the first line, so a later
+failure appears only as `passed: false` with a code and message. The OpenAPI
+tests validate each restore response and every NDJSON line. Schemathesis
+excludes `/v3/_/restore/` because only a restore-mode server serves it, and the
+backup route with the rest of `/v3/_/cluster/`.

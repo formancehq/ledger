@@ -241,6 +241,45 @@ func (c *MockBackendApplyCall) DoAndReturn(f func(context.Context, *servicepb.Ap
 	return c
 }
 
+// Backup mocks base method.
+func (m *MockBackend) Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Backup", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.BackupResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Backup indicates an expected call of Backup.
+func (mr *MockBackendMockRecorder) Backup(ctx, req any) *MockBackendBackupCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Backup", reflect.TypeOf((*MockBackend)(nil).Backup), ctx, req)
+	return &MockBackendBackupCall{Call: call}
+}
+
+// MockBackendBackupCall wrap *gomock.Call
+type MockBackendBackupCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendBackupCall) Return(arg0 *clusterpb.BackupResponse, arg1 error) *MockBackendBackupCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendBackupCall) Do(f func(context.Context, *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error)) *MockBackendBackupCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendBackupCall) DoAndReturn(f func(context.Context, *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error)) *MockBackendBackupCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Barrier mocks base method.
 func (m *MockBackend) Barrier(ctx context.Context) (uint64, error) {
 	m.ctrl.T.Helper()
@@ -1857,6 +1896,45 @@ func (c *MockClusterAdminAddLearnerCall) Do(f func(context.Context, *clusterpb.A
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockClusterAdminAddLearnerCall) DoAndReturn(f func(context.Context, *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error)) *MockClusterAdminAddLearnerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Backup mocks base method.
+func (m *MockClusterAdmin) Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Backup", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.BackupResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Backup indicates an expected call of Backup.
+func (mr *MockClusterAdminMockRecorder) Backup(ctx, req any) *MockClusterAdminBackupCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Backup", reflect.TypeOf((*MockClusterAdmin)(nil).Backup), ctx, req)
+	return &MockClusterAdminBackupCall{Call: call}
+}
+
+// MockClusterAdminBackupCall wrap *gomock.Call
+type MockClusterAdminBackupCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminBackupCall) Return(arg0 *clusterpb.BackupResponse, arg1 error) *MockClusterAdminBackupCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminBackupCall) Do(f func(context.Context, *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error)) *MockClusterAdminBackupCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminBackupCall) DoAndReturn(f func(context.Context, *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error)) *MockClusterAdminBackupCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

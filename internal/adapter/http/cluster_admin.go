@@ -92,17 +92,22 @@ func decodeClusterBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 // node error on the leader and the leader's status when forwarded, so both are
 // normalized to a status before rendering.
 func handleClusterError(w http.ResponseWriter, r *http.Request, err error) {
+	c, err := classifyClusterError(err)
+	writeErrorClass(w, r, err, c)
+}
+
+// classifyClusterError returns the rendering of err and the normalized error.
+func classifyClusterError(err error) (errorClass, error) {
 	if classifyError(err).sanitized {
 		if st, ok := internalgrpc.KnownErrorStatus(err); ok {
 			err = st.Err()
 		}
 	}
 	if c, ok := clusterStatusClass(err); ok {
-		writeErrorClass(w, r, err, c)
-
-		return
+		return c, err
 	}
-	handleError(w, r, err)
+
+	return classifyError(err), err
 }
 
 // clusterStatusClass renders the ClusterService statuses whose message the

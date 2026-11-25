@@ -219,6 +219,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Post("/_/cluster/drain/end", knownQuery(server.handleEndDrain))
 				r.Post("/_/cluster/compactions/primary", knownQuery(server.handleCompactPrimary))
 				r.Post("/_/cluster/compactions/secondary", knownQuery(server.handleCompactSecondary))
+				r.Post("/_/cluster/backups", knownQuery(server.handleBackup))
 			})
 
 			// Accounts read scope

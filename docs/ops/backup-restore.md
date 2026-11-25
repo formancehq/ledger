@@ -238,6 +238,21 @@ ledgerctl store backup --driver azure --azure-account-name myaccount --azure-acc
 | `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--timeout` | `1000s` | Request timeout |
 
+### HTTP
+
+`POST /v3/_/cluster/backups` runs the same backup with a `ledger:WriteCluster`
+token:
+
+```bash
+curl -X POST http://ledger:9000/v3/_/cluster/backups \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"storage": {"s3": {"bucket": "my-bucket", "region": "us-east-1"}}}'
+```
+
+The request returns when the backup is published. Keep the connection open
+for the whole upload: a client or proxy timeout cancels the backup. See
+[Backup over HTTP](../technical/architecture/subsystems/api/http-api.md#backup-over-http).
+
 ### How It Works
 
 The `store backup` command calls the `ClusterService.Backup` gRPC RPC (unary). If connected to a follower, the request is transparently forwarded to the leader.
@@ -358,7 +373,7 @@ In restore mode, only a minimal subset of the application runs:
 | Started | Not Started |
 |---------|-------------|
 | gRPC server (RestoreService + health) | WAL, Raft Node, Transport |
-| HTTP server (`/health` only) | Spool, Cache, Attributes, KeyStore |
+| HTTP server (`/health`, plus the restore API on a loopback `--restore-listen`) | Spool, Cache, Attributes, KeyStore |
 | | Admission, Controller, HealthChecker |
 | | ClusterService, SnapshotService |
 | | Event sinks, Signing |
@@ -418,8 +433,8 @@ operator can retry with a fresh state without restarting the server.
 
 The transfer is detached from the initiating RPC, not from the restore-mode
 application. After any configured shutdown grace period, restore shutdown
-rejects new restore RPCs and cancels any active download, stops the HTTP health
-server and then gRPC, joins admitted RPCs and the download job, and finally
+rejects new restore RPCs and HTTP requests and cancels any active download,
+stops the HTTP server and then gRPC, joins admitted RPCs and the download job, and finally
 closes the retained staging Pebble store. Explicit
 `CancelDownload` keeps its client-facing behavior: it cancels only the selected
 job, waits for a bounded drain, and leaves the restore-mode application running
@@ -517,6 +532,26 @@ Finalization performs these steps:
 One finalization owns the staged generation from preparation through publication and cleanup. A concurrent call fails with `FailedPrecondition` without changing the owner's staging or checkpoint. A repeated call after success also fails because the staging handle is gone; it does not return success again. Shutdown waits for an admitted finalizer before closing restore resources.
 
 If preparation fails, the staging handle remains open and the marker is absent; the staged bytes may already have changed if Pebble committed before reporting an error. If publication fails after the handle closes, staging files remain but cannot be finalized again in the same server process. A marker-write failure removes the newly placed checkpoint; if that rollback fails, remove the leftover checkpoint manually. Restart restore mode with a fresh target and repeat download and validation before retrying. Never treat a failed finalization as a committed restore.
+
+### Restore over HTTP
+
+On the default loopback `--restore-listen`, the restore HTTP API runs the same
+stages without `ledgerctl`, for example from inside the pod:
+
+```bash
+BASE=http://127.0.0.1:9000/v3/_/restore
+curl -si -X POST $BASE/downloads -H 'Content-Type: application/json' \
+  -d '{"storage": {"s3": {"bucket": "my-bucket", "region": "us-east-1"}}}'
+curl -s $BASE/downloads/<jobId>          # poll until DOWNLOAD_STATE_SUCCEEDED
+curl -sN -X POST $BASE/validate          # last line: {"result":{"passed":true}}
+curl -s $BASE/preview
+curl -s -X POST $BASE/finalize
+```
+
+`DELETE $BASE/downloads/<jobId>` cancels a download. The routes have no
+authentication. With a non-loopback `--restore-listen`, HTTP serves `/health`
+only; use `ledgerctl restore` against the gRPC service with TLS. See
+[Restore mode HTTP API](../technical/architecture/subsystems/api/http-api.md#restore-mode-http-api).
 
 On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 

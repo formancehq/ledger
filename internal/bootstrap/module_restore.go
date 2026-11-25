@@ -2,7 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
-	"net/http"
+	"net"
 
 	"go.uber.org/fx"
 	"google.golang.org/grpc/health"
@@ -12,16 +12,17 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	httpcompat "github.com/formancehq/ledger/v3/internal/adapter/http"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // RestoreModule returns a minimal fx module for restore mode.
-// It only starts a gRPC server with the RestoreService and a health endpoint.
+// It only starts the RestoreService over gRPC and HTTP, plus health endpoints.
 // No Raft, WAL, transport, or other production services are started.
 //
-// The restore RPCs are not authenticated. To avoid exposing destructive
+// The restore RPCs and HTTP routes are not authenticated. To avoid exposing destructive
 // operations on the public network, this module binds gRPC + HTTP to
 // cfg.RestoreListen (defaults to 127.0.0.1). An operator can opt out with
 // --restore-listen=0.0.0.0 (or a specific interface), but this should only
@@ -43,7 +44,7 @@ func RestoreModule() fx.Option {
 				// --restore-listen stays the only lever in a deployment.
 				host := cfg.EffectiveRestoreListen()
 
-				if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+				if !isLoopbackHost(host) {
 					logger.WithFields(map[string]any{"restoreListen": host}).
 						Errorf("WARNING: restore mode bound to a non-loopback address (%s). The restore RPCs are not authenticated; ensure TLS and upstream firewalling are in place.", host)
 				}
@@ -108,16 +109,19 @@ func RestoreModule() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
-			// Start minimal HTTP server with /health only, bound to the same
-			// host as the gRPC restore server (see comment on RestoreModule).
-			func(lc fx.Lifecycle, cfg Config, bindings network.Bindings, logger logging.Logger, shutdowner fx.Shutdowner) {
-				mux := http.NewServeMux()
-				mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte(`{"status":"restore_mode"}`))
-				})
+			// Start the restore HTTP API, bound to the same host as the gRPC
+			// restore server (see comment on RestoreModule).
+			// The routes carry storage credentials and destructive operations
+			// over plaintext HTTP, so a non-loopback bind serves /health only.
+			func(lc fx.Lifecycle, cfg Config, bindings network.Bindings, logger logging.Logger, shutdowner fx.Shutdowner, restoreServer *grpcadp.RestoreServiceServerImpl) {
+				handler := httpcompat.NewRestoreHealthHandler(logger)
+				if isLoopbackHost(cfg.EffectiveRestoreListen()) {
+					handler = httpcompat.NewRestoreHandler(logger, restoreServer)
+				} else {
+					logger.Infof("Restore HTTP API disabled on non-loopback address %s; use the gRPC RestoreService with TLS", cfg.EffectiveRestoreListen())
+				}
 
-				lc.Append(httpServerHook(mux, bindings.HTTP, fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort), logger, shutdownRequester(shutdowner)))
+				lc.Append(httpServerHook(handler, bindings.HTTP, fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort), logger, shutdownRequester(shutdowner)))
 			},
 			// Registered last so it is this module's first OnStop hook: close restore
 			// admission and cancel its application-owned job at the Fx shutdown
@@ -128,4 +132,13 @@ func RestoreModule() fx.Option {
 			},
 		),
 	)
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+
+	return ip != nil && ip.IsLoopback()
 }

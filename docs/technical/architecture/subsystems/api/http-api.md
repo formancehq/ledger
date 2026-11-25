@@ -1710,6 +1710,68 @@ a leadership transfer, a promotion or an `EndDrain`.
 Maintenance mode has no dedicated RPC. It is the `setMaintenanceMode` request
 variant of `POST /v3/_/apply`, which requires `ledger:WriteOps`.
 
+#### Backup over HTTP
+
+`POST /v3/_/cluster/backups` calls the in-process `ClusterService.Backup` and
+requires `ledger:WriteCluster`. A follower forwards to the leader. The body is
+strict JSON:
+
+```json
+{"bucketId": "prod", "storage": {"s3": {"bucket": "backups", "region": "eu-west-1"}}}
+```
+
+`storage` sets exactly one of `s3` (`bucket`, `region`, `endpoint`,
+`accessKeyId`, `secretAccessKey`) or `azure` (`accountName`, `accountKey`,
+`container`, `endpoint`). `bucketId` defaults to the cluster ID. The reserved
+`basePath` RPC field is not accepted. The `200` response carries the
+`BackupResponse` counters and sequences as JSON integers.
+
+The call is synchronous. The upload runs under the request context, so a
+client disconnect, a request timeout or a leadership change cancels it; the
+leader then records the run as failed, and the previously published backup
+stays intact. A concurrent backup of the same destination returns
+`409 FAILED_PRECONDITION`. Errors use the cluster administration mapping above.
+`IncrementalBackup` has no route: it runs the same checkpoint backup.
+
+### Restore mode HTTP API
+
+In `--restore` mode, the HTTP listener on `--restore-listen:--http-port` serves
+`/health` and the `RestoreService` stages. Each route calls the in-process
+service, so admission, state checks and shutdown match gRPC. The routes have no
+authentication, like the restore RPCs. They are mounted only when the restore
+listen host is a loopback address: the listener has no TLS, a download request
+carries storage credentials, and finalize is destructive. On another address,
+HTTP serves `/health` only and the server logs that the API is disabled.
+
+| Method and path | RPC | Success |
+|---|---|---|
+| `POST /v3/_/restore/downloads` `{bucketId, storage}` | `StartDownloadBackup` | `202`, `Location`, `{data: {jobId}}` |
+| `GET /v3/_/restore/downloads/{jobId}` | `GetDownloadStatus` | `200`, progress and state name |
+| `DELETE /v3/_/restore/downloads/{jobId}` | `CancelDownload` | `204` |
+| `POST /v3/_/restore/validate` | `ValidateRestore` | `200`, NDJSON stream |
+| `GET /v3/_/restore/preview` | `PreviewRestore` | `200`, staged summary |
+| `POST /v3/_/restore/finalize` | `FinalizeRestore` | `200`, `{data: {message}}` |
+
+The download body uses the backup `storage` shape. The job runs on the restore
+process lifetime, not the request: poll its status until
+`DOWNLOAD_STATE_SUCCEEDED`, `DOWNLOAD_STATE_FAILED` or `DOWNLOAD_STATE_CANCELED`.
+Cancelling a finished job succeeds without effect; an unknown job ID returns
+`404`.
+
+Validation streams `application/x-ndjson`: one `{"progress": {...}}` or
+`{"error": {"message"}}` event per line, then
+`{"result": {"passed": bool}}`. Each `error` line is a validation finding, and
+`passed` is true only without findings. A failure before the first line is an
+ordinary error response. A later one cannot change the status, so the result
+line carries `passed: false` with `errorCode` and `errorMessage`. A client
+disconnect stops validation and leaves the staged backup unvalidated.
+
+Service statuses map as in cluster administration: `FailedPrecondition` (no
+staged backup, download or validation already running, validation not passed,
+concurrent finalization) is `409`, `NotFound` is `404`, and the shutdown
+`Unavailable` is `503` with `Retry-After`. Other failures are a sanitized
+`500`.
+
 ### Health
 
 #### Health Check

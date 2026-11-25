@@ -215,7 +215,8 @@ def run_suite(args):
             "--suppress-health-check", "filter_too_much",
             # Cluster administration drains, reconfigures or removes the single
             # node under test, which would invalidate every later operation.
-            "--exclude-path-regex", "^/v3/_/cluster/",
+            # Restore routes are served only by a restore-mode server.
+            "--exclude-path-regex", "^/v3/_/(cluster|restore)/",
             "--report", "ndjson", "--report-ndjson-path", str(report),
         ]
         if not args.shrink:

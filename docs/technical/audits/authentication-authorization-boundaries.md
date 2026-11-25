@@ -280,3 +280,14 @@ interceptor does not run on the receiving node; the HTTP guard is the only
 check there. When that node forwards to the leader, the outgoing call carries
 the caller's bearer token from the HTTP authentication middleware, and the
 leader re-checks the RPC policy.
+
+## HTTP backup and restore
+
+`POST /v3/_/cluster/backups` is a cluster administration route under
+`ledger:WriteCluster`, with the same in-process call and forwarding as the
+other `/v3/_/cluster` routes. Restore mode keeps the gRPC trust boundary: its
+HTTP routes have no authentication, like the restore RPCs. Because the HTTP
+listener has no TLS, `RestoreModule` mounts them only when `--restore-listen`
+is a loopback address; any other bind serves `/health` alone. A finding must
+show an unauthenticated restore route reachable off loopback, or a backup
+route reachable without its scope.

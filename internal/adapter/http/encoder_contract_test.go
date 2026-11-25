@@ -83,6 +83,9 @@ var jsonWriterFiles = map[string]bool{
 	"handlers_begin_drain.go": true, "handlers_end_drain.go": true,
 	"handlers_get_drain_status.go": true, "handlers_transfer_leadership.go": true,
 	"handlers_compact_primary.go": true, "handlers_compact_secondary.go": true,
+	// Backup and restore responses use the generated ledger_json projections.
+	"handlers_backup.go": true, "handlers_get_restore_download.go": true,
+	"handlers_preview_restore.go": true, "handlers_finalize_restore.go": true,
 }
 
 func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T) {

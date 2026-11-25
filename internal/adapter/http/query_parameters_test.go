@@ -90,13 +90,19 @@ func TestQueryParameters_MatchOpenAPI(t *testing.T) {
 	// The handler may reach the backend for valid parameters. A nil embedded
 	// backend panics there and the router's recoverer converts that into a 500;
 	// the assertion below only concerns rejection at the query boundary.
-	handler := NewHandler(logging.Testing(), &struct{ Backend }{}, internalauth.AuthConfig{}, version.Info{}, nil)
+	mainHandler := NewHandler(logging.Testing(), &struct{ Backend }{}, internalauth.AuthConfig{}, version.Info{}, nil)
+	// Restore routes are served by the restore-mode listener.
+	restoreHandler := NewRestoreHandler(logging.Testing(), &struct{ RestoreBackend }{})
 	pathParam := regexp.MustCompile(`\{[^}]+\}`)
 	for path, raw := range spec["paths"].(map[string]any) {
 		if !strings.HasPrefix(path, "/v3/") {
 			continue
 		}
 		pathSpec := raw.(map[string]any)
+		handler := mainHandler
+		if strings.HasPrefix(path, APIVersionPrefix+"/_/restore/") {
+			handler = restoreHandler
+		}
 		for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
 			opRaw, ok := pathSpec[strings.ToLower(method)]
 			if !ok {

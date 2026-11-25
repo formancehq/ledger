@@ -3770,6 +3770,397 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /v3/_/cluster/backups:
+    post:
+      summary: Run a checkpoint backup
+      description: |
+        Publishes a complete Pebble checkpoint to S3 or Azure Blob Storage, at
+        parity with `ClusterService.Backup`. Requires `ledger:WriteCluster`
+        scope. A follower forwards the request to the leader. The call returns
+        when the backup is published or has failed. The upload belongs to the
+        request: a client disconnect, a request timeout or a leadership change
+        cancels it and the leader records the run as failed. The previously
+        published backup stays intact. A concurrent backup to the same
+        destination returns 409 `FAILED_PRECONDITION`.
+      operationId: v3Backup
+      x-speakeasy-name-override: Backup
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupDestinationRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Backup published.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - filesUploaded
+                      - filesDeleted
+                      - totalFiles
+                      - durationMs
+                      - lastLogSequence
+                      - lastAuditSequence
+                      - lastAppliedIndex
+                      - orphansDeleted
+                    properties:
+                      filesUploaded:
+                        type: integer
+                        format: uint32
+                        description: New or changed files uploaded.
+                      filesDeleted:
+                        type: integer
+                        format: uint32
+                        description: Files of the previous backup that are no longer referenced.
+                      totalFiles:
+                        type: integer
+                        format: uint32
+                        description: Files in the published backup.
+                      durationMs:
+                        type: integer
+                        format: int64
+                      lastLogSequence:
+                        type: integer
+                        format: uint64
+                        description: Log sequence at checkpoint time.
+                      lastAuditSequence:
+                        type: integer
+                        format: uint64
+                        description: Audit sequence at checkpoint time.
+                      lastAppliedIndex:
+                        type: integer
+                        format: uint64
+                        description: Raft applied index at checkpoint time.
+                      orphansDeleted:
+                        type: integer
+                        format: uint32
+                        description: Leftover files of failed runs pruned from storage.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/restore/downloads:
+    post:
+      summary: Start a restore download
+      description: |
+        Restore mode only. Starts downloading a backup into the staging area,
+        at parity with `RestoreService.StartDownloadBackup`, and returns the
+        job ID at once. The download belongs to the restore process, not to
+        this request: poll its status and cancel it with the job routes. Only
+        one download runs at a time; a second one, or a download after a
+        backup is already staged, returns 409 `FAILED_PRECONDITION`.
+
+        Restore routes are served without authentication on the restore-mode
+        HTTP listener, and only when `--restore-listen` is a loopback address.
+      operationId: v3StartRestoreDownload
+      x-speakeasy-name-override: StartRestoreDownload
+      tags:
+        - Restore
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupDestinationRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '202':
+          description: Download started.
+          headers:
+            Location:
+              description: Status route of the started job.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - jobId
+                    properties:
+                      jobId:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/restore/downloads/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        description: Job ID returned when the download started.
+        schema:
+          type: string
+    get:
+      summary: Get restore download status
+      description: |
+        Restore mode only. Returns the progress of a download job, at parity
+        with `RestoreService.GetDownloadStatus`. A terminal state
+        (`DOWNLOAD_STATE_SUCCEEDED`, `DOWNLOAD_STATE_FAILED`,
+        `DOWNLOAD_STATE_CANCELED`) stays stable. An unknown job ID returns 404.
+      operationId: v3GetRestoreDownload
+      x-speakeasy-name-override: GetRestoreDownload
+      tags:
+        - Restore
+      security: []
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Download status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - state
+                      - filesDownloaded
+                      - totalFiles
+                      - bytesDownloaded
+                      - totalBytes
+                      - currentFile
+                      - errorMessage
+                      - startedAtUnix
+                      - finishedAtUnix
+                    properties:
+                      state:
+                        type: string
+                        enum:
+                          - DOWNLOAD_STATE_UNSPECIFIED
+                          - DOWNLOAD_STATE_PENDING
+                          - DOWNLOAD_STATE_RUNNING
+                          - DOWNLOAD_STATE_SUCCEEDED
+                          - DOWNLOAD_STATE_FAILED
+                          - DOWNLOAD_STATE_CANCELED
+                      filesDownloaded:
+                        type: integer
+                        format: uint64
+                      totalFiles:
+                        type: integer
+                        format: uint64
+                      bytesDownloaded:
+                        type: integer
+                        format: uint64
+                      totalBytes:
+                        type: integer
+                        format: uint64
+                      currentFile:
+                        type: string
+                        description: Most recently started file, best effort.
+                      errorMessage:
+                        type: string
+                        description: Failure reason when the state is `DOWNLOAD_STATE_FAILED`.
+                      startedAtUnix:
+                        type: integer
+                        format: uint64
+                      finishedAtUnix:
+                        type: integer
+                        format: uint64
+                        description: 0 while the job runs.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      summary: Cancel a restore download
+      description: |
+        Restore mode only. Cancels a running download and wipes the staging
+        area, at parity with `RestoreService.CancelDownload`. Cancelling a
+        finished job succeeds without effect. The route waits up to five
+        seconds for the job to stop; poll the status for
+        `DOWNLOAD_STATE_CANCELED`.
+      operationId: v3CancelRestoreDownload
+      x-speakeasy-name-override: CancelRestoreDownload
+      tags:
+        - Restore
+      security: []
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '204':
+          description: Cancellation requested. No response body.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/restore/validate:
+    post:
+      summary: Validate the staged backup
+      description: |
+        Restore mode only. Runs the integrity checker on the staged backup, at
+        parity with the `RestoreService.ValidateRestore` stream. The response
+        is newline-delimited JSON: one `progress` or `error` event per line,
+        then one `result` line. Each `error` line is a validation finding.
+        `result.passed` is true only when the run finished without findings;
+        finalization requires a passing run. A failure after the first line
+        is reported in the `result` line with `errorCode` and `errorMessage`.
+        A client disconnect stops the validation.
+      operationId: v3ValidateRestore
+      x-speakeasy-name-override: ValidateRestore
+      tags:
+        - Restore
+      security: []
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Validation events, one JSON object per line.
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/ValidateRestoreLine'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/restore/preview:
+    get:
+      summary: Preview the staged backup
+      description: |
+        Restore mode only. Summarizes the staged backup, at parity with
+        `RestoreService.PreviewRestore`.
+      operationId: v3PreviewRestore
+      x-speakeasy-name-override: PreviewRestore
+      tags:
+        - Restore
+      security: []
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Staged backup summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - lastAppliedIndex
+                      - lastAppliedTimestamp
+                      - lastSequence
+                      - ledgerCount
+                      - ledgerNames
+                    properties:
+                      lastAppliedIndex:
+                        type: integer
+                        format: uint64
+                        description: Applied index of the staged checkpoint before finalization.
+                      lastAppliedTimestamp:
+                        type: integer
+                        format: uint64
+                        description: Last applied hybrid logical clock timestamp, in microseconds.
+                      lastSequence:
+                        type: integer
+                        format: uint64
+                      ledgerCount:
+                        type: integer
+                        format: uint32
+                      ledgerNames:
+                        type: array
+                        items:
+                          type: string
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/restore/finalize:
+    post:
+      summary: Finalize the restore
+      description: |
+        Restore mode only. Commits the validated staged backup as the node's
+        data, at parity with `RestoreService.FinalizeRestore`. Requires a
+        passing validation run; a missing or failed validation, a running
+        validation or a concurrent finalization returns 409
+        `FAILED_PRECONDITION`. Restart the server without `--restore`
+        afterwards.
+      operationId: v3FinalizeRestore
+      x-speakeasy-name-override: FinalizeRestore
+      tags:
+        - Restore
+      security: []
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Restore finalized.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - message
+                    properties:
+                      message:
+                        type: string
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v3/_/signing-keys:
     get:
       summary: List registered Ed25519 signing keys
@@ -4751,6 +5142,114 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    BackupDestinationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - storage
+      properties:
+        bucketId:
+          type: string
+          description: Namespace prefix of the backup in the storage backend. Defaults to the cluster ID.
+        storage:
+          $ref: '#/components/schemas/BackupStorage'
+    BackupStorage:
+      description: Backup storage backend. Set exactly one provider.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        s3:
+          type: object
+          additionalProperties: false
+          required:
+            - bucket
+          properties:
+            bucket:
+              type: string
+            region:
+              type: string
+            endpoint:
+              type: string
+              description: Custom endpoint, such as a MinIO URL.
+            accessKeyId:
+              type: string
+              description: Static access key ID. Omit to use the server's credential chain.
+            secretAccessKey:
+              type: string
+              description: Static secret access key. Omit to use the server's credential chain.
+        azure:
+          type: object
+          additionalProperties: false
+          required:
+            - accountName
+            - container
+          properties:
+            accountName:
+              type: string
+            accountKey:
+              type: string
+              description: Storage account key. Omit to use the default Azure credential.
+            container:
+              type: string
+            endpoint:
+              type: string
+              description: Custom endpoint, such as an Azurite URL.
+    ValidateRestoreLine:
+      description: One line of a restore validation stream.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - progress
+          properties:
+            progress:
+              type: object
+              additionalProperties: false
+              required:
+                - logsChecked
+                - totalLogs
+              properties:
+                logsChecked:
+                  type: integer
+                  format: uint64
+                totalLogs:
+                  type: integer
+                  format: uint64
+        - type: object
+          additionalProperties: false
+          required:
+            - error
+          properties:
+            error:
+              type: object
+              additionalProperties: false
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  description: Validation finding.
+        - type: object
+          additionalProperties: false
+          required:
+            - result
+          properties:
+            result:
+              type: object
+              additionalProperties: false
+              required:
+                - passed
+              properties:
+                passed:
+                  type: boolean
+                errorCode:
+                  type: string
+                  description: Set when the run failed after streaming started.
+                errorMessage:
+                  type: string
+                  description: Set when the run failed after streaming started.
     ClusterNodeId:
       description: >-
         Non-zero unsigned 64-bit node ID. Prefer the decimal string form to

@@ -337,3 +337,11 @@ The executable oracles are `TestHTTPSource_TransportDiagnostics`,
 transport regression in `internal/application/mirror/worker_diagnostic_test.go`.
 This protects newly emitted diagnostics; it does not rewrite historical status
 or classify configuration/audit read projections as safe.
+
+## Backup storage credentials over HTTP
+
+`POST /v3/_/cluster/backups` and `POST /v3/_/restore/downloads` accept static
+S3 and Azure keys in the body, as the gRPC requests do. The normal-mode route
+relies on the deployment's HTTP transport. The restore route is mounted only
+on a loopback restore listener because that listener has no TLS. Check that no
+handler, error or status projection echoes the request's storage configuration.

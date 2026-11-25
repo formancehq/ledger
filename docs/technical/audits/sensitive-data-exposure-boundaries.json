@@ -81,7 +81,11 @@
     "internal/application/admission/connection_url_test.go",
     "internal/application/admission/integration_config_error.go",
     "internal/adapter/http/ledger_info_contract_test.go",
-    "internal/adapter/grpc/ledger_info_read_test.go"
+    "internal/adapter/grpc/ledger_info_read_test.go",
+    "internal/adapter/http/backup_storage.go",
+    "internal/adapter/http/handlers_backup.go",
+    "internal/adapter/http/restore_handler.go",
+    "internal/adapter/http/handlers_*restore*.go"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -138,7 +142,8 @@
     "Can operator reconciliation copy secret Data/StringData into a ConfigMap, CR status, Event, Condition message, annotation, label, generated manifest, command argument or log? Do generated CRDs and CLI printers expose only Secret references and public credential metadata except in the explicit get-key flow?",
     "Can redaction be bypassed with empty versus non-empty states, malformed UTF-8, control characters, very long values, URL userinfo/query parameters, percent/base64/hex encoding, a value equal to the redaction placeholder, repeated fields, unknown protobuf fields or a future oneof variant? Require exact canary absence in every emitted byte sequence, not a visual inspection.",
     "Is a claimed disclosure actually the same root cause already being changed or tracked by the active sensitive-projection/redaction stack, or a distinct production path? Conversely, did a shared fix cover only public reads while leaving sink diagnostics, telemetry, backup/export or operator rendering independently reachable?",
-    "Does the one-time audit-key technical update or stored key leak through proposal logging, cluster configuration responses, error formatting, backup metadata, diagnostic endpoints, or telemetry beyond authorized Raft and backup readers?"
+    "Does the one-time audit-key technical update or stored key leak through proposal logging, cluster configuration responses, error formatting, backup metadata, diagnostic endpoints, or telemetry beyond authorized Raft and backup readers?",
+    "Can S3 or Azure credentials accepted by POST /v3/_/cluster/backups or POST /v3/_/restore/downloads reach request logs, error messages, the download status errorMessage, or a plaintext non-loopback HTTP listener? The restore HTTP API must stay unmounted off loopback."
   ],
   "dynamic_checks_to_consider": [
     "Exercise non-IAM PostgreSQL mirror admission, NewPostgresSource and real Manager reconciliation of stored DSNs with raw and URL-encoded query passwords and invalid connect_timeout. Capture errors, wrapped causes and structured logs: require credential absence, a static invalid-configuration diagnostic and retained ledger identity controls, no worker startup and unchanged internal DSN. Include userinfo, keyword and sslpassword credentials plus secret-valued invalid options and malformed DSNs.",

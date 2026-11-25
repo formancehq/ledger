@@ -105,11 +105,35 @@ full-width uint64 values. A `503` after a membership or drain request does not
 prove that it was not committed.
 
 Maintenance mode already has an HTTP form: the `setMaintenanceMode` variant of
-`POST /v3/_/apply`, under `ledger:WriteOps`. Backup, restore and query
-checkpoints have separate routes. The routes are additive: protobuf, persisted
+`POST /v3/_/apply`, under `ledger:WriteOps`. Backup and restore are described
+[below](#backup-and-restore-over-http); query checkpoints have separate routes. The routes are additive: protobuf, persisted
 formats and service revision 40 are unchanged, and the v2-to-v3 endpoint map
 is unchanged because no v2 operation maps to them. See
 [the HTTP contract](../architecture/subsystems/api/http-api.md#cluster-administration-over-http).
+
+## Backup and restore over HTTP
+
+v2 has no backup or restore API. In normal mode, `POST /v3/_/cluster/backups`
+calls the in-process `ClusterService.Backup` and requires `ledger:WriteCluster`.
+Like the RPC, it returns when the checkpoint is published, and a client
+disconnect or leadership change cancels the run. A concurrent backup of the same
+destination returns `409 FAILED_PRECONDITION`. `IncrementalBackup` has no HTTP
+route: it is a deprecated alias that runs the same checkpoint backup.
+
+In `--restore` mode, the restore listener serves the `RestoreService` stages
+under `/v3/_/restore`: start, poll and cancel a download, validate as
+newline-delimited JSON, preview and finalize. These routes have no
+authentication, like the restore RPCs. They are served only when
+`--restore-listen` is a loopback address, because the HTTP listener has no TLS
+and a download request carries storage credentials. A non-loopback restore
+listener serves only `/health` over HTTP; use the gRPC service with TLS there.
+The download job belongs to the restore process, not to an HTTP request.
+
+The routes are additive: protobuf wire formats, persisted formats and service
+revision 40 are unchanged. `restore.proto` gained the codegen-only
+`ledger_json_default` file option for the JSON projections. The v2-to-v3
+endpoint map is unchanged because no v2 operation maps to these routes. See
+[the HTTP contract](../architecture/subsystems/api/http-api.md#backup-over-http).
 
 ## HTTP transaction request signatures
 
@@ -406,10 +430,10 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
-| Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| Store backup | ✅ | ❌ | Checkpoint backup to S3 or Azure. gRPC `ClusterService.Backup`; HTTP `POST /v3/_/cluster/backups` |
 | Filesystem disk usage | ✅ | ❌ | Node-local gRPC/CLI diagnostic with per-volume validity, server-computed sample age, last observation time, and diagnostic error |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
-| Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
+| Store restore | ✅ | ❌ | Download, validate, preview, finalize (`--restore` mode). gRPC `RestoreService`; HTTP `/v3/_/restore` on a loopback restore listener |
 | **Prepared Queries** |
 | Create prepared query | ✅ | ❌ | Reusable parameterized filter queries |
 | Update prepared query | ✅ | ❌ | |
