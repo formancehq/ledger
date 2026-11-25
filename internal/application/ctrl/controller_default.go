@@ -781,62 +781,12 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 				}
 			}
 
-			for {
-				if err := ctx.Err(); err != nil {
-					return analysis.CompactTransaction{}, err
-				}
-				log, err := cursor.Next()
-				if errors.Is(err, io.EOF) {
-					done = true
-
-					return analysis.CompactTransaction{}, io.EOF
-				}
-
-				if err != nil {
-					return analysis.CompactTransaction{}, fmt.Errorf("reading log for analysis: %w", err)
-				}
-
-				if log.GetPayload() == nil {
-					continue
-				}
-
-				applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
-				if !ok {
-					continue
-				}
-
-				if applyLog.Apply.GetLedgerName() != ledgerName {
-					continue
-				}
-
-				ledgerLog := applyLog.Apply.GetLog()
-				if ledgerLog == nil || ledgerLog.GetData() == nil {
-					continue
-				}
-
-				switch p := ledgerLog.GetData().GetPayload().(type) {
-				case *commonpb.LedgerLogPayload_CreatedTransaction:
-					if p.CreatedTransaction.GetTransaction() == nil {
-						continue
-					}
-
-					return analysis.ExtractCompactTransaction(p.CreatedTransaction.GetTransaction()), nil
-
-				case *commonpb.LedgerLogPayload_RevertedTransaction:
-					// Count reverted during pass 1 only
-					if !pass1Done {
-						totalReverted++
-					}
-
-					if p.RevertedTransaction.GetRevertTransaction() != nil {
-						return analysis.ExtractCompactTransaction(p.RevertedTransaction.GetRevertTransaction()), nil
-					}
-
-					continue
-				default:
-					continue
-				}
+			ct, err := nextAnalysisTransaction(ctx, cursor, ledgerName, pass1Done, &totalReverted)
+			if errors.Is(err, io.EOF) {
+				done = true
 			}
+
+			return ct, err
 		}
 		cleanup := func() {
 			if cursor != nil {
@@ -865,6 +815,50 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 	}
 
 	return analysis.AnalyzeTransactionsFromIterators(wrappedPass1, pass2Fn, func() uint64 { return totalReverted }, variableThreshold, onProgress)
+}
+
+// nextAnalysisTransaction checks cancellation on every log, including logs
+// skipped while searching for the next transaction in the requested ledger.
+func nextAnalysisTransaction(ctx context.Context, logs cursor.Cursor[*commonpb.Log], ledgerName string, pass1Done bool, totalReverted *uint64) (analysis.CompactTransaction, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return analysis.CompactTransaction{}, err
+		}
+		log, err := logs.Next()
+		if errors.Is(err, io.EOF) {
+			return analysis.CompactTransaction{}, io.EOF
+		}
+		if err != nil {
+			return analysis.CompactTransaction{}, fmt.Errorf("reading log for analysis: %w", err)
+		}
+		if log.GetPayload() == nil {
+			continue
+		}
+		applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+		if !ok || applyLog.Apply.GetLedgerName() != ledgerName {
+			continue
+		}
+		ledgerLog := applyLog.Apply.GetLog()
+		if ledgerLog == nil || ledgerLog.GetData() == nil {
+			continue
+		}
+		switch p := ledgerLog.GetData().GetPayload().(type) {
+		case *commonpb.LedgerLogPayload_CreatedTransaction:
+			if p.CreatedTransaction.GetTransaction() == nil {
+				continue
+			}
+			return analysis.ExtractCompactTransaction(p.CreatedTransaction.GetTransaction()), nil
+		case *commonpb.LedgerLogPayload_RevertedTransaction:
+			if !pass1Done {
+				*totalReverted++
+			}
+			if p.RevertedTransaction.GetRevertTransaction() != nil {
+				return analysis.ExtractCompactTransaction(p.RevertedTransaction.GetRevertTransaction()), nil
+			}
+		default:
+			continue
+		}
+	}
 }
 
 // AggregateVolumes returns per-asset aggregated volumes for filtered accounts.

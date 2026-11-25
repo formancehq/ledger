@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -24,7 +26,12 @@ func TestAnalyzeTransactions_CancellationReleasesSnapshotLock(t *testing.T) {
 	meter := noop.NewMeterProvider().Meter("test")
 	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
+	closeStarted := false
+	t.Cleanup(func() {
+		if !closeStarted {
+			_ = store.Close()
+		}
+	})
 
 	logs := make([]*commonpb.Log, 501)
 	for i := range logs {
@@ -59,6 +66,7 @@ func TestAnalyzeTransactions_CancellationReleasesSnapshotLock(t *testing.T) {
 	require.Equal(t, 1, progressCalls)
 
 	closed := make(chan error, 1)
+	closeStarted = true
 	go func() { closed <- store.Close() }()
 	select {
 	case err := <-closed:
@@ -66,4 +74,37 @@ func TestAnalyzeTransactions_CancellationReleasesSnapshotLock(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("store close blocked after canceled analysis; snapshot read lock was retained")
 	}
+}
+
+// The first unrelated log cancels the request from inside Next. The scan must
+// check the context again before reading another skipped log.
+type cancelingAnalysisCursor struct {
+	cancel context.CancelFunc
+	reads  int
+}
+
+func (c *cancelingAnalysisCursor) Next() (*commonpb.Log, error) {
+	c.reads++
+	if c.reads == 1 {
+		c.cancel()
+		return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{LedgerName: "other-ledger"},
+		}}}, nil
+	}
+	return nil, io.EOF
+}
+
+func (c *cancelingAnalysisCursor) Close() error { return nil }
+
+func TestAnalyzeTransactions_CancellationWhileSkippingLogs(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	logs := &cancelingAnalysisCursor{cancel: cancel}
+	var reverted uint64
+	var zero analysis.CompactTransaction
+	got, err := nextAnalysisTransaction(ctx, logs, "requested-ledger", false, &reverted)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, zero, got)
+	require.Equal(t, 1, logs.reads)
 }
