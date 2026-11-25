@@ -5,7 +5,7 @@ protobuf contracts. Leader admission now returns the existing busy-destination
 failure for scheme/host aliases of a running backup, before accessing storage.
 Committed job orders and their persisted destination keys are unchanged, so
 mixed-version voters apply them identically. Older leaders retain the defect;
-see [backup deployment precautions](../../../../ops/backup-restore.md#endpoint-case-and-rolling-deployment-en-2947).
+see [backup deployment precautions](../../../../ops/backup-restore.md#endpoint-case-and-rolling-deployment).
 
 ## Requirement and decision (EN-1851)
 
