@@ -37,6 +37,7 @@ func projectHistoricalLog(log *commonpb.Log) (*commonpb.Log, error) {
 	if log == nil {
 		return nil, nil
 	}
+
 	return sensitive.Redact(log), nil
 }
 
