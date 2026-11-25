@@ -1,6 +1,6 @@
 # Service gRPC protocol compatibility
 
-Backup endpoint case exclusion (EN-2947) retains revision 40 and all published
+Backup endpoint case exclusion retains revision 40 and all published
 protobuf contracts. Leader admission now returns the existing busy-destination
 failure for scheme/host aliases of a running backup, before accessing storage.
 Committed job orders and their persisted destination keys are unchanged, so

@@ -3,7 +3,7 @@
 This document compares the POC's API with the original Formance ledger API and documents missing features.
 
 For `ClusterService.Backup` and its `IncrementalBackup` checkpoint alias,
-EN-2947 adds leader-side exclusion of destinations whose endpoint differs only
+leader-side admission excludes destinations whose endpoint differs only
 in URL scheme/host case. Contention returns the existing busy-destination error
 before storage access. No HTTP route, protobuf field or protocol revision
 changes; revision 40 and committed FSM job semantics remain unchanged.

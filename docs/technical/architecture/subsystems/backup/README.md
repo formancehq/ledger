@@ -13,7 +13,7 @@ backup of the same destination is rejected. The leader cancels its executor on
 leadership loss, and the next leader fails orphaned jobs to release their slots.
 The FSM records lifecycle orders without blocking on object upload.
 
-### Destination identity at admission (EN-2947)
+### Destination identity at admission
 
 The leader's singleton backup orchestrator reserves the physical destination
 before proposing Start and retains that reservation until the attempt returns,

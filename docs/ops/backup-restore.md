@@ -33,7 +33,7 @@ CLI prints the normal checkpoint result. New clients should call `Backup` /
 For topology and region-loss behavior, see
 [Availability and Disaster Recovery](./availability-and-recovery.md).
 
-### Endpoint case and rolling deployment (EN-2947)
+### Endpoint case and rolling deployment
 
 An upgraded leader rejects a second backup to an active destination even if
 the endpoint differs only in scheme or host case. Paths and IPv6 zone names
@@ -46,7 +46,7 @@ data migration is required, and rollback can read the same state; however,
 rollback restores the vulnerability, so keep backups paused until protection
 is restored. Validate or replace a backup suspected of concurrent publication:
 the fix cannot reconstruct objects already pruned by another writer. See
-[destination admission](../technical/architecture/subsystems/backup/README.md#destination-identity-at-admission-en-2947).
+[destination admission](../technical/architecture/subsystems/backup/README.md#destination-identity-at-admission).
 
 ### Storage Backends
 
