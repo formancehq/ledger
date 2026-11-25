@@ -190,6 +190,11 @@ Cluster commands interrupted by local Raft shutdown now return gRPC
 node. This changes no HTTP route, request/response schema, or protocol revision.
 The v2 API has no equivalent Raft cluster-command lifecycle.
 
+Seven HTTP mutation routes now pass the optional `Idempotency-Key` header to
+Apply: account-type add/remove, metadata-field-type set/remove, default
+enforcement-mode set, and prepared-query update/delete. This matches the
+existing batch idempotency behavior of other v3 HTTP writes.
+
 ### LedgerInfo reads (EN-2780 / EN-1635)
 
 Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement

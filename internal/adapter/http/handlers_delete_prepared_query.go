@@ -18,7 +18,7 @@ func (s *Server) handleDeletePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), "", &servicepb.Request{
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_DeletePreparedQuery{
 			DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
 				Ledger: ledgerName,

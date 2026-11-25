@@ -183,6 +183,33 @@ func TestOpenAPISpec_BulkNumscriptMetadataResult(t *testing.T) {
 	}))
 }
 
+func TestOpenAPISpec_EN3286IdempotencyHeaders(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	for _, route := range []struct{ method, path string }{
+		{"POST", "/v3/{ledgerName}/account-types"},
+		{"DELETE", "/v3/{ledgerName}/account-types/{typeName}"},
+		{"PUT", "/v3/{ledgerName}/metadata-schema/{targetType}/{key}"},
+		{"DELETE", "/v3/{ledgerName}/metadata-schema/{targetType}/{key}"},
+		{"PUT", "/v3/{ledgerName}/account-types/default-enforcement-mode"},
+		{"PUT", "/v3/{ledgerName}/prepared-queries/{queryName}"},
+		{"DELETE", "/v3/{ledgerName}/prepared-queries/{queryName}"},
+	} {
+		operation := doc.Paths.Value(route.path).GetOperation(route.method)
+		require.NotNil(t, operation, "%s %s", route.method, route.path)
+		found := false
+		for _, parameter := range operation.Parameters {
+			if parameter.Value.In == "header" && parameter.Value.Name == "Idempotency-Key" {
+				require.False(t, parameter.Value.Required)
+				found = true
+			}
+		}
+		require.True(t, found, "%s %s must expose the retry key to SDK callers", route.method, route.path)
+	}
+}
+
 func TestOpenAPISpec_LogPayloadPreservation(t *testing.T) {
 	t.Parallel()
 

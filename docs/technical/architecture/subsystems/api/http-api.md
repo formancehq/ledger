@@ -1041,6 +1041,18 @@ route. Existing `/v3/{ledgerName}/bulk` modes and response contracts are unchang
 
 ## Bulk identity and response contract
 
+The optional `Idempotency-Key` header is also forwarded unchanged as the
+batch identity for seven single-request mutations: add/remove account type,
+set/remove metadata field type, set default enforcement mode, and
+update/delete prepared query. A retry with the same key therefore reaches
+the existing Apply idempotency mechanism. Requests without the header retain
+the previous empty-key behavior. This changes HTTP admission only: the gRPC
+wire format, committed Raft entry, FSM apply, persisted data, audit format,
+snapshots, and backups do not change. During an rc.1–rc.5 rolling upgrade,
+older servers may still omit the HTTP key for these routes until replaced;
+clients that need retry deduplication should route those requests to upgraded
+servers after the rollout completes.
+
 `POST /v3/{ledgerName}/bulk` accepts a JSON array. All elements target the
 ledger named in the URL. With `atomic=true`, admission receives one batch under
 the optional `Idempotency-Key` header; per-element `ik` values are ignored.
