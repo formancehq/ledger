@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -56,6 +57,65 @@ func TestDefaultControllerGetLogReturnsProjectionWithoutMutatingStore(t *testing
 	require.NoError(t, err)
 	require.Contains(t, authoritative.String(), secrets[1])
 	require.Nil(t, authoritative.GetResponseSignature())
+}
+
+func TestDefaultControllerListLogsOmitsUnknownPayloadFieldsWithoutMutatingStore(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "unknown-fields"
+	const canary = "future-log-secret-canary"
+	logger := logging.FromContext(logging.TestingContext())
+	store := newCtrlTestStore(t)
+	payload := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_FillGap{FillGap: &commonpb.FilledGapLog{}}}
+	payload.ProtoReflect().SetUnknown(protowire.AppendBytes(protowire.AppendTag(nil, 1000, protowire.BytesType), []byte(canary)))
+	stored := &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: ledger, Log: &commonpb.LedgerLog{Id: 1, Data: payload},
+	}}}}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{stored}))
+	require.NoError(t, state.SetAppliedIndex(batch, 1))
+	require.NoError(t, batch.Commit())
+
+	rs, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rs.Close() })
+	indexBatch := rs.NewBatch()
+	wb := readstore.NewWriteBatch()
+	wb.Init(indexBatch)
+	require.NoError(t, wb.WriteLedgerLogIndex(dal.NewKeyBuilder(), ledger, 1, 1))
+	require.NoError(t, rs.WriteProgress(indexBatch, 1))
+	require.NoError(t, rs.WriteRaftProgress(indexBatch, 1))
+	require.NoError(t, indexBatch.Commit())
+	rs.NotifyProgress()
+
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = handle.Close() })
+	authoritativeBefore, err := query.ReadLogBySequence(t.Context(), handle, 1)
+	require.NoError(t, err)
+	beforeBytes, err := authoritativeBefore.MarshalVT()
+	require.NoError(t, err)
+	require.Contains(t, string(beforeBytes), canary)
+
+	ctrl := NewDefaultController(nil, store, logger, attributes.New(), rs, nil, noop.NewMeterProvider().Meter("test"))
+	listed, err := ctrl.ListLogs(t.Context(), ledger, 0, 10, nil, false)
+	require.NoError(t, err)
+	logs, err := cursor.Collect(listed)
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	require.Equal(t, uint64(1), logs[0].GetPayload().GetApply().GetLog().GetId())
+	projectedBytes, err := logs[0].MarshalVT()
+	require.NoError(t, err)
+	require.NotContains(t, string(projectedBytes), canary)
+	require.Empty(t, logs[0].GetPayload().GetApply().GetLog().GetData().ProtoReflect().GetUnknown())
+
+	authoritativeAfter, err := query.ReadLogBySequence(t.Context(), handle, 1)
+	require.NoError(t, err)
+	afterBytes, err := authoritativeAfter.MarshalVT()
+	require.NoError(t, err)
+	require.Equal(t, beforeBytes, afterBytes)
 }
 
 func TestDefaultControllerGetAuditEntryReturnsProjectionWithoutMutatingStore(t *testing.T) {

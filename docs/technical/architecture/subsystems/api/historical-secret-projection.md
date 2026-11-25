@@ -7,7 +7,9 @@ HTTP routes that consume the same controller. The projection descends into
 serialized audit orders and signed request batches, where protobuf field
 annotations cannot reach nested bytes. Unknown protobuf fields are removed
 because their confidentiality is not known. URLs and DSNs use registered
-format-specific redactors.
+format-specific redactors. Per-ledger `ListLogs` currently has no annotated
+sensitive payload variants, but its projection also removes unknown fields
+that could contain credentials from a newer schema.
 
 Response signatures are added to `Apply` response logs after storage, so
 historical `GetLog` and `ListLogs` reads do not contain signed log payloads.

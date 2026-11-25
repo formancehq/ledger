@@ -80,10 +80,11 @@ retaining a harmless entry or log identity control.
 
 The production controller regressions in
 `internal/application/ctrl/historical_secret_projection_test.go` cover point
-reads and both direct and indexed/checkpoint audit-list branches. Require
+reads, `ListLogs` with an unknown-field canary, and both direct and
+indexed/checkpoint audit-list branches. Require
 credential absence, omission of signatures when their payload changes, and
-unchanged authoritative store bytes. The registered transport and `ListLogs`
-paths remain separate audit checks; a controller test alone does not prove
+unchanged authoritative store bytes. Registered transport paths remain separate
+audit checks; a controller test alone does not prove
 every serializer. Unknown protobuf fields are removed from public projections
 and can change serialized evidence and signatures even without an annotated
 credential. Do not treat projected bytes as hash or signature preimages; the
