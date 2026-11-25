@@ -20,17 +20,19 @@ import (
 func TestAdmissionDestinationKey(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		name   string
-		azure  bool
-		first  string
-		second string
-		equal  bool
+		name          string
+		azure         bool
+		first         string
+		second        string
+		secondAccount string
+		equal         bool
 	}{
 		{name: "S3 host", first: "http://localhost:9000", second: "http://LOCALHOST:9000", equal: true},
 		{name: "S3 scheme", first: "http://localhost:9000", second: "HTTP://localhost:9000", equal: true},
 		{name: "AWS default", first: "", second: "HTTPS://S3.US-EAST-1.AMAZONAWS.COM/", equal: true},
 		{name: "Azure host", azure: true, first: "http://localhost:10000/acct", second: "HTTP://LOCALHOST:10000/acct/", equal: true},
 		{name: "Azure default", azure: true, first: "", second: "HTTPS://ACCT.BLOB.CORE.WINDOWS.NET/", equal: true},
+		{name: "Azure account case", azure: true, first: "", second: "", secondAccount: "ACCT", equal: true},
 		{name: "IPv6 address", first: "http://[FE80::AB%25BackupA]:9000", second: "http://[fe80::ab%25BackupA]:9000", equal: true},
 		{name: "IPv6 zone", first: "http://[fe80::ab%25BackupA]:9000", second: "http://[fe80::ab%25backupa]:9000"},
 		{name: "path", first: "http://localhost/Backup", second: "http://localhost/backup"},
@@ -49,6 +51,9 @@ func TestAdmissionDestinationKey(t *testing.T) {
 			second := first.CloneVT()
 			if test.azure {
 				second.GetAzure().Endpoint = test.second
+				if test.secondAccount != "" {
+					second.GetAzure().AccountName = test.secondAccount
+				}
 			} else {
 				second.GetS3().Endpoint = test.second
 			}
@@ -236,13 +241,18 @@ func (objects *destinationObjects) storage(t *testing.T, client string, publishe
 
 func TestRunFull_EndpointCaseDestinationExclusion(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct{ driver, endpoint string }{
-		{"s3", "http://LOCALHOST:9000"},
-		{"s3", "HTTP://localhost:9000"},
-		{"azure", "http://LOCALHOST:9000"},
-		{"azure", "HTTP://localhost:9000"},
+	for _, test := range []struct{ driver, endpoint, secondAccount string }{
+		{"s3", "http://LOCALHOST:9000", ""},
+		{"s3", "HTTP://localhost:9000", ""},
+		{"azure", "http://LOCALHOST:9000", ""},
+		{"azure", "HTTP://localhost:9000", ""},
+		{"azure", "", "ACCT"},
 	} {
-		t.Run(test.driver+"/"+test.endpoint, func(t *testing.T) {
+		name := test.driver + "/" + test.endpoint
+		if test.secondAccount != "" {
+			name = "azure/default-account-case"
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			store := newTempStore(t)
 			jobs := state.NewBackupJobsState()
@@ -269,6 +279,10 @@ func TestRunFull_EndpointCaseDestinationExclusion(t *testing.T) {
 			second := first.CloneVT()
 			if test.driver == "azure" {
 				second.GetAzure().Endpoint = test.endpoint
+				if test.secondAccount != "" {
+					first.GetAzure().Endpoint = ""
+					second.GetAzure().AccountName = test.secondAccount
+				}
 			} else {
 				second.GetS3().Endpoint = test.endpoint
 			}

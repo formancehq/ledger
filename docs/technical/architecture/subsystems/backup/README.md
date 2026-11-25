@@ -18,10 +18,10 @@ The FSM records lifecycle orders without blocking on object upload.
 The leader's singleton backup orchestrator reserves the physical destination
 before proposing Start and retains that reservation until the attempt returns,
 including its terminal proposal. The admission identity lower-cases URL schemes
-and host names for S3 and Azure. URL paths, user information and IPv6 interface
-zone identifiers retain their case. Existing AWS/default-endpoint, region and
-reserved `base_path` equivalences still apply. DNS aliases and IP-versus-hostname
-equivalence are not resolved.
+and host names for S3 and Azure, as well as Azure account names. URL paths,
+user information and IPv6 interface zone identifiers retain their case.
+Existing AWS/default-endpoint, region and reserved `base_path` equivalences
+still apply. DNS aliases and IP-versus-hostname equivalence are not resolved.
 
 Admission also compares this identity against every active FSM job, including
 jobs restored from older binaries and legacy incremental jobs. It rejects a

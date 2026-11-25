@@ -15,6 +15,7 @@ func admissionDestinationKey(destination *raftcmdpb.BackupDestination) string {
 	case *raftcmdpb.BackupDestination_S3:
 		target.S3.Endpoint = admissionEndpoint(target.S3.GetEndpoint())
 	case *raftcmdpb.BackupDestination_Azure:
+		target.Azure.AccountName = strings.ToLower(target.Azure.GetAccountName())
 		endpoint := target.Azure.GetEndpoint()
 		if endpoint == "" {
 			endpoint = fmt.Sprintf("https://%s.blob.core.windows.net", target.Azure.GetAccountName())
