@@ -66,6 +66,12 @@ of the rule is that it holds *by construction*: a future change that starts
 embedding `LedgerInfo` content (schema, account types, metadata) next to
 attribute data cannot silently reintroduce a torn read.
 
+`AnalyzeTransactions` retains this handle across both log scans. Its iterator
+checks the request context before opening a cursor and before each log read,
+including logs skipped by the analysis filter. Cancellation ends the scan and
+closes both cursors and the handle on return. This releases the handle's
+`dbMu.RLock` promptly so store close and checkpoint restore can proceed.
+
 `ListIndexes` is the case where the pair *is* mutually constrained today: the
 registry scan and the per-entry owner-ledger liveness check (`SCOPE_ALL` drops
 entries whose ledger is gone) must observe the same commit. A Pebble iterator
