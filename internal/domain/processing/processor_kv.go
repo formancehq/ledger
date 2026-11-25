@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processPutKV(ledger string, order *raftcmdpb.PutKVOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processPutKV(ledger string, order *raftcmdpb.PutKVOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	if _, err := loadLiveLedgerReader(ctx.Scope, ledger); err != nil {
 		return nil, err
 	}
@@ -17,7 +17,7 @@ func processPutKV(ledger string, order *raftcmdpb.PutKVOrder, ctx *Context) (*co
 	}}}, nil
 }
 
-func processDeleteKV(ledger string, order *raftcmdpb.DeleteKVOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processDeleteKV(ledger string, order *raftcmdpb.DeleteKVOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	if _, err := loadLiveLedgerReader(ctx.Scope, ledger); err != nil {
 		return nil, err
 	}
