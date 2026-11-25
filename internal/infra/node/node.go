@@ -3848,7 +3848,8 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		if err := membership.ValidateInstanceID(instanceID); err != nil {
 			return fmt.Errorf("invariant: raft member %d has invalid identity: %w", nodeID, err)
 		}
-		if err := writeForceRemoveMarker(node.config.WalDir, nodeID, instanceID); err != nil {
+		removedAt := uint64(time.Now().UnixMicro())
+		if err := writeForceRemoveMarker(node.config.WalDir, nodeID, instanceID, removedAt); err != nil {
 			return fmt.Errorf("persisting force-remove marker: %w", err)
 		}
 
@@ -3891,7 +3892,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		if node.forceRemovePeerCleanup != nil {
 			cleanup = node.forceRemovePeerCleanup
 		}
-		if err := cleanup(nodeID, instanceID, uint64(time.Now().UnixMicro())); err != nil {
+		if err := cleanup(nodeID, instanceID, removedAt); err != nil {
 			// ConfState is already durable and the removed identity has no
 			// tombstone. Stop admission until startup can repair the stale row.
 			return &terminalNodeError{cause: fmt.Errorf("force-remove atomic batch: %w", err)}

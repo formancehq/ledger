@@ -17,9 +17,10 @@ const forceRemoveMarkerName = "FORCE_REMOVE_PENDING"
 type forceRemoveMarker struct {
 	nodeID     uint64
 	instanceID []byte
+	removedAt  uint64
 }
 
-func writeForceRemoveMarker(dir string, nodeID uint64, instanceID []byte) error {
+func writeForceRemoveMarker(dir string, nodeID uint64, instanceID []byte, removedAt uint64) error {
 	if err := membership.ValidateInstanceID(instanceID); err != nil {
 		return err
 	}
@@ -33,9 +34,10 @@ func writeForceRemoveMarker(dir string, nodeID uint64, instanceID []byte) error 
 	// A successful rename removes the temporary name; on earlier failure,
 	// cleanup is best effort and cannot make an unsafe marker authoritative.
 	defer func() { _ = os.Remove(file.Name()) }()
-	var data [24]byte
+	var data [32]byte
 	binary.BigEndian.PutUint64(data[:8], nodeID)
-	copy(data[8:], instanceID)
+	copy(data[8:24], instanceID)
+	binary.BigEndian.PutUint64(data[24:], removedAt)
 	if _, err := file.Write(data[:]); err != nil {
 		_ = file.Close()
 
@@ -67,10 +69,13 @@ func readForceRemoveMarker(dir string) (*forceRemoveMarker, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(data) != 24 {
+	if len(data) != 32 {
 		return nil, fmt.Errorf("invalid force-remove marker length %d", len(data))
 	}
-	marker := &forceRemoveMarker{nodeID: binary.BigEndian.Uint64(data[:8]), instanceID: data[8:]}
+	marker := &forceRemoveMarker{
+		nodeID: binary.BigEndian.Uint64(data[:8]), instanceID: data[8:24],
+		removedAt: binary.BigEndian.Uint64(data[24:]),
+	}
 	if err := membership.ValidateInstanceID(marker.instanceID); err != nil {
 		return nil, fmt.Errorf("invalid force-remove marker identity: %w", err)
 	}
@@ -110,7 +115,7 @@ func recoverForceRemoveMarker(dir string, cs *raftpb.ConfState, peers *membershi
 		return nil
 	}
 	if !confStateContainsNode(cs, marker.nodeID) {
-		if err := peers.UnregisterAndBlacklist(marker.nodeID, marker.instanceID, 0); err != nil {
+		if err := peers.UnregisterAndBlacklist(marker.nodeID, marker.instanceID, marker.removedAt); err != nil {
 			return fmt.Errorf("repairing force-remove tombstone: %w", err)
 		}
 	}

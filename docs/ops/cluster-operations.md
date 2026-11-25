@@ -580,7 +580,7 @@ off-cluster backup instead. See
 
 **How it works:**
 
-1. `ForceRemoveNode` validates the required member identity and durably records it in a force-removal marker beside the WAL, then directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
+1. `ForceRemoveNode` validates the required member identity and durably records it and the removal timestamp in a force-removal marker beside the WAL, then directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
 2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
 3. `Membership.UnregisterAndBlacklist` atomically deletes the peer row from Pebble and writes its removed-member tombstone, then drops the peer from the in-memory cache + transport + service pool in lockstep
 4. The marker is durably removed. After the command succeeds, Raft processing resumes with the reduced quorum.

@@ -162,7 +162,7 @@ limits for other hardware or concurrent workloads.
 
 This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only the leader's raft state; followers (if any survive) will learn about it via the next snapshot they receive to catch up. The design extends the existing two-write sequence to atomically embed the blacklist write in the second one:
 
-1. Validate the required member identity and durably record a force-removal marker with its `(nodeID, instanceID)`, then call `rawNode.ApplyConfChange(cc)` — irreversible live tracker mutation; returns the new `ConfState`.
+1. Validate the required member identity and durably record a force-removal marker with its `(nodeID, instanceID, removedAt)`, then call `rawNode.ApplyConfChange(cc)` — irreversible live tracker mutation; returns the new `ConfState`.
 2. `wal.UpdateSnapshotConfState(cs)` — WAL write, ordered before Pebble per EN-1413.
 3. `membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt)` performs a Pebble batch atomic between:
    - Delete of the peer row.
@@ -223,8 +223,10 @@ they can represent a later committed add awaiting WAL snapshot catch-up.
 | After Pebble batch | Nominal. | — |
 
 The marker adds one local file sync and directory sync before the live Raft
-mutation. WAL snapshot persistence still precedes the Pebble batch. The
-marker is cleared only after both stores hold the removed state.
+mutation. WAL snapshot persistence still precedes the Pebble batch. After a
+successful removal, the marker is cleared only after both stores hold
+the removed state. If durable ConfState still contains the member, startup
+discards the marker for the aborted removal attempt and retains the peer.
 
 #### Follower learning about a force-remove
 
