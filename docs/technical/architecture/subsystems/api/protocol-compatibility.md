@@ -393,7 +393,7 @@ first be rejected by the protocol-version gate (lines 29-35 above) with
 `FailedPrecondition` before reaching identity validation. Clients and servers
 must implement the same revision; there is no compatibility fallback.
 
-## Required posting amounts (EN-2945)
+## Required posting amounts
 
 This is an admission-only request-semantic tightening, not a wire-format
 change. Every explicit transaction posting must carry an `amount`. Omitted

@@ -19,7 +19,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("EN-2945 posting amount", func() {
+var _ = Describe("posting amount presence", func() {
 	countLogs := func(ledger string) int {
 		stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{Ledger: ledger})
 		Expect(err).To(Succeed())
