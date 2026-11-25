@@ -41,7 +41,7 @@ if [[ -z "$publication_repo" ]]; then
     exit 1
 fi
 read_pr_bases() {
-    gh pr list --head "$branch" --state open --json baseRefName,baseRefOid,headRefName,headRepository --jq '.[] | [.headRepository.nameWithOwner // "", .headRefName, .baseRefName, .baseRefOid] | @tsv'
+    gh pr list --head "$branch" --state open --json baseRefName,baseRefOid,headRefName,headRepository,headRepositoryOwner --jq '.[] | [(.headRepository.nameWithOwner | select(. != "")) // (.headRepositoryOwner.login + "/" + .headRepository.name), .headRefName, .baseRefName, .baseRefOid] | @tsv'
 }
 pr_heads=$(read_pr_bases) || {
     echo "agent-push: unable to list PRs for branch $branch" >&2
