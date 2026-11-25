@@ -1763,7 +1763,11 @@ not guarded.
 
 The download body uses the backup `storage` shape, and a provider missing a
 required field (`s3.bucket`, `azure.accountName`, `azure.container`) returns
-`400` on both routes. The job runs on the restore
+`400` on both routes. Because the restore route is unauthenticated, a custom
+`endpoint` there also requires explicit keys (`s3.accessKeyId` and
+`s3.secretAccessKey`, or `azure.accountKey`) and returns `400` otherwise:
+without keys the storage client would authenticate to that host with the
+process's ambient cloud identity. The job runs on the restore
 process lifetime, not the request: poll its status until
 `DOWNLOAD_STATE_SUCCEEDED`, `DOWNLOAD_STATE_FAILED` or `DOWNLOAD_STATE_CANCELED`.
 Cancelling a finished job succeeds without effect; an unknown job ID returns

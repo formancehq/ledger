@@ -58,3 +58,17 @@ func (b *backupStorageBody) toProto() (*commonpb.BackupStorage, error) {
 		}}}, nil
 	}
 }
+
+// requireEndpointCredentials refuses a custom endpoint without explicit keys:
+// the storage client would otherwise authenticate to that endpoint with the
+// process's ambient cloud identity.
+func (b *backupStorageBody) requireEndpointCredentials() error {
+	switch {
+	case b.S3 != nil && b.S3.Endpoint != "" && (b.S3.AccessKeyID == "" || b.S3.SecretAccessKey == ""):
+		return errors.New("storage.s3.endpoint requires storage.s3.accessKeyId and storage.s3.secretAccessKey")
+	case b.Azure != nil && b.Azure.Endpoint != "" && b.Azure.AccountKey == "":
+		return errors.New("storage.azure.endpoint requires storage.azure.accountKey")
+	default:
+		return nil
+	}
+}

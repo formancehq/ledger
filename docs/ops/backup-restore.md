@@ -551,7 +551,10 @@ curl -s -X POST $BASE/finalize -H 'Content-Type: application/json'
 `DELETE $BASE/downloads/<jobId>` cancels a download. The routes have no
 authentication. They refuse browser requests (a non-loopback `Host`, an
 `Origin` or a cross-site `Sec-Fetch-Site` header), and every POST must send
-`Content-Type: application/json`. With a non-loopback `--restore-listen`, HTTP serves `/health`
+`Content-Type: application/json`. A download with a custom storage `endpoint`
+must carry explicit keys (`accessKeyId` and `secretAccessKey`, or
+`accountKey`); ambient credentials apply only to the provider's default
+endpoint. With a non-loopback `--restore-listen`, HTTP serves `/health`
 only; use `ledgerctl restore` against the gRPC service with TLS. See
 [Restore mode HTTP API](../technical/architecture/subsystems/api/http-api.md#restore-mode-http-api).
 

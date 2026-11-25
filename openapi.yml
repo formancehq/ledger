@@ -3872,7 +3872,11 @@ paths:
         job ID at once. The download belongs to the restore process, not to
         this request: poll its status and cancel it with the job routes. Only
         one download runs at a time; a second one, or a download after a
-        backup is already staged, returns 409 `FAILED_PRECONDITION`.
+        backup is already staged, returns 409 `FAILED_PRECONDITION`. A custom
+        storage `endpoint` requires explicit keys (`s3.accessKeyId` and
+        `s3.secretAccessKey`, or `azure.accountKey`), else 400, so the
+        process's ambient cloud identity never authenticates to a
+        caller-chosen host.
 
         Restore routes are served without authentication on the restore-mode
         HTTP listener, and only when `--restore-listen` is a loopback address.

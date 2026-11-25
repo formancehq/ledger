@@ -66,15 +66,15 @@ func TestHandleBackup_Azure(t *testing.T) {
 func TestHandleBackup_InvalidInput(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]string{
-		"empty body":       ``,
-		"missing storage":  `{"bucketId":"prod"}`,
-		"empty storage":    `{"storage":{}}`,
-		"s3 without bucket":      `{"storage":{"s3":{"region":"r"}}}`,
+		"empty body":              ``,
+		"missing storage":         `{"bucketId":"prod"}`,
+		"empty storage":           `{"storage":{}}`,
+		"s3 without bucket":       `{"storage":{"s3":{"region":"r"}}}`,
 		"azure without container": `{"storage":{"azure":{"accountName":"a"}}}`,
 		"azure without account":   `{"storage":{"azure":{"container":"c"}}}`,
-		"both providers":   `{"storage":{"s3":{"bucket":"b"},"azure":{"accountName":"a","container":"c"}}}`,
-		"reserved path":    `{"basePath":"x","storage":{"s3":{"bucket":"b"}}}`,
-		"unknown provider": `{"storage":{"gcs":{"bucket":"b"}}}`,
+		"both providers":          `{"storage":{"s3":{"bucket":"b"},"azure":{"accountName":"a","container":"c"}}}`,
+		"reserved path":           `{"basePath":"x","storage":{"s3":{"bucket":"b"}}}`,
+		"unknown provider":        `{"storage":{"gcs":{"bucket":"b"}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

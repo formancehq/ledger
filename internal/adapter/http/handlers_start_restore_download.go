@@ -12,13 +12,17 @@ type startRestoreDownloadBody struct {
 }
 
 // handleStartRestoreDownload handles POST /_/restore/downloads. The download
-// job belongs to the restore process, not to this request.
+// job belongs to the restore process, not to this request. The route is
+// unauthenticated, so a custom storage endpoint must carry its own keys.
 func (s *restoreServer) handleStartRestoreDownload(w http.ResponseWriter, r *http.Request) {
 	var body startRestoreDownloadBody
 	if !decodeClusterBody(w, r, &body) {
 		return
 	}
 	storage, err := body.Storage.toProto()
+	if err == nil {
+		err = body.Storage.requireEndpointCredentials()
+	}
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

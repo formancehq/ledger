@@ -31,13 +31,13 @@ func TestHandleStartRestoreDownload(t *testing.T) {
 func TestHandleStartRestoreDownload_InvalidInput(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]string{
-		"empty body":      ``,
-		"missing storage": `{"bucketId":"prod"}`,
-		"s3 without bucket":      `{"storage":{"s3":{"region":"r"}}}`,
+		"empty body":              ``,
+		"missing storage":         `{"bucketId":"prod"}`,
+		"s3 without bucket":       `{"storage":{"s3":{"region":"r"}}}`,
 		"azure without container": `{"storage":{"azure":{"accountName":"a"}}}`,
 		"azure without account":   `{"storage":{"azure":{"container":"c"}}}`,
-		"both providers":  `{"storage":{"s3":{"bucket":"b"},"azure":{"accountName":"a","container":"c"}}}`,
-		"unknown field":   `{"basePath":"x","storage":{"s3":{"bucket":"b"}}}`,
+		"both providers":          `{"storage":{"s3":{"bucket":"b"},"azure":{"accountName":"a","container":"c"}}}`,
+		"unknown field":           `{"basePath":"x","storage":{"s3":{"bucket":"b"}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -66,6 +66,41 @@ func TestHandleStartRestoreDownload_Errors(t *testing.T) {
 			w := serveRestore(t, backend, http.MethodPost, "/v3/_/restore/downloads", `{"storage":{"s3":{"bucket":"b"}}}`)
 			require.Equal(t, tc.status, w.Code, w.Body.String())
 			require.Equal(t, tc.code, decodeErrorResponse(t, w).ErrorCode)
+		})
+	}
+}
+
+func TestHandleStartRestoreDownload_EndpointRequiresKeys(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"s3 endpoint without keys":       `{"storage":{"s3":{"bucket":"b","endpoint":"https://attacker.example"}}}`,
+		"s3 endpoint without secret":     `{"storage":{"s3":{"bucket":"b","endpoint":"https://attacker.example","accessKeyId":"k"}}}`,
+		"s3 endpoint without access key": `{"storage":{"s3":{"bucket":"b","endpoint":"https://attacker.example","secretAccessKey":"s"}}}`,
+		"azure endpoint without key":     `{"storage":{"azure":{"accountName":"a","container":"c","endpoint":"https://attacker.example"}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			w := serveRestore(t, NewMockRestoreBackend(gomock.NewController(t)), http.MethodPost, "/v3/_/restore/downloads", body)
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			resp := decodeErrorResponse(t, w)
+			require.Equal(t, "INVALID_REQUEST", resp.ErrorCode)
+			require.Contains(t, resp.ErrorMessage, ".endpoint requires")
+		})
+	}
+}
+
+func TestHandleStartRestoreDownload_EndpointWithKeys(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"s3":    `{"storage":{"s3":{"bucket":"b","endpoint":"http://127.0.0.1:9002","accessKeyId":"k","secretAccessKey":"s"}}}`,
+		"azure": `{"storage":{"azure":{"accountName":"a","container":"c","endpoint":"http://127.0.0.1:10000","accountKey":"a2V5"}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			backend := NewMockRestoreBackend(gomock.NewController(t))
+			backend.EXPECT().StartDownloadBackup(gomock.Any(), gomock.Any()).Return(&restorepb.StartDownloadBackupResponse{JobId: "j"}, nil)
+			w := serveRestore(t, backend, http.MethodPost, "/v3/_/restore/downloads", body)
+			require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
 		})
 	}
 }

@@ -343,5 +343,7 @@ or classify configuration/audit read projections as safe.
 `POST /v3/_/cluster/backups` and `POST /v3/_/restore/downloads` accept static
 S3 and Azure keys in the body, as the gRPC requests do. The normal-mode route
 relies on the deployment's HTTP transport. The restore route is mounted only
-on a loopback restore listener because that listener has no TLS. Check that no
+on a loopback restore listener because that listener has no TLS, and it refuses
+a custom `endpoint` without explicit keys so the SDK's ambient credential chain
+is never presented to a caller-chosen host. Check that no
 handler, error or status projection echoes the request's storage configuration.
