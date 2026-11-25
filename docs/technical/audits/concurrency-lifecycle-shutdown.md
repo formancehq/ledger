@@ -8,6 +8,14 @@ guarantee.
 
 ## Ownership model
 
+Backup destination admission owns a local reservation from before Start through
+the attempt's return, not a mutex held across waits. The case-folded physical
+identity also checks restored full/incremental FSM jobs; their persisted keys
+must not change. `internal/application/backup/destination_test.go` supplies
+barriers before Start and after manifest publication, rejection with no storage
+access, verified manifest objects and retry after release. Paths and IPv6 zone
+identifiers remain distinct. Keep existing FSM-rejection recovery triggers.
+
 The manifest's first invariant is the canonical authority-token inventory. Do
 not extend that inventory only in this explanatory table. Do not use
 "generation" as a generic synonym for freshness; establish the specific token

@@ -105,7 +105,7 @@ func extractFullOrder(p *raftcmdpb.Proposal) *raftcmdpb.BackupOrder {
 }
 
 func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry())
+	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), state.NewBackupJobsState())
 	o.OnLeadershipChange(true)
 
 	return o
@@ -243,7 +243,7 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 		// Construct the orchestrator directly (not via newOrchestrator,
 		// which would call OnLeadershipChange(true)) so leaderCtx is the
 		// constructor's already-cancelled context.
-		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry())
+		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), state.NewBackupJobsState())
 
 		runCtx, cancel := o.runContext(context.Background())
 		defer cancel()

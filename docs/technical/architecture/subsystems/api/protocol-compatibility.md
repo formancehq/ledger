@@ -1,5 +1,12 @@
 # Service gRPC protocol compatibility
 
+Backup endpoint case exclusion (EN-2947) retains revision 40 and all published
+protobuf contracts. Leader admission now returns the existing busy-destination
+failure for scheme/host aliases of a running backup, before accessing storage.
+Committed job orders and their persisted destination keys are unchanged, so
+mixed-version voters apply them identically. Older leaders retain the defect;
+see [backup deployment precautions](../../../../ops/backup-restore.md#endpoint-case-and-rolling-deployment-en-2947).
+
 ## Requirement and decision (EN-1851)
 
 [EN-1851](https://formance-team.atlassian.net/browse/EN-1851) requires detecting

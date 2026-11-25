@@ -125,8 +125,16 @@ func (f *recoveryFixture) propose(_ context.Context, proposal *raftcmdpb.Proposa
 	var fail *raftcmdpb.BackupOrderFail
 	kind := raftcmdpb.BackupKind_BACKUP_KIND_FULL
 	order := extractFullOrder(proposal)
-	require.NotNil(f.t, order)
-	start, complete, fail = order.GetStart(), order.GetComplete(), order.GetFail()
+	if order != nil {
+		start, complete, fail = order.GetStart(), order.GetComplete(), order.GetFail()
+	} else {
+		updates := proposal.GetBatch().GetTechnicalUpdates()
+		require.Len(f.t, updates, 1)
+		incremental := updates[0].GetIncrementalBackupOrder()
+		require.NotNil(f.t, incremental)
+		start, complete, fail = incremental.GetStart(), incremental.GetComplete(), incremental.GetFail()
+		kind = raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL
+	}
 	isCleanup := fail != nil && fail.GetMessage() == "orphan: no live executor on this leader"
 	if isCleanup {
 		f.cleanupAttempts++

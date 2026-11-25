@@ -33,6 +33,21 @@ CLI prints the normal checkpoint result. New clients should call `Backup` /
 For topology and region-loss behavior, see
 [Availability and Disaster Recovery](./availability-and-recovery.md).
 
+### Endpoint case and rolling deployment (EN-2947)
+
+An upgraded leader rejects a second backup to an active destination even if
+the endpoint differs only in scheme or host case. Paths and IPv6 zone names
+remain case-sensitive. Both backup RPCs return the existing busy-destination
+error; retry after the running job completes or cleanup fails an orphan.
+
+Pause scheduled and manual backups and drain active jobs while older leaders
+can still accept requests. Resume only with an upgraded leader. No job-key or
+data migration is required, and rollback can read the same state; however,
+rollback restores the vulnerability, so keep backups paused until protection
+is restored. Validate or replace a backup suspected of concurrent publication:
+the fix cannot reconstruct objects already pruned by another writer. See
+[destination admission](../technical/architecture/subsystems/backup/README.md#destination-identity-at-admission-en-2947).
+
 ### Storage Backends
 
 Backups and restores support two storage backends, selected with `--driver`:

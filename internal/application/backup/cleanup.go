@@ -19,7 +19,7 @@ const DefaultCleanupInterval = 30 * time.Second
 
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=cleanup.go -destination=cleanup_generated_test.go -package=backup
 
-// StaleProvider is the slice of the FSM state used by the cleanup loop.
+// StaleProvider is the slice of FSM state used by cleanup and destination admission.
 // It is satisfied by *state.BackupJobsState; the indirection keeps the
 // cleanup loop testable without spinning up a Machine.
 type StaleProvider interface {
