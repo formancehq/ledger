@@ -79,6 +79,10 @@ var jsonWriterFiles = map[string]bool{
 	"handlers_list_signing_keys.go": true, "handlers_list_transactions.go": true,
 	"handlers_promote_ledger.go": true, "handlers_revert_transaction.go": true,
 	"handlers_save_numscript.go": true, "write_response_options.go": true,
+	// Cluster administration responses use the generated ledger_json projections.
+	"handlers_begin_drain.go": true, "handlers_end_drain.go": true,
+	"handlers_get_drain_status.go": true, "handlers_transfer_leadership.go": true,
+	"handlers_compact_primary.go": true, "handlers_compact_secondary.go": true,
 }
 
 func TestProtojsonRoutes_PayloadUsesThePublicProjectionWhenPresent(t *testing.T) {

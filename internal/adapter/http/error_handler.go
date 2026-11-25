@@ -110,7 +110,10 @@ func (c errorClass) publicMessage(r *http.Request, err error) string {
 // response. Every 503 carries Retry-After: an unavailable answer is by
 // definition a retry-now condition.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
-	c := classifyError(err)
+	writeErrorClass(w, r, err, classifyError(err))
+}
+
+func writeErrorClass(w http.ResponseWriter, r *http.Request, err error, c errorClass) {
 	if c.sanitized {
 		writeInternalServerError(w, r, err)
 

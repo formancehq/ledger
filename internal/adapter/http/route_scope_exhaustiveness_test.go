@@ -166,6 +166,17 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodGet, "/v3/_/indexes/{canonicalId}", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes/{canonicalId}/status", kindGuarded, internalauth.ScopeOpsRead, false},
 
+		// --- Cluster administration, requireClusterRead / requireClusterWrite ---
+		{http.MethodGet, "/v3/_/cluster/drain", kindGuarded, internalauth.ScopeClusterRead, false},
+		{http.MethodPost, "/v3/_/cluster/drain", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/drain/end", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/leadership/transfer", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/learners", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/learners/{nodeId}/promote", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodDelete, "/v3/_/cluster/nodes/{nodeId}", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/compactions/primary", kindGuarded, internalauth.ScopeClusterWrite, false},
+		{http.MethodPost, "/v3/_/cluster/compactions/secondary", kindGuarded, internalauth.ScopeClusterWrite, false},
+
 		// --- Accounts read, requireAccountsRead (handler.go:160-169) ---
 		{http.MethodGet, "/v3/{ledgerName}/accounts", kindGuarded, internalauth.ScopeAccountsRead, false},
 		{http.MethodGet, "/v3/{ledgerName}/accounts/{address}", kindGuarded, internalauth.ScopeAccountsRead, false},
@@ -555,6 +566,7 @@ var pathParamValues = map[string]string{
 	"{name}":          "script",
 	"{queryName}":     "q",
 	"{sinkName}":      "sink",
+	"{nodeId}":        "2",
 }
 
 // concreteTarget turns a chi pattern into a request target. The pattern is used

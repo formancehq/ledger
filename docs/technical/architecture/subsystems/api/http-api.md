@@ -1660,6 +1660,56 @@ Cluster operations are available via the `ClusterService` gRPC API (port 8888) a
 - `AddLearner`: Add a non-voting node to the cluster
 - `PromoteLearner`: Promote a learner to full voter
 
+#### Cluster administration over HTTP
+
+The administration RPCs below have HTTP routes. Each handler calls the
+in-process `ClusterService` method, so leader forwarding, drain preflight,
+membership checks and validation are the gRPC ones. The route requires the
+RPC's fixed scope. A follower forwards with the caller's bearer token, and the
+leader checks the same scope again.
+
+| Method and path | RPC | Scope | Success |
+|---|---|---|---|
+| `POST /v3/_/cluster/leadership/transfer` `{transferee}` | `TransferLeadership` | `ledger:WriteCluster` | `200`, `{data: {newLeader}}` |
+| `POST /v3/_/cluster/learners` `{nodeId, raftAddress, serviceAddress, instanceId, capabilities}` | `AddLearner` | `ledger:WriteCluster` | `204` |
+| `POST /v3/_/cluster/learners/{nodeId}/promote` | `PromoteLearner` | `ledger:WriteCluster` | `204` |
+| `DELETE /v3/_/cluster/nodes/{nodeId}[?force=true]` | `RemoveNode` | `ledger:WriteCluster` | `204` |
+| `POST /v3/_/cluster/drain` `{epoch}` | `BeginDrain` | `ledger:WriteCluster` | `200`, `{data: {cutoffIndex, members}}` |
+| `POST /v3/_/cluster/drain/end` `{epoch}` | `EndDrain` | `ledger:WriteCluster` | `200`, `{data: {releaseIndex, members}}` |
+| `GET /v3/_/cluster/drain` | `GetDrainStatus` | `ledger:ReadCluster` | `200`, receiving node's drain cursor |
+| `POST /v3/_/cluster/compactions/primary` | `CompactPrimary` | `ledger:WriteCluster` | `200`, `{data: {durationMs}}` |
+| `POST /v3/_/cluster/compactions/secondary` | `CompactSecondary` | `ledger:WriteCluster` | `200`, `{data: {durationMs, sizeBeforeBytes, sizeAfterBytes}}` |
+
+Drain status and both compactions act on the receiving node only. Bodies are
+strict JSON objects: unknown or duplicate members return `400`. A node ID is a
+non-zero unsigned 64-bit integer. In a body it is a JSON integer or a decimal
+string; in a path it is decimal. Responses emit node IDs and Raft indexes as
+JSON integers, so clients need lossless 64-bit integer parsing. `instanceId` is
+the canonical UUID string of the 16 bytes in the learner's `INSTANCE_ID`
+marker. Capability IDs must be non-zero, sorted and unique.
+
+Errors keep the gRPC status class and message:
+
+| gRPC status | HTTP | `errorCode` |
+|---|---|---|
+| `InvalidArgument` | `400` | `INVALID_REQUEST` |
+| `NotFound` | `404` | `RAFT_NODE_NOT_IN_CLUSTER`, else `NOT_FOUND` |
+| `AlreadyExists` | `409` | `ALREADY_EXISTS` |
+| `FailedPrecondition` | `409` | `FAILED_PRECONDITION` |
+| `Unavailable` with a ledger reason | `503` | the reason, for example `RAFT_NODE_REMOVAL_COMMITTED` |
+| other `Unavailable`, cancellation, deadline | `503` | `NO_LEADER` or `UNAVAILABLE` |
+| anything else | `500` | sanitized `INTERNAL_ERROR` |
+
+Every `503` carries `Retry-After: 1`. A `503` or a lost response does not prove
+that a membership change or drain marker was not committed. Retrying
+`BeginDrain` with the active epoch returns its original cutoff. Adding an
+existing member returns `409 ALREADY_EXISTS`, and removing an absent node
+returns `404 RAFT_NODE_NOT_IN_CLUSTER`. Read the cluster state before retrying
+a leadership transfer, a promotion or an `EndDrain`.
+
+Maintenance mode has no dedicated RPC. It is the `setMaintenanceMode` request
+variant of `POST /v3/_/apply`, which requires `ledger:WriteOps`.
+
 ### Health
 
 #### Health Check

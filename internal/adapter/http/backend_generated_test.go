@@ -46,6 +46,45 @@ func (m *MockBackend) EXPECT() *MockBackendMockRecorder {
 	return m.recorder
 }
 
+// AddLearner mocks base method.
+func (m *MockBackend) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddLearner", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.AddLearnerResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddLearner indicates an expected call of AddLearner.
+func (mr *MockBackendMockRecorder) AddLearner(ctx, req any) *MockBackendAddLearnerCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLearner", reflect.TypeOf((*MockBackend)(nil).AddLearner), ctx, req)
+	return &MockBackendAddLearnerCall{Call: call}
+}
+
+// MockBackendAddLearnerCall wrap *gomock.Call
+type MockBackendAddLearnerCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendAddLearnerCall) Return(arg0 *clusterpb.AddLearnerResponse, arg1 error) *MockBackendAddLearnerCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendAddLearnerCall) Do(f func(context.Context, *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error)) *MockBackendAddLearnerCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendAddLearnerCall) DoAndReturn(f func(context.Context, *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error)) *MockBackendAddLearnerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // AggregateVolumes mocks base method.
 func (m *MockBackend) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 	m.ctrl.T.Helper()
@@ -241,6 +280,162 @@ func (c *MockBackendBarrierCall) DoAndReturn(f func(context.Context) (uint64, er
 	return c
 }
 
+// BeginDrain mocks base method.
+func (m *MockBackend) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BeginDrain", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.BeginDrainResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BeginDrain indicates an expected call of BeginDrain.
+func (mr *MockBackendMockRecorder) BeginDrain(ctx, req any) *MockBackendBeginDrainCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginDrain", reflect.TypeOf((*MockBackend)(nil).BeginDrain), ctx, req)
+	return &MockBackendBeginDrainCall{Call: call}
+}
+
+// MockBackendBeginDrainCall wrap *gomock.Call
+type MockBackendBeginDrainCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendBeginDrainCall) Return(arg0 *clusterpb.BeginDrainResponse, arg1 error) *MockBackendBeginDrainCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendBeginDrainCall) Do(f func(context.Context, *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error)) *MockBackendBeginDrainCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendBeginDrainCall) DoAndReturn(f func(context.Context, *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error)) *MockBackendBeginDrainCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// CompactPrimary mocks base method.
+func (m *MockBackend) CompactPrimary(ctx context.Context, req *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompactPrimary", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.CompactPrimaryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompactPrimary indicates an expected call of CompactPrimary.
+func (mr *MockBackendMockRecorder) CompactPrimary(ctx, req any) *MockBackendCompactPrimaryCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompactPrimary", reflect.TypeOf((*MockBackend)(nil).CompactPrimary), ctx, req)
+	return &MockBackendCompactPrimaryCall{Call: call}
+}
+
+// MockBackendCompactPrimaryCall wrap *gomock.Call
+type MockBackendCompactPrimaryCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendCompactPrimaryCall) Return(arg0 *clusterpb.CompactPrimaryResponse, arg1 error) *MockBackendCompactPrimaryCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendCompactPrimaryCall) Do(f func(context.Context, *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error)) *MockBackendCompactPrimaryCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendCompactPrimaryCall) DoAndReturn(f func(context.Context, *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error)) *MockBackendCompactPrimaryCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// CompactSecondary mocks base method.
+func (m *MockBackend) CompactSecondary(ctx context.Context, req *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompactSecondary", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.CompactSecondaryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompactSecondary indicates an expected call of CompactSecondary.
+func (mr *MockBackendMockRecorder) CompactSecondary(ctx, req any) *MockBackendCompactSecondaryCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompactSecondary", reflect.TypeOf((*MockBackend)(nil).CompactSecondary), ctx, req)
+	return &MockBackendCompactSecondaryCall{Call: call}
+}
+
+// MockBackendCompactSecondaryCall wrap *gomock.Call
+type MockBackendCompactSecondaryCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendCompactSecondaryCall) Return(arg0 *clusterpb.CompactSecondaryResponse, arg1 error) *MockBackendCompactSecondaryCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendCompactSecondaryCall) Do(f func(context.Context, *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error)) *MockBackendCompactSecondaryCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendCompactSecondaryCall) DoAndReturn(f func(context.Context, *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error)) *MockBackendCompactSecondaryCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// EndDrain mocks base method.
+func (m *MockBackend) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EndDrain", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.EndDrainResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EndDrain indicates an expected call of EndDrain.
+func (mr *MockBackendMockRecorder) EndDrain(ctx, req any) *MockBackendEndDrainCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndDrain", reflect.TypeOf((*MockBackend)(nil).EndDrain), ctx, req)
+	return &MockBackendEndDrainCall{Call: call}
+}
+
+// MockBackendEndDrainCall wrap *gomock.Call
+type MockBackendEndDrainCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendEndDrainCall) Return(arg0 *clusterpb.EndDrainResponse, arg1 error) *MockBackendEndDrainCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendEndDrainCall) Do(f func(context.Context, *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error)) *MockBackendEndDrainCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendEndDrainCall) DoAndReturn(f func(context.Context, *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error)) *MockBackendEndDrainCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ExecutePreparedQuery mocks base method.
 func (m *MockBackend) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	m.ctrl.T.Helper()
@@ -393,6 +588,45 @@ func (c *MockBackendGetClusterStateCall) Do(f func(context.Context) (*clusterpb.
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockBackendGetClusterStateCall) DoAndReturn(f func(context.Context) (*clusterpb.ClusterState, error)) *MockBackendGetClusterStateCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetDrainStatus mocks base method.
+func (m *MockBackend) GetDrainStatus(ctx context.Context, req *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDrainStatus", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.DrainStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDrainStatus indicates an expected call of GetDrainStatus.
+func (mr *MockBackendMockRecorder) GetDrainStatus(ctx, req any) *MockBackendGetDrainStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDrainStatus", reflect.TypeOf((*MockBackend)(nil).GetDrainStatus), ctx, req)
+	return &MockBackendGetDrainStatusCall{Call: call}
+}
+
+// MockBackendGetDrainStatusCall wrap *gomock.Call
+type MockBackendGetDrainStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetDrainStatusCall) Return(arg0 *clusterpb.DrainStatus, arg1 error) *MockBackendGetDrainStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetDrainStatusCall) Do(f func(context.Context, *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error)) *MockBackendGetDrainStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetDrainStatusCall) DoAndReturn(f func(context.Context, *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error)) *MockBackendGetDrainStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1443,6 +1677,498 @@ func (c *MockBackendNotReadyReasonsCall) Do(f func() []string) *MockBackendNotRe
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockBackendNotReadyReasonsCall) DoAndReturn(f func() []string) *MockBackendNotReadyReasonsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// PromoteLearner mocks base method.
+func (m *MockBackend) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PromoteLearner", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.PromoteLearnerResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PromoteLearner indicates an expected call of PromoteLearner.
+func (mr *MockBackendMockRecorder) PromoteLearner(ctx, req any) *MockBackendPromoteLearnerCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromoteLearner", reflect.TypeOf((*MockBackend)(nil).PromoteLearner), ctx, req)
+	return &MockBackendPromoteLearnerCall{Call: call}
+}
+
+// MockBackendPromoteLearnerCall wrap *gomock.Call
+type MockBackendPromoteLearnerCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendPromoteLearnerCall) Return(arg0 *clusterpb.PromoteLearnerResponse, arg1 error) *MockBackendPromoteLearnerCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendPromoteLearnerCall) Do(f func(context.Context, *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error)) *MockBackendPromoteLearnerCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendPromoteLearnerCall) DoAndReturn(f func(context.Context, *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error)) *MockBackendPromoteLearnerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// RemoveNode mocks base method.
+func (m *MockBackend) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveNode", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.RemoveNodeResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RemoveNode indicates an expected call of RemoveNode.
+func (mr *MockBackendMockRecorder) RemoveNode(ctx, req any) *MockBackendRemoveNodeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveNode", reflect.TypeOf((*MockBackend)(nil).RemoveNode), ctx, req)
+	return &MockBackendRemoveNodeCall{Call: call}
+}
+
+// MockBackendRemoveNodeCall wrap *gomock.Call
+type MockBackendRemoveNodeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendRemoveNodeCall) Return(arg0 *clusterpb.RemoveNodeResponse, arg1 error) *MockBackendRemoveNodeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendRemoveNodeCall) Do(f func(context.Context, *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error)) *MockBackendRemoveNodeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendRemoveNodeCall) DoAndReturn(f func(context.Context, *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error)) *MockBackendRemoveNodeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// TransferLeadership mocks base method.
+func (m *MockBackend) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransferLeadership", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.TransferLeadershipResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TransferLeadership indicates an expected call of TransferLeadership.
+func (mr *MockBackendMockRecorder) TransferLeadership(ctx, req any) *MockBackendTransferLeadershipCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransferLeadership", reflect.TypeOf((*MockBackend)(nil).TransferLeadership), ctx, req)
+	return &MockBackendTransferLeadershipCall{Call: call}
+}
+
+// MockBackendTransferLeadershipCall wrap *gomock.Call
+type MockBackendTransferLeadershipCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendTransferLeadershipCall) Return(arg0 *clusterpb.TransferLeadershipResponse, arg1 error) *MockBackendTransferLeadershipCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendTransferLeadershipCall) Do(f func(context.Context, *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error)) *MockBackendTransferLeadershipCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendTransferLeadershipCall) DoAndReturn(f func(context.Context, *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error)) *MockBackendTransferLeadershipCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// MockClusterAdmin is a mock of ClusterAdmin interface.
+type MockClusterAdmin struct {
+	ctrl     *gomock.Controller
+	recorder *MockClusterAdminMockRecorder
+	isgomock struct{}
+}
+
+// MockClusterAdminMockRecorder is the mock recorder for MockClusterAdmin.
+type MockClusterAdminMockRecorder struct {
+	mock *MockClusterAdmin
+}
+
+// NewMockClusterAdmin creates a new mock instance.
+func NewMockClusterAdmin(ctrl *gomock.Controller) *MockClusterAdmin {
+	mock := &MockClusterAdmin{ctrl: ctrl}
+	mock.recorder = &MockClusterAdminMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockClusterAdmin) EXPECT() *MockClusterAdminMockRecorder {
+	return m.recorder
+}
+
+// AddLearner mocks base method.
+func (m *MockClusterAdmin) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddLearner", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.AddLearnerResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddLearner indicates an expected call of AddLearner.
+func (mr *MockClusterAdminMockRecorder) AddLearner(ctx, req any) *MockClusterAdminAddLearnerCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLearner", reflect.TypeOf((*MockClusterAdmin)(nil).AddLearner), ctx, req)
+	return &MockClusterAdminAddLearnerCall{Call: call}
+}
+
+// MockClusterAdminAddLearnerCall wrap *gomock.Call
+type MockClusterAdminAddLearnerCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminAddLearnerCall) Return(arg0 *clusterpb.AddLearnerResponse, arg1 error) *MockClusterAdminAddLearnerCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminAddLearnerCall) Do(f func(context.Context, *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error)) *MockClusterAdminAddLearnerCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminAddLearnerCall) DoAndReturn(f func(context.Context, *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error)) *MockClusterAdminAddLearnerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// BeginDrain mocks base method.
+func (m *MockClusterAdmin) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BeginDrain", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.BeginDrainResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BeginDrain indicates an expected call of BeginDrain.
+func (mr *MockClusterAdminMockRecorder) BeginDrain(ctx, req any) *MockClusterAdminBeginDrainCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginDrain", reflect.TypeOf((*MockClusterAdmin)(nil).BeginDrain), ctx, req)
+	return &MockClusterAdminBeginDrainCall{Call: call}
+}
+
+// MockClusterAdminBeginDrainCall wrap *gomock.Call
+type MockClusterAdminBeginDrainCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminBeginDrainCall) Return(arg0 *clusterpb.BeginDrainResponse, arg1 error) *MockClusterAdminBeginDrainCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminBeginDrainCall) Do(f func(context.Context, *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error)) *MockClusterAdminBeginDrainCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminBeginDrainCall) DoAndReturn(f func(context.Context, *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error)) *MockClusterAdminBeginDrainCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// CompactPrimary mocks base method.
+func (m *MockClusterAdmin) CompactPrimary(ctx context.Context, req *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompactPrimary", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.CompactPrimaryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompactPrimary indicates an expected call of CompactPrimary.
+func (mr *MockClusterAdminMockRecorder) CompactPrimary(ctx, req any) *MockClusterAdminCompactPrimaryCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompactPrimary", reflect.TypeOf((*MockClusterAdmin)(nil).CompactPrimary), ctx, req)
+	return &MockClusterAdminCompactPrimaryCall{Call: call}
+}
+
+// MockClusterAdminCompactPrimaryCall wrap *gomock.Call
+type MockClusterAdminCompactPrimaryCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminCompactPrimaryCall) Return(arg0 *clusterpb.CompactPrimaryResponse, arg1 error) *MockClusterAdminCompactPrimaryCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminCompactPrimaryCall) Do(f func(context.Context, *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error)) *MockClusterAdminCompactPrimaryCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminCompactPrimaryCall) DoAndReturn(f func(context.Context, *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error)) *MockClusterAdminCompactPrimaryCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// CompactSecondary mocks base method.
+func (m *MockClusterAdmin) CompactSecondary(ctx context.Context, req *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompactSecondary", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.CompactSecondaryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompactSecondary indicates an expected call of CompactSecondary.
+func (mr *MockClusterAdminMockRecorder) CompactSecondary(ctx, req any) *MockClusterAdminCompactSecondaryCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompactSecondary", reflect.TypeOf((*MockClusterAdmin)(nil).CompactSecondary), ctx, req)
+	return &MockClusterAdminCompactSecondaryCall{Call: call}
+}
+
+// MockClusterAdminCompactSecondaryCall wrap *gomock.Call
+type MockClusterAdminCompactSecondaryCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminCompactSecondaryCall) Return(arg0 *clusterpb.CompactSecondaryResponse, arg1 error) *MockClusterAdminCompactSecondaryCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminCompactSecondaryCall) Do(f func(context.Context, *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error)) *MockClusterAdminCompactSecondaryCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminCompactSecondaryCall) DoAndReturn(f func(context.Context, *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error)) *MockClusterAdminCompactSecondaryCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// EndDrain mocks base method.
+func (m *MockClusterAdmin) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EndDrain", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.EndDrainResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EndDrain indicates an expected call of EndDrain.
+func (mr *MockClusterAdminMockRecorder) EndDrain(ctx, req any) *MockClusterAdminEndDrainCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndDrain", reflect.TypeOf((*MockClusterAdmin)(nil).EndDrain), ctx, req)
+	return &MockClusterAdminEndDrainCall{Call: call}
+}
+
+// MockClusterAdminEndDrainCall wrap *gomock.Call
+type MockClusterAdminEndDrainCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminEndDrainCall) Return(arg0 *clusterpb.EndDrainResponse, arg1 error) *MockClusterAdminEndDrainCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminEndDrainCall) Do(f func(context.Context, *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error)) *MockClusterAdminEndDrainCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminEndDrainCall) DoAndReturn(f func(context.Context, *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error)) *MockClusterAdminEndDrainCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetDrainStatus mocks base method.
+func (m *MockClusterAdmin) GetDrainStatus(ctx context.Context, req *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDrainStatus", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.DrainStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDrainStatus indicates an expected call of GetDrainStatus.
+func (mr *MockClusterAdminMockRecorder) GetDrainStatus(ctx, req any) *MockClusterAdminGetDrainStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDrainStatus", reflect.TypeOf((*MockClusterAdmin)(nil).GetDrainStatus), ctx, req)
+	return &MockClusterAdminGetDrainStatusCall{Call: call}
+}
+
+// MockClusterAdminGetDrainStatusCall wrap *gomock.Call
+type MockClusterAdminGetDrainStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminGetDrainStatusCall) Return(arg0 *clusterpb.DrainStatus, arg1 error) *MockClusterAdminGetDrainStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminGetDrainStatusCall) Do(f func(context.Context, *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error)) *MockClusterAdminGetDrainStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminGetDrainStatusCall) DoAndReturn(f func(context.Context, *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error)) *MockClusterAdminGetDrainStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// PromoteLearner mocks base method.
+func (m *MockClusterAdmin) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PromoteLearner", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.PromoteLearnerResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PromoteLearner indicates an expected call of PromoteLearner.
+func (mr *MockClusterAdminMockRecorder) PromoteLearner(ctx, req any) *MockClusterAdminPromoteLearnerCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PromoteLearner", reflect.TypeOf((*MockClusterAdmin)(nil).PromoteLearner), ctx, req)
+	return &MockClusterAdminPromoteLearnerCall{Call: call}
+}
+
+// MockClusterAdminPromoteLearnerCall wrap *gomock.Call
+type MockClusterAdminPromoteLearnerCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminPromoteLearnerCall) Return(arg0 *clusterpb.PromoteLearnerResponse, arg1 error) *MockClusterAdminPromoteLearnerCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminPromoteLearnerCall) Do(f func(context.Context, *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error)) *MockClusterAdminPromoteLearnerCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminPromoteLearnerCall) DoAndReturn(f func(context.Context, *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error)) *MockClusterAdminPromoteLearnerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// RemoveNode mocks base method.
+func (m *MockClusterAdmin) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveNode", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.RemoveNodeResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RemoveNode indicates an expected call of RemoveNode.
+func (mr *MockClusterAdminMockRecorder) RemoveNode(ctx, req any) *MockClusterAdminRemoveNodeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveNode", reflect.TypeOf((*MockClusterAdmin)(nil).RemoveNode), ctx, req)
+	return &MockClusterAdminRemoveNodeCall{Call: call}
+}
+
+// MockClusterAdminRemoveNodeCall wrap *gomock.Call
+type MockClusterAdminRemoveNodeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminRemoveNodeCall) Return(arg0 *clusterpb.RemoveNodeResponse, arg1 error) *MockClusterAdminRemoveNodeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminRemoveNodeCall) Do(f func(context.Context, *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error)) *MockClusterAdminRemoveNodeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminRemoveNodeCall) DoAndReturn(f func(context.Context, *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error)) *MockClusterAdminRemoveNodeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// TransferLeadership mocks base method.
+func (m *MockClusterAdmin) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransferLeadership", ctx, req)
+	ret0, _ := ret[0].(*clusterpb.TransferLeadershipResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TransferLeadership indicates an expected call of TransferLeadership.
+func (mr *MockClusterAdminMockRecorder) TransferLeadership(ctx, req any) *MockClusterAdminTransferLeadershipCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransferLeadership", reflect.TypeOf((*MockClusterAdmin)(nil).TransferLeadership), ctx, req)
+	return &MockClusterAdminTransferLeadershipCall{Call: call}
+}
+
+// MockClusterAdminTransferLeadershipCall wrap *gomock.Call
+type MockClusterAdminTransferLeadershipCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClusterAdminTransferLeadershipCall) Return(arg0 *clusterpb.TransferLeadershipResponse, arg1 error) *MockClusterAdminTransferLeadershipCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClusterAdminTransferLeadershipCall) Do(f func(context.Context, *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error)) *MockClusterAdminTransferLeadershipCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClusterAdminTransferLeadershipCall) DoAndReturn(f func(context.Context, *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error)) *MockClusterAdminTransferLeadershipCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

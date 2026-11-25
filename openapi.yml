@@ -3259,6 +3259,517 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /v3/_/cluster/leadership/transfer:
+    post:
+      summary: Transfer Raft leadership
+      description: |
+        Transfers Raft leadership to the given voter, at parity with
+        `ClusterService.TransferLeadership`. Requires `ledger:WriteCluster`
+        scope. A follower forwards the request to the leader. An unknown or
+        ineligible transferee returns 409 `FAILED_PRECONDITION`. A 503 after the
+        request was sent does not prove that leadership stayed in place; read
+        the cluster state before retrying.
+      operationId: v3TransferLeadership
+      x-speakeasy-name-override: TransferLeadership
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - transferee
+              properties:
+                transferee:
+                  $ref: '#/components/schemas/ClusterNodeId'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Leadership transferred to the requested node.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - newLeader
+                    properties:
+                      newLeader:
+                        type: integer
+                        format: uint64
+                        description: Node ID of the confirmed new leader.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/learners:
+    post:
+      summary: Add a learner node
+      description: |
+        Adds a non-voting learner to the Raft cluster, at parity with
+        `ClusterService.AddLearner`. Requires `ledger:WriteCluster` scope. A
+        follower forwards the request to the leader. `instanceId` is the
+        canonical UUID string of the 16 bytes in the learner's persisted
+        `INSTANCE_ID` marker. Adding a node that is already a member returns
+        409 `ALREADY_EXISTS`, so a retry after a lost response is safe.
+      operationId: v3AddLearner
+      x-speakeasy-name-override: AddLearner
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - nodeId
+                - raftAddress
+                - serviceAddress
+                - instanceId
+              properties:
+                nodeId:
+                  $ref: '#/components/schemas/ClusterNodeId'
+                raftAddress:
+                  type: string
+                  minLength: 1
+                  description: Raft transport address of the learner.
+                serviceAddress:
+                  type: string
+                  minLength: 1
+                  description: Service API address of the learner.
+                instanceId:
+                  type: string
+                  format: uuid
+                  pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                  description: Canonical UUID string of the learner's persisted instance identity.
+                capabilities:
+                  type: array
+                  description: Capability IDs supported by the learner binary, non-zero, sorted and unique.
+                  items:
+                    type: integer
+                    format: uint32
+                    minimum: 1
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '204':
+          description: Learner added. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/learners/{nodeId}/promote:
+    post:
+      summary: Promote a learner to voter
+      description: |
+        Promotes a learner to a full voter, at parity with
+        `ClusterService.PromoteLearner`. Requires `ledger:WriteCluster` scope.
+        A follower forwards the request to the leader. A learner that is not
+        yet eligible returns 409 `FAILED_PRECONDITION`.
+      operationId: v3PromoteLearner
+      x-speakeasy-name-override: PromoteLearner
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ClusterNodeId'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '204':
+          description: Learner promoted. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/nodes/{nodeId}:
+    delete:
+      summary: Remove a node from the cluster
+      description: |
+        Removes a voter or learner, at parity with `ClusterService.RemoveNode`.
+        Requires `ledger:WriteCluster` scope. A follower forwards the request to
+        the leader; the leader cannot remove itself. A node that is not a member
+        returns 404 `RAFT_NODE_NOT_IN_CLUSTER`, which callers can treat as the
+        idempotent postcondition. 503 `RAFT_NODE_REMOVAL_COMMITTED` means the
+        removal is committed but not yet durably applied. `force=true` bypasses
+        Raft consensus for a permanently unreachable node and must be sent to
+        the leader.
+      operationId: v3RemoveNode
+      x-speakeasy-name-override: RemoveNode
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ClusterNodeId'
+        - name: force
+          in: query
+          required: false
+          description: Bypass Raft consensus. Unsafe; for permanently unreachable nodes only.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '204':
+          description: Node removed. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/drain:
+    get:
+      summary: Get the local drain status
+      description: |
+        Returns the receiving node's local drain cursor, at parity with
+        `ClusterService.GetDrainStatus`. Requires `ledger:ReadCluster` scope.
+        The request is not forwarded. When the active drain index or the last
+        release index is non-zero and covered by `lastPersistedIndex`, the
+        response follows a WAL fsync.
+      operationId: v3GetDrainStatus
+      x-speakeasy-name-override: GetDrainStatus
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Local drain status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - localNode
+                      - supportsDrain
+                      - drainEpoch
+                      - drainIndex
+                      - lastPersistedIndex
+                      - syncStatus
+                      - releaseIndex
+                      - supportsRelease
+                    properties:
+                      localNode:
+                        type: integer
+                        format: uint64
+                      supportsDrain:
+                        type: boolean
+                      drainEpoch:
+                        type: string
+                        description: Active drain epoch, empty when no drain is active.
+                      drainIndex:
+                        type: integer
+                        format: uint64
+                      lastPersistedIndex:
+                        type: integer
+                        format: uint64
+                      syncStatus:
+                        type: string
+                      releaseIndex:
+                        type: integer
+                        format: uint64
+                        description: Durable only when covered by lastPersistedIndex in this response.
+                      supportsRelease:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      summary: Begin a cluster drain
+      description: |
+        Closes write admission at a Raft-ordered marker, at parity with
+        `ClusterService.BeginDrain`. Requires `ledger:WriteCluster` scope. A
+        follower forwards the request to the leader. Every member must confirm
+        drain support first; otherwise the request returns 409
+        `FAILED_PRECONDITION`. Repeating the active epoch returns the same
+        cutoff, so a retry after a lost response or a 503 is safe. Another
+        active epoch returns 409.
+      operationId: v3BeginDrain
+      x-speakeasy-name-override: BeginDrain
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterDrainRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Drain marker committed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - cutoffIndex
+                      - members
+                    properties:
+                      cutoffIndex:
+                        type: integer
+                        format: uint64
+                        description: Raft index every member must persist before it stops.
+                      members:
+                        type: array
+                        items:
+                          type: integer
+                          format: uint64
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/drain/end:
+    post:
+      summary: End a cluster drain
+      description: |
+        Reopens write admission through a Raft-ordered release of the active
+        epoch, at parity with `ClusterService.EndDrain`. Requires
+        `ledger:WriteCluster` scope. A follower forwards the request to the
+        leader. Every member must confirm release support. A mismatched epoch
+        or no active drain returns 409 `FAILED_PRECONDITION`. After a lost
+        response or a 503, read `GET /v3/_/cluster/drain` before retrying.
+      operationId: v3EndDrain
+      x-speakeasy-name-override: EndDrain
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterDrainRequest'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Drain release committed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - releaseIndex
+                      - members
+                    properties:
+                      releaseIndex:
+                        type: integer
+                        format: uint64
+                      members:
+                        type: array
+                        items:
+                          type: integer
+                          format: uint64
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/compactions/primary:
+    post:
+      summary: Compact the primary store
+      description: |
+        Runs a synchronous compaction of the receiving node's primary store, at
+        parity with `ClusterService.CompactPrimary`. Requires
+        `ledger:WriteCluster` scope. The request is not forwarded.
+      operationId: v3CompactPrimary
+      x-speakeasy-name-override: CompactPrimary
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Compaction finished.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - durationMs
+                    properties:
+                      durationMs:
+                        type: integer
+                        format: int64
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v3/_/cluster/compactions/secondary:
+    post:
+      summary: Compact the read index store
+      description: |
+        Runs an online compaction of the receiving node's read index store, at
+        parity with `ClusterService.CompactSecondary`. Requires
+        `ledger:WriteCluster` scope. The request is not forwarded.
+      operationId: v3CompactSecondary
+      x-speakeasy-name-override: CompactSecondary
+      tags:
+        - Cluster
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Compaction finished.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - durationMs
+                      - sizeBeforeBytes
+                      - sizeAfterBytes
+                    properties:
+                      durationMs:
+                        type: integer
+                        format: int64
+                      sizeBeforeBytes:
+                        type: integer
+                        format: uint64
+                      sizeAfterBytes:
+                        type: integer
+                        format: uint64
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v3/_/signing-keys:
     get:
       summary: List registered Ed25519 signing keys
@@ -3818,6 +4329,14 @@ components:
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
 
   parameters:
+    ClusterNodeId:
+      name: nodeId
+      in: path
+      required: true
+      description: Non-zero unsigned 64-bit node ID in decimal.
+      schema:
+        type: string
+        pattern: ^[0-9]+$
     SigningKeyId:
       name: Formance-Signing-Key-Id
       in: header
@@ -4232,6 +4751,29 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    ClusterNodeId:
+      description: >-
+        Non-zero unsigned 64-bit node ID. Prefer the decimal string form to
+        preserve precision in clients without exact 64-bit integers.
+      anyOf:
+        - type: string
+          pattern: ^[0-9]+$
+        - type: integer
+          format: uint64
+          minimum: 1
+    ClusterDrainRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - epoch
+      properties:
+        epoch:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: >-
+            Stable caller-generated drain epoch, 1 to 128 bytes. Reuse it when
+            retrying the same drain.
     AtomicApplyBatch:
       type: object
       additionalProperties: false

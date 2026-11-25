@@ -70,6 +70,7 @@ func (s *Server) applyRequests(ctx context.Context, key string, requests ...*ser
 
 type Backend interface {
 	ctrl.Controller
+	ClusterAdmin
 	GetClusterState(context context.Context) (*clusterpb.ClusterState, error)
 	IsHealthy() bool
 	IsReady() bool
@@ -78,8 +79,26 @@ type Backend interface {
 	NotClusterReadyReasons() []string
 }
 
+// ClusterAdmin is the cluster administration surface of the gRPC
+// ClusterService. HTTP routes call it in process so leader forwarding, drain
+// preflight and request validation match the gRPC contract.
+type ClusterAdmin interface {
+	TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error)
+	AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error)
+	PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error)
+	RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error)
+	BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error)
+	EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error)
+	GetDrainStatus(ctx context.Context, req *clusterpb.GetDrainStatusRequest) (*clusterpb.DrainStatus, error)
+	CompactPrimary(ctx context.Context, req *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error)
+	CompactSecondary(ctx context.Context, req *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error)
+}
+
+var _ ClusterAdmin = (clusterpb.ClusterServiceServer)(nil)
+
 type DefaultBackend struct {
 	ctrl.Controller
+	ClusterAdmin
 
 	Node *node.Node
 }
@@ -139,9 +158,10 @@ func (b *DefaultBackend) NotClusterReadyReasons() []string {
 
 var _ Backend = (*DefaultBackend)(nil)
 
-func NewDefaultBackend(node *node.Node, ctrl ctrl.Controller) *DefaultBackend {
+func NewDefaultBackend(node *node.Node, ctrl ctrl.Controller, cluster ClusterAdmin) *DefaultBackend {
 	return &DefaultBackend{
-		Node:       node,
-		Controller: ctrl,
+		Node:         node,
+		Controller:   ctrl,
+		ClusterAdmin: cluster,
 	}
 }

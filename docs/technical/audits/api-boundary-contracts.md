@@ -571,3 +571,20 @@ Older nodes reject the new name; rollout must finish on HTTP-serving nodes
 before clients opt in. Savings are limited to final HTTP bytes/serialization;
 full internal logs, forwarded gRPC signing and Raft/audit work remain. No
 persisted migration or protocol revision change follows from this projection.
+
+## HTTP cluster administration
+
+Trace each `/v3/_/cluster` route to the in-process `ClusterService` method it
+calls. Bodies decode strictly; node IDs accept a JSON integer or decimal string
+and preserve the uint64 maximum, and zero or malformed IDs return 400 before the
+call. `instanceId` is the canonical UUID form of the 16 persisted bytes. On the
+leader the service returns raw node errors; a follower returns the leader's
+status. Both must render the gRPC status class: `FailedPrecondition` and
+`AlreadyExists` as 409, `NotFound` as 404 with `RAFT_NODE_NOT_IN_CLUSTER`,
+`InvalidArgument` as 400, and `Unavailable` as 503 with `Retry-After`, keeping
+`RAFT_NODE_REMOVAL_COMMITTED`. Cancellation and deadline errors become 503 as on
+gRPC; documentation must not present that 503 as proof of non-commit. Handler
+tests, `TestClusterAdmin_ErrorMapping` and `TestOpenAPI_ClusterAdmin` establish
+conversion and spec conformance. Schemathesis excludes these routes because
+they drain or reconfigure its single-node server. Membership and drain
+correctness remain in `raft-membership-leadership`.

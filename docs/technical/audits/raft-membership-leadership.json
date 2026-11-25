@@ -58,7 +58,12 @@
     "internal/pkg/proposals/**",
     "internal/pkg/commands/**",
     "internal/infra/plan/runner.go",
-    "tests/e2e/cluster/proposal_payload_test.go"
+    "tests/e2e/cluster/proposal_payload_test.go",
+    "internal/adapter/http/cluster_admin*.go",
+    "internal/adapter/http/handlers_*learner*.go",
+    "internal/adapter/http/handlers_remove_node*.go",
+    "internal/adapter/http/handlers_transfer_leadership*.go",
+    "internal/adapter/http/handlers_*drain*.go"
   ],
   "related_docs": [
     "AGENTS.md",
@@ -123,7 +128,8 @@
     "After the leader sends a MsgSnap, can the peer's Progress remain in StateSnapshot indefinitely because the snapshot was lost, the peer restarted, or leader maintenance compacted past the sent index before the acknowledgement, leaving a node that reports a normal sync status but never advances?",
     "Can a mixed-version member pass preflight, or can a membership change slip between preflight and marker application? If leadership is lost and regained after preflight while another leader changes membership, does the old-term marker or release get rejected before Raft append? Can a timed-out marker, lost member, leader transfer or force removal make the operator accept an obsolete captured set or a follower that has not persisted the cutoff?",
     "If snapshot-file persistence succeeds but the matching WAL snapshot-record append fails, does the in-memory snapshot remain unchanged, does an idle retry recreate the same snapshot, and can any maintenance tick compact before the record is durable?",
-    "During a follower-first rolling upgrade, what happens when RefreshMembership reaches an older peer that returns Unimplemented? Does startup remain available with conservative evidence and eventual retry, and does a later committed refresh converge the membership row? Can capability activation or declaration be applied against stale or pre-refresh evidence, or bypass the authoritative policy gate?"
+    "During a follower-first rolling upgrade, what happens when RefreshMembership reaches an older peer that returns Unimplemented? Does startup remain available with conservative evidence and eventual retry, and does a later committed refresh converge the membership row? Can capability activation or declaration be applied against stale or pre-refresh evidence, or bypass the authoritative policy gate?",
+    "Do the HTTP cluster administration routes reach the same ClusterService leader forwarding, drain preflight and membership code as gRPC, or can an HTTP-only path skip a fence, forward a force removal, or report a committed removal or drain marker as a retryable failure without its committed-state reason?"
   ],
   "dynamic_checks_to_consider": [
     "hold a fresh learner's listener closed through production join preflight with optional TLS, record the current term, committed addition index, durable membership and valid instance identity, then open the listener and require autonomous replication and promotion without another registration; independently test initial probe fail-then-success, actual Raft stream delivery, endpoint replacement, and pending-owner removal/shutdown (internal/bootstrap/join_transport_recovery_test.go and internal/infra/node/transport_initial_probe_test.go)",

@@ -657,8 +657,8 @@ func Module() fx.Option {
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
 				return httpcompat.NewHandler(logger, backend, authCfg, info, applyService)
 			},
-			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
-				return httpcompat.NewDefaultBackend(node, ctrl)
+			func(node *node.Node, ctrl ctrl.Controller, cluster clusterpb.ClusterServiceServer) httpcompat.Backend {
+				return httpcompat.NewDefaultBackend(node, ctrl, cluster)
 			},
 			func(
 				cfg Config,

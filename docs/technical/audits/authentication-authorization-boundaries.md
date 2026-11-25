@@ -269,3 +269,14 @@ API boundary owns conversion/output fidelity; authentication owns scopes and
 caller capture; idempotency owns durable atomicity and retry identity; signed
 response integrity owns the returned cryptographic proof. Deduplicate by the
 mechanism that must change, not by the number of affected operations.
+
+## HTTP cluster administration
+
+Each `/v3/_/cluster` route requires the fixed scope of its `ClusterService`
+RPC: `ledger:ReadCluster` for `GET /v3/_/cluster/drain` and
+`ledger:WriteCluster` for every mutation. The route-scope exhaustiveness table
+pins them. HTTP calls the service in process, so the gRPC authorization
+interceptor does not run on the receiving node; the HTTP guard is the only
+check there. When that node forwards to the leader, the outgoing call carries
+the caller's bearer token from the HTTP authentication middleware, and the
+leader re-checks the RPC policy.

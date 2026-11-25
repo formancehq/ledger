@@ -545,109 +545,8 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return st.Err()
 	}
 
-	// A RemoveNode response can outlive the Raft mutation it initiated: the
-	// ConfChange is committed before the async FSM batch makes the durable
-	// removed-member tombstone visible. Preserve that distinction on the wire
-	// so clients know membership already changed and can verify the postcondition.
-	if removalCommitted, ok := errors.AsType[*node.RemoveNodeCommittedError](err); ok {
-		st := status.New(codes.Unavailable, removalCommitted.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: "RAFT_NODE_REMOVAL_COMMITTED",
-			Domain: errorDomain,
-			Metadata: map[string]string{
-				"nodeId":         strconv.FormatUint(removalCommitted.NodeID, 10),
-				"committedIndex": strconv.FormatUint(removalCommitted.CommittedIndex, 10),
-			},
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
+	if st, ok := KnownErrorStatus(err); ok {
 		return st.Err()
-	}
-
-	// Removing an already-absent node is a stable membership postcondition,
-	// not an internal server failure. Operators can treat NotFound as
-	// idempotent success, while callers that need certainty can confirm via
-	// GetClusterState.
-	if errors.Is(err, node.ErrNodeNotInCluster) {
-		st := status.New(codes.NotFound, err.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: "RAFT_NODE_NOT_IN_CLUSTER",
-			Domain: errorDomain,
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
-	}
-
-	// Convert context deadline/cancellation from internal timeouts (e.g. proposeTimeout)
-	// to Unavailable so the client retry policy handles them.
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return status.Error(codes.Unavailable, err.Error())
-	}
-
-	// Convert Raft transient errors to Unavailable (client should retry).
-	// ErrStopped: the local Raft run ended before a cluster command completed.
-	// A retry can route to another live node while this one restarts.
-	// ErrProposalDropped: the leader lost leadership while processing the proposal.
-	// ErrLeadershipLost: the proposal was truncated by a later term, so it did
-	// not commit — retrying re-applies it exactly once.
-	// ErrNotLeader/ErrNodeSyncing: node cannot serve the request right now.
-	// ErrTransferLeaderTimeout: leadership transfer did not complete in time.
-	// ErrNoLeader: target peer doesn't know who the leader is yet (election
-	// still in progress, or it just joined and hasn't received the heartbeat).
-	// ErrNodeNotReachable: forwarder lost its conn-pool entry for the target
-	// peer (network partition / pod restart in flight). Recovers as soon as
-	// the pool re-converges.
-	if errors.Is(err, raft.ErrStopped) ||
-		errors.Is(err, raft.ErrProposalDropped) ||
-		errors.Is(err, node.ErrLeadershipLost) ||
-		errors.Is(err, node.ErrNotLeader) ||
-		errors.Is(err, node.ErrNodeSyncing) ||
-		errors.Is(err, node.ErrTransferLeaderTimeout) ||
-		errors.Is(err, commonpb.ErrNoLeader) ||
-		errors.Is(err, plan.ErrCacheHorizonExceeded) ||
-		errors.Is(err, ErrNodeNotReachable) {
-		return status.Error(codes.Unavailable, err.Error())
-	}
-
-	// Convert leadership transfer client errors to FailedPrecondition.
-	if errors.Is(err, node.ErrUnknownTransferee) ||
-		errors.Is(err, node.ErrLearnerNotEligible) {
-		return status.Error(codes.FailedPrecondition, err.Error())
-	}
-
-	// Backup-destination busy: stable retry signal so clients can distinguish
-	// a normal concurrent-backup rejection from an opaque server error. The
-	// FSM Start path rejects duplicate destinations and duplicate job_ids;
-	// both surface here through state's typed sentinels.
-	if errors.Is(err, state.ErrBackupInProgress) ||
-		errors.Is(err, state.ErrBackupJobIDCollision) {
-		return status.Error(codes.FailedPrecondition, err.Error())
-	}
-
-	// Convert ErrNodeAlreadyInCluster to AlreadyExists (idempotent AddLearner).
-	if errors.Is(err, node.ErrNodeAlreadyInCluster) {
-		return status.Error(codes.AlreadyExists, err.Error())
-	}
-
-	// EN-1436: stale raft Progress (non-zero Match for a node whose caller
-	// cannot own that state) is a precondition failure, not an idempotent
-	// success. The bootstrap JoinAsLearner path builds its own richer status
-	// (with the STALE_RAFT_PROGRESS detail and remediation); this generic
-	// mapping covers the admin cluster.AddLearner path.
-	if errors.Is(err, node.ErrNodeStaleProgress) {
-		return status.Error(codes.FailedPrecondition, err.Error())
-	}
-
-	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
-	if errors.Is(err, node.ErrNodeRemoved) {
-		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
 	// Convert NotFoundError to NotFound
@@ -973,4 +872,116 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 	srv.registerReflection()
 
 	return srv, nil
+}
+
+// KnownErrorStatus maps the typed node, Raft and backup failures whose gRPC
+// status is part of the service contract. It reports false for every other
+// error, which the caller classifies or sanitizes itself.
+func KnownErrorStatus(err error) (*status.Status, bool) {
+	// A RemoveNode response can outlive the Raft mutation it initiated: the
+	// ConfChange is committed before the async FSM batch makes the durable
+	// removed-member tombstone visible. Preserve that distinction on the wire
+	// so clients know membership already changed and can verify the postcondition.
+	if removalCommitted, ok := errors.AsType[*node.RemoveNodeCommittedError](err); ok {
+		st := status.New(codes.Unavailable, removalCommitted.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "RAFT_NODE_REMOVAL_COMMITTED",
+			Domain: errorDomain,
+			Metadata: map[string]string{
+				"nodeId":         strconv.FormatUint(removalCommitted.NodeID, 10),
+				"committedIndex": strconv.FormatUint(removalCommitted.CommittedIndex, 10),
+			},
+		})
+		if detailErr == nil {
+			return detailed, true
+		}
+
+		return st, true
+	}
+
+	// Removing an already-absent node is a stable membership postcondition,
+	// not an internal server failure. Operators can treat NotFound as
+	// idempotent success, while callers that need certainty can confirm via
+	// GetClusterState.
+	if errors.Is(err, node.ErrNodeNotInCluster) {
+		st := status.New(codes.NotFound, err.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "RAFT_NODE_NOT_IN_CLUSTER",
+			Domain: errorDomain,
+		})
+		if detailErr == nil {
+			return detailed, true
+		}
+
+		return st, true
+	}
+
+	// Convert context deadline/cancellation from internal timeouts (e.g. proposeTimeout)
+	// to Unavailable so the client retry policy handles them.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return status.New(codes.Unavailable, err.Error()), true
+	}
+
+	// Convert Raft transient errors to Unavailable (client should retry).
+	// ErrStopped: the local Raft run ended before a cluster command completed.
+	// A retry can route to another live node while this one restarts.
+	// ErrProposalDropped: the leader lost leadership while processing the proposal.
+	// ErrLeadershipLost: the proposal was truncated by a later term, so it did
+	// not commit — retrying re-applies it exactly once.
+	// ErrNotLeader/ErrNodeSyncing: node cannot serve the request right now.
+	// ErrTransferLeaderTimeout: leadership transfer did not complete in time.
+	// ErrNoLeader: target peer doesn't know who the leader is yet (election
+	// still in progress, or it just joined and hasn't received the heartbeat).
+	// ErrNodeNotReachable: forwarder lost its conn-pool entry for the target
+	// peer (network partition / pod restart in flight). Recovers as soon as
+	// the pool re-converges.
+	if errors.Is(err, raft.ErrStopped) ||
+		errors.Is(err, raft.ErrProposalDropped) ||
+		errors.Is(err, node.ErrLeadershipLost) ||
+		errors.Is(err, node.ErrNotLeader) ||
+		errors.Is(err, node.ErrNodeSyncing) ||
+		errors.Is(err, node.ErrTransferLeaderTimeout) ||
+		errors.Is(err, commonpb.ErrNoLeader) ||
+		errors.Is(err, plan.ErrCacheHorizonExceeded) ||
+		errors.Is(err, ErrNodeNotReachable) {
+		return status.New(codes.Unavailable, err.Error()), true
+	}
+
+	// Convert leadership transfer client errors to FailedPrecondition.
+	if errors.Is(err, node.ErrUnknownTransferee) ||
+		errors.Is(err, node.ErrLearnerNotEligible) {
+		return status.New(codes.FailedPrecondition, err.Error()), true
+	}
+
+	// Backup-destination busy: stable retry signal so clients can distinguish
+	// a normal concurrent-backup rejection from an opaque server error. The
+	// FSM Start path rejects duplicate destinations and duplicate job_ids;
+	// both surface here through state's typed sentinels.
+	if errors.Is(err, state.ErrBackupInProgress) ||
+		errors.Is(err, state.ErrBackupJobIDCollision) {
+		return status.New(codes.FailedPrecondition, err.Error()), true
+	}
+
+	// Convert ErrNodeAlreadyInCluster to AlreadyExists (idempotent AddLearner).
+	if errors.Is(err, node.ErrNodeAlreadyInCluster) {
+		return status.New(codes.AlreadyExists, err.Error()), true
+	}
+
+	// EN-1436: stale raft Progress (non-zero Match for a node whose caller
+	// cannot own that state) is a precondition failure, not an idempotent
+	// success. The bootstrap JoinAsLearner path builds its own richer status
+	// (with the STALE_RAFT_PROGRESS detail and remediation); this generic
+	// mapping covers the admin cluster.AddLearner path.
+	if errors.Is(err, node.ErrNodeStaleProgress) {
+		return status.New(codes.FailedPrecondition, err.Error()), true
+	}
+
+	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
+	if errors.Is(err, node.ErrNodeRemoved) {
+		return status.New(codes.FailedPrecondition, err.Error()), true
+	}
+
+	return nil, false
 }

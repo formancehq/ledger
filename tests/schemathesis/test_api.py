@@ -213,6 +213,9 @@ def run_suite(args):
             # otherwise exercise net/http rejection rather than the API.
             "--generation-with-security-parameters", "false",
             "--suppress-health-check", "filter_too_much",
+            # Cluster administration drains, reconfigures or removes the single
+            # node under test, which would invalidate every later operation.
+            "--exclude-path-regex", "^/v3/_/cluster/",
             "--report", "ndjson", "--report-ndjson-path", str(report),
         ]
         if not args.shrink:

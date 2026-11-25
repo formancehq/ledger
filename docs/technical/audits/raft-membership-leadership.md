@@ -199,6 +199,12 @@ restart, retained-log catch-up and snapshot catch-up. The operator audit owns
 phase persistence and retry decisions, and the persistence audit owns local
 drain-state reconstruction and the cross-cluster restore discard rule.
 
+HTTP routes under `/v3/_/cluster` call the same in-process `ClusterService`
+methods as gRPC, so drain preflight, the membership fence and leader
+forwarding are shared. Check that no HTTP path reaches node or membership
+operations directly, and that local and forwarded committed-removal outcomes
+keep their reason over HTTP.
+
 ### Force removal
 
 Force removal is not a quorum-safe alternative to normal removal. Verify its

@@ -91,6 +91,26 @@ receiving HTTP nodes before using the additive route; protobuf and persisted
 formats and service revision 40 are unchanged. See
 [the complete contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
 
+## Cluster administration over HTTP
+
+v2 has no cluster administration API. v3 adds HTTP routes under
+`/v3/_/cluster` for the `ClusterService` operations an operator drives:
+leadership transfer, learner addition and promotion, node removal, drain
+begin, end and status, and primary and secondary compaction. Each route calls
+the in-process RPC and requires its fixed scope: `ledger:ReadCluster` for
+`GET /v3/_/cluster/drain`, `ledger:WriteCluster` for the others. Under the
+default mapping only `ledger:admin` grants these scopes. Forwarding, drain
+preflight, membership checks and error semantics match gRPC. Node IDs are
+full-width uint64 values. A `503` after a membership or drain request does not
+prove that it was not committed.
+
+Maintenance mode already has an HTTP form: the `setMaintenanceMode` variant of
+`POST /v3/_/apply`, under `ledger:WriteOps`. Backup, restore and query
+checkpoints have separate routes. The routes are additive: protobuf, persisted
+formats and service revision 40 are unchanged, and the v2-to-v3 endpoint map
+is unchanged because no v2 operation maps to them. See
+[the HTTP contract](../architecture/subsystems/api/http-api.md#cluster-administration-over-http).
+
 ## HTTP transaction request signatures
 
 V3 adds opt-in signing headers with `application/json` for the
@@ -1596,8 +1616,9 @@ Cluster status, manual leadership transfer and primary/secondary store-metrics
 targets preserve unsigned 64-bit node identities in the existing protobuf fields,
 including per-peer enrichment and CLI arguments. The zero state-request target still routes to the leader; a
 zero transfer target rejects. Zero metrics targets select the local store.
-These v3 administration RPCs have no v2 ledger API equivalent and do not change
-HTTP routes or envelopes. See the
+These v3 administration RPCs have no v2 ledger API equivalent. Their
+[HTTP routes](#cluster-administration-over-http) parse and return the same
+full-width IDs. See the
 [cluster identity contract](../architecture/subsystems/api/grpc-api.md#cluster-node-identities)
 and [old-reader limitations](../architecture/subsystems/api/protocol-compatibility.md#cluster-node-id-width).
 
@@ -1705,7 +1726,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:WriteQuery` | the `requireQueriesWrite` route group |
 | `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:WriteCluster` | none — `BucketService.Apply` only |
 | events sinks | `ledger:WriteOps` | `POST /v3/_/events-sinks`, `DELETE /v3/_/events-sinks/{sinkName}` |
-| signing keys, maintenance mode | `ledger:WriteOps` | operator surface, no dedicated business route |
+| signing keys, maintenance mode | `ledger:WriteOps` | `POST /v3/_/apply` only, no dedicated route |
 | unknown / malformed / unset variant | `ledger:WriteOps` | fail-closed default |
 
 Two properties are enforced by tests rather than convention:

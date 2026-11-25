@@ -43,6 +43,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireOpsRead := internalauth.RequireScope(authCfg, internalauth.ScopeOpsRead)
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
 	requireQueriesWrite := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesWrite)
+	requireClusterRead := internalauth.RequireScope(authCfg, internalauth.ScopeClusterRead)
+	requireClusterWrite := internalauth.RequireScope(authCfg, internalauth.ScopeClusterWrite)
 
 	// Return JSON for 405 Method Not Allowed (Chi default returns text/plain)
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +205,20 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.With(requireOpsWrite).Group(func(r chi.Router) {
 				r.Post("/_/events-sinks", knownMutationQuery(server.handleAddEventsSink))
 				r.Delete("/_/events-sinks/{sinkName}", knownQuery(server.handleRemoveEventsSink, "controllerId"))
+			})
+
+			// Cluster administration uses the scopes of the matching
+			// ClusterService RPCs.
+			r.With(requireClusterRead).Get("/_/cluster/drain", knownQuery(server.handleGetDrainStatus))
+			r.With(requireClusterWrite).Group(func(r chi.Router) {
+				r.Post("/_/cluster/leadership/transfer", knownQuery(server.handleTransferLeadership))
+				r.Post("/_/cluster/learners", knownQuery(server.handleAddLearner))
+				r.Post("/_/cluster/learners/{nodeId}/promote", knownQuery(server.handlePromoteLearner))
+				r.Delete("/_/cluster/nodes/{nodeId}", knownQuery(server.handleRemoveNode, "force"))
+				r.Post("/_/cluster/drain", knownQuery(server.handleBeginDrain))
+				r.Post("/_/cluster/drain/end", knownQuery(server.handleEndDrain))
+				r.Post("/_/cluster/compactions/primary", knownQuery(server.handleCompactPrimary))
+				r.Post("/_/cluster/compactions/secondary", knownQuery(server.handleCompactSecondary))
 			})
 
 			// Accounts read scope
