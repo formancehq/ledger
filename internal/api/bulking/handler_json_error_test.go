@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/machine/vm"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
@@ -37,6 +38,7 @@ func TestMapBulkElementError(t *testing.T) {
 		{"already reverted", ledgercontroller.ErrAlreadyReverted{}, common.ErrAlreadyRevert},
 		{"invalid idempotency input", ledgercontroller.ErrInvalidIdempotencyInput{}, common.ErrValidation},
 		{"schema validation", ledgercontroller.ErrSchemaValidationError{}, common.ErrValidation},
+		{"invalid monetary amount", vm.ErrInvalidMonetaryAmount, common.ErrValidation},
 		{"schema not specified", ledgercontroller.ErrSchemaNotSpecified{}, common.ErrSchemaNotSpecified},
 		{"not found", ledgercontroller.ErrNotFound, api.ErrorCodeNotFound},
 		{"schema not found", ledgercontroller.ErrSchemaNotFound{}, api.ErrorCodeNotFound},
