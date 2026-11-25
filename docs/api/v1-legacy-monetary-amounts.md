@@ -1,7 +1,8 @@
 # Legacy v1 monetary script amounts
 
-This note applies to monetary variables in script.vars for legacy v1 transaction scripts and to legacy script payloads
-in JSON bulk CREATE_TRANSACTION elements.
+This note applies to monetary variables in script.vars for v2 transaction scripts and to legacy script payloads in
+JSON bulk CREATE_TRANSACTION elements. It does not apply to the legacy v1 transaction endpoint
+(`POST /v1/[ledger]/transactions`), which still rejects numeric scalars and decimal/exponent amount representations.
 
 The amount must be an integer. Fractional amounts are rejected with HTTP 400 and error code VALIDATION. In a JSON
 bulk request, the affected element is reported as VALIDATION and its transaction is not sent to the controller.
