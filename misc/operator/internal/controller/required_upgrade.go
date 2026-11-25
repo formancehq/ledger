@@ -136,7 +136,7 @@ func (r *ClusterReconciler) reconcileRequiredUpgrade(ctx context.Context, ledger
 
 func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, exec ledgerctlExec) (proceed bool, result ctrl.Result, err error) {
 	actor := stoppedUpgradeReconciler{
-		client: r.Client, config: r.Config, clientset: r.Clientset,
+		client: r.Client, reader: r.storageAPIReader(), config: r.Config, clientset: r.Clientset,
 		stopVersions: r.stopVersions, exec: exec,
 	}
 
@@ -154,11 +154,24 @@ type stoppedUpgradeClaimLifecycle struct {
 }
 
 type stoppedUpgradeReconciler struct {
-	client       client.Client
+	client client.Client
+	// reader serves PVC and PV reads. The operator has no watch RBAC on them,
+	// so a read through the cached client starts an informer that never syncs.
+	reader       client.Reader
 	config       *rest.Config
 	clientset    kubernetes.Interface
 	stopVersions []string
 	exec         ledgerctlExec
+}
+
+// storageReader returns the uncached reader for PVCs and PVs, falling back to
+// the client when none is set (unit tests built on a fake client).
+func (r *stoppedUpgradeReconciler) storageReader() client.Reader {
+	if r.reader != nil {
+		return r.reader
+	}
+
+	return r.client
 }
 
 func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet, claims stoppedUpgradeClaimLifecycle) (proceed bool, result ctrl.Result, err error) {
@@ -547,7 +560,7 @@ func (r *stoppedUpgradeReconciler) upgradeClaims(ctx context.Context, ledger *le
 		for ordinal := range replicas {
 			name := fmt.Sprintf("%s-%s-%d", template.Name, sts.Name, ordinal)
 			pvc := &corev1.PersistentVolumeClaim{}
-			if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+			if err := r.storageReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 				return nil, fmt.Errorf("required upgrade PVC %s is unavailable: %w", name, err)
 			}
 			if !pvc.DeletionTimestamp.IsZero() || pvc.Spec.VolumeName == "" || pvc.Status.Phase != corev1.ClaimBound {
@@ -567,7 +580,7 @@ func (r *stoppedUpgradeReconciler) verifyUpgradeClaims(ctx context.Context, ledg
 	observedVolumes := make(map[string]string)
 	for name, uid := range state.ClaimUIDs {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.storageReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return fmt.Errorf("upgrade PVC %s missing: %w", name, err)
 		}
 		if string(pvc.UID) != uid || !pvc.DeletionTimestamp.IsZero() || pvc.Spec.VolumeName == "" || pvc.Status.Phase != corev1.ClaimBound {
@@ -581,7 +594,7 @@ func (r *stoppedUpgradeReconciler) verifyUpgradeClaims(ctx context.Context, ledg
 			return fmt.Errorf("upgrade PV %s is no longer referenced by an original claim", name)
 		}
 		pv := &corev1.PersistentVolume{}
-		if err := r.client.Get(ctx, types.NamespacedName{Name: name}, pv); err != nil {
+		if err := r.storageReader().Get(ctx, types.NamespacedName{Name: name}, pv); err != nil {
 			return fmt.Errorf("upgrade PV %s missing: %w", name, err)
 		}
 		if string(pv.UID) != uid || !pv.DeletionTimestamp.IsZero() || pv.Status.Phase != corev1.VolumeBound || pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name != claimName || pv.Spec.ClaimRef.Namespace != ledger.Namespace || string(pv.Spec.ClaimRef.UID) != state.ClaimUIDs[claimName] {
@@ -596,11 +609,11 @@ func (r *stoppedUpgradeReconciler) upgradeVolumes(ctx context.Context, ledger *l
 	volumes := make(map[string]string)
 	for name, uid := range claims {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.storageReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return nil, err
 		}
 		pv := &corev1.PersistentVolume{}
-		if err := r.client.Get(ctx, types.NamespacedName{Name: pvc.Spec.VolumeName}, pv); err != nil {
+		if err := r.storageReader().Get(ctx, types.NamespacedName{Name: pvc.Spec.VolumeName}, pv); err != nil {
 			return nil, fmt.Errorf("required upgrade PV %s is unavailable: %w", pvc.Spec.VolumeName, err)
 		}
 		if !pv.DeletionTimestamp.IsZero() || pv.Status.Phase != corev1.VolumeBound || pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Name != name || pv.Spec.ClaimRef.Namespace != ledger.Namespace || string(pv.Spec.ClaimRef.UID) != uid {
@@ -618,7 +631,7 @@ func (r *stoppedUpgradeReconciler) upgradeVolumes(ctx context.Context, ledger *l
 func (r *stoppedUpgradeReconciler) detachUpgradeClaimOwners(ctx context.Context, ledger *ledgerv1alpha1.Cluster, state *ledgerv1alpha1.ClusterUpgradeStatus) error {
 	for name := range state.ClaimUIDs {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.storageReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return err
 		}
 		if len(pvc.OwnerReferences) == 0 {
@@ -650,7 +663,7 @@ func (r *stoppedUpgradeReconciler) verifyDetachedUpgradeClaims(ctx context.Conte
 	}
 	for name := range state.ClaimUIDs {
 		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
+		if err := r.storageReader().Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, pvc); err != nil {
 			return err
 		}
 		if len(pvc.OwnerReferences) != 0 {
