@@ -278,7 +278,7 @@ After joining, a node may need to catch up with the cluster's state. The synchro
 
 When the node starts, `NewNode` compares the store's last applied index with the WAL snapshot index (`IsStoreUpToDate`):
 
-- **Store at or above the WAL snapshot index**: an established member stays `statusNormal` and replays entries still in its local WAL. A learner whose only WAL snapshot is the initial index-0 join snapshot enters `statusOutOfSync` instead, even when the retained log is available. It first fetches a donor checkpoint containing a committed cluster configuration so its cache epoch and generation state come from committed state rather than startup flags. A checkpoint taken before that configuration causes a retry.
+- **Store at or above the WAL snapshot index**: an established member stays `statusNormal` and replays entries still in its local WAL. A joining member with an index-0 WAL snapshot and no persisted cluster configuration enters `statusOutOfSync` instead, even if Raft has already promoted it to voter and the retained log is available. It first fetches a donor checkpoint containing a committed cluster configuration so its cache epoch and generation state come from committed state rather than startup flags. A checkpoint taken before that configuration causes a retry. A learner with that configuration already durable resumes local replay on restart.
 - **Store below the WAL snapshot index**: status is set to `statusOutOfSync`. The entries between the store and the snapshot are no longer in the local WAL, so only a checkpoint from a donor can close the gap.
 
 ### Out-of-Sync State

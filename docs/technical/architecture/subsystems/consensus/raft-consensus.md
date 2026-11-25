@@ -20,12 +20,14 @@ A Raft node can be in one of the following states:
 
 Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](../../../../ops/cluster-operations.md) for the complete bootstrap/join/promotion flow.
 
-A learner with only its initial index-0 WAL snapshot fetches a donor checkpoint
-before applying retained Raft entries. This also covers a restart before its
-first successful synchronization. If the checkpoint predates the first
-committed `ClusterConfig`, the learner stays out of sync and retries. A usable
-checkpoint supplies the persisted cache
-epoch; replaying the first `ClusterConfig` against a node-local startup threshold
+A joining member with an index-0 WAL snapshot and no persisted cluster
+configuration fetches a donor checkpoint before applying retained Raft entries.
+This remains true if Raft promotes it to voter before synchronization. A
+learner that already installed a checkpoint with the committed configuration
+can restart without another transfer. If the checkpoint predates the first
+committed `ClusterConfig`, the member stays out of sync and retries. A usable
+checkpoint supplies the persisted cache epoch; replaying the first
+`ClusterConfig` against a node-local startup threshold
 could otherwise produce a different epoch and reject later committed proposals.
 Established members continue local WAL replay. This changes no persisted or
 Raft format and needs no RC data migration. It adds a checkpoint transfer for

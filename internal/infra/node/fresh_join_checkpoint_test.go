@@ -15,8 +15,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
+
+func seedRecoveredClusterConfig(t *testing.T, setup *testApplierSetup, epoch uint64) {
+	t.Helper()
+	batch := setup.store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig},
+		&commonpb.PersistedClusterState{Config: &commonpb.ClusterConfig{RotationThreshold: 1000}, CacheEpoch: epoch}))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, setup.applier.recovery.RecoverState())
+}
 
 // A fresh learner with an index-0 WAL snapshot may be sent the leader's
 // retained log. It must request a checkpoint instead of applying that log
@@ -72,4 +82,45 @@ func TestNewNodeFirstJoinRequiresCheckpoint(t *testing.T) {
 		setup.applier.recovery, setup.applier.synchronizer, newTestMembership(t), setup.responseSink)
 	require.NoError(t, err)
 	require.EqualValues(t, statusOutOfSync, n.applier.Status())
+}
+
+// A promotion may be committed to the WAL before the learner installs its
+// first checkpoint. The voter role must not make that empty FSM replay the log.
+func TestNewNodePromotedBeforeCheckpointStillRequiresSync(t *testing.T) {
+	t.Parallel()
+	setup := newTestApplierSetup(t)
+	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{Voters: []uint64{1, 2}}))
+
+	n, err := NewNode(NodeConfig{
+		NodeID: 1, AdvertiseAddr: "node-1:7000", ServiceAdvertiseAddr: "node-1:8000",
+		InstanceID: []byte("0000000000000001"), TickInterval: time.Hour,
+		ProcessingTickInterval: time.Hour, MaintenanceInterval: time.Hour,
+	}, NewMockTransport(gomock.NewController(t)), setup.applier, logging.Testing(),
+		noop.NewMeterProvider().Meter("promoted-before-sync"), setup.wal, setup.fsm,
+		setup.applier.recovery, setup.applier.synchronizer, newTestMembership(t), setup.responseSink)
+	require.NoError(t, err)
+	require.EqualValues(t, statusOutOfSync, n.applier.Status())
+	require.Zero(t, setup.fsm.LastAppliedIndex())
+}
+
+// A donor checkpoint can be durably installed while the member remains a
+// learner. Its persisted config and epoch make another transfer unnecessary.
+func TestNewNodeSynchronizedLearnerRestartsWithoutCheckpoint(t *testing.T) {
+	t.Parallel()
+	setup := newTestApplierSetup(t)
+	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{
+		Voters: []uint64{2}, Learners: []uint64{1},
+	}))
+	seedRecoveredClusterConfig(t, setup, 2)
+
+	n, err := NewNode(NodeConfig{
+		NodeID: 1, AdvertiseAddr: "node-1:7000", ServiceAdvertiseAddr: "node-1:8000",
+		InstanceID: []byte("0000000000000001"), TickInterval: time.Hour,
+		ProcessingTickInterval: time.Hour, MaintenanceInterval: time.Hour,
+	}, NewMockTransport(gomock.NewController(t)), setup.applier, logging.Testing(),
+		noop.NewMeterProvider().Meter("synchronized-learner"), setup.wal, setup.fsm,
+		setup.applier.recovery, setup.applier.synchronizer, newTestMembership(t), setup.responseSink)
+	require.NoError(t, err)
+	require.EqualValues(t, statusNormal, n.applier.Status())
+	require.Equal(t, uint64(2), setup.fsm.Registry.Cache.Epoch())
 }

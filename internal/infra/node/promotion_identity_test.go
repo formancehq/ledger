@@ -107,6 +107,7 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		setup := newTestApplierSetup(t)
+		seedRecoveredClusterConfig(t, setup, 1)
 		require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{
 			Voters: []uint64{1}, Learners: []uint64{2},
 		}))

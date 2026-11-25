@@ -850,12 +850,14 @@ func NewNode(
 		panic(err)
 	}
 
-	// A learner with only its initial index-0 snapshot has no authoritative
-	// cluster state. Even when the leader retains its whole log, replaying it
-	// from this member's node-local cache threshold can derive a different
-	// cache epoch. Fetch the donor's checkpoint before applying entries.
+	// The persisted cluster config (including its cache epoch), rather than
+	// mutable learner/voter membership, proves that this member has a usable
+	// join state. Raft may promote a learner before its first checkpoint sync;
+	// conversely a synchronized member may still be a learner on restart.
+	// The sole bootstrap voter has no donor and establishes the initial state.
 	forceJoinCheckpoint := snapshot.GetMetadata().GetIndex() == 0 &&
-		slices.Contains(initialConfState.GetLearners(), cfg.NodeID)
+		fsm.State.LastClusterConfig == nil &&
+		(len(initialConfState.GetVoters()) > 1 || len(initialConfState.GetLearners()) > 0)
 	storeUpToDate, err := applier.recoverAndReplay(context.Background(), forceJoinCheckpoint)
 	if err != nil {
 		return nil, err
