@@ -153,6 +153,18 @@ for each guarded path and the accepted races.
 
 ## Mirror promotion recovery
 
+If creation may have committed but a retry returns `AlreadyExists`, the
+controller reads the live ledger with linearizable consistency and checkpoint 0
+before marking the CR Ready. An observed mirror with a now-normal spec stays
+Pending with `LedgerSynced=PromotionPending`, then enters the existing
+promotion flow on the next reconcile; only successful promotion marks it Ready.
+An observed normal ledger
+with a now-mirror spec remains Pending with `LedgerSynced=ModeMismatch`; this
+direction cannot be reconciled in place. Failed or ambiguous observations also
+remain Pending and retry. In either mismatch, `status.mode` reflects the
+observed mode and `status.appliedSpecHash` is left empty until the desired
+state is actually applied. This adds one bounded read only on `AlreadyExists`.
+
 When a Ready Ledger changes from mirror to normal mode, the controller first
 reads the target ledger with `ledgers get --json --consistency linearizable
 --checkpoint-id 0`. Explicit flags override `LEDGERCTL_CONSISTENCY` and

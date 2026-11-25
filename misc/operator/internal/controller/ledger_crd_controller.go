@@ -117,6 +117,9 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	if ledger.Status.Phase == ledgerv1alpha1.LedgerPhaseReady {
 		return r.reconcileReady(ctx, &ledger)
 	}
+	if ledger.Status.Mode == "mirror" && (ledger.Spec.Mode == "normal" || ledger.Spec.Mode == "") {
+		return r.reconcilePromotion(ctx, &ledger)
+	}
 
 	// Resolve Cluster endpoint.
 	cluster, grpcPort, err := r.resolveEndpoint(ctx, &ledger)
@@ -152,7 +155,61 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}); err != nil {
 		switch {
 		case isAlreadyExists(err):
-			// The ledger (and its initial indexes) already exist — idempotent.
+			// A prior creation may have committed under another generation.
+			// Observe its live mode before certifying this spec or promoting it.
+			output, readErr := r.ledgerctlExecOutput(execCtx, cluster, grpcPort,
+				"ledgers", "get", "--json", "--consistency", "linearizable", "--checkpoint-id", "0", "--", ledger.Spec.Name)
+			var observed struct {
+				Name string `json:"name"`
+				Mode string `json:"mode"`
+			}
+			if readErr == nil {
+				readErr = json.Unmarshal([]byte(output), &observed)
+			}
+			if readErr == nil && observed.Name != ledger.Spec.Name {
+				readErr = fmt.Errorf("observed ledger name %q does not match creation target %q", observed.Name, ledger.Spec.Name)
+			}
+			if readErr == nil && observed.Mode != "NORMAL" && observed.Mode != "MIRROR" {
+				readErr = fmt.Errorf("unexpected ledger mode %q after creation", observed.Mode)
+			}
+			if readErr != nil {
+				meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+					Type: conditionLedgerSynced, Status: metav1.ConditionFalse, Reason: "CreateObservationFailed",
+					Message: readErr.Error(), ObservedGeneration: ledger.Generation,
+				})
+				ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
+				ledger.Status.Message = fmt.Sprintf("waiting for ledger observation: %v", readErr)
+
+				return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+			}
+			desiredMode := ledger.Spec.Mode
+			if desiredMode == "" {
+				desiredMode = "normal"
+			}
+			if observed.Mode == "MIRROR" && desiredMode == "normal" {
+				ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
+				ledger.Status.Mode = "mirror"
+				ledger.Status.AppliedSpecHash = ""
+				ledger.Status.Message = "waiting to promote observed mirror ledger"
+				meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+					Type: conditionLedgerSynced, Status: metav1.ConditionFalse, Reason: "PromotionPending",
+					Message: ledger.Status.Message, ObservedGeneration: ledger.Generation,
+				})
+
+				return ctrl.Result{Requeue: true}, nil
+			}
+			if observed.Mode == "NORMAL" && desiredMode == "mirror" {
+				ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
+				ledger.Status.Mode = "normal"
+				ledger.Status.AppliedSpecHash = ""
+				ledger.Status.Message = "existing normal ledger cannot be reconciled as mirror"
+				meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+					Type: conditionLedgerSynced, Status: metav1.ConditionFalse, Reason: "ModeMismatch",
+					Message: ledger.Status.Message, ObservedGeneration: ledger.Generation,
+				})
+
+				return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+			}
 		case isIdempotencyConflict(err):
 			// The FSM rejected the retry because the idempotency key was reused
 			// with different hash content. Most likely a referenced Secret (OAuth2
@@ -216,7 +273,7 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 	log := ctrl.LoggerFrom(ctx)
 
 	// Handle promotion: mirror → normal.
-	if ledger.Status.Mode == "mirror" && ledger.Spec.Mode == "normal" {
+	if ledger.Status.Mode == "mirror" && (ledger.Spec.Mode == "normal" || ledger.Spec.Mode == "") {
 		return r.reconcilePromotion(ctx, ledger)
 	}
 
@@ -333,6 +390,7 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 		ObservedGeneration: ledger.Generation,
 	})
 	ledger.Status.Mode = "normal"
+	ledger.Status.Phase = ledgerv1alpha1.LedgerPhaseReady
 	ledger.Status.Message = ""
 	ledger.Status.AppliedSpecHash = computeLedgerSpecHash(&ledger.Spec)
 
