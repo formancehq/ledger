@@ -188,17 +188,19 @@ func TestCredentialsReconcileRejectsUnrecoverableOwnedReplica(t *testing.T) {
 	wrongSeed, wrongPub, wrongKeyID, err := generateEd25519KeyPair()
 	require.NoError(t, err)
 	wrong := map[string][]byte{keySeedHex: []byte(hex.EncodeToString(wrongSeed)), keyPubKeyHex: []byte(hex.EncodeToString(wrongPub)), keyKeyID: []byte(wrongKeyID)}
+	wrongSeedWithRecordedID := map[string][]byte{keySeedHex: []byte(hex.EncodeToString(wrongSeed)), keyPubKeyHex: []byte(hex.EncodeToString(wrongPub)), keyKeyID: []byte(validKeyID)}
 	for _, tc := range []struct {
 		name string
 		data map[string][]byte
 	}{
 		{name: "empty", data: nil},
-		{name: "wrong identity", data: wrong},
+		{name: "wrong stored identity", data: wrong},
+		{name: "wrong seed with recorded identity", data: wrongSeedWithRecordedID},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}, Status: ledgerv1alpha1.CredentialsStatus{KeyID: validKeyID}}
-			replica := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsSecretName(credentials), Namespace: "target", UID: "replica", OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}}, Data: tc.data}
+			replica := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsSecretName(credentials), Namespace: "target", UID: "replica", Labels: map[string]string{credentialsNameLabel: credentials.Name}, OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}}, Data: tc.data}
 			scheme := ownershipTestScheme(t)
 			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials, replica).Build()
 			r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
