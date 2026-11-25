@@ -17,9 +17,11 @@ The persisted audit chain, system logs, accepted orders, hashes, checker input,
 and restore data retain their original bytes. A projected credential-bearing
 audit order is no longer a hash preimage. When a signed batch changes, its
 signature bytes are omitted because they cannot verify the projected payload.
-Entries without sensitive fields keep their original serialized order and
-signed payload bytes. Clients needing cryptographic verification must use an
-authorized evidence path.
+Entries without sensitive fields or unknown protobuf fields keep their original
+serialized order and signed payload bytes. Unknown fields are removed even
+when no annotated credential is present; this can also rewrite evidence bytes
+and cause signature omission. Clients needing cryptographic verification must
+use an authorized evidence path.
 
 This is a response-only RC behavior change. Protobuf field numbers, wire types,
 persisted formats, Raft entries, snapshot and backup formats, and service

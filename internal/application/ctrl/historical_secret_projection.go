@@ -24,8 +24,10 @@ func (c *historicalCursor[T]) Next() (T, error) {
 	value, err := c.inner.Next()
 	if err != nil {
 		var zero T
+
 		return zero, err
 	}
+
 	return c.project(value)
 }
 
@@ -56,6 +58,7 @@ func projectHistoricalLog(log *commonpb.Log) (*commonpb.Log, error) {
 			signed.Signature = nil
 		}
 	}
+
 	return projected, nil
 }
 
@@ -97,5 +100,6 @@ func projectHistoricalAudit(entry *auditpb.AuditEntry) (*auditpb.AuditEntry, err
 			signature.Signature = nil // The original signature covers the original payload.
 		}
 	}
+
 	return projected, nil
 }

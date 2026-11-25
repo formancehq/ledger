@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 func TestDefaultControllerGetLogReturnsProjectionWithoutMutatingStore(t *testing.T) {
@@ -104,6 +106,71 @@ func TestDefaultControllerGetAuditEntryReturnsProjectionWithoutMutatingStore(t *
 	authoritativeEntry, err := query.ReadAuditEntry(context.Background(), handle, entry.GetSequence())
 	require.NoError(t, err)
 	require.Contains(t, string(authoritativeEntry.GetSignature().GetPayload()), secrets[2])
+}
+
+func TestListAuditEntriesProjectsSignedSecretsOnDirectAndIndexedCheckpointPaths(t *testing.T) {
+	t.Parallel()
+
+	controller, rs := newAuditAlignmentController(t, 12)
+	config := &commonpb.SinkConfig{Name: "sink", Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{
+		Endpoint: "https://user:historical-password@hooks.example/events",
+	}}}
+	payload, err := (&servicepb.ApplyBatch{Requests: []*servicepb.Request{{
+		Type: &servicepb.Request_AddEventsSink{AddEventsSink: &servicepb.AddEventsSinkRequest{Config: config}},
+	}}}).MarshalVT()
+	require.NoError(t, err)
+	entry := &auditpb.AuditEntry{
+		Sequence:  1,
+		Ledgers:   []string{"main"},
+		Outcome:   &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Signature: &signaturepb.SignedApplyBatch{KeyId: "key", Signature: []byte("signature"), Payload: payload},
+	}
+	batch := controller.store.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
+	require.NoError(t, batch.SetProto(key, entry))
+	require.NoError(t, batch.Commit())
+
+	indexBatch := rs.NewBatch()
+	require.NoError(t, indexBatch.SetBytes(readstore.AuditIndexStringKey(dal.NewKeyBuilder(), readstore.AuditFieldLedger, "main", 1), nil))
+	require.NoError(t, rs.WriteAuditProgress(indexBatch, 1))
+	require.NoError(t, rs.WriteAuditRaftProgress(indexBatch, 12))
+	require.NoError(t, indexBatch.Commit())
+
+	checkpointDir := filepath.Join(t.TempDir(), "readindex")
+	require.NoError(t, rs.CreateCheckpoint(checkpointDir))
+	frozen, err := readstore.OpenReadOnly(checkpointDir, logging.NopZap())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = frozen.Close() })
+
+	for _, tc := range []struct {
+		name string
+		list func() (cursor.Cursor[*auditpb.AuditEntry], error)
+	}{
+		{name: "direct", list: func() (cursor.Cursor[*auditpb.AuditEntry], error) {
+			return controller.ListAuditEntries(context.Background(), 10, 0, nil, false)
+		}},
+		{name: "indexed checkpoint", list: func() (cursor.Cursor[*auditpb.AuditEntry], error) {
+			return controller.ListAuditEntriesFrom(context.Background(), controller.store, frozen, 10, 0, auditLedgerFilter("main"), false)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listed, err := tc.list()
+			require.NoError(t, err)
+			entries, err := cursor.Collect(listed)
+			require.NoError(t, err)
+			require.Len(t, entries, 1)
+			require.NotContains(t, string(entries[0].GetSignature().GetPayload()), "historical-password")
+			require.Empty(t, entries[0].GetSignature().GetSignature())
+		})
+	}
+
+	handle, err := controller.store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = handle.Close() })
+	stored, err := query.ReadAuditEntry(context.Background(), handle, 1)
+	require.NoError(t, err)
+	require.Equal(t, payload, stored.GetSignature().GetPayload())
+	require.Equal(t, []byte("signature"), stored.GetSignature().GetSignature())
 }
 
 func newSecretProjectionTestController(store *dal.Store) *DefaultController {
