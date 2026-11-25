@@ -1,8 +1,11 @@
 package numscriptgen
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 )
 
 // accountRenamer maps the generator's pool names (acc0..accN) to the caller's
@@ -63,16 +66,18 @@ func (r accountRenamer) script(s *Script) {
 		}
 	}
 
+	// Aliased pool accounts collide on one renamed key: the greatest original
+	// key wins, so a seed always yields the same presets.
 	balances := make(map[BalanceKey]*big.Int, len(s.Balances))
-	for k, v := range s.Balances {
-		balances[BalanceKey{Account: r.name(k.Account), Asset: k.Asset}] = v
+	for _, k := range slices.SortedFunc(maps.Keys(s.Balances), compareBalanceKeys) {
+		balances[BalanceKey{Account: r.name(k.Account), Asset: k.Asset}] = s.Balances[k]
 	}
 
 	s.Balances = balances
 
 	metadata := make(map[MetaKey]string, len(s.Metadata))
-	for k, v := range s.Metadata {
-		metadata[MetaKey{Account: r.name(k.Account), Key: k.Key}] = r.name(v)
+	for _, k := range slices.SortedFunc(maps.Keys(s.Metadata), compareMetaKeys) {
+		metadata[MetaKey{Account: r.name(k.Account), Key: k.Key}] = r.name(s.Metadata[k])
 	}
 
 	s.Metadata = metadata
@@ -142,4 +147,12 @@ func (r accountRenamer) keptOrDest(k *KeptOrDest) {
 	if k.Dest != nil {
 		r.destination(k.Dest)
 	}
+}
+
+func compareBalanceKeys(a, b BalanceKey) int {
+	return cmp.Or(cmp.Compare(a.Account, b.Account), cmp.Compare(a.Asset, b.Asset))
+}
+
+func compareMetaKeys(a, b MetaKey) int {
+	return cmp.Or(cmp.Compare(a.Account, b.Account), cmp.Compare(a.Key, b.Key))
 }

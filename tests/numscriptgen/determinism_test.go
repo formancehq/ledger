@@ -3,6 +3,7 @@ package numscriptgen_test
 import (
 	"fmt"
 	"maps"
+	"math/big"
 	"math/rand"
 	"testing"
 
@@ -55,6 +56,27 @@ func TestRerollVarsIsSeedDeterministic(t *testing.T) {
 			got := gen.RerollVars(rand.New(rand.NewSource(int64(s))), vars, accounts)
 			if !maps.Equal(got, want) {
 				t.Fatalf("seed %d rerolled differently: %v vs %v", s, want, got)
+			}
+		}
+	}
+}
+
+// Repeated addresses alias pool accounts onto one key, so presets collide.
+func TestGenerateForAliasedPresetsAreSeedDeterministic(t *testing.T) {
+	t.Parallel()
+
+	accounts := make([]string, 16)
+	for i := range accounts {
+		accounts[i] = []string{"x", "y"}[i%2]
+	}
+
+	for s := range 200 {
+		want := gen.GenerateFor(rand.New(rand.NewSource(int64(s))), accounts)
+		for range 20 {
+			got := gen.GenerateFor(rand.New(rand.NewSource(int64(s))), accounts)
+			if !maps.EqualFunc(got.Balances, want.Balances, func(a, b *big.Int) bool { return a.Cmp(b) == 0 }) ||
+				!maps.Equal(got.Metadata, want.Metadata) {
+				t.Fatalf("seed %d produced different presets", s)
 			}
 		}
 	}
