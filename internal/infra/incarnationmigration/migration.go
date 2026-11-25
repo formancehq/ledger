@@ -155,7 +155,7 @@ func MigrateBeforeRaft(ctx context.Context, store *dal.Store) error {
 			return closeErr
 		}
 		if lastAudit == 0 && applied == 0 {
-			return run(ctx, store, false, 0, true)
+			return run(ctx, store, 0, true)
 		}
 	}
 	drain, err := query.ReadDrainState(store)
@@ -168,7 +168,7 @@ func MigrateBeforeRaft(ctx context.Context, store *dal.Store) error {
 	if err := RequireDrainBarrier(store); err != nil {
 		return err
 	}
-	if err := run(ctx, store, false, 0, true); err != nil {
+	if err := run(ctx, store, 0, true); err != nil {
 		return err
 	}
 
@@ -191,7 +191,7 @@ func putMarker(batch *dal.WriteSession, marker Marker) error {
 // The caller must hold exclusive ownership of this Pebble store and must not
 // start Raft, admission, or account reads until Run returns successfully.
 func Run(ctx context.Context, store *dal.Store) error {
-	return run(ctx, store, false, 0, false)
+	return run(ctx, store, 0, false)
 }
 
 // RunWithPause lets the explicit migration command limit sustained Pebble load.
@@ -201,18 +201,10 @@ func RunWithPause(ctx context.Context, store *dal.Store, pause time.Duration) er
 		return errors.New("migration batch pause must be non-negative")
 	}
 
-	return run(ctx, store, false, pause, false)
+	return run(ctx, store, pause, false)
 }
 
-// ReconcileAfterDelta refreshes a checkpoint-carried incarnation projection
-// after backup restore has reconstructed post-checkpoint logs and audit rows.
-// It scans the historical fold to recover account types, then writes only the
-// audit suffix beyond the checkpoint's completion marker.
-func ReconcileAfterDelta(ctx context.Context, store *dal.Store) error {
-	return run(ctx, store, true, 0, false)
-}
-
-func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration, allowDormant bool) error {
+func run(ctx context.Context, store *dal.Store, pause time.Duration, allowDormant bool) error {
 	policy, err := query.ReadClusterPolicy(store)
 	if err != nil {
 		return err
@@ -231,7 +223,7 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration,
 	if err != nil {
 		return err
 	}
-	if marker.Complete && !force {
+	if marker.Complete {
 		return nil
 	}
 
@@ -253,12 +245,6 @@ func run(ctx context.Context, store *dal.Store, force bool, pause time.Duration,
 	applied, err := query.ReadLastAppliedIndex(reader)
 	if err != nil {
 		return err
-	}
-	if force {
-		// The restore may have advanced its applied index independently of the
-		// checkpoint. Its audit cursor remains the projection's durable boundary.
-		marker.AppliedIndex = applied
-		marker.Complete = false
 	}
 	if marker.Cursor > lastAudit || marker.AppliedIndex != 0 && marker.AppliedIndex != applied {
 		return errors.New("incarnation migration cursor does not match frozen store")

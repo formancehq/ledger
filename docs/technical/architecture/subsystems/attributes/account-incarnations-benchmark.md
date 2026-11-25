@@ -29,7 +29,7 @@ Use two monotonic activation milestones:
 | Milestone | Effect | Activation evidence |
 | --- | --- | --- |
 | `AccountIncarnationWritesV1` | Admission declares and preloads touched account incarnations; the FSM creates or updates them for marked proposals. Historical dates stay hidden from account reads until the second activation. | Every current voter and learner has completed the local backfill. Old binaries are gone before activation. |
-| `AccountIncarnationHistoryCompleteV1` | Account reads expose `inserted_at` and `updated_at`; future account-lifetime rules may rely on historical coverage. | Every current member has a completed local backfill marker for the same migration definition. The marker survives checkpoint creation and restore. |
+| `AccountIncarnationHistoryCompleteV1` | Account reads expose `inserted_at` and `updated_at`; future account-lifetime rules may rely on historical coverage. | Every current member has a completed local backfill marker for the same migration definition. Checkpoint backup and restore copy the marker and incarnation attributes together. |
 
 `SupportedIDs()` describes binary support. The member advertises the second ID only when its local store has a completed, versioned migration marker. Account reads check both the committed activation and that local marker. The first capability is derived from incarnation coverage in the final execution plan; FSM apply follows this persisted proposal declaration. The leader's final proposal gate rejects an unmarked account write after activation, including one prepared before activation. While an activating policy proposal is pending, it also rejects later unmarked account writes, closing the enqueue-to-apply interval.
 
