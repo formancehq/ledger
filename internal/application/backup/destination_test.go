@@ -33,6 +33,7 @@ func TestAdmissionDestinationKey(t *testing.T) {
 		{name: "Azure host", azure: true, first: "http://localhost:10000/acct", second: "HTTP://LOCALHOST:10000/acct/", equal: true},
 		{name: "Azure default", azure: true, first: "", second: "HTTPS://ACCT.BLOB.CORE.WINDOWS.NET/", equal: true},
 		{name: "Azure account case", azure: true, first: "", second: "", secondAccount: "ACCT", equal: true},
+		{name: "Azure explicit account case", azure: true, first: "http://localhost:10000/acct", second: "http://localhost:10000/acct", secondAccount: "ACCT", equal: true},
 		{name: "IPv6 address", first: "http://[FE80::AB%25BackupA]:9000", second: "http://[fe80::ab%25BackupA]:9000", equal: true},
 		{name: "IPv6 zone", first: "http://[fe80::ab%25BackupA]:9000", second: "http://[fe80::ab%25backupa]:9000"},
 		{name: "path", first: "http://localhost/Backup", second: "http://localhost/backup"},
@@ -58,12 +59,17 @@ func TestAdmissionDestinationKey(t *testing.T) {
 				second.GetS3().Endpoint = test.second
 			}
 			original := first.CloneVT()
+			originalSecond := second.CloneVT()
+			if test.secondAccount != "" {
+				require.NotEqual(t, state.CanonicalDestinationKey(first), state.CanonicalDestinationKey(second))
+			}
 			if test.equal {
 				require.Equal(t, admissionDestinationKey(first), admissionDestinationKey(second))
 			} else {
 				require.NotEqual(t, admissionDestinationKey(first), admissionDestinationKey(second))
 			}
 			require.Equal(t, original, first, "admission must not rewrite the replicated destination")
+			require.Equal(t, originalSecond, second, "admission must not rewrite the replicated destination")
 		})
 	}
 }
@@ -247,10 +253,14 @@ func TestRunFull_EndpointCaseDestinationExclusion(t *testing.T) {
 		{"azure", "http://LOCALHOST:9000", ""},
 		{"azure", "HTTP://localhost:9000", ""},
 		{"azure", "", "ACCT"},
+		{"azure", "http://localhost:9000", "ACCT"},
 	} {
 		name := test.driver + "/" + test.endpoint
 		if test.secondAccount != "" {
-			name = "azure/default-account-case"
+			name = "azure/explicit-account-case"
+			if test.endpoint == "" {
+				name = "azure/default-account-case"
+			}
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -280,7 +290,9 @@ func TestRunFull_EndpointCaseDestinationExclusion(t *testing.T) {
 			if test.driver == "azure" {
 				second.GetAzure().Endpoint = test.endpoint
 				if test.secondAccount != "" {
-					first.GetAzure().Endpoint = ""
+					if test.endpoint == "" {
+						first.GetAzure().Endpoint = ""
+					}
 					second.GetAzure().AccountName = test.secondAccount
 				}
 			} else {
