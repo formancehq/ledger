@@ -39,10 +39,6 @@ func TestDefaultControllerGetLogReturnsProjectionWithoutMutatingStore(t *testing
 			AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: config[1]},
 		}},
 	}
-	signedPayload, err := stored.MarshalVT()
-	require.NoError(t, err)
-	stored.ResponseSignature = &signaturepb.SignedLog{KeyId: "key", Signature: []byte("signature"), Payload: signedPayload}
-
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{stored}))
 	require.NoError(t, batch.Commit())
@@ -50,8 +46,7 @@ func TestDefaultControllerGetLogReturnsProjectionWithoutMutatingStore(t *testing
 	projected, err := newSecretProjectionTestController(store).GetLog(context.Background(), stored.GetSequence())
 	require.NoError(t, err)
 	require.NotContains(t, projected.String(), secrets[1])
-	require.NotContains(t, string(projected.GetResponseSignature().GetPayload()), secrets[1])
-	require.Empty(t, projected.GetResponseSignature().GetSignature())
+	require.Nil(t, projected.GetResponseSignature())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -60,7 +55,7 @@ func TestDefaultControllerGetLogReturnsProjectionWithoutMutatingStore(t *testing
 	authoritative, err := query.ReadLogBySequence(context.Background(), handle, stored.GetSequence())
 	require.NoError(t, err)
 	require.Contains(t, authoritative.String(), secrets[1])
-	require.Contains(t, string(authoritative.GetResponseSignature().GetPayload()), secrets[1])
+	require.Nil(t, authoritative.GetResponseSignature())
 }
 
 func TestDefaultControllerGetAuditEntryReturnsProjectionWithoutMutatingStore(t *testing.T) {

@@ -9,9 +9,8 @@ annotations cannot reach nested bytes. Unknown protobuf fields are removed
 because their confidentiality is not known. URLs and DSNs use registered
 format-specific redactors.
 
-System logs may carry a signed response envelope with another serialized log.
-Its payload is projected as well. If it changes, the response signature bytes
-are removed for the same reason as the signed audit batch.
+Response signatures are added to `Apply` response logs after storage, so
+historical `GetLog` and `ListLogs` reads do not contain signed log payloads.
 
 The persisted audit chain, system logs, accepted orders, hashes, checker input,
 and restore data retain their original bytes. A projected credential-bearing

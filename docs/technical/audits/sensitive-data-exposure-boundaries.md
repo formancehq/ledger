@@ -73,8 +73,8 @@ Outbound event checks use credential-bearing created-ledger logs. Encode the pro
 `internal/application/ctrl/historical_secret_projection.go`. Trace the
 registered HTTP and gRPC get/list consumers, including forwarded and checkpoint
 reads, to this boundary. Seed distinct sink and mirror credential canaries in
-visible log fields, `AuditItem.serialized_order`, signed `ApplyBatch` payloads
-and signed `Log` payloads. Inspect the emitted protobuf and HTTP JSON bytes,
+visible log fields, `AuditItem.serialized_order` and signed `ApplyBatch`
+payloads. Inspect the emitted protobuf and HTTP JSON bytes,
 including nested base64 content, for raw and reversibly encoded canaries while
 retaining a harmless entry or log identity control.
 

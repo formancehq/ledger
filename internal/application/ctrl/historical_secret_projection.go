@@ -39,27 +39,7 @@ func projectHistoricalLog(log *commonpb.Log) (*commonpb.Log, error) {
 	if log == nil {
 		return nil, nil
 	}
-	projected := sensitive.Redact(log)
-	if signed := projected.GetResponseSignature(); signed != nil && len(signed.GetPayload()) > 0 {
-		original := &commonpb.Log{}
-		if err := proto.Unmarshal(signed.GetPayload(), original); err != nil {
-			return nil, fmt.Errorf("decoding signed historical log: %w", err)
-		}
-		redacted := sensitive.Redact(original)
-		// A signed payload is expected to be the unsigned log. Drop a nested
-		// envelope rather than exposing opaque bytes from malformed history.
-		redacted.ResponseSignature = nil
-		if !proto.Equal(original, redacted) {
-			encoded, err := proto.Marshal(redacted)
-			if err != nil {
-				return nil, fmt.Errorf("encoding signed historical log: %w", err)
-			}
-			signed.Payload = encoded
-			signed.Signature = nil
-		}
-	}
-
-	return projected, nil
+	return sensitive.Redact(log), nil
 }
 
 func projectHistoricalAudit(entry *auditpb.AuditEntry) (*auditpb.AuditEntry, error) {
