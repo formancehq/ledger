@@ -71,9 +71,17 @@ func TestCreateLedgerOwnershipAfterLostResponse(t *testing.T) {
 
 	// A later managed-empty spec must still remove those owned indexes.
 	ledger.Spec.Indexes = &ledgerv1alpha1.LedgerIndexesSpec{}
+	ledger.Status.AppliedIndexes = nil // Simulate restart or a failed status write.
 	var dropped []string
 	_, err = reconcileIndexesWithExec(t.Context(), ledger, func(args ...string) (string, error) {
 		if args[1] == "list" {
+			if slices.Contains(args, "--creation-key-prefix") {
+				return "[]", nil // The initial multi-order batch is not a singleton create.
+			}
+			if slices.Contains(args, "--initial-creation-key-prefix") {
+				require.Equal(t, "operator-ledger-create:creation-uid:", args[len(args)-1])
+			}
+
 			return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}},{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"}}]`, nil
 		}
 		dropped = append(dropped, args[len(args)-1])

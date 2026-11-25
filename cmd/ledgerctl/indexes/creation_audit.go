@@ -20,6 +20,14 @@ import (
 // registry row. The index eliminates the full audit scan; a prefix operand is
 // safe because each attempt appends a unique suffix after the UID segment.
 func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServiceClient, ledger, prefix string, entries []*commonpb.Index) ([]*commonpb.Index, error) {
+	return filterIndexesByAuditKey(ctx, client, ledger, prefix, entries, false)
+}
+
+func filterInitialIndexesByCreationKey(ctx context.Context, client servicepb.BucketServiceClient, ledger, prefix string, entries []*commonpb.Index) ([]*commonpb.Index, error) {
+	return filterIndexesByAuditKey(ctx, client, ledger, prefix, entries, true)
+}
+
+func filterIndexesByAuditKey(ctx context.Context, client servicepb.BucketServiceClient, ledger, prefix string, entries []*commonpb.Index, initial bool) ([]*commonpb.Index, error) {
 	if len(entries) == 0 {
 		return []*commonpb.Index{}, nil
 	}
@@ -62,7 +70,7 @@ func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServ
 		for _, header := range page {
 			// The index pre-filters by prefix; still verify the key matches and
 			// the entry is a successful singleton, before fetching the full body.
-			if !strings.HasPrefix(header.GetIdempotency().GetKey(), prefix) || header.GetSuccess() == nil || header.GetOrderCount() != 1 {
+			if !strings.HasPrefix(header.GetIdempotency().GetKey(), prefix) || header.GetSuccess() == nil || (!initial && header.GetOrderCount() != 1) {
 				continue
 			}
 			full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{Sequence: header.GetSequence()})
@@ -72,12 +80,22 @@ func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServ
 			if full.GetSequence() != header.GetSequence() {
 				return nil, fmt.Errorf("creation audit sequence mismatch: requested %d, received %d", header.GetSequence(), full.GetSequence())
 			}
-			canonical, err := attributedIndex(full, ledger, prefix, current)
-			if err != nil {
-				return nil, err
-			}
-			if canonical != "" {
-				matched[canonical] = true
+			if initial {
+				canonicals, err := attributedInitialIndexes(full, ledger, prefix, current)
+				if err != nil {
+					return nil, err
+				}
+				for _, canonical := range canonicals {
+					matched[canonical] = true
+				}
+			} else {
+				canonical, err := attributedIndex(full, ledger, prefix, current)
+				if err != nil {
+					return nil, err
+				}
+				if canonical != "" {
+					matched[canonical] = true
+				}
 			}
 		}
 		next := cmdutil.NextCursorFromTrailer(stream.Trailer())
@@ -99,6 +117,68 @@ func filterIndexesByCreationKey(ctx context.Context, client servicepb.BucketServ
 	}
 
 	return result, nil
+}
+
+// attributedInitialIndexes accepts only a successful ledger-create proposal
+// followed by fresh index creates for the same ledger. The CR UID in the key
+// scopes evidence; current creation dates reject later replacements.
+func attributedInitialIndexes(entry *auditpb.AuditEntry, ledger, prefix string, current map[string]*commonpb.Index) ([]string, error) {
+	success := entry.GetSuccess()
+	items := entry.GetItems()
+	if prefix == "" || !strings.HasPrefix(entry.GetIdempotency().GetKey(), prefix) || success == nil || entry.GetOrderCount() < 2 || len(items) != int(entry.GetOrderCount()) || entry.GetTimestamp() == nil {
+		return nil, nil
+	}
+	if success.GetMinLogSequence() == 0 || success.GetMaxLogSequence() < success.GetMinLogSequence() {
+		return nil, nil
+	}
+	var matched []string
+	seen := make(map[string]bool)
+	previous := uint64(0)
+	for i, item := range items {
+		if item.GetOrderIndex() != uint32(i) || item.GetLogSequence() == 0 || item.GetLogSequence() < success.GetMinLogSequence() || item.GetLogSequence() > success.GetMaxLogSequence() {
+			return nil, nil
+		}
+		if i == 0 && item.GetLogSequence() != success.GetMinLogSequence() {
+			return nil, nil
+		}
+		if i > 0 && item.GetLogSequence() != previous+1 {
+			return nil, nil
+		}
+		previous = item.GetLogSequence()
+		order := &raftcmdpb.Order{}
+		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+			return nil, fmt.Errorf("decoding creation audit %d: %w", entry.GetSequence(), err)
+		}
+		scoped := order.GetLedgerScoped()
+		if scoped.GetLedger() != ledger {
+			return nil, nil
+		}
+		if i == 0 {
+			if scoped.GetCreateLedger() == nil {
+				return nil, nil
+			}
+
+			continue
+		}
+		create := scoped.GetApply().GetCreateIndex()
+		if create == nil || !indexes.Supported(create.GetId()) {
+			return nil, nil
+		}
+		canonical := indexes.Canonical(create.GetId())
+		if seen[canonical] {
+			return nil, nil
+		}
+		seen[canonical] = true
+		idx := current[canonical]
+		if idx != nil && idx.GetCreatedAt() != nil && idx.GetCreatedAt().GetData() == entry.GetTimestamp().GetData() {
+			matched = append(matched, canonical)
+		}
+	}
+	if previous != success.GetMaxLogSequence() {
+		return nil, nil
+	}
+
+	return matched, nil
 }
 
 func attributedIndex(entry *auditpb.AuditEntry, ledger, prefix string, current map[string]*commonpb.Index) (string, error) {

@@ -35,6 +35,7 @@ Examples:
 
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().String("creation-key-prefix", "", "Filter by audited singleton creation key prefix (attribution only, not authorization; uses the idempotency-key audit index)")
+	cmd.Flags().String("initial-creation-key-prefix", "", "Filter by audited ledger creation batch key prefix")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -84,6 +85,17 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	prefix, _ := cmd.Flags().GetString("creation-key-prefix")
+	initialPrefix, _ := cmd.Flags().GetString("initial-creation-key-prefix")
+	if cmd.Flags().Changed("initial-creation-key-prefix") && initialPrefix == "" {
+		_ = spinner.Stop()
+
+		return errors.New("initial-creation-key-prefix must not be empty")
+	}
+	if prefix != "" && initialPrefix != "" {
+		_ = spinner.Stop()
+
+		return errors.New("creation filters are mutually exclusive")
+	}
 	if cmd.Flags().Changed("creation-key-prefix") && prefix == "" {
 		_ = spinner.Stop()
 
@@ -91,6 +103,14 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 	if prefix != "" {
 		entries, err = filterIndexesByCreationKey(ctx, client, ledgerName, prefix, entries)
+		if err != nil {
+			_ = spinner.Stop()
+
+			return err
+		}
+	}
+	if initialPrefix != "" {
+		entries, err = filterInitialIndexesByCreationKey(ctx, client, ledgerName, initialPrefix, entries)
 		if err != nil {
 			_ = spinner.Stop()
 

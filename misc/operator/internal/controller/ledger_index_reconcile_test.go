@@ -48,10 +48,10 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			require.False(t, synced)
 			if firstCreated {
 				require.Equal(t, []string{"reference"}, ledger.Status.AppliedIndexes)
-				require.Len(t, commands, 4)
+				require.Len(t, commands, 5)
 			} else {
 				require.Empty(t, ledger.Status.AppliedIndexes)
-				require.Len(t, commands, 3)
+				require.Len(t, commands, 4)
 			}
 
 			// The next reconciliation observes the externally created index and
@@ -68,12 +68,15 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 
 					return "[]", nil
 				}
+				if slices.Contains(args, "--initial-creation-key-prefix") {
+					return "[]", nil
+				}
 
 				return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"}}, {"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}]`, nil
 			})
 			require.NoError(t, err)
 			require.True(t, synced)
-			require.Len(t, commands, 2)
+			require.Len(t, commands, 3)
 			require.NotContains(t, ledger.Status.AppliedIndexes, "timestamp")
 		})
 	}

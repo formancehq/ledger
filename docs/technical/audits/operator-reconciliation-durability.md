@@ -67,6 +67,19 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Initial index ownership boundary
+
+The ledger-create proposal may include CreateIndex orders. Its audit key uses
+`operator-ledger-create:<CR UID>:<generation>`, so the singleton index-create
+prefix query cannot recover those indexes. For an explicitly empty managed
+spec, a fresh controller must recover ownership from a successful, fresh
+same-ledger creation batch and matching current creation dates before dropping
+initial indexes. A missing status observation must not erase this evidence.
+An absent spec stays unmanaged. Wrong UID, failed or replayed batches, unrelated
+orders, replacement dates and audit-read failure must not authorize a drop.
+Use a filter-faithful fake and, where available, the real Ledger/CLI to test
+the creation and withdrawal path.
+
 ## Mirror promotion recovery boundary
 
 For a Ready mirror Ledger edited to normal, require an explicitly linearizable
