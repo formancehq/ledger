@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -291,7 +292,7 @@ func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *
 	// Select the address failure before writing any account metadata. Its typed
 	// details enter the audit chain, so first-error map iteration would fork
 	// replicas even though the proposal's business writes are rolled back.
-	if err := domain.ValidateAccountMetadataAddresses(accountMetadata); err != nil {
+	if err := validateTransactionAccountMetadataAddresses(ledger, accountMetadata, ctx); err != nil {
 		return nil, err
 	}
 
@@ -376,7 +377,7 @@ func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *prod
 	if metaErr := limits.ValidateCommandBytes(total); metaErr != nil {
 		return nil, metaErr
 	}
-	if err := domain.ValidateAccountMetadataAddresses(accountMetadata); err != nil {
+	if err := validateTransactionAccountMetadataAddresses(ledger, accountMetadata, ctx); err != nil {
 		return nil, err
 	}
 	for account, mm := range accountMetadata {
@@ -387,6 +388,22 @@ func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *prod
 	ctx.metadataBudget.bytes = total
 
 	return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: accountMetadata}}}, nil
+}
+
+func validateTransactionAccountMetadataAddresses(ledger string, metadata map[string]*commonpb.MetadataMap, ctx *Context) domain.Describable {
+	if !ctx.strictTransactionAccountMetadata {
+		return domain.ValidateAccountMetadataAddresses(metadata)
+	}
+	compiled := compiledTypesFor(ctx.CompiledTypes, ledger, ctx.LedgerInfo)
+	for _, account := range slices.Sorted(maps.Keys(metadata)) {
+		if err := domain.ValidateAccountAddress(account); err != nil {
+			return err
+		}
+		if err := validateAccountAgainstAccountTypes(account, compiled, ctx.LedgerInfo.GetDefaultEnforcementMode()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Caller supplied keys take precedence over keys emitted by the script.

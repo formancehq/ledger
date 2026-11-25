@@ -260,3 +260,35 @@ func TestAuditReplayerLedgerBoundaries(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, boundaries, "canonical deletion removes the ledger boundary")
 }
+
+func TestAuditReplayerPreservesAccountMetadataCapabilityEra(t *testing.T) {
+	t.Parallel()
+	replayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, replayer.Close()) })
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "test",
+		Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
+			DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+			AccountTypes:           map[string]*commonpb.AccountType{"user": {Name: "user", Pattern: "users:{id}"}},
+		}},
+	}}}
+	_, err = replayer.Replay(&commonpb.Timestamp{Data: 1}, []*raftcmdpb.Order{create})
+	require.NoError(t, err)
+	transaction := func() *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "test",
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+					Postings:        []*commonpb.Posting{{Source: "world", Destination: "users:1", Asset: "USD/2", Amount: commonpb.NewUint256FromUint64(100)}},
+					AccountMetadata: map[string]*commonpb.MetadataMap{"rogue:1": {Values: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}}},
+				},
+			}}},
+		}}}
+	}
+	logs, err := replayer.Replay(&commonpb.Timestamp{Data: 2}, []*raftcmdpb.Order{transaction()})
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	_, err = replayer.Replay(&commonpb.Timestamp{Data: 3}, []*raftcmdpb.Order{transaction()}, 1)
+	require.ErrorContains(t, err, "account does not match any account type pattern: rogue:1")
+}

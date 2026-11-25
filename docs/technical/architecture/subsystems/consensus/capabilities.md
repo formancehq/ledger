@@ -81,10 +81,19 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+Capability ID 1 (`StrictTransactionAccountMetadata`) marks every new
+CreateTransaction and ExecuteNumscript proposal. When active, the
+FSM checks the account type of every merged account-metadata address after
+syntax and metadata-budget validation and before metadata writes. Addresses are
+checked in lexical order so replicas select the same failure. STRICT rejects
+unmatched addresses; AUDIT and matching addresses keep their existing behavior.
+Proposals without ID 1 retain the historical transaction behavior. The audit
+entry stores the declaration, and checker replay passes it to the processor;
+changing the currently active policy never changes replay of an old proposal.
+The marker is proposal-wide because every transaction or standalone Numscript
+execution order in the batch uses the same rule. New executions require
+activation, including ones without account metadata, because Numscript can
+produce metadata during apply.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.

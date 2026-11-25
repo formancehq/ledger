@@ -4581,6 +4581,7 @@ components:
       additionalProperties: false
       properties:
         accountMetadata:
+          description: After capability 1 activates, a STRICT ledger rejects metadata for accounts that match no account type. This includes metadata produced by Numscript.
           additionalProperties:
             $ref: '#/components/schemas/AtomicApplyMetadataMap'
           type: object

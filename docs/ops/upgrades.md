@@ -2,6 +2,14 @@
 
 ## Release requirement from v3.0.0-rc.1
 
+The EN-2941 account-metadata rule is activated by capability 1 after all
+members advertise support. New CreateTransaction and ExecuteNumscript proposals carry ID 1 in the
+Raft proposal and audit entry; historical proposals without it retain the old
+apply result during recovery and audit replay. The capability foundation's
+coordinated upgrade procedure remains the deployment requirement until a
+mixed-version rolling validation proves this activation safe from every
+published RC. Do not activate the capability on a partially upgraded cluster.
+
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
 forward upgrade from the preceding released version. Preserve committed
