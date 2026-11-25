@@ -25,6 +25,16 @@ const balanceReadingScript = `
 	send $amt (source = @wallet destination = @out)
 `
 
+// auditedFacts returns the audited failure facts of d, failing the test when d
+// is not an audited domain.SerializableError.
+func auditedFacts(t *testing.T, d domain.Describable) domain.FailureFacts {
+	t.Helper()
+	audited, ok := d.(domain.SerializableError)
+	require.Truef(t, ok, "%T is not an audited failure", d)
+
+	return domain.FailureFactsOf(audited)
+}
+
 func TestCompilerFailureFactsExcludeDiagnosticText(t *testing.T) {
 	first := mapCompilerError(numscriptlib.CompilerTypeError{
 		Kind: numscriptlib.TypecheckTypeMismatch{Expected: "account", Got: "asset"},
@@ -34,8 +44,8 @@ func TestCompilerFailureFactsExcludeDiagnosticText(t *testing.T) {
 	})
 	second.(*domain.ErrNumscriptCompile).Detail = "reworded compiler diagnostic"
 
-	firstFacts := domain.FailureFactsOf(first)
-	secondFacts := domain.FailureFactsOf(second)
+	firstFacts := auditedFacts(t, first)
+	secondFacts := auditedFacts(t, second)
 	require.Equal(t, firstFacts, secondFacts)
 	require.Equal(t, "NUMSCRIPT_COMPILE_TYPE_MISMATCH", firstFacts.Code)
 	require.Equal(t, map[string]string{"expected": "account", "got": "asset"}, firstFacts.Facts)
@@ -46,13 +56,14 @@ func TestUnclassifiedCompilerFailureIsUncommitted(t *testing.T) {
 	t.Parallel()
 	err := mapCompilerError(errors.New("unknown compiler failure"))
 	require.Equal(t, domain.ErrReasonNumscriptCompileError, err.Reason())
-	require.Nil(t, err.FailureDetails())
 	_, uncommitted := err.(domain.UncommittedFailure)
 	require.True(t, uncommitted)
+	_, auditable := err.(domain.SerializableError)
+	require.False(t, auditable)
 }
 
 // TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed
-// domain.SerializableError returned by the store is NOT stringified/lost passing
+// domain.Describable returned by the store is NOT stringified/lost passing
 // through numscriptlib.ResolveDependencies: errors.As reaches the concrete type
 // and the Reason survives. This is what lets the FSM apply path recognise a
 // coverage-contract violation and surface it loudly (invariant #7) instead of
@@ -117,7 +128,7 @@ func TestSafeResolveDependencies_RecoversPanic(t *testing.T) {
 
 	store := NewStore(source, false)
 
-	var recovered domain.SerializableError
+	var recovered domain.Describable
 	require.NotPanics(t, func() {
 		_, recovered = SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
 	})

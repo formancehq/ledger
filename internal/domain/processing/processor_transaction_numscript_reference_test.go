@@ -110,7 +110,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 		name     string
 		selector string
 		setup    func(*MockScope)
-		assert   func(*testing.T, domain.SerializableError)
+		assert   func(*testing.T, domain.Describable)
 	}{
 		{
 			name:     "latest lookup failure",
@@ -118,7 +118,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("", latestLookupErr)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				var storageErr *domain.ErrStorageOperation
 				require.ErrorAs(t, err, &storageErr)
@@ -131,7 +131,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().GetNumscriptLatestVersion(ledger, name).Return("", nil)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				var notFound *domain.ErrNumscriptNotFound
 				require.ErrorAs(t, err, &notFound)
@@ -149,7 +149,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 					domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: "2.0.0"},
 				).Return(coverageErr)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				require.ErrorIs(t, err, domain.ErrStaleProposal)
 			},
@@ -160,7 +160,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(nil, contentLookupErr)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				var storageErr *domain.ErrStorageOperation
 				require.ErrorAs(t, err, &storageErr)
@@ -173,7 +173,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "1.2.3").Return(nil, nil)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				var notFound *domain.ErrNumscriptNotFound
 				require.ErrorAs(t, err, &notFound)
@@ -191,7 +191,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 			setup: func(mockStore *MockScope) {
 				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "").Return(nil, nil)
 			},
-			assert: func(t *testing.T, err domain.SerializableError) {
+			assert: func(t *testing.T, err domain.Describable) {
 				t.Helper()
 				var notFound *domain.ErrNumscriptNotFound
 				require.ErrorAs(t, err, &notFound)

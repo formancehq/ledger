@@ -16,11 +16,11 @@ import (
 //   - same revision, identical payload: idempotent no-op (no log);
 //   - same revision, different payload: contract violation, rejected;
 //   - lower revision: stale, rejected (a newer policy already won).
-func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	return applyClusterPolicy(order.GetPolicy(), ctx.Scope)
 }
 
-func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*commonpb.LogPayload, domain.SerializableError) {
+func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*commonpb.LogPayload, domain.Describable) {
 	if newPolicy == nil {
 		return nil, &domain.ErrClusterPolicyInvalid{Detail: "missing policy"}
 	}
@@ -103,7 +103,7 @@ func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*common
 // raising it would observe no effect. Both checks are pure functions of the
 // proposed policy, so every node reaches the same verdict for one committed
 // entry.
-func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.SerializableError {
+func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.Describable {
 	if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
 		return &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
 	}
@@ -113,7 +113,7 @@ func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.
 
 // ProcessClusterPolicy applies operational state without allocating business logs.
 // The released order handler above retains its original audited replay behavior.
-func (p *RequestProcessor) ProcessClusterPolicy(proposal *raftcmdpb.SetClusterPolicyProposal, factory ScopeFactory) domain.SerializableError {
+func (p *RequestProcessor) ProcessClusterPolicy(proposal *raftcmdpb.SetClusterPolicyProposal, factory ScopeFactory) domain.Describable {
 	policy := proposal.GetPolicy()
 	if proposal.GetConfigurationOnly() && (policy == nil || len(policy.GetCapabilityActivations()) != 0) {
 		return &domain.ErrClusterPolicyInvalid{Detail: "cluster policy cannot contain capabilities"}
@@ -131,7 +131,7 @@ func (p *RequestProcessor) ProcessClusterPolicy(proposal *raftcmdpb.SetClusterPo
 	return processErr
 }
 
-func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.CapabilityActivation, factory ScopeFactory) domain.SerializableError {
+func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.CapabilityActivation, factory ScopeFactory) domain.Describable {
 	if transition == nil || transition.GetId() == 0 {
 		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition requires a non-zero id"}
 	}

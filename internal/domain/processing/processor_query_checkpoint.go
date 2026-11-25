@@ -12,7 +12,7 @@ import (
 // state, so a committed create resolves identically on every node; a keyed retry
 // replays the frozen outcome before reaching here, so an accepted create that
 // filled the cap still returns its original success on retry.
-func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 
 	// A committed policy always carries a limit >= 1; limit 0 is the unset
@@ -55,7 +55,7 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 // processDeleteQueryCheckpoint applies a delete after the idempotency gate,
 // rejecting a non-live id inside the FSM so the outcome is deterministic and a
 // keyed retry of a successful delete replays that success.
-func processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	id := order.GetCheckpointId()
 	if id == 0 {
 		return nil, domain.ErrCheckpointIDRequired

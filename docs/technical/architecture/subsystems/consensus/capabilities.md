@@ -170,6 +170,13 @@ also serves non-FSM reads. For example, the exact aggregate totals change
 stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
 order, proposal, or apply rule changes.
 
+Removing `FailureDetails()` from uncommitted failures changes only Go types in
+order processing. Every committed entry applies identically on old and new
+voters: the same order fails with the same reason, an uncommitted failure still
+writes no audit entry or idempotency record, and an audited failure persists the
+same details. No capability, persisted migration, wire revision, or
+stopped-upgrade boundary is needed.
+
 The sink and mirror source shape checks are admission-only. They reject
 incomplete sink configurations and a mirror source on a normal ledger before
 proposing the order. A voter running the change still applies every

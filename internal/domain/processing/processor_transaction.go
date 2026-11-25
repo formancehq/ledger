@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	staged, err := stageLedgerExecution(ledger, order, order.GetPostings(), order.GetForce(), ctx)
 	if err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	return processProducedTransaction(ledger, order, ctx, staged)
 }
 
-func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	staged, err := stageLedgerExecution(ledger, execution, nil, false, ctx)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ type stagedLedgerExecution struct {
 	metadataOnlyCandidate bool
 }
 
-func stageLedgerExecution(ledger string, order ledgerExecutionOrder, postings []*commonpb.Posting, force bool, ctx *Context) (*stagedLedgerExecution, domain.SerializableError) {
+func stageLedgerExecution(ledger string, order ledgerExecutionOrder, postings []*commonpb.Posting, force bool, ctx *Context) (*stagedLedgerExecution, domain.Describable) {
 	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
 		return nil, domain.ErrTransactionReferenceTooLong
 	}
@@ -159,7 +159,7 @@ func stageLedgerExecution(ledger string, order ledgerExecutionOrder, postings []
 
 	// Produce postings (handles balance checks and buffer updates)
 	var result *produceResult
-	var err domain.SerializableError
+	var err domain.Describable
 	if isNumscript {
 		producer := &numscriptPostingProducer{
 			cache:                ctx.NumscriptCache,
@@ -179,7 +179,7 @@ func stageLedgerExecution(ledger string, order ledgerExecutionOrder, postings []
 	return &stagedLedgerExecution{result: result, nextTransactionID: nextTransactionID, advancedTransactionID: advancedTransactionID, metadataOnlyCandidate: metadataOnlyCandidate}, nil
 }
 
-func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *Context, staged *stagedLedgerExecution) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *Context, staged *stagedLedgerExecution) (*commonpb.LedgerLogPayload, domain.Describable) {
 	result := staged.result
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
@@ -351,7 +351,7 @@ func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *
 // shares the producer and validation path with normal transaction creation, so
 // script execution, metadata limits, address validation, and proposal rollback
 // retain the same semantics.
-func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *produceResult, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processMetadataOnly(ledger string, order ledgerExecutionOrder, result *produceResult, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if len(result.Postings) > 0 {
 		return nil, domain.ErrPostingsAndScriptConflict
 	}
@@ -439,10 +439,10 @@ func hasScriptAccountMetadataUpdates(accountMetadata map[string]map[string]*comm
 func validateMergedAccountMetadata(
 	accountMetadata map[string]*commonpb.MetadataMap,
 	limits domain.MetadataLimits,
-) domain.SerializableError {
+) domain.Describable {
 	var (
 		worstAccount string
-		worstErr     domain.SerializableError
+		worstErr     domain.Describable
 	)
 
 	for account, mm := range accountMetadata {
@@ -456,11 +456,15 @@ func validateMergedAccountMetadata(
 		}
 	}
 
-	if worstErr != nil {
-		return &domain.ErrAccountValidation{Account: worstAccount, Cause: worstErr}
+	if worstErr == nil {
+		return nil
+	}
+	audited, ok := worstErr.(domain.SerializableError)
+	if !ok {
+		return worstErr
 	}
 
-	return nil
+	return &domain.ErrAccountValidation{Account: worstAccount, Cause: audited}
 }
 
 // validatePostings checks that all account addresses and assets in the postings
@@ -500,7 +504,7 @@ type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) producePostings(s Scope, ledger string, postings []*commonpb.Posting, force bool) (*produceResult, domain.SerializableError) {
+func (p *stdPostingProducer) producePostings(s Scope, ledger string, postings []*commonpb.Posting, force bool) (*produceResult, domain.Describable) {
 	for _, posting := range postings {
 		// Skip balance check when Force is true
 		err := applyPosting(s, ledger, posting, force, p.assetCache)
