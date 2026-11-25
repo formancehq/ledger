@@ -1746,9 +1746,10 @@ HTTP serves `/health` only and the server logs that the API is disabled.
 Loopback is still reachable from a browser on the same host, so the restore
 routes also refuse requests a web page can make. A `Host` that is not a
 loopback name or address (DNS rebinding), any `Origin` header, or a
-`Sec-Fetch-Site` other than `none` returns `403 PERMISSION_DENIED`. Every POST,
-including the body-less `validate` and `finalize`, requires
-`Content-Type: application/json` and otherwise returns `415`; a cross-origin
+`Sec-Fetch-Site` other than `none` returns `403 PERMISSION_DENIED`. Every POST
+requires `Content-Type: application/json` and otherwise returns `415`.
+`validate` and `finalize` ignore their body; OpenAPI declares it as an empty
+JSON object so generated clients send the header. A cross-origin
 JSON POST needs a CORS preflight, which this router never grants. `/health` is
 not guarded.
 

@@ -4060,6 +4060,16 @@ paths:
       tags:
         - Restore
       security: []
+      requestBody:
+        required: true
+        description: |
+          An empty JSON object. The body is ignored, but the request must
+          carry `Content-Type: application/json`.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
@@ -4152,6 +4162,16 @@ paths:
       tags:
         - Restore
       security: []
+      requestBody:
+        required: true
+        description: |
+          An empty JSON object. The body is ignored, but the request must
+          carry `Content-Type: application/json`.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'

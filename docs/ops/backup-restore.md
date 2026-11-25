@@ -543,9 +543,9 @@ BASE=http://127.0.0.1:9000/v3/_/restore
 curl -si -X POST $BASE/downloads -H 'Content-Type: application/json' \
   -d '{"storage": {"s3": {"bucket": "my-bucket", "region": "us-east-1"}}}'
 curl -s $BASE/downloads/<jobId>          # poll until DOWNLOAD_STATE_SUCCEEDED
-curl -sN -X POST $BASE/validate -H 'Content-Type: application/json'   # last line: {"result":{"passed":true}}
+curl -sN -X POST $BASE/validate -H 'Content-Type: application/json' -d '{}'   # last line: {"result":{"passed":true}}
 curl -s $BASE/preview
-curl -s -X POST $BASE/finalize -H 'Content-Type: application/json'
+curl -s -X POST $BASE/finalize -H 'Content-Type: application/json' -d '{}'
 ```
 
 `DELETE $BASE/downloads/<jobId>` cancels a download. The routes have no

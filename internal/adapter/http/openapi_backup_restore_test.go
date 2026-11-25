@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/getkin/kin-openapi/routers/legacy"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	ggrpc "google.golang.org/grpc"
@@ -99,16 +102,16 @@ func TestOpenAPI_Restore(t *testing.T) {
 		{"cancel", http.MethodDelete, "/v3/_/restore/downloads/job", "", func(b *MockRestoreBackend) {
 			b.EXPECT().CancelDownload(gomock.Any(), gomock.Any()).Return(&restorepb.CancelDownloadResponse{}, nil)
 		}, http.StatusNoContent},
-		{"validate not staged", http.MethodPost, "/v3/_/restore/validate", "", func(b *MockRestoreBackend) {
+		{"validate not staged", http.MethodPost, "/v3/_/restore/validate", "{}", func(b *MockRestoreBackend) {
 			b.EXPECT().ValidateRestore(gomock.Any(), gomock.Any()).Return(status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first"))
 		}, http.StatusConflict},
 		{"preview", http.MethodGet, "/v3/_/restore/preview", "", func(b *MockRestoreBackend) {
 			b.EXPECT().PreviewRestore(gomock.Any(), gomock.Any()).Return(&restorepb.PreviewRestoreResponse{LastAppliedIndex: 1}, nil)
 		}, http.StatusOK},
-		{"finalize", http.MethodPost, "/v3/_/restore/finalize", "", func(b *MockRestoreBackend) {
+		{"finalize", http.MethodPost, "/v3/_/restore/finalize", "{}", func(b *MockRestoreBackend) {
 			b.EXPECT().FinalizeRestore(gomock.Any(), gomock.Any()).Return(&restorepb.FinalizeRestoreResponse{Message: "done"}, nil)
 		}, http.StatusOK},
-		{"finalize shutting down", http.MethodPost, "/v3/_/restore/finalize", "", func(b *MockRestoreBackend) {
+		{"finalize shutting down", http.MethodPost, "/v3/_/restore/finalize", "{}", func(b *MockRestoreBackend) {
 			b.EXPECT().FinalizeRestore(gomock.Any(), gomock.Any()).Return(nil, status.Error(codes.Unavailable, "restore service is shutting down"))
 		}, http.StatusServiceUnavailable},
 	} {
@@ -139,7 +142,7 @@ func TestOpenAPI_ValidateRestoreStream(t *testing.T) {
 	t.Parallel()
 	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
 	require.NoError(t, err)
-	r := httptest.NewRequest(http.MethodPost, "http://localhost:9000/v3/_/restore/validate", nil)
+	r := httptest.NewRequest(http.MethodPost, "http://localhost:9000/v3/_/restore/validate", strings.NewReader("{}"))
 	r.Header.Set("Content-Type", "application/json")
 	validateOpenAPIRequest(t, doc, r)
 
@@ -162,5 +165,37 @@ func TestOpenAPI_ValidateRestoreStream(t *testing.T) {
 		var value any
 		require.NoError(t, json.Unmarshal([]byte(line), &value))
 		require.NoError(t, schema.VisitJSON(value), line)
+	}
+}
+
+// TestOpenAPI_BodylessRestorePostsRequireJSON checks that the spec and the
+// handler both refuse a validate or finalize POST without a JSON body.
+func TestOpenAPI_BodylessRestorePostsRequireJSON(t *testing.T) {
+	t.Parallel()
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	router, err := legacy.NewRouter(doc, openapi3.AllowExtraSiblingFields("description"))
+	require.NoError(t, err)
+
+	for _, path := range []string{"/v3/_/restore/validate", "/v3/_/restore/finalize"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			newRequest := func() *http.Request {
+				return httptest.NewRequest(http.MethodPost, "http://localhost:9000"+path, nil)
+			}
+			route, params, err := router.FindRoute(newRequest())
+			require.NoError(t, err)
+			err = openapi3filter.ValidateRequest(context.Background(), &openapi3filter.RequestValidationInput{
+				Request: newRequest(), PathParams: params, Route: route,
+				Options: &openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc},
+			})
+			var reqErr *openapi3filter.RequestError
+			require.ErrorAs(t, err, &reqErr)
+			require.NotNil(t, reqErr.RequestBody)
+
+			w := httptest.NewRecorder()
+			NewRestoreHandler(logging.Testing(), NewMockRestoreBackend(gomock.NewController(t))).ServeHTTP(w, newRequest())
+			require.Equal(t, http.StatusUnsupportedMediaType, w.Code, w.Body.String())
+		})
 	}
 }
