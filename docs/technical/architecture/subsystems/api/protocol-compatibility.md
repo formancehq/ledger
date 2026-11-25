@@ -813,6 +813,21 @@ This is a [wire exception](#wire-exceptions): the revision stays at 40.
 HTTP responses keep their JSON shape and no longer fail with
 `AGGREGATE_OVERFLOW`. No persisted, Raft, snapshot or audit format changes.
 
+## Query-checkpoint schedule admission (EN-2943)
+
+Revision remains 40. `Apply(SetQueryCheckpointSchedule)` now rejects a parsed
+cron with no next occurrence as `InvalidArgument` / `INVALID_CRON_EXPRESSION`
+before Raft, instead of accepting it and immediately exhausting checkpoint slots.
+Clients must replace such expressions; no wire or client rebuild is required.
+Malformed syntax retains its existing audited failure path. Stored schedules,
+audit entries, Raft commands, snapshots and backups keep their existing format
+and apply semantics, including committed schedules accepted by an older leader.
+There is no migration. An upgraded scheduler leaves an impossible stored schedule
+disarmed without rewriting it. Old leaders retain the bug during a mixed-version
+window: delete the schedule before rolling, or upgrade every potential leader.
+Already created checkpoints are preserved and must be deleted explicitly if
+operators need to reclaim slots. See [cron scheduling](../read-path/query-checkpoints.md#automatic-checkpoint-creation-cron-scheduler).
+
 ## Capped index inspection page size
 
 EN-2946 caps `InspectIndexRequest.page_size` at 10000 in the read store, which

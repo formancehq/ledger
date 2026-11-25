@@ -5487,6 +5487,15 @@ ledgerctl query-checkpoint info 1
 
 Set a cron schedule for automatic query checkpoint creation. The schedule is stored in Raft and takes effect immediately on the leader.
 
+A parsed expression with no next occurrence, such as `0 0 31 2 *` (31 February),
+is rejected with `INVALID_CRON_EXPRESSION`. A previously stored expression with
+no next occurrence remains visible through `get-schedule`, but upgraded nodes
+log an error and leave automatic creation disabled until it is replaced or
+deleted. Existing checkpoints remain available and still count toward the
+limit. If the limit is already full, delete unneeded checkpoints before creating
+another. During a rolling upgrade, delete the impossible schedule first: an
+older leader can still create checkpoints in a loop.
+
 ```bash
 ledgerctl query-checkpoint set-schedule <cron-expression>
 ```

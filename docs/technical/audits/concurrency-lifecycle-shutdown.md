@@ -246,6 +246,18 @@ close counts, proposal/publication counts and durable cursor bytes. A test using
 
 ## Ownership and deduplication
 
+For the query-checkpoint scheduler, include a cron that parses but returns zero
+from `Next`, such as `0 0 31 2 *`. Cover both recovery from a committed schedule
+and replacement of an armed timer. Zero must leave the timer disarmed, not create
+an immediate-timer proposal loop or consume checkpoint slots. A later valid
+schedule notification must re-arm the same worker; Stop must still join it.
+Use `TestQueryCheckpointSchedulerRecoveredNeverFiringSchedule` to exercise real
+Pebble recovery and the FSM checkpoint limit, and
+`TestQueryCheckpointSchedulerNeverFiringScheduleChanged` for live replacement.
+`TestAdmitQueryCheckpointSchedule` separately proves that new impossible
+schedules fail before proposal. Clock-dependent admission must not be moved into
+Raft apply: old committed schedules must still replay identically.
+
 One finding represents one root cause and required correction. Use stable ids
 `concurrency-lifecycle-shutdown/<root-cause-name>` and compare available prior
 reports and active fixes by mechanism, not only title.

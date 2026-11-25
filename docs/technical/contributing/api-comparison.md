@@ -241,6 +241,15 @@ changes.
 Service protocol revision remains 40 under the RC wire freeze. See
 [the rollout and rollback assessment](../architecture/subsystems/api/protocol-compatibility.md#required-posting-amounts).
 
+### Query-checkpoint schedule admission (EN-2943)
+
+`Apply(set_query_checkpoint_schedule)` rejects a parsed cron with no next
+occurrence with `INVALID_CRON_EXPRESSION` before proposal. Malformed syntax
+still produces its existing audited FSM failure. Revision stays 40; no wire
+or HTTP route changes. Already stored impossible schedules remain readable but
+upgraded schedulers leave them disarmed. Old leaders remain affected until
+upgraded. See [query checkpoints](../architecture/subsystems/read-path/query-checkpoints.md#automatic-checkpoint-creation-cron-scheduler).
+
 ### Prepared-query filter shape validation
 
 Creating or updating a prepared query rejects a filter leaf whose shape can

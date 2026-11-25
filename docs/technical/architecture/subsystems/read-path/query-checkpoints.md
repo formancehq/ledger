@@ -207,6 +207,12 @@ ledgerctl query-checkpoint get-schedule
 
 The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
 
+Admission rejects a parsed expression whose next occurrence is zero, such as
+`0 0 31 2 *`, with `INVALID_CRON_EXPRESSION` (`schedule never fires`). The next
+occurrence is evaluated against the admission node's current clock. Malformed
+expressions still reach the FSM's existing syntax validation and audited failure
+path. Raft apply never consults the clock for schedule validation.
+
 ### How It Works
 
 The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint creation on the **Raft leader**. When the cron fires, the leader proposes a `CreateQueryCheckpoint` order through the admission layer directly, as a leader-internal system actor. That is not a gRPC handler, so it is outside the Apply-only rule; `ledgerctl query-checkpoint create` reaches the same order through `Apply`.
@@ -214,6 +220,21 @@ The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint c
 1. The schedule is persisted in Pebble (key prefix `0xE4`) and replicated via Raft.
 2. When the schedule changes, a notification signal wakes the scheduler goroutine to recompute the next fire time.
 3. On leader change, the new leader's scheduler is already running and will fire at the next scheduled time.
+
+If the next occurrence is zero, the scheduler logs an error and leaves its timer
+disarmed until a schedule-change notification. This applies both at startup with
+a previously stored schedule and when replacing an armed schedule. No proposal
+or persisted rewrite occurs on this path: the stored schedule and existing
+checkpoints remain intact. Replacing the schedule re-arms the same worker;
+deleting it keeps automatic creation disabled. The scheduler never interprets
+the zero time as an immediate deadline.
+
+During an RC rolling upgrade, an old leader can still accept an impossible
+schedule or run the old creation loop. Delete that schedule before upgrading,
+or finish upgrading all potential leaders before relying on the new guard.
+No storage migration or checkpoint reconstruction is needed. If the old loop
+already filled the live-checkpoint limit, delete unneeded checkpoints explicitly;
+upgrading does not remove them or increase the limit.
 
 Checkpoints accumulate over time. Old checkpoints are **not** automatically cleaned up — use `ledgerctl query-checkpoint delete` to remove them when no longer needed.
 

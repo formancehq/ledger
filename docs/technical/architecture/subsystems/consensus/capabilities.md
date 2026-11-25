@@ -140,6 +140,15 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
+EN-2943 rejects a parsed query-checkpoint cron with no future occurrence in
+admission. It does not change the proposal payload or deterministic FSM apply:
+an order committed by an older leader still applies and replays identically.
+The node-local scheduler also disarms an impossible schedule recovered from
+storage without rewriting it. No capability ID is needed because no committed
+order acquires new apply semantics. An older leader can still accept and run an
+impossible schedule during a mixed-version upgrade; remove such schedules before
+rolling, or upgrade every potential leader.
+
 EN-2915 strengthens initial account-type validation in `CreateLedger` without
 registering a capability. RC.4 accepted invalid constraints and conflicting
 patterns; those successful creations remain committed business history. The

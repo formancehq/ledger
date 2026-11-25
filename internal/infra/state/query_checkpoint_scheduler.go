@@ -86,6 +86,15 @@ func (s *QueryCheckpointScheduler) loop(stop <-chan struct{}) {
 		}
 
 		nextFire := schedule.Next(time.Now())
+		if nextFire.IsZero() {
+			s.logger.WithFields(map[string]any{
+				"cron": cronExpr,
+			}).Errorf("Query checkpoint schedule never fires, disabling scheduler")
+
+			timer = nil
+
+			return nil
+		}
 
 		delay := max(time.Until(nextFire), 0)
 

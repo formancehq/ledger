@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/url"
 	"slices"
+	"time"
 	"unicode/utf8"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -13,15 +14,17 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// validateOrder validates storage-safety invariants on a fully-constructed order
-// before it enters the Raft pipeline. This is the single validation gate for all
-// write paths (gRPC, HTTP, bulk).
+// validateOrder validates request safety on a fully-constructed order before it
+// enters the Raft pipeline, including clock-dependent cron viability that must
+// not run during apply. This is the single validation gate for all write paths
+// (gRPC, HTTP, bulk). Cron syntax failures remain audited FSM outcomes.
 func validateOrder(order *raftcmdpb.Order) error {
 	// VT unmarshalling does not guarantee valid UTF-8 for protobuf strings.
 	// Reject malformed input before it can become an audited failure fact:
@@ -71,6 +74,15 @@ func validateOrder(order *raftcmdpb.Order) error {
 
 	if err := validateOrderSigningKey(order); err != nil {
 		return &domain.BusinessError{Err: err}
+	}
+	if scheduleOrder := order.GetSystemScoped().GetSetQueryCheckpointSchedule(); scheduleOrder != nil {
+		schedule, err := processing.CronParser.Parse(scheduleOrder.GetCron())
+		if err == nil && schedule.Next(time.Now()).IsZero() {
+			return &domain.BusinessError{Err: &domain.ErrInvalidCronExpression{
+				Expression: scheduleOrder.GetCron(),
+				Details:    "schedule never fires",
+			}}
+		}
 	}
 
 	return nil

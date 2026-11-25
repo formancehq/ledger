@@ -40,6 +40,7 @@
     "internal/application/backup/**",
     "internal/infra/backup/**",
     "internal/infra/state/*scheduler*.go",
+    "internal/infra/state/query_checkpoint_schedule_recovery_test.go",
     "internal/infra/state/cache_snapshotter*.go",
     "internal/infra/state/synchronizer*.go",
     "internal/infra/state/snapshot*.go",
@@ -76,6 +77,7 @@
     "docs/technical/architecture/subsystems/consensus/raft-consensus.md",
     "docs/technical/architecture/subsystems/storage/README.md",
     "docs/technical/architecture/subsystems/storage/follower-sync.md",
+    "docs/technical/architecture/subsystems/read-path/query-checkpoints.md",
     "docs/technical/architecture/subsystems/indexer/README.md",
     "docs/technical/architecture/subsystems/indexer/indexer.md",
     "docs/technical/architecture/subsystems/usage/README.md",
@@ -93,6 +95,7 @@
   ],
   "invariants": [
     "A PostgreSQL mirror gap reread owns its pooled transaction until commit or rollback. NOWAIT lock conflicts return no batch. Caller cancellation must not return a live transaction or SHARE lock to the pool: rollback uses a detached context bounded to five seconds, and pgx closes a connection whose rollback fails. No source transaction survives into translation, preload or Raft application; distinguish this source-session cleanup from the unchanged applied-cursor contract.",
+    "A query-checkpoint cron whose Next returns zero leaves its scheduler disarmed, both after recovery and when replacing an armed schedule; it must not become an immediate timer or consume checkpoint slots. A later schedule notification can re-arm the same worker, and Stop must still join it. Clock-dependent cron admission stays outside deterministic Raft apply.",
     "Every asynchronous task, callback, registration, and mutable runtime snapshot has one explicit authority token: Fx process lifetime, node run generation, ordered leadership generation, replicated resource identity, local resource-entry identity, pending index version, task invocation, durable cursor, or request/session context. A callback or cached snapshot captured under an older token must be rejected or joined before it can mutate, publish, propose, restart, tear down, or observe a replacement generation.",
     "Process-scoped ownership is defined by the Fx lifecycle: bootstrap hooks, listeners, gRPC/HTTP servers, stores, health workers, metric callbacks, observers, and shared workers must unwind startup failures in dependency order. Start and Stop must be safe under the component's documented call cardinality, and a synchronous Stop or OnStop must not return while its owned goroutines or callbacks can still use dependencies that later hooks close.",
     "The Raft Node, Applier, decoder/committer pipeline, transport, and FSM snapshot/synchronization tasks are bounded by the node run/stop and maintenance gates; after joining the ready processor, terminal shutdown must cancel and join the final leader-ready waiter and synchronous observer callback before FSM cleanup or Run completion, including after prior leadership loss or task failure; the production cluster-config observer must inherit readiness-generation cancellation so its pending proposal does not consume its independent timeout during the join; every in-flight commit must reach its documented drain point before a barrier or dependency close, and request cancellation must not reinterpret already committed work as rolled back.",
@@ -132,6 +135,7 @@
   "dynamic_checks_to_consider": [
     "Complete a fatal peer Canceled registration response before local termination while holding caller-side classification or connection cleanup; preserve that fatal result and retain independent in-flight local cancellation coverage.",
     "Inspect the integration-only PostgreSQL gap-cancellation regression in internal/adapter/v2: a real pgx query tracer cancels immediately after successful SHARE lock acquisition, then checks no returned rows, a successful retry with one pooled connection and a subsequent source INSERT without a leaked lock. Preserve independent manager startup-cancellation tests. Use an explicitly supplied disposable native PostgreSQL service when Docker is prohibited locally; otherwise these integration fixtures require Docker.",
+    "go test -race ./internal/application/admission ./internal/infra/state -run 'TestAdmitQueryCheckpointSchedule|TestQueryCheckpointScheduler': verify impossible cron rejection before proposal, real persisted-schedule recovery without automatic creates, all manual checkpoint slots still available, and armed-to-impossible-to-valid schedule transitions",
     "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
     "go test -race ./internal/application/events ./internal/application/mirror ./internal/application/backup ./internal/infra/backup",
     "go test -race ./internal/application/admission ./internal/application/mirror",

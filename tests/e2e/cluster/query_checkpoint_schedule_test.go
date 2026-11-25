@@ -82,6 +82,19 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			Expect(resp.GetCron()).To(Equal("0 0 1 * *"))
 		})
 
+		It("should reject never-firing expressions without replacing the stored schedule", func() {
+			for _, cron := range []string{"0 0 31 2 *", "0 0 0 31 2 *"} {
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction(cron)))
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				info := actions.ExtractGRPCErrorInfo(err)
+				Expect(info).NotTo(BeNil())
+				Expect(info.Reason).To(Equal(domain.ErrReasonInvalidCronExpression))
+				resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+				Expect(err).To(Succeed())
+				Expect(resp.GetCron()).To(Equal("0 0 1 * *"))
+			}
+		})
+
 		It("should reject an invalid cron expression", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("not-a-cron")))
 			Expect(err).To(HaveOccurred())
