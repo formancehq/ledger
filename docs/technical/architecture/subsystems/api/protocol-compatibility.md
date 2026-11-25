@@ -813,7 +813,7 @@ This is a [wire exception](#wire-exceptions): the revision stays at 40.
 HTTP responses keep their JSON shape and no longer fail with
 `AGGREGATE_OVERFLOW`. No persisted, Raft, snapshot or audit format changes.
 
-## Query-checkpoint schedule admission (EN-2943)
+## Query-checkpoint schedule admission
 
 Revision remains 40. `Apply(SetQueryCheckpointSchedule)` now rejects a parsed
 cron with no next occurrence as `InvalidArgument` / `INVALID_CRON_EXPRESSION`
