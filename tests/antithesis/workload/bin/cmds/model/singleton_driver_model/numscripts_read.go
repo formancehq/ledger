@@ -236,7 +236,8 @@ func versionsHighestFirst(ls oracle.LedgerState, name string) []string {
 
 // validateTemplateUsage bounds a template's usage counter by the model. The
 // counter is folded from the audit chain asynchronously, so any prefix of it is
-// legal, but never more than the creates that ran the template.
+// legal, but never more than the creates that ran the template. last_used is
+// the greatest timestamp within that prefix.
 func (c *Checker) validateTemplateUsage(maxTicket uint64, ledger, name string, usage *commonpb.TemplateUsage, err error) {
 	if c.numscriptReadError(maxTicket, ledger, "GetTemplateUsage", err, nil) {
 		return
@@ -247,7 +248,9 @@ func (c *Checker) validateTemplateUsage(maxTicket uint64, ledger, name string, u
 			return false
 		}
 
-		return usage.GetCount() <= base.Ledger(ledger).TemplateUsage(name)
+		ls := base.Ledger(ledger)
+
+		return usage.GetCount() <= ls.TemplateUsage(name) && lastUsedMatches(ls, name, usage)
 	}) {
 		if usage.GetCount() > 0 {
 			assert.Reachable("singleton_driver_model: template usage within the model", internal.Details{"count": usage.GetCount()})
@@ -256,9 +259,27 @@ func (c *Checker) validateTemplateUsage(maxTicket uint64, ledger, name string, u
 		return
 	}
 
-	assert.Unreachable("singleton_driver_model: template usage above the model", internal.Details{
-		"ledger": ledger,
-		"name":   name,
-		"count":  usage.GetCount(),
+	assert.Unreachable("singleton_driver_model: template usage outside the model", internal.Details{
+		"ledger":   ledger,
+		"name":     name,
+		"count":    usage.GetCount(),
+		"lastUsed": usage.GetLastUsed().GetData(),
 	})
+}
+
+func lastUsedMatches(ls oracle.LedgerState, name string, usage *commonpb.TemplateUsage) bool {
+	got := usage.GetLastUsed()
+	if usage.GetCount() == 0 {
+		return got == nil
+	}
+	if got == nil {
+		return false
+	}
+
+	want, exact := ls.TemplateLastUsed(name, usage.GetCount())
+	if exact {
+		return got.GetData() == want.GetData()
+	}
+
+	return got.GetData() >= want.GetData()
 }
