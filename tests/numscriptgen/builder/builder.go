@@ -42,6 +42,7 @@ type env struct {
 	portionsPool   pool[string]
 	varsEnv        VarsEnv
 	originVars     []varOriginDecl
+	originNames    map[*varOriginDecl]string
 }
 
 func writeIndentation(env *env, w int) {
@@ -64,6 +65,7 @@ func newEnv() env {
 		monetariesPool: newPool[string](),
 		portionsPool:   newPool[string](),
 		varsEnv:        VarsEnv{bindings: map[anyVar]string{}},
+		originNames:    map[*varOriginDecl]string{},
 	}
 }
 

@@ -11,19 +11,18 @@ type varOriginDecl struct {
 }
 
 // declareOriginVar lazily registers a `<typ> $name = <origin>` declaration
-// the first time the returned expression is rendered, and reuses the same
-// name on subsequent renders (mirroring ExprVar's dedup-by-identity, but
-// here identity is just "this closure", since each call site gets its own).
+// in the build env the first time the returned expression is rendered there,
+// and reuses the same name on subsequent renders in that env (mirroring
+// ExprVar's dedup-by-identity, where identity is this call's decl).
 func declareOriginVar[T ExprType](typ string, origin render) Expression[T] {
-	allocated := false
-	var name string
+	decl := &varOriginDecl{typ: typ, origin: origin}
 
 	return func(env *env, w int) {
-		if !allocated {
-			id := len(env.originVars)
-			name = itemIdToName(id, "originvar")
-			env.originVars = append(env.originVars, varOriginDecl{typ: typ, origin: origin})
-			allocated = true
+		name, ok := env.originNames[decl]
+		if !ok {
+			name = itemIdToName(len(env.originVars), "originvar")
+			env.originNames[decl] = name
+			env.originVars = append(env.originVars, *decl)
 		}
 		env.builder.WriteByte('$')
 		env.builder.WriteString(name)
