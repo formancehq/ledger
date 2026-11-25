@@ -151,8 +151,10 @@ On upgrade, a legacy Secret whose UID is not yet recorded can be claimed only
 when the existing Credentials status records its key ID, the seed derives that
 key ID and public key, and a replica's exact namespace and name appear in
 `status.distributedSecretRefs`. A current controller reference does not waive
-the seed check for these legacy entries. A verified canonical Secret is also
-claimed and its UID recorded before subsequent use. Legacy Secrets lacking
+the seed check for these legacy entries. A verified canonical Secret is
+claimed by setting its controller reference before subsequent use. Its UID
+is recorded in the final status update after replica distribution and stale
+replica cleanup. Legacy Secrets lacking
 status key identity are not adopted or deleted. Recover them only after
 verifying the Secret and Credentials identity out of band and restoring the
 recorded status key ID and prior replica references. Adding an owner reference

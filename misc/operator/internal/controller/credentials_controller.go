@@ -385,6 +385,7 @@ func verifiedCredentialsReplica(secret *corev1.Secret, credentials *ledgerv1alph
 			if ref.UID != "" {
 				return ref.UID == string(secret.UID) && metav1.IsControlledBy(secret, credentials)
 			}
+
 			return (metav1.IsControlledBy(secret, credentials) ||
 				(secret.Labels[credentialsNameLabel] == credentials.Name && len(secret.OwnerReferences) == 0)) &&
 				validLegacySeed(secret.Data, credentials.Status.KeyID)
@@ -403,6 +404,7 @@ func verifiedCredentialsCanonical(secret *corev1.Secret, credentials *ledgerv1al
 	if credentials.Status.CanonicalSecretUID != "" {
 		return credentials.Status.CanonicalSecretUID == string(secret.UID) && metav1.IsControlledBy(secret, credentials)
 	}
+
 	return (metav1.IsControlledBy(secret, credentials) ||
 		(secret.Labels[credentialsNameLabel] == credentials.Name && len(secret.OwnerReferences) == 0)) &&
 		validLegacySeed(secret.Data, credentials.Status.KeyID)

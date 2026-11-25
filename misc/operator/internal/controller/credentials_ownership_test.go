@@ -98,6 +98,7 @@ func TestCredentialsReconcileRecordsCreatedSecretUIDs(t *testing.T) {
 		if _, ok := obj.(*corev1.Secret); ok {
 			obj.SetUID(types.UID(obj.GetNamespace() + "-uid"))
 		}
+
 		return current.Create(ctx, obj, opts...)
 	}})
 	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
@@ -132,6 +133,7 @@ func TestCredentialsReconcileRetriesAfterPartialDistribution(t *testing.T) {
 				}
 			}
 		}
+
 		return current.Create(ctx, obj, opts...)
 	}})
 	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
@@ -169,13 +171,16 @@ func TestCredentialsReconcileRetriesAfterFinalStatusFailure(t *testing.T) {
 			if _, ok := obj.(*corev1.Secret); ok {
 				obj.SetUID(types.UID(obj.GetNamespace() + "-uid"))
 			}
+
 			return current.Create(ctx, obj, opts...)
 		},
 		SubResourceUpdate: func(ctx context.Context, current client.Client, subResource string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
 			if subResource == "status" && !obj.(*ledgerv1alpha1.Credentials).Status.BootstrapPending && !failed {
 				failed = true
+
 				return statusErr
 			}
+
 			return current.SubResource(subResource).Update(ctx, obj, opts...)
 		},
 	})
