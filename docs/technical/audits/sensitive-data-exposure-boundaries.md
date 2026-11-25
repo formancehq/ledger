@@ -9,13 +9,11 @@ downstream system is trustworthy.
 
 ## Preparation and execution gate
 
-This change prepares the domain only. **Do not run the product audit as part of
-manifest preparation or merely because this PR merges.** Pull requests #1963
-and #1977 currently reshape the sensitive read-projection and sink-diagnostic
-surfaces. After that stack and its dependencies stabilize, refresh the field,
-route, RPC, codec, factory and test inventory against the new exact clean HEAD,
+This document maintains the domain contract. **Do not run the product audit
+merely because this PR merges.** Refresh the field, route, RPC, codec, factory
+and test inventory against the exact clean HEAD selected for a later audit,
 update stale paths and deduplication context, and obtain a separate execution
-decision.
+decision. The EN-1634 historical read projection is part of that inventory.
 
 At execution time, the trusted outer workflow runs `bash scripts/ai-audit
 sensitive-data-exposure-boundaries`, then independently qualifies the raw result
@@ -67,6 +65,30 @@ generated descriptors and authoritative documentation at the audited SHA.
 | I — Root-cause ownership | Assign the finding to the earliest component that wrongly serializes, retains in public state or passes the secret into an unsafe diagnostic. Later transports are evidence, not duplicate causes. | Auth decisions, filesystem containment, general API parity and event delivery have dedicated manifests. Cross-domain paths are valid evidence but must not multiply one defect into several findings. |
 
 Outbound event checks use credential-bearing created-ledger logs. Encode the projected event as JSON and protobuf, require raw and encoded canary absence while retaining event type, sequence, ledger name and safe mirror fields, and compare the original committed log before and after projection. Sink-configuration logs map to an unspecified event type and must be filtered before publication; they are not a redaction oracle. Trace HTTP, NATS and Kafka publication from the shared event constructor; ClickHouse and Databricks use their reduced analytical projection. Event acknowledgement and cursor movement remain owned by the event-delivery domain.
+
+### Historical audit and log read oracle (EN-1634)
+
+`DefaultController.GetAuditEntry`, `ListAuditEntries`, `ListAuditEntriesFrom`,
+`GetLog` and `ListLogs` select the detached historical projection in
+`internal/application/ctrl/historical_secret_projection.go`. Trace the
+registered HTTP and gRPC get/list consumers, including forwarded and checkpoint
+reads, to this boundary. Seed distinct sink and mirror credential canaries in
+visible log fields, `AuditItem.serialized_order` and signed `ApplyBatch`
+payloads. Inspect the emitted protobuf and HTTP JSON bytes,
+including nested base64 content, for raw and reversibly encoded canaries while
+retaining a harmless entry or log identity control.
+
+The production controller regressions in
+`internal/application/ctrl/historical_secret_projection_test.go` cover point
+reads, `ListLogs` with an unknown-field canary, and both direct and
+indexed/checkpoint audit-list branches. Require
+credential absence, omission of signatures when their payload changes, and
+unchanged authoritative store bytes. Registered transport paths remain separate
+audit checks; a controller test alone does not prove
+every serializer. Unknown protobuf fields are removed from public projections
+and can change serialized evidence and signatures even without an annotated
+credential. Do not treat projected bytes as hash or signature preimages; the
+checker and restore must consume the authoritative form.
 
 ### Operator backup credential oracle (EN-2060)
 
@@ -304,8 +326,9 @@ unsupported or malformed formats must be fully replaced with `[redacted]`,
 without requiring their connection metadata to survive. Non-secret OAuth/IAM
 fields must survive, and original nested scopes/configuration must remain intact
 for internal consumers. The shared projection uses the EN-1632/#1977 annotation
-contract; check deep clones and unknown-field removal. Configuration projection
-does not establish historical audit/log or sink-read remediation.
+contract; check deep clones and unknown-field removal. LedgerInfo configuration
+tests alone do not establish the historical audit/log boundary; use the
+historical read oracle above. Sink reads retain their own projection contract.
 
 See [LedgerInfo](../architecture/subsystems/api/ledger-info.md) and regressions
 in internal/pkg/sensitive/projection_test.go, internal/adapter/http/ledger_info_contract_test.go

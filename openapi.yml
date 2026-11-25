@@ -9558,6 +9558,10 @@ components:
         A single audit trail entry for a proposal (success or failure). Exactly
         one of `success` / `failure` is set. `items` is populated only by the
         single-entry lookup, not by the list endpoint.
+        Historical connection credentials are redacted in public responses.
+        Serialized orders and signed payloads are projections when redacted;
+        signature bytes are then omitted because they do not verify the
+        projected payload. Stored audit evidence is unchanged.
       properties:
         sequence:
           type: integer
