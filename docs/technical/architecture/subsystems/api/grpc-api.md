@@ -874,6 +874,12 @@ for {
 
 ## Audit Entries
 
+Public audit and system-log reads project connection credentials out of
+historical records. The projection also covers serialized orders and signed
+batch payloads. A redacted payload is not the original audit hash or signature
+preimage; signature bytes are omitted when its payload changes. The stored
+audit and log records remain intact. See [historical secret projection](historical-secret-projection.md).
+
 List audit trail entries (success and failure):
 
 ```go

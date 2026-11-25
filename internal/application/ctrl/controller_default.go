@@ -1692,7 +1692,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
 	}
 
-	return cursor.NewClosingCursor(c, releasingCloser{handle: handle, release: releaseHold}), nil
+	return &historicalCursor[*commonpb.Log]{inner: cursor.NewClosingCursor(c, releasingCloser{handle: handle, release: releaseHold}), project: projectHistoricalLog}, nil
 }
 
 // paginateLogIDs compiles filter over the ledger's logs in the requested
@@ -1906,10 +1906,10 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 
 	closeHandle = false
 	if auditSnap != nil {
-		return cursor.NewClosingCursor(c, joinedCloser{auditSnap, handle}), nil
+		return &historicalCursor[*auditpb.AuditEntry]{inner: cursor.NewClosingCursor(c, joinedCloser{auditSnap, handle}), project: projectHistoricalAudit}, nil
 	}
 
-	return cursor.NewClosingCursor(c, handle), nil
+	return &historicalCursor[*auditpb.AuditEntry]{inner: cursor.NewClosingCursor(c, handle), project: projectHistoricalAudit}, nil
 }
 
 // GetLog returns a single system log by sequence number.
@@ -1930,7 +1930,7 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 		return nil, commonpb.NewNotFoundError("log %d not found", sequence)
 	}
 
-	return log, nil
+	return projectHistoricalLog(log)
 }
 
 // GetAuditEntry returns a single audit entry by sequence number, with items populated.
@@ -1958,7 +1958,7 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 
 	entry.Items = items
 
-	return entry, nil
+	return projectHistoricalAudit(entry)
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.

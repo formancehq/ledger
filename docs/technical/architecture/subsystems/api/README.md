@@ -12,6 +12,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [http-api.md](http-api.md) | HTTP endpoint lifecycle and failure shutdown, REST API endpoints, signed transaction request envelopes, instance-wide event sink creation/removal, single-decoding metadata key and path identifier segments, response formats, compact write acknowledgements, type-based large-integer response negotiation, exact metadata number decoding, ledger-log JSON output and discriminators, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), verified credential-source attribution across signing-key rotation, scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
 | [sensitive-projection.md](sensitive-projection.md) | Detached secret projection, explicit connector-format strategies and their ownership boundary. |
+| [historical-secret-projection.md](historical-secret-projection.md) | Historical audit and log secret projection and RC compatibility. |
 
 The [HTTP index inspection contract](http-api.md#inspect-a-metadata-index)
 defines accepted modes, omission defaults, and

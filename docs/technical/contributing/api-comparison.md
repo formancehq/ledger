@@ -374,6 +374,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
 | List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`cursor`/`reverse` ([pagination](#pagination)) + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, `idempotency_key`; the last supports `==`, `in`, and `^=` prefix matching), resolved against the audit query target in both the textual and the structured JSON form (`{"$match":{"outcome":"failure"}}`; the `^=` prefix is textual-only) — EN-1549 replaced the old `audit[...]` namespaced syntax — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511) |
 | Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
+| Historical audit and system-log secret projection | ✅ | ❌ | Get/list responses redact annotated connection credentials, including serialized orders and signed batches; redacted responses are not original audit evidence. |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
