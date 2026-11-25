@@ -339,7 +339,7 @@ never fall back to a full audit-zone predicate scan.
 an index source: after its TTL expires, a later proposal may legitimately reuse
 the same key, and every matching audit sequence remains searchable. Rebuild
 drops the local index and replays the authoritative audit zone, including after
-checkpoint plus incremental-delta restore. Until that rebuild reaches and
+checkpoint restore. Until that rebuild reaches and
 certifies the fixed main-store horizon, dependent reads fail explicitly rather
 than reporting a false absence.
 

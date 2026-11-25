@@ -29,6 +29,10 @@ func SkippableReasonsForLedgerAction(x *LedgerAction) []commonpb.ErrorReason {
 		return []commonpb.ErrorReason{
 			commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
 		}
+	case *LedgerAction_ExecuteNumscript:
+		return []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		}
 	case *LedgerAction_RemoveAccountType:
 		return []commonpb.ErrorReason{
 			commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,

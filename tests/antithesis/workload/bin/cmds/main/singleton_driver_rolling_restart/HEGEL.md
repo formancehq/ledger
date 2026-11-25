@@ -17,7 +17,6 @@ episode per tick, never one episode around the restart or the unbounded loop.
 | `singleton_driver_signing_keys` | Draw all 32 Ed25519 seed bytes with Hegel and derive the coherent key pair. Keep Antithesis entropy for unique key IDs; retain register/list/signed-revoke/list assertions. |
 | `eventually_quiesce_read` | Generate the users-pool destination and a positive uint64 witness amount before the bounded write retries. Keep ledger discovery, retry sequence and Antithesis idle menu {2, 5, 8}. No generation or write occurs during quiescence or the read probe. |
 | `singleton_driver_backup` | Operational, unchanged. The fixed S3 target and backup result checks contain no business input generator. |
-| `singleton_driver_incremental_backup` | Operational, unchanged. Preserve full-checkpoint precondition, two incrementals and sequence assertions. Do not add generated deltas without an independent restore oracle. |
 | `singleton_driver_scaling` | Operational, unchanged. Antithesis retains topology targets, stepped moves and convergence checks. |
 | `singleton_driver_scaling_chaos` | Operational, unchanged. Antithesis retains rapid topology changes, step count, pauses and recovery. |
 | `parallel_driver_compaction` | Operational, unchanged. Antithesis chooses primary/secondary compaction; existing stats and world-account read checks remain. |

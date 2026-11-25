@@ -1369,6 +1369,16 @@ func TestExecuteNumscript_MetadataOnly_PersistsWithoutTransaction(t *testing.T) 
 
 func TestExecuteNumscript_MetadataOnly_RejectsReference(t *testing.T) {
 	t.Parallel()
+	testExecuteNumscriptMetadataOnlyRejectsReference(t, nil)
+}
+
+func TestExecuteNumscript_MetadataOnly_RejectsReferenceWithConflictOptIn(t *testing.T) {
+	t.Parallel()
+	testExecuteNumscriptMetadataOnlyRejectsReference(t, []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT})
+}
+
+func testExecuteNumscriptMetadataOnlyRejectsReference(t *testing.T, skippableReasons []commonpb.ErrorReason) {
+	t.Helper()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockStore := NewMockScope(ctrl)
@@ -1381,7 +1391,8 @@ func TestExecuteNumscript_MetadataOnly_RejectsReference(t *testing.T) {
 	refs, _ := stubsFor(mockStore).transactionReferencesStubFor(mockStore)
 	refs.expectGet(domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-1"}, nil, domain.ErrNotFound)
 	request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
-		Ledger: "test-ledger",
+		Ledger:           "test-ledger",
+		SkippableReasons: skippableReasons,
 		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
 			Script:    &commonpb.Script{Plain: `set_account_meta(@users:alice, "tier", "gold")`},
 			Reference: "ref-1",

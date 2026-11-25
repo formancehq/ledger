@@ -506,6 +506,16 @@ operator-test-admission:
     cd misc/operator
     go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestClusterPolicyRevisionAdmission|TestTraceSampling|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
 
+# Run all operator API-server integration regressions in the operator-tests Nix shell.
+operator-test-integration:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset GOROOT
+    KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
+    export KUBEBUILDER_ASSETS
+    cd misc/operator
+    go test -race -tags integration ./... -count=1 -parallel 4 -timeout 20m
+
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate
     #!/usr/bin/env bash

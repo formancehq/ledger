@@ -55,27 +55,22 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 }
 
 func renderBackupListTable(backups *ledgerv1alpha1.BackupList) error {
-	header := []string{"NAME", "CLUSTER", "PHASE", "LAST FULL", "LAST INCR", "AGE"}
+	header := []string{"NAME", "CLUSTER", "PHASE", "LAST BACKUP", "AGE"}
 
 	rows := make([][]string, 0, len(backups.Items))
 	for i := range backups.Items {
 		b := &backups.Items[i]
 
-		lastFull := pterm.Gray("<never>")
-		if b.Status.LastFullBackup != nil && b.Status.LastFullBackup.Time != nil {
-			lastFull = cmdutil.FormatAge(time.Since(b.Status.LastFullBackup.Time.Time))
-		}
-		lastIncr := pterm.Gray("<never>")
-		if b.Status.LastIncrementalBackup != nil && b.Status.LastIncrementalBackup.Time != nil {
-			lastIncr = cmdutil.FormatAge(time.Since(b.Status.LastIncrementalBackup.Time.Time))
+		lastBackup := pterm.Gray("<never>")
+		if b.Status.LastBackup != nil && b.Status.LastBackup.Time != nil {
+			lastBackup = cmdutil.FormatAge(time.Since(b.Status.LastBackup.Time.Time))
 		}
 
 		rows = append(rows, []string{
 			pterm.Cyan(b.Name),
 			b.Spec.ClusterRef,
 			cmdutil.PhaseColor(string(b.Status.Phase)),
-			lastFull,
-			lastIncr,
+			lastBackup,
 			cmdutil.FormatAge(time.Since(b.CreationTimestamp.Time)),
 		})
 	}

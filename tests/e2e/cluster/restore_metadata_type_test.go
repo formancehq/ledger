@@ -31,16 +31,11 @@ import (
 
 // This suite pins the typed-metadata loss the model test surfaced (account read
 // mismatch after a restore: model held bool, server returned string). The live
-// FSM persists account metadata as typed MetadataValue protos, but the restore
-// rebuild replays account metadata through replay.Writer.SetMetadata, whose
-// value parameter is a plain string (internal/domain/replay/writer.go): both
-// the transaction-embedded path and the SaveMetadata path stringify the value
-// with MetadataValueToString before writing. Every non-string account-metadata
-// value inside the exported delta therefore comes back from a restore as its
-// string rendering. The store checker cannot flag it: compareMetadata
-// stringifies both sides before comparing, which normalizes away exactly the
-// information the rebuild destroys — so an end-to-end read assertion is the
-// seam that sees the divergence.
+// FSM persists account metadata as typed MetadataValue protos. This test
+// captures values committed after the first checkpoint in a later complete
+// checkpoint and compares their exact types after restore. The store checker
+// stringifies both sides in compareMetadata, so an end-to-end read assertion
+// is needed to detect a type change.
 var _ = Describe("Restore typed account metadata", Ordered, func() {
 	const (
 		ledgerName = "metatype-ledger"
@@ -144,7 +139,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: typed metadata in the exported delta", Ordered, func() {
+	Describe("Phase 1: typed metadata after the first checkpoint", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -177,10 +172,8 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			// Full checkpoint on the EMPTY store: everything after it lands in
-			// the incremental delta, so the restore reconstructs the metadata
-			// rows purely by replaying the exported log instead of copying
-			// checkpoint files.
+			// The first checkpoint is empty. Later metadata rows must be
+			// captured by the next checkpoint and survive restore.
 			var backupResp *clusterpb.BackupResponse
 			Eventually(func() error {
 				var err error
@@ -235,10 +228,10 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 			}
 		})
 
-		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+		It("publishes the later checkpoint", func() {
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -338,7 +331,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("preserves the metadata value types across the rebuild", func() {
+		It("preserves the metadata value types across restore", func() {
 			for _, addr := range []string{txAccount, saveAccount} {
 				acct, err := actions.GetAccount(ctx, client, ledgerName, addr)
 				Expect(err).To(Succeed())

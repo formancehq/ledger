@@ -36,7 +36,7 @@ This is deliberate. Bounding the accumulated total would require one of:
   declared `plan.Coverage` authorises that, and widening the read horizon inside
   apply is forbidden (invariant #6); or
 - a new persisted per-entity size counter — a primary-store projection, which
-  needs checker verification (invariant #8) and an incremental-restore
+  needs checker verification (invariant #8) and a checkpoint-restore
   classification (invariant #11).
 
 Either is a larger change than the risk this contract addresses, which is what a

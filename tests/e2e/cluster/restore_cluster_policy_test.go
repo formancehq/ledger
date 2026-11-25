@@ -28,8 +28,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Native policy is operational state: the incremental manifest must preserve
-// a post-checkpoint revision independently of the business audit chain.
+// Native policy is operational state: the second checkpoint must include
+// a later revision independently of the business audit chain.
 var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 	const (
 		s3Bucket    = "restore-cluster-policy"
@@ -37,9 +37,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		seedLedger  = "policy-seed-ledger"
 		deltaLedger = "policy-delta-ledger"
 
-		// postCheckpointRevision is committed after the full backup, so it is
-		// reconstructable only from the exported delta, never copied from the
-		// checkpoint files.
+		// postCheckpointRevision is committed after the first backup and
+		// must be copied from the second checkpoint files.
 		postCheckpointRevision = uint64(2)
 		postCheckpointLimit    = uint64(5)
 	)
@@ -124,7 +123,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: post-checkpoint policy revision in the exported delta", Ordered, func() {
+	Describe("Phase 1: post-checkpoint policy revision before the later backup", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -189,7 +188,7 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		It("bumps the policy and writes business data after the checkpoint", func() {
 			// Restart with a higher desired revision. The leader-side reconciler
 			// submits the internal policy command, keeping it out of Apply while
-			// still producing the post-checkpoint delta.
+			// still producing a policy change for the later checkpoint.
 			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 			cancel()
@@ -203,16 +202,16 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			waitForClusterPolicy(client, postCheckpointRevision, postCheckpointLimit)
 
 			// A business write proves the gate is open (policy committed) and puts
-			// a post-checkpoint ledger in the delta, so a dropped delta on restore
-			// surfaces as a missing ledger rather than passing silently.
+			// a post-checkpoint ledger in the later backup, so a missing checkpoint
+			// update surfaces as a missing ledger rather than passing silently.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
 			Expect(err).To(Succeed())
 		})
 
-		It("exports a non-empty delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+		It("publishes the later checkpoint", func() {
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -312,9 +311,9 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("restored the post-checkpoint delta", func() {
+		It("restored the post-checkpoint ledger", func() {
 			_, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: deltaLedger})
-			Expect(err).To(Succeed(), "the post-checkpoint ledger must be restored from the delta")
+			Expect(err).To(Succeed(), "the post-checkpoint ledger must be restored from the later checkpoint")
 		})
 
 		It("restored the post-checkpoint operational policy", func() {

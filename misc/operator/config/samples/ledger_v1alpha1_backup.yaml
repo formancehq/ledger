@@ -17,6 +17,4 @@ spec:
     # s3SecretAccessKeyFrom:
     #   name: backup-s3-credentials
     #   key: secret-access-key
-  schedule:
-    full: "0 2 * * 0"
-    incremental: "0 * * * *"
+  schedule: "0 2 * * 0"

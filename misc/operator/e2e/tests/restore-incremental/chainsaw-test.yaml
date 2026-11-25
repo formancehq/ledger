@@ -44,19 +44,32 @@ spec:
         - assert:
             file: assert-full-done.yaml
 
-    # Add more data AFTER the full backup so the incremental has something to export.
+    # Add more data after the first checkpoint.
     - name: Provision additional data
       try:
         - script:
             content: |
+              set -eu
               kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run subscription --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              kubectl exec ledger-ri-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create checkpoint-sentinel --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              kubectl exec ledger-ri-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions create --ledger checkpoint-sentinel --posting world,restored,123456,USD --reference second-checkpoint-only --force --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
-    - name: Wait for incremental backup
+    - name: Run second checkpoint backup
       try:
+        - apply:
+            file: second-run.yaml
         - assert:
-            file: assert-incremental-done.yaml
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: BackupRun
+              metadata:
+                name: second-checkpoint
+              status:
+                phase: Succeeded
 
     # Destroy everything.
     - name: Destroy Cluster and PVCs
@@ -69,7 +82,7 @@ spec:
               kubectl delete pvc wal-ledger-ri-cluster-0 data-ledger-ri-cluster-0 -n $NAMESPACE --ignore-not-found
             timeout: 120s
 
-    # Restore from full + incremental backup.
+    # Restore from the second checkpoint backup.
     - name: Deploy Cluster in restore mode
       try:
         - apply:
@@ -94,6 +107,14 @@ spec:
                   --s3-region us-east-1 \
                   --s3-access-key-id minioadmin \
                   --s3-secret-access-key minioadmin \
+                  --server 127.0.0.1:8888 \
+                  --insecure \
+                  --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+        - script:
+            content: |
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl restore validate \
                   --server 127.0.0.1:8888 \
                   --insecure \
                   --auth-token "$CLUSTER_SECRET"'
@@ -129,8 +150,11 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
-                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              set -eu
+              output=$(kubectl exec ledger-ri-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions list --ledger checkpoint-sentinel --all --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              echo "$output" | grep -Fq second-checkpoint-only
+              echo "$output" | grep -Fq 123456
             timeout: 60s
 
     - name: Verify data integrity

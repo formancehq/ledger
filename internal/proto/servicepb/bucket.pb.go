@@ -4097,7 +4097,7 @@ type LedgerApplyRequest struct {
 	// Validated at admission against the per-action whitelist declared inline on
 	// each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
 	// single source of truth; the generated SkippableReasonsForLedgerAction is
-	// what admission consults). Today: CreateTransaction accepts
+	// what admission consults). Today: CreateTransaction and ExecuteNumscript accept
 	// TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
 	// DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
 	// RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
@@ -9444,7 +9444,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xc7\x05\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01:\x04\xe8\xd5\"\x01\"\xce\x05\n" +
 	"\fLedgerAction\x12X\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadB\x05\xca\xd5\"\x01\x05H\x00R\x11createTransaction\x12@\n" +
 	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12X\n" +
@@ -9452,8 +9452,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0fdelete_metadata\x18\x04 \x01(\v2\x1d.common.DeleteMetadataCommandB\x05\xca\xd5\"\x01\x12H\x00R\x0edeleteMetadata\x12P\n" +
 	"\x10add_account_type\x18\x05 \x01(\v2\x1d.ledger.AddAccountTypeRequestB\x05\xca\xd5\"\x01#H\x00R\x0eaddAccountType\x12Y\n" +
 	"\x13remove_account_type\x18\x06 \x01(\v2 .ledger.RemoveAccountTypeRequestB\x05\xca\xd5\"\x01\"H\x00R\x11removeAccountType\x12k\n" +
-	"\x1cset_default_enforcement_mode\x18\a \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementMode\x12N\n" +
-	"\x11execute_numscript\x18\b \x01(\v2\x1f.ledger.ExecuteNumscriptPayloadH\x00R\x10executeNumscriptB\x06\n" +
+	"\x1cset_default_enforcement_mode\x18\a \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementMode\x12U\n" +
+	"\x11execute_numscript\x18\b \x01(\v2\x1f.ledger.ExecuteNumscriptPayloadB\x05\xca\xd5\"\x01\x05H\x00R\x10executeNumscriptB\x06\n" +
 	"\x04data\"\x9c\x01\n" +
 	"\x12LedgerApplyRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12,\n" +

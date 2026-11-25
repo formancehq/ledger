@@ -61,9 +61,9 @@ initial metadata, so audit replay reconstructs the same creation output and
 idempotent retries retain one frozen outcome. A second SaveLedgerMetadata order
 would change authorization and log cardinality and is unnecessary.
 
-Initial ledger metadata is **rebuilt** during incremental restore: creation logs
-after the checkpoint assign their values into the ledger metadata keyspace.
-Later save/delete logs and ledger deletion retain their existing ordered folds.
+Initial ledger metadata is captured with the ledger row in each complete
+checkpoint. A second checkpoint after creation captures its metadata and later
+save/delete or ledger deletion effects together.
 The checker independently folds successful chain-verified creation, save,
 metadata deletion and ledger deletion orders. It compares stored values and
 presence in both directions, so a mutable log/projection cannot justify itself.

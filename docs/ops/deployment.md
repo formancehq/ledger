@@ -12,8 +12,10 @@ EN-1851 reject business RPCs with a missing or different protocol revision.
 Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
 declaration without a preflight, so it cannot protect calls to an older, ungated
 server. Updates within the RC line keep the service wire contract at revision
-40 and normally support mixed-binary rolling upgrades. RC.3 to RC.4 crosses a
-hardcoded operator boundary; follow the stopped procedure in [server upgrades](upgrades.md). The protocol match alone
+40 and normally support mixed-binary rolling upgrades. An upgrade that crosses
+a boundary listed by the operator follows the stopped procedure in
+[server upgrades](upgrades.md#operator-required-stopped-restart), which lists
+each boundary. The protocol match alone
 does not prove that Raft apply and persisted data remain compatible. See the
 [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
 and [server upgrades](upgrades.md) for the required validation.

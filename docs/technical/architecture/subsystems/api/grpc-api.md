@@ -272,6 +272,10 @@ To execute a Numscript independently of transaction creation, send a
 an inline script or a saved script selector, with an optional transaction reference.
 The reference requires postings. A metadata-only result returns
 `METADATA_ONLY_REFERENCE` if the reference passes length and uniqueness checks first.
+For an `Apply` batch, `execute_numscript` permits
+`skippable_reasons: [ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT]`. A replay
+of a previously created referenced transaction then returns an `OrderSkipped`
+log and can atomically commit later batch orders, including a consumer cursor.
 The Apply result contains a `CreatedTransaction` log when the script produces
 postings, or an `AccountMetadataUpdated` log when it only updates account
 metadata. `LedgerAction.create_transaction` still accepts Numscript, but the

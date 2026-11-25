@@ -36,7 +36,7 @@ func newBackupSchedulingFixture(t *testing.T) *backupSchedulingFixture {
 		ObjectMeta: metav1.ObjectMeta{Name: "daily", Namespace: "test", UID: "backup-uid"},
 		Spec: ledgerv1alpha1.BackupSpec{
 			ClusterRef:                 "ledger",
-			Schedule:                   ledgerv1alpha1.BackupSchedule{Full: "CRON_TZ=UTC 0 2 * * *"},
+			Schedule:                   "CRON_TZ=UTC 0 2 * * *",
 			SuccessfulRunsHistoryLimit: &zero,
 			FailedRunsHistoryLimit:     &zero,
 		},
@@ -78,11 +78,7 @@ func (f *backupSchedulingFixture) complete(t *testing.T, run ledgerv1alpha1.Back
 	run.Status.Phase = phase
 	run.Status.CompletionTime = &completion
 	if phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
-		if run.Spec.Type == ledgerv1alpha1.BackupRunTypeFull {
-			run.Status.Full = &ledgerv1alpha1.FullBackupStatus{Time: &completion, FilesUploaded: 7}
-		} else {
-			run.Status.Incremental = &ledgerv1alpha1.IncrementalBackupStatus{Time: &completion}
-		}
+		run.Status.Result = &ledgerv1alpha1.BackupResult{Time: &completion, FilesUploaded: 7}
 	}
 	require.NoError(t, f.client.Status().Update(context.Background(), &run))
 }
@@ -103,13 +99,13 @@ func TestBackupScheduling_ZeroRetentionRestart(t *testing.T) {
 				require.Empty(t, f.runs(t), "zero retention must prune the terminal run")
 				backup := f.backup(t)
 				next := now.Add(24 * time.Hour)
-				require.NotNil(t, backup.Status.NextFullBackupTime)
-				require.True(t, next.Equal(backup.Status.NextFullBackupTime.Time))
+				require.NotNil(t, backup.Status.NextBackupTime)
+				require.True(t, next.Equal(backup.Status.NextBackupTime.Time))
 				if phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
-					require.NotNil(t, backup.Status.LastFullBackup)
-					require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
+					require.NotNil(t, backup.Status.LastBackup)
+					require.EqualValues(t, 7, backup.Status.LastBackup.FilesUploaded)
 				} else {
-					require.Nil(t, backup.Status.LastFullBackup, "failed-only runs must not fabricate a success summary")
+					require.Nil(t, backup.Status.LastBackup, "failed-only runs must not fabricate a success summary")
 				}
 				f.reconcile(t, now.Add(3*time.Minute))
 				require.Empty(t, f.runs(t), "restart after pruning must not recreate a run before the persisted deadline")
@@ -149,9 +145,9 @@ func TestBackupScheduling_PersistBeforePruning(t *testing.T) {
 					deleteAttempts++
 					// Every delete must follow a durable status write, never just an in-memory update.
 					backup := f.backup(t)
-					require.NotNil(t, backup.Status.LastFullRunCompletionTime)
-					require.True(t, completion.Equal(backup.Status.LastFullRunCompletionTime.Time))
-					require.NotNil(t, backup.Status.LastFullBackup)
+					require.NotNil(t, backup.Status.LastRunCompletionTime)
+					require.True(t, completion.Equal(backup.Status.LastRunCompletionTime.Time))
+					require.NotNil(t, backup.Status.LastBackup)
 					if operation == "delete" && deleteAttempts == 1 {
 						return failure
 					}
@@ -165,11 +161,11 @@ func TestBackupScheduling_PersistBeforePruning(t *testing.T) {
 			require.Len(t, f.runs(t), 1, "failed status/pruning attempt preserves the terminal child")
 			if operation == "status" {
 				require.Zero(t, deleteAttempts)
-				require.Nil(t, f.backup(t).Status.LastFullRunCompletionTime)
-				require.Nil(t, f.backup(t).Status.LastFullBackup)
+				require.Nil(t, f.backup(t).Status.LastRunCompletionTime)
+				require.Nil(t, f.backup(t).Status.LastBackup)
 			} else {
 				require.Equal(t, 1, deleteAttempts)
-				require.NotNil(t, f.backup(t).Status.LastFullRunCompletionTime)
+				require.NotNil(t, f.backup(t).Status.LastRunCompletionTime)
 			}
 			f.reconcile(t, now.Add(3*time.Minute))
 			require.Equal(t, 2, statusAttempts, "retry must persist status successfully")
@@ -208,49 +204,7 @@ func TestBackupScheduling_ActiveRunBlocksAfterRestart(t *testing.T) {
 			runs = f.runs(t)
 			require.Len(t, runs, 1)
 			require.Equal(t, run.Name, runs[0].Name)
-			require.True(t, now.Add(time.Minute).Equal(f.backup(t).Status.LastFullRunCompletionTime.Time))
-		})
-	}
-}
-
-func TestBackupScheduling_IncrementalZeroRetentionRestart(t *testing.T) {
-	t.Parallel()
-	for _, phase := range []ledgerv1alpha1.BackupRunPhase{ledgerv1alpha1.BackupRunPhaseSucceeded, ledgerv1alpha1.BackupRunPhaseFailed} {
-		t.Run(string(phase), func(t *testing.T) {
-			t.Parallel()
-			f := newBackupSchedulingFixture(t)
-			backup := f.backup(t)
-			backup.Spec.Schedule.Incremental = "CRON_TZ=UTC 0 * * * *"
-			require.NoError(t, f.client.Update(context.Background(), backup))
-			now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
-			f.reconcile(t, now)
-			runs := f.runs(t)
-			require.Len(t, runs, 1, "incremental requires a successful full")
-			require.Equal(t, ledgerv1alpha1.BackupRunTypeFull, runs[0].Spec.Type)
-			f.complete(t, runs[0], ledgerv1alpha1.BackupRunPhaseSucceeded, now.Add(time.Minute))
-			f.reconcile(t, now.Add(2*time.Minute))
-			runs = f.runs(t)
-			require.Len(t, runs, 1, "full is pruned while first incremental starts")
-			require.Equal(t, ledgerv1alpha1.BackupRunTypeIncremental, runs[0].Spec.Type)
-			f.complete(t, runs[0], phase, now.Add(3*time.Minute))
-			f.reconcile(t, now.Add(4*time.Minute))
-			require.Empty(t, f.runs(t))
-			f.reconcile(t, now.Add(5*time.Minute))
-			require.Empty(t, f.runs(t))
-			backup = f.backup(t)
-			require.NotNil(t, backup.Status.NextIncrementalBackupTime, "pruning full must not disable incrementals")
-			require.True(t, now.Add(time.Hour).Equal(backup.Status.NextIncrementalBackupTime.Time))
-			require.True(t, now.Add(time.Minute).Equal(backup.Status.LastFullRunCompletionTime.Time))
-			require.True(t, now.Add(3*time.Minute).Equal(backup.Status.LastIncrementalRunCompletionTime.Time))
-			if phase == ledgerv1alpha1.BackupRunPhaseFailed {
-				require.Nil(t, backup.Status.LastIncrementalBackup)
-			} else {
-				require.NotNil(t, backup.Status.LastIncrementalBackup)
-			}
-			f.reconcile(t, now.Add(time.Hour))
-			runs = f.runs(t)
-			require.Len(t, runs, 1)
-			require.Equal(t, ledgerv1alpha1.BackupRunTypeIncremental, runs[0].Spec.Type)
+			require.True(t, now.Add(time.Minute).Equal(f.backup(t).Status.LastRunCompletionTime.Time))
 		})
 	}
 }
@@ -272,21 +226,21 @@ func TestBackupScheduling_DisabledScheduleAndOlderHistory(t *testing.T) {
 	backup := f.backup(t)
 	one := int32(1)
 	backup.Spec.SuccessfulRunsHistoryLimit = &one
-	backup.Spec.Schedule.Full = ""
+	backup.Spec.Schedule = ""
 	require.NoError(t, f.client.Update(context.Background(), backup))
 	f.reconcile(t, now.Add(2*time.Minute))
 	backup = f.backup(t)
-	require.Nil(t, backup.Status.NextFullBackupTime)
-	require.True(t, now.Add(time.Minute).Equal(backup.Status.LastFullRunCompletionTime.Time))
+	require.Nil(t, backup.Status.NextBackupTime)
+	require.True(t, now.Add(time.Minute).Equal(backup.Status.LastRunCompletionTime.Time))
 	require.Len(t, f.runs(t), 1)
 	// Changing/enabling the schedule uses the completion cursor, not a stored next deadline.
-	backup.Spec.Schedule.Full = "CRON_TZ=UTC 0 4 * * *"
+	backup.Spec.Schedule = "CRON_TZ=UTC 0 4 * * *"
 	require.NoError(t, f.client.Update(context.Background(), backup))
 	f.reconcile(t, now.Add(3*time.Minute))
 	require.Len(t, f.runs(t), 1, "older retained success must not rewind the failure cursor")
 	backup = f.backup(t)
-	require.True(t, now.Add(2*time.Hour).Equal(backup.Status.NextFullBackupTime.Time))
-	require.True(t, now.Add(time.Minute).Equal(backup.Status.LastFullRunCompletionTime.Time))
+	require.True(t, now.Add(2*time.Hour).Equal(backup.Status.NextBackupTime.Time))
+	require.True(t, now.Add(time.Minute).Equal(backup.Status.LastRunCompletionTime.Time))
 	f.reconcile(t, now.Add(2*time.Hour))
 	require.Len(t, f.runs(t), 2, "new cron deadline must create a run alongside retained history")
 }
@@ -361,20 +315,19 @@ func TestBackupScheduling_ManualRunAdvancesCursor(t *testing.T) {
 			// associate the run; a scheduler-created owner reference is not required.
 			manual := &ledgerv1alpha1.BackupRun{
 				ObjectMeta: metav1.ObjectMeta{Name: "manual-full", Namespace: f.key.Namespace, Labels: map[string]string{
-					ledgerv1alpha1.LabelBackup:        f.key.Name,
-					ledgerv1alpha1.LabelBackupRunType: string(ledgerv1alpha1.BackupRunTypeFull),
+					ledgerv1alpha1.LabelBackup: f.key.Name,
 				}},
-				Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+				Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name},
 			}
 			require.NoError(t, f.client.Create(context.Background(), manual))
 			f.complete(t, *manual, phase, now)
 			f.reconcile(t, now.Add(time.Minute))
 			require.Empty(t, f.runs(t), "manual terminal run is pruned without scheduling another run")
 			backup := f.backup(t)
-			require.NotNil(t, backup.Status.LastFullRunCompletionTime)
-			require.True(t, now.Equal(backup.Status.LastFullRunCompletionTime.Time))
+			require.NotNil(t, backup.Status.LastRunCompletionTime)
+			require.True(t, now.Equal(backup.Status.LastRunCompletionTime.Time))
 			next := time.Date(2026, 9, 11, 2, 0, 0, 0, time.UTC)
-			require.True(t, next.Equal(backup.Status.NextFullBackupTime.Time))
+			require.True(t, next.Equal(backup.Status.NextBackupTime.Time))
 			f.reconcile(t, next.Add(-time.Second))
 			require.Empty(t, f.runs(t), "manual completion survives pruning and restart")
 			f.reconcile(t, next)
@@ -391,11 +344,11 @@ func TestBackupScheduling_ManualAssociationUsesSpec(t *testing.T) {
 			f := newBackupSchedulingFixture(t)
 			now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
 			backup := f.backup(t)
-			backup.Spec.Schedule = ledgerv1alpha1.BackupSchedule{Incremental: "CRON_TZ=UTC 0 4 * * *"}
+			backup.Spec.Schedule = "CRON_TZ=UTC 0 4 * * *"
 			require.NoError(t, f.client.Update(t.Context(), backup))
 			manual := &ledgerv1alpha1.BackupRun{
 				ObjectMeta: metav1.ObjectMeta{Name: "manual", Namespace: f.key.Namespace},
-				Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+				Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name},
 			}
 			if label != "" {
 				manual.Labels = map[string]string{ledgerv1alpha1.LabelBackup: label}
@@ -404,11 +357,11 @@ func TestBackupScheduling_ManualAssociationUsesSpec(t *testing.T) {
 			f.complete(t, *manual, ledgerv1alpha1.BackupRunPhaseSucceeded, now)
 			f.reconcile(t, now)
 			backup = f.backup(t)
-			require.NotNil(t, backup.Status.LastFullBackup, "manual full result must enable incremental scheduling")
-			require.EqualValues(t, 7, backup.Status.LastFullBackup.FilesUploaded)
-			require.NotNil(t, backup.Status.LastFullRunCompletionTime)
-			require.True(t, now.Equal(backup.Status.LastFullRunCompletionTime.Time))
-			require.NotNil(t, backup.Status.NextIncrementalBackupTime)
+			require.NotNil(t, backup.Status.LastBackup, "manual full result must update the backup summary")
+			require.EqualValues(t, 7, backup.Status.LastBackup.FilesUploaded)
+			require.NotNil(t, backup.Status.LastRunCompletionTime)
+			require.True(t, now.Equal(backup.Status.LastRunCompletionTime.Time))
+			require.NotNil(t, backup.Status.NextBackupTime)
 			var retained ledgerv1alpha1.BackupRun
 			err := f.client.Get(t.Context(), client.ObjectKeyFromObject(manual), &retained)
 			require.True(t, apierrors.IsNotFound(err), "zero retention must prune the accounted manual run: %v", err)
@@ -428,7 +381,7 @@ func TestBackupScheduling_AssociationIgnoresOtherParentsAndNamespaces(t *testing
 					Name: "unrelated", Namespace: f.key.Namespace,
 					Labels: map[string]string{ledgerv1alpha1.LabelBackup: f.key.Name},
 				},
-				Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+				Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name},
 			}
 			if different == "parent" {
 				unrelated.Spec.BackupRef = "another-backup"
@@ -439,8 +392,8 @@ func TestBackupScheduling_AssociationIgnoresOtherParentsAndNamespaces(t *testing
 			f.complete(t, *unrelated, ledgerv1alpha1.BackupRunPhaseSucceeded, now)
 			f.reconcile(t, now)
 			backup := f.backup(t)
-			require.Nil(t, backup.Status.LastFullBackup, "unrelated result must not transfer through a label")
-			require.Nil(t, backup.Status.LastFullRunCompletionTime)
+			require.Nil(t, backup.Status.LastBackup, "unrelated result must not transfer through a label")
+			require.Nil(t, backup.Status.LastRunCompletionTime)
 			require.NoError(t, f.client.Get(t.Context(), client.ObjectKeyFromObject(unrelated), unrelated), "unrelated run must not be pruned")
 			var runs ledgerv1alpha1.BackupRunList
 			require.NoError(t, f.client.List(t.Context(), &runs))
@@ -451,44 +404,36 @@ func TestBackupScheduling_AssociationIgnoresOtherParentsAndNamespaces(t *testing
 
 func TestBackupScheduling_StaleChildCacheDoesNotRewindSummaries(t *testing.T) {
 	t.Parallel()
-	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
-		t.Run(string(runType), func(t *testing.T) {
-			t.Parallel()
-			f := newBackupSchedulingFixture(t)
-			now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
-			older := metav1.NewTime(now.Add(-24 * time.Hour))
-			latest := metav1.NewTime(now)
-			backup := f.backup(t)
-			backup.Spec.Schedule = ledgerv1alpha1.BackupSchedule{}
-			require.NoError(t, f.client.Update(context.Background(), backup))
-			backup.Status.LastFullBackup = &ledgerv1alpha1.FullBackupStatus{Time: &latest, FilesUploaded: 7}
-			backup.Status.LastIncrementalBackup = &ledgerv1alpha1.IncrementalBackupStatus{Time: &latest}
-			require.NoError(t, f.client.Status().Update(context.Background(), backup))
-			stale := ledgerv1alpha1.BackupRun{
-				ObjectMeta: metav1.ObjectMeta{Name: "already-pruned", Namespace: f.key.Namespace},
-				Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: runType},
-				Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &older,
-					Full:        &ledgerv1alpha1.FullBackupStatus{Time: &older, FilesUploaded: 1},
-					Incremental: &ledgerv1alpha1.IncrementalBackupStatus{Time: &older}},
-			}
-			cached := interceptor.NewClient(f.client, interceptor.Funcs{
-				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
-					if runs, ok := list.(*ledgerv1alpha1.BackupRunList); ok {
-						runs.Items = []ledgerv1alpha1.BackupRun{stale}
-
-						return nil
-					}
-
-					return c.List(ctx, list, opts...)
-				},
-			})
-			r := &BackupReconciler{Client: cached, APIReader: f.client, Scheme: f.scheme}
-			_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now.Add(time.Minute))
-			require.NoError(t, err)
-			persisted := f.backup(t)
-			require.True(t, latest.Equal(persisted.Status.LastFullBackup.Time), "full summary must retain its latest timestamp")
-			require.Equal(t, int64(7), int64(persisted.Status.LastFullBackup.FilesUploaded))
-			require.True(t, latest.Equal(persisted.Status.LastIncrementalBackup.Time), "incremental summary must retain its latest timestamp")
-		})
+	f := newBackupSchedulingFixture(t)
+	now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
+	older := metav1.NewTime(now.Add(-24 * time.Hour))
+	latest := metav1.NewTime(now)
+	backup := f.backup(t)
+	backup.Spec.Schedule = ""
+	require.NoError(t, f.client.Update(context.Background(), backup))
+	backup.Status.LastBackup = &ledgerv1alpha1.BackupResult{Time: &latest, FilesUploaded: 7}
+	require.NoError(t, f.client.Status().Update(context.Background(), backup))
+	stale := ledgerv1alpha1.BackupRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "already-pruned", Namespace: f.key.Namespace},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name},
+		Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &older,
+			Result: &ledgerv1alpha1.BackupResult{Time: &older, FilesUploaded: 1}},
 	}
+	cached := interceptor.NewClient(f.client, interceptor.Funcs{
+		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if runs, ok := list.(*ledgerv1alpha1.BackupRunList); ok {
+				runs.Items = []ledgerv1alpha1.BackupRun{stale}
+
+				return nil
+			}
+
+			return c.List(ctx, list, opts...)
+		},
+	})
+	r := &BackupReconciler{Client: cached, APIReader: f.client, Scheme: f.scheme}
+	_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now.Add(time.Minute))
+	require.NoError(t, err)
+	persisted := f.backup(t)
+	require.True(t, latest.Equal(persisted.Status.LastBackup.Time), "checkpoint summary must retain its latest timestamp")
+	require.Equal(t, int64(7), int64(persisted.Status.LastBackup.FilesUploaded))
 }

@@ -233,7 +233,7 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
 	return p.processOrders(orders, scopeFactory, sink, false, true)
 }
 
@@ -242,11 +242,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 // items contain orders, and historical creations may contain initial account
 // types that the stricter new-order validation would reject. Successful new
 // creations satisfy the legacy validation and reconstruct the same log.
-func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
 	return p.processOrders(orders, scopeFactory, sink, true, false)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -275,6 +275,18 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	stagedTransactions := 0
 
 	for i, order := range orders {
+		// Admission forwarded this order without a preload only so the FSM
+		// dedup gate could replay an earlier outcome under the batch's key.
+		// Reaching it means every earlier order applied and there is nothing
+		// to replay: fail here, in sequence, so an earlier order's definitive
+		// rejection wins over this preparation gap. The marker sits before the
+		// skip matcher on purpose: a skippable_reasons whitelist cannot turn a
+		// never-prepared order into a skip. The flag is part of the committed
+		// order bytes, so every voter reaches the same verdict.
+		if order.GetTechnical().GetPreloadUnavailable() {
+			return nil, domain.ErrPreloadUnavailable
+		}
+
 		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan

@@ -36,6 +36,23 @@ func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T)
 	require.Equal(t, []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}, got)
 }
 
+func TestExtractSkippableReasonsFromApply_ExecuteNumscript(t *testing.T) {
+	t.Parallel()
+	apply := &servicepb.LedgerApplyRequest{
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{
+			ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{Reference: "replay-ref"},
+		}},
+		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+	}
+	got, err := extractSkippableReasonsFromApply(apply)
+	require.NoError(t, err)
+	require.Equal(t, apply.GetSkippableReasons(), got)
+
+	apply.SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS}
+	_, err = extractSkippableReasonsFromApply(apply)
+	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
+}
+
 // TestExtractSkippableReasonsFromApply_EmptyListReturnsNil verifies the
 // historical no-opt-in default: an empty/missing skippable_reasons disables
 // the skip mechanism and returns (nil, nil) so the order's SkippableReasons

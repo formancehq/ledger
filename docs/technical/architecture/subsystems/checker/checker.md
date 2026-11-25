@@ -121,7 +121,7 @@ The expectation is **never** seeded from the live projection: a projection seed 
 
 **Cascade descendants are re-derived, never read back.** A `RevokeSigningKey` with `cascade` set removes the target plus every key reachable from it through the *expected* parent map, walked breadth-first. The log's own `cascaded_key_ids` is deliberately ignored: re-deriving the cascade is the entire point of the pass, and trusting the recorded list would let a tampered projection justify itself. Traversal *order* is irrelevant — the comparison is over the final key *set* — so the walk deliberately does not reproduce the FSM's ordering (`WriteSet.GetSigningKeyChildren` returns sorted committed children followed by the proposal's pending ones in slice order, an implementation detail the checker must not couple to).
 
-The set of *edges*, however, is load-bearing, and this is the one place the cascade must follow the FSM closely. `GetSigningKeyChildren` resolves every key to the parent its **latest** registration named: it folds the proposal's `pendingSigningKeyUpdates` over the committed key store **in slice order**, the last entry for a key ID winning. That is the same sequence `WriteSet.Merge` replays into Pebble and the runtime key store, and the same one `backup.RebuildDelta` replays on restore, so live apply, restart and cross-cluster restore agree on which keys a cascade reached.
+The set of *edges*, however, is load-bearing, and this is the one place the cascade must follow the FSM closely. `GetSigningKeyChildren` resolves every key to the parent its **latest** registration named: it folds the proposal's `pendingSigningKeyUpdates` over the committed key store **in slice order**, the last entry for a key ID winning. That is the same sequence `WriteSet.Merge` replays into Pebble and the runtime key store. Current cross-cluster restore copies that persisted state from a complete checkpoint.
 
 `descendantsOf` therefore walks the expected parent map and nothing else. The fold applies the same orders in the same sequence as the FSM, so the expected map **is** the effective ordered state, and no per-proposal snapshot, superseded-edge list or removal set is needed to reproduce the live relation. Two consequences inside one proposal, both from "the last registration decides":
 
@@ -199,6 +199,14 @@ The comparison runs after `compareMirrorV2LogID`, once the log loop has establis
 The chain cannot detect every truncation on its own — a *coordinated* deletion of both the top logs and the top audit entries leaves a store whose chain verifies as a valid prefix. See the [coordinated-truncation limitation](audit-chain.md#limitation--coordinated-tail-truncation-is-not-detectable) for why, and for what this pass does and does not claim.
 
 ## Replay machinery
+
+If a chain break or invalid success range suppresses replay, order-derived
+account metadata from a referenced, conflict-skippable `ExecuteNumscript` cannot
+establish whether the execution ran or was skipped. For affected keys,
+`METADATA_NOT_FOUND` skip checks still validate the audited reason and target/key
+context, but defer the presence
+verdict for the rest of that check. The original integrity finding remains;
+the checker does not add a speculative `INVALID_SKIP`.
 
 Three building blocks under `internal/domain/replay/`:
 

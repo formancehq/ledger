@@ -45,7 +45,7 @@ func TestBackupServerAddr(t *testing.T) {
 	}
 }
 
-func TestBuildBackupJob_FullWithTLS(t *testing.T) {
+func TestBuildBackupJob_CheckpointWithTLS(t *testing.T) {
 	t.Parallel()
 	enabled := true
 
@@ -69,7 +69,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	}
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "blockchains-manual-abc", Namespace: "ledger-v3"},
-		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "blockchains", Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "blockchains"},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeRequired, "ghcr.io/formancehq/ledger:v0.0.8")
@@ -158,7 +158,7 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 	}
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
@@ -167,46 +167,6 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 		require.NotEqual(t, "CLUSTER_SECRET", e.Name,
 			"CLUSTER_SECRET must not be injected when TLS is disabled — the operator deletes the Secret in that mode")
 	}
-}
-
-func TestBuildBackupJob_Incremental(t *testing.T) {
-	t.Parallel()
-
-	ls := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "repo", Tag: "tag"}},
-	}
-	backup := &ledgerv1alpha1.Backup{
-		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
-	}
-	run := &ledgerv1alpha1.BackupRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "b-incr", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
-	}
-
-	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
-	require.NoError(t, err)
-
-	shell := job.Spec.Template.Spec.Containers[0].Command[2]
-	require.Contains(t, shell, "./ledgerctl 'store' 'incremental-backup'")
-	require.Contains(t, shell, "--insecure")
-	require.NotContains(t, shell, "--tls-ca-cert")
-	require.Empty(t, job.Spec.Template.Spec.Volumes, "disabled TLS must not mount the tls-certs volume")
-}
-
-func TestBuildBackupJob_UnknownType(t *testing.T) {
-	t.Parallel()
-
-	ls := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"}}
-	backup := &ledgerv1alpha1.Backup{ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"}}
-	run := &ledgerv1alpha1.BackupRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.BackupRunSpec{Type: "Garbage"},
-	}
-
-	_, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")
-	require.Error(t, err)
 }
 
 func TestBuildBackupJob_Timeout(t *testing.T) {
@@ -218,7 +178,7 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 	}
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{},
 	}
 
 	t.Run("explicit timeout is forwarded as --timeout", func(t *testing.T) {
@@ -310,7 +270,7 @@ func TestJobTerminalCondition(t *testing.T) {
 	}
 }
 
-func TestParseBackupResult_Full(t *testing.T) {
+func TestParseBackupResult_Checkpoint(t *testing.T) {
 	t.Parallel()
 
 	logs := strings.Join([]string{
@@ -319,8 +279,8 @@ func TestParseBackupResult_Full(t *testing.T) {
 		`{"filesUploaded":42,"filesDeleted":3,"totalFiles":1500,"durationMs":12345,"lastLogSequence":987,"lastAuditSequence":654,"lastAppliedIndex":1000}`,
 	}, "\n")
 
-	var result fullBackupResult
-	require.NoError(t, parseBackupResult(logs, ledgerv1alpha1.BackupRunTypeFull, &result))
+	var result checkpointResult
+	require.NoError(t, parseBackupResult(logs, &result))
 	require.Equal(t, uint32(42), result.FilesUploaded)
 	require.Equal(t, uint32(3), result.FilesDeleted)
 	require.Equal(t, uint32(1500), result.TotalFiles)
@@ -329,26 +289,12 @@ func TestParseBackupResult_Full(t *testing.T) {
 	require.Equal(t, uint64(1000), result.LastAppliedIndex)
 }
 
-func TestParseBackupResult_Incremental(t *testing.T) {
-	t.Parallel()
-
-	logs := strings.Join([]string{
-		"INFO running",
-		`{"logEntriesExported":100,"auditEntriesExported":50,"segmentsUploaded":2,"durationMs":777,"lastLogSequence":42,"lastAuditSequence":21}`,
-	}, "\n")
-
-	var result incrementalBackupResult
-	require.NoError(t, parseBackupResult(logs, ledgerv1alpha1.BackupRunTypeIncremental, &result))
-	require.Equal(t, uint64(100), result.LogEntriesExported)
-	require.Equal(t, uint32(2), result.SegmentsUploaded)
-}
-
 func TestParseBackupResult_NoJSON(t *testing.T) {
 	t.Parallel()
 
 	logs := "INFO no json line here\nfail"
-	var result fullBackupResult
-	require.Error(t, parseBackupResult(logs, ledgerv1alpha1.BackupRunTypeFull, &result))
+	var result checkpointResult
+	require.Error(t, parseBackupResult(logs, &result))
 }
 
 // Regression: ledgerctl emits its --json output via json.MarshalIndent, so
@@ -369,8 +315,8 @@ func TestParseBackupResult_PrettyPrinted(t *testing.T) {
   "lastAppliedIndex": 372123
 }
 `
-	var result fullBackupResult
-	require.NoError(t, parseBackupResult(payload, ledgerv1alpha1.BackupRunTypeFull, &result))
+	var result checkpointResult
+	require.NoError(t, parseBackupResult(payload, &result))
 	require.Equal(t, uint32(130), result.FilesUploaded)
 	require.Equal(t, uint32(2853), result.TotalFiles)
 	require.Equal(t, uint64(372123), result.LastAppliedIndex)
@@ -394,8 +340,8 @@ WARN another log line
 }
 
 `
-	var result fullBackupResult
-	require.NoError(t, parseBackupResult(payload, ledgerv1alpha1.BackupRunTypeFull, &result))
+	var result checkpointResult
+	require.NoError(t, parseBackupResult(payload, &result))
 	require.Equal(t, uint32(7), result.FilesUploaded)
 }
 
@@ -465,7 +411,7 @@ func TestBuildBackupJob_DeclaresTerminationMessagePath(t *testing.T) {
 	}
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled, "ledger:test")

@@ -1678,7 +1678,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
 - `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
 - One of:
   - `create_transaction`: Create a new transaction
-  - `execute_numscript`: Execute a script, creating a transaction for postings or updating account metadata without postings
+  - `execute_numscript`: Execute a script, creating a transaction for postings or updating account metadata without postings. A referenced execution that creates a transaction may opt into `TRANSACTION_REFERENCE_CONFLICT` in `skippable_reasons` so a replay skips the duplicate and later orders in the Apply batch commit; a metadata-only result rejects a new reference.
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction
@@ -1738,7 +1738,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`domain`**: Always `"ledger"`
 - **`metadata`**: Error-specific key-value pairs with context
 
-**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, also implement `domain.SerializableError`. A definitive business rejection supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure`, returns no audited details, and exits before both writers. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, classify it: a definitive business rejection also implements `domain.SerializableError` and supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure` instead, which the apply path tests first so it exits before both writers without implementing `SerializableError`. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|

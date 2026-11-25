@@ -2291,10 +2291,9 @@ ledgerctl store backup [flags]
 
 **Behavior:**
 - Creates a fresh Pebble checkpoint on the leader node
-- Diffs SST files against the previous checkpoint in the manifest
-- Uploads new/changed files, deletes stale files
-- Cleans up old incremental export segments (they become obsolete)
-- Writes updated manifest with checkpoint metadata and empty exports list
+- Flushes Pebble memtables and includes every checkpoint file, including Pebble WAL files if present
+- Reuses content-addressed objects already present and uploads missing files
+- Publishes the new manifest, then prunes objects no longer referenced
 - Response includes `lastLogSequence`, `lastAuditSequence`, `lastAppliedIndex`
 
 **Example:**
@@ -2313,66 +2312,25 @@ ledgerctl store backup --driver azure --azure-account-name myaccount --azure-acc
 ledgerctl s bk --driver s3 --s3-bucket my-bucket
 ```
 
-#### store incremental-backup
+#### store incremental-backup (deprecated alias)
 
-Export new log and audit entries since the last backup to S3 or Azure Blob Storage. **Forwarded to the leader**: the FSM tracks each backup under a per-destination lock, so only the leader can drive a job — concurrent requests against the same destination get `FailedPrecondition` (`ErrBackupInProgress`).
-
-**Aliases:** `ibk`
-
-```bash
-ledgerctl store incremental-backup [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--driver` | `s3` | Storage driver: `s3` or `azure` |
-| `--bucket-id` | cluster-id | Namespace prefix for backup files |
-| `--s3-bucket` | | S3 bucket name (required when `driver=s3`) |
-| `--s3-region` | | AWS region for S3 bucket |
-| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
-| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
-| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
-| `--azure-account-name` | | Azure storage account name (required when `driver=azure`) |
-| `--azure-account-key` | | Azure storage account key (omit to use `DefaultAzureCredential`) |
-| `--azure-container` | | Azure Blob Storage container name (required when `driver=azure`) |
-| `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
-| `--timeout` | `1000s` | Request timeout |
-
-**Behavior:**
-- Requires a prior full backup (fails if no checkpoint exists in manifest)
-- Takes a point-in-time Pebble snapshot for consistent reads
-- Streams new log entries (`{0x04, 0x01}`) and audit entries (`{0x04, 0x02}`) as KV stream segments
-- Appends new export segments to the manifest
-- No-op if no new entries since last export
-- Response includes `logEntriesExported`, `auditEntriesExported`, `lastLogSequence`, `lastAuditSequence`
-
-**Example:**
+This hidden compatibility command invokes the same full checkpoint path as
+`store backup`. It accepts the same destination flags and prints the normal
+checkpoint result, including `filesUploaded` and `totalFiles`. Use `store backup`
+for new automation.
 
 ```bash
-# Incremental backup to S3
-ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
-
-# Incremental backup to Azure Blob Storage
-ledgerctl store incremental-backup --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups
-
-# Short form
-ledgerctl s ibk --driver s3 --s3-bucket my-bucket
-```
-
-**Typical workflow:**
-
-```bash
-# Initial full backup (infrequent, leader-only)
-ledgerctl store backup --driver s3 --s3-bucket my-bucket
-
-# Periodic incremental backups (frequent, forwarded to the leader)
 ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket
-
-# After many incrementals, take a new full backup to reset the base
-ledgerctl store backup --driver s3 --s3-bucket my-bucket
 ```
+
+For periodic backups, schedule `ledgerctl store backup` at the desired
+frequency. Each run publishes a complete checkpoint and reuses unchanged
+content-addressed objects.
+
+For operator-managed backups, `kubectl ledger backup trigger [backup-name]`
+creates a checkpoint `BackupRun`. The former `--type` flag is removed; set
+`Backup.spec.schedule` to one cron string for scheduled checkpoints.
+
 
 ---
 
@@ -2407,21 +2365,21 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 
 1. Rejects a `RESTORED` marker, live database or incompatible checkpoint layout; reclaims a lone unmarked `checkpoints/0` left by interrupted finalization.
 2. Creates or opens the selected data directory, rejects a symlink or non-directory at `restore-staging/`, removes any old real staging directory through the data-directory root, then creates a fresh staging directory. Downloads checkpoint files sequentially through rooted filesystem operations. Rejects non-local manifest filenames and symlink escapes. Each filename is checked before its parent directories are created or its object is read; file size and sha256 verification still apply.
-3. Applies export segments and rebuilds derived state from logs (if any)
+3. Rejects manifests with legacy exports or cluster-policy overrides; the checkpoint already contains the complete persisted state
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)
-7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
+7. Clears source cluster identity, peers, backup jobs and cache; drops persisted Bloom blocks; and writes the checkpoint's applied index as the destination genesis boundary (fallback 1 for a genesis checkpoint). Global business and governance state and the attribute zone remain intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 
-Every attempt resets staging, including export-only restores. This command
+Every attempt resets staging before downloading the checkpoint. This command
 requires exclusive offline use of the target directory. Reset failure aborts
-before replay or publication and may leave old staging partly removed or absent.
-Download root handles close before replay and preview. Download/rebuild failures
-or confirmation EOF may leave new partial or fully rebuilt staging; the next
-attempt discards it and starts from the backup again so additive projections
-are not replayed twice. A successful finalization places the checkpoint before
+before publication and may leave old staging partly removed or absent.
+Download root handles close before preview. Download failures
+or confirmation EOF may leave partial or fully downloaded checkpoint staging;
+the next attempt discards it so stale files cannot mix with the current
+checkpoint. A successful finalization places the checkpoint before
 writing the `RESTORED` commit marker, then removes staging. A marked restore
 cannot be overwritten by retrying this command.
 
@@ -4366,7 +4324,7 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-processing-tick-interval` | duration | `tick-interval/10` | Idle Ready polling interval, retained after Ready drains (0 = effective tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
-| `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
+| `--backup-max-segment-bytes` | ByteSize | `4Gi` | Deprecated legacy export setting; checkpoint backups do not use it |
 
 Both intervals reject negative durations. With zero processing interval, positive
 Raft ticks from `1ns` through `9ns` are rejected because division by ten would
@@ -4382,9 +4340,6 @@ ledger run --raft-compaction-margin 5000 [other flags...]
 
 # Smaller spool segments (rotate/seal more often, e.g. for chaos testing)
 ledger run --spool-segment-max-bytes 256Ki [other flags...]
-
-# Smaller incremental-backup export segments
-ledger run --backup-max-segment-bytes 1Gi [other flags...]
 
 # More frequent maintenance (WAL snapshot + Pebble checkpoint)
 ledger run --maintenance-interval 15s [other flags...]
@@ -5600,7 +5555,6 @@ partial output after any failure. It does not connect to ClickHouse.
 Follow the complete [migration procedure](clickhouse-account-metadata.md),
 including preflights, backup, source preservation, import and verification.
 
-Incremental backup restoration also applies operational policy from the manifest,
-including a policy-only update with zero history segments. The offline
-`ledgerctl store bootstrap` and server restore paths use the same reconstruction
-routine; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).
+Checkpoint restoration includes operational policy directly from Pebble. Both
+`ledgerctl store bootstrap` and server restore reject legacy manifests with a
+separate policy override; see the [restore contract](../technical/architecture/subsystems/backup/incremental-restore-contract.md#operational-cluster-policy).

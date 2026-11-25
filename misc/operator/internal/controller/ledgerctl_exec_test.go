@@ -115,7 +115,11 @@ func serveLedgerctlExecStreams(writer http.ResponseWriter, request *http.Request
 		return errors.New("SPDY upgrade failed")
 	}
 	defer func() {
-		retErr = errors.Join(retErr, connection.Close())
+		select {
+		case <-connection.CloseChan():
+		default:
+			retErr = errors.Join(retErr, connection.Close())
+		}
 	}()
 	byType := make(map[string]httpstream.Stream, 3)
 	for range 3 {
@@ -156,7 +160,15 @@ func serveLedgerctlExecStreams(writer http.ResponseWriter, request *http.Request
 		}
 	}
 
-	return json.NewEncoder(byType[corev1.StreamTypeError]).Encode(status)
+	if err := json.NewEncoder(byType[corev1.StreamTypeError]).Encode(status); err != nil {
+		return err
+	}
+	if err := byType[corev1.StreamTypeError].Close(); err != nil {
+		return err
+	}
+	<-connection.CloseChan()
+
+	return nil
 }
 
 func TestLedgerctlExecOutputOwnershipWrappers(t *testing.T) {

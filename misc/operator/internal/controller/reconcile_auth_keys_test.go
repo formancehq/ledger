@@ -21,6 +21,8 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	// Create Cluster first so the credentials has a namespace to distribute into.
 	ls := newCluster("authcm-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authcm"}
+	ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "authcm-tls"}
+	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(true)}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create credentials with matching selector.
@@ -38,12 +40,31 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 		return credentials.Status.Phase == "Ready" && len(credentials.Status.DistributedSecretRefs) > 0
 	}, "credentials should be Ready with a distributed secret ref")
 
-	// Wait for the auth-keys ConfigMap to appear.
+	// Wait for the user key to be projected. The ConfigMap can first contain
+	// only the operator-managed key while Cluster reconciliation catches up.
 	cm := &corev1.ConfigMap{}
 	cmKey := types.NamespacedName{Namespace: ns, Name: "ledger-authcm-cluster-auth-keys"}
+	publicKeyFile := "credentials-authcm-credentials-pubkey.hex"
+	publicKeyPath := "/auth-keys/" + publicKeyFile
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, cmKey, cm) == nil
-	}, "auth-keys ConfigMap should be created")
+		if err := k8sClient.Get(ctx, cmKey, cm); err != nil {
+			return false
+		}
+		rawJSON, ok := cm.Data["auth-keys.json"]
+		if !ok || cm.Data[publicKeyFile] == "" {
+			return false
+		}
+		var projected authKeysJSON
+		if err := json.Unmarshal([]byte(rawJSON), &projected); err != nil {
+			return false
+		}
+		for _, key := range projected.Keys {
+			if key.PublicKeyFile == publicKeyPath && key.KeyID == credentials.Status.KeyID {
+				return true
+			}
+		}
+		return false
+	}, "auth-keys ConfigMap should project the user key and public key file")
 
 	// Verify auth-keys.json exists and is valid.
 	rawJSON, ok := cm.Data["auth-keys.json"]
@@ -51,13 +72,21 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 
 	var authKeys authKeysJSON
 	require.NoError(t, json.Unmarshal([]byte(rawJSON), &authKeys))
-	require.Len(t, authKeys.Keys, 1)
-	assert.Equal(t, credentials.Status.KeyID, authKeys.Keys[0].KeyID)
-	assert.Equal(t, "/auth-keys/credentials-authcm-credentials-pubkey.hex", authKeys.Keys[0].PublicKeyFile)
-	assert.Equal(t, []string{"read", "write"}, authKeys.Keys[0].Scopes)
+	// Auth-enabled Clusters also project an operator-managed Credentials key.
+	// Find the user Credentials entry without depending on its position.
+	var userKey *authKeyEntry
+	for i := range authKeys.Keys {
+		if authKeys.Keys[i].PublicKeyFile == publicKeyPath {
+			userKey = &authKeys.Keys[i]
+			break
+		}
+	}
+	require.NotNil(t, userKey, "user Credentials key must be projected")
+	assert.Equal(t, credentials.Status.KeyID, userKey.KeyID)
+	assert.Equal(t, []string{"read", "write"}, userKey.Scopes)
 
 	// Verify the individual pubkey file exists.
-	pubKeyData, ok := cm.Data["credentials-authcm-credentials-pubkey.hex"]
+	pubKeyData, ok := cm.Data[publicKeyFile]
 	assert.True(t, ok, "ConfigMap must contain the credentials pubkey file")
 	assert.NotEmpty(t, pubKeyData)
 }
@@ -68,6 +97,7 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	// Create Cluster first so the credentials has a namespace to distribute into.
 	ls := newCluster("authsts-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authsts"}
+	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(true)}
 	// Auth env (incl. AUTH_ED25519_KEYS) is only emitted once TLS has converged
 	// to `required` (see buildEnvVars' auth deferral). A fresh cluster with no
 	// prior StatefulSet targets the desired mode directly (computeTargetTLSMode
@@ -162,6 +192,8 @@ func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	// Create Cluster first so the credentials has a namespace to distribute into.
 	ls := newCluster("authhash-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authhash"}
+	ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "authhash-tls"}
+	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(true)}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create credentials with matching selector.

@@ -2,15 +2,35 @@
 
 ## Overview
 
-The ledger provides a two-tier backup and restore pipeline:
+Each backup publishes a complete, content-deduplicated Pebble checkpoint to S3
+or Azure Blob Storage. The leader flushes the Pebble memtables, creates a
+checkpoint with `WithFlushedWAL`, hashes every file in its directory, uploads
+missing content-addressed objects, publishes one manifest, and then prunes
+objects no longer referenced by that manifest. This includes any Pebble WAL
+files in the checkpoint; the Raft WAL is not a backup artifact.
 
-1. **Full backup** (`store backup`) — captures a complete Pebble checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
-2. **Incremental backup** (`store incremental-backup`) — exports only new log and audit entries since the last backup. Forwarded to the leader: the FSM owns a per-destination lock so only one backup runs against the same destination at a time, and only the leader can push Raft proposals. Done frequently.
+A transaction confirmed before the backup's capture point is present in the
+checkpoint, whether in an SST or its Pebble WAL. Transactions concurrent with
+capture may be included or left for the next backup. Restore uses the latest
+checkpoint directly; it does not replay incremental export segments. A manifest
+with old incremental exports is rejected before staging is activated. Create a
+new checkpoint backup with the new binary before relying on that destination.
+This is the maintainer-approved RC artifact exception in
+[the upgrade policy](./upgrades.md#release-requirement-from-v300-rc1). Keep the
+source volumes through the upgrade, run a new checkpoint backup immediately
+after the target starts, and verify restore from that backup before treating
+the destination as protected. If the source volumes are lost before the new
+checkpoint is published, the target binary cannot recover the committed
+post-checkpoint delta from the old incremental artifact. No automatic
+conversion of that artifact exists.
 
-A restore combines the latest checkpoint with any incremental exports to reconstruct the full state.
+The published `IncrementalBackup` RPC and the hidden
+`ledgerctl store incremental-backup` command remain compatibility aliases: they
+create a full checkpoint. The RPC reports zero legacy exported segments; the
+CLI prints the normal checkpoint result. New clients should call `Backup` /
+`ledgerctl store backup`.
 
-For topology selection, region-loss behavior, and the distinction between a
-replica and a portable recovery source, see
+For topology and region-loss behavior, see
 [Availability and Disaster Recovery](./availability-and-recovery.md).
 
 ### Storage Backends
@@ -24,15 +44,9 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 
 ### Scheduling with the Kubernetes Operator
 
-Operator backups require Kubernetes 1.32 or later and updated BackupRun CRDs
-with `.spec.backupRef` declared in `selectableFields`. Install both matching
-CRD/chart updates before starting the operator; parent lists bypass the cache
-and use API-server field selection.
-
-The operator's `Backup` resource can schedule full and incremental S3 backups:
-Each BackupRun Job uses the Ledger container image from the Cluster's owned
-StatefulSet. This also covers Clusters that inherit their image tag from the
-Operator instead of storing it in `spec.image.tag`.
+The operator schedules Pebble checkpoints using the optional cron expression
+`spec.schedule`. A Backup without a schedule is a template for manual runs.
+Configure a scheduled Backup as follows:
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
@@ -47,12 +61,32 @@ spec:
     s3:
       bucket: customer-ledger-backups
       region: eu-west-1
-  schedule:
-    full: "0 2 * * 0"
-    incremental: "0 * * * *"
+  schedule: "0 * * * *"
   successfulRunsHistoryLimit: 3
   failedRunsHistoryLimit: 1
 ```
+
+#### CRD migration for checkpoint-only scheduling
+
+This operator CRD change intentionally breaks the earlier RC Backup and
+BackupRun resource shapes. Before installing the new CRDs, replace
+`spec.schedule.full` or `spec.schedule.incremental` with the single string
+`spec.schedule`. Remove `BackupRun.spec.type` and the optional
+`ledger.formance.com/backup-type` label. The new status fields are
+`Backup.status.lastBackup`, `lastRunCompletionTime`, and `nextBackupTime`,
+and `BackupRun.status.result`; the old per-type status fields and conditions
+are removed. The operator records a single `BackupHealthy` condition.
+`kubectl ledger backup trigger` no longer accepts `--type`; every run creates
+a checkpoint.
+
+The old objects have no supported in-place conversion. Stop the existing
+operator first, then confirm no backup Job is active. Delete any existing
+BackupRun and Backup resources, install the new CRDs, and recreate Backups
+from the updated manifests while the operator remains stopped. Start the new
+operator only after those steps. This removes Kubernetes run history and
+schedule cursors; the first scheduled checkpoint runs immediately. Ledger data
+and the current object-store checkpoint are separate from these Kubernetes
+resources.
 
 #### S3 credentials for operator backups
 
@@ -79,7 +113,7 @@ The operator copies only the references into non-optional `secretKeyRef`
 environment entries named `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. It
 never reads the credential values. The kubelet resolves them when starting the
 Job container; `ledgerctl` binds these existing environment inputs to the backup
-storage flags and sends them in the full or incremental backup RPC. The S3
+storage flags and sends them in the backup RPC. The S3
 values are absent from shell text and process arguments. Use the normal TLS
 configuration to protect the RPC transport.
 
@@ -131,13 +165,13 @@ or automatic backup resubmission is introduced. Runs already marked Failed by an
 older operator remain terminal.
 
 To trigger a run directly, apply a `BackupRun` in the Backup's namespace with
-`metadata.name` and `spec.backupRef`; `spec.type` defaults to `Full`. No labels
+`metadata.name` and `spec.backupRef`. No labels
 or owner references are required. `spec.backupRef` is immutable from creation,
 including Pending and completed runs; create a new run for a different parent.
-When upgrading existing CRDs, stop the operator and recover any previously
-retargeted runs, spec-less runs and affected parent accounting before installing
-the rules requiring `spec` and freezing its parent;
-see [the admission upgrade procedure](../technical/architecture/subsystems/backup/operator-scheduling.md#upgrading-parent-admission).
+For an upgrade to the checkpoint-only CRDs, follow the
+[resource replacement procedure](#crd-migration-for-checkpoint-only-scheduling)
+above. The historical parent-admission upgrade procedure does not apply to
+these old resources because this migration deletes them.
 The referenced Backup accounts for the run's
 result and completion cursor, applies its history limits, and includes it in
 sibling exclusion even if the association label is missing or incorrect.
@@ -150,95 +184,31 @@ not retain historical backup artifacts or restore points in object storage.
 Setting either limit to zero removes all terminal runs of that outcome without
 resetting the cron schedule, including after an operator restart. The first run
 is immediate; subsequent runs follow the cron expression after the latest
-completed run of that type, whether it succeeded or failed. A failed run does
+completed run, whether it succeeded or failed. A failed run does
 not trigger an immediate retry outside the schedule.
 
 Completion cursors and successful-result summaries persist in `Backup.status`
-before history is deleted. Incremental scheduling remains enabled after the
-last successful full run is pruned. Pending or Running runs still block another
-scheduled run of the same type. See the
+before history is deleted. Pending or Running runs block another scheduled
+checkpoint run. See the
 [scheduling contract](../technical/architecture/subsystems/backup/operator-scheduling.md)
 for failure ordering and status field semantics.
 
 ### Long-Term Retention
 
-One destination namespace -- the storage backend plus `bucket-id` -- contains
-one current restorable chain. Incremental backups append segments to that
-chain. A new full backup publishes a replacement checkpoint manifest with an
-empty incremental set, then prunes objects no longer referenced by the current
-manifest.
-
-The built-in backup pipeline does not retain multiple historical restore
-points in one namespace. For long-term retention, use a distinct `bucket-id`
-for each retained restore point and stop writing to that namespace after its
-final incremental, or implement an object-store versioning/archive procedure
-that preserves and can re-materialize the complete manifest and every object it
-references. The operator's scheduled `Backup` resource has a fixed `bucketId`,
-so rotating immutable retention points currently requires external
+One destination namespace (backend plus `bucket-id`) has one current restorable
+checkpoint. Each successful run replaces its manifest and prunes unreferenced
+objects after publication. Kubernetes `BackupRun` history limits retain only
+execution records, not object-store restore points. For historical points, use
+separate `bucket-id` namespaces or an archive/versioning procedure that retains
+a complete manifest and every referenced object. The scheduled Backup has a
+fixed `bucketId`, so rotating immutable restore points requires external
 orchestration.
 
 For operator-managed clusters without an explicit `clusterID`, the committed
-random ID is also the default backup `bucketId`. This separates independently
-created clusters even when their Kubernetes names and object-storage bucket are
-the same. An explicit backup `bucketId` remains authoritative. Record the
-source Cluster's `spec.clusterID` (and any explicit `bucketId`) with restore
-procedures: a destination Cluster has its own identity and therefore its own
-default namespace. Pass the source namespace explicitly to restore download or
-offline bootstrap, then use the destination namespace for new backups.
+random ID is the default `bucketId`. Record the source namespace for disaster
+recovery and pass it explicitly when restoring into a different cluster.
 
-Test restoring every retention class. Retaining only a manifest, or only the
-checkpoint objects without all incremental segments referenced by that
-manifest, is not a usable backup.
-
-### End-to-End Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ 1a. FULL BACKUP (running cluster, leader only)                         │
-│                                                                        │
-│    ledgerctl store backup --driver s3 --s3-bucket my-bucket            │
-│    ─► Leader: create Pebble checkpoint                                │
-│    ─► Leader: diff SSTs against previous checkpoint                   │
-│    ─► Leader: upload new/changed files, clean old exports             │
-│    ─► Leader: write manifest (checkpoint + empty exports)             │
-├─────────────────────────────────────────────────────────────────────────┤
-│ 1b. INCREMENTAL BACKUP (leader only, forwarded)                        │
-│                                                                        │
-│    ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket│
-│    ─► Leader: read manifest, determine last exported sequences        │
-│    ─► Leader: stream new log + audit entries as KV segments           │
-│    ─► Leader: append segments to manifest exports list                │
-└─────────────────────────────────────────────────────────────────────────┘
-                                │
-                 ┌──────────────┴──────────────┐
-                 ▼                             ▼
-┌──────────────────────────────┐ ┌──────────────────────────────────────┐
-│ 2a. RESTORE (gRPC, 4-step)  │ │ 2b. OFFLINE BOOTSTRAP (single CLI)   │
-│                              │ │                                      │
-│  Start server with --restore │ │  ledgerctl store bootstrap           │
-│  a. restore download         │ │    --s3-bucket ... --data-dir ./data │
-│  b. restore validate         │ │                                      │
-│  c. restore preview          │ │  No server needed.                   │
-│  d. restore finalize         │ │  Download → prepare → finalize.      │
-└──────────────────────────────┘ └──────────────────────────────────────┘
-                 │                             │
-                 └──────────────┬──────────────┘
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ 3. BOOTSTRAP (restart without --restore)                               │
-│                                                                        │
-│    Node detects RESTORED marker → recovers FSM state from Pebble      │
-│    → creates WAL snapshot → removes marker → normal Raft startup       │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-The restore validation step above is required before gRPC finalization.
-Offline bootstrap runs Checker only with `--validate`; see
-[Validate](#step-2-validate-required-for-grpc-finalization) for details.
-
-## Backup ()
+## Backup
 
 ### CLI Command
 
@@ -274,15 +244,15 @@ The `store backup` command calls the `ClusterService.Backup` gRPC RPC (unary). I
 
 #### Step 1: Direct Pebble Checkpoint
 
-The leader creates a **temporary Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
+The leader flushes memtables, then creates a **temporary Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
 
 #### Step 2: Diff Against Previous Manifest
 
 The backup reads the previous manifest from storage (if any) and computes a diff:
-- **New/changed files**: SST files that are new or have changed size are uploaded.
-- **Stale files**: Files present in the old manifest but not in the current checkpoint are deleted.
+- **New/changed content**: Every checkpoint file is hashed; content-addressed objects absent from storage are uploaded.
+- **Stale objects**: Objects absent from the new manifest are deleted only after that manifest is published.
 
-SST files in Pebble are immutable — same filename means same content. This makes the diff very efficient.
+SSTs are immutable, but files such as Pebble MANIFEST can grow under the same name. Name and size alone are not valid content identities.
 
 #### Step 3: Upload and Manifest
 
@@ -298,17 +268,17 @@ The temporary checkpoint is removed from the leader's filesystem after the backu
 
 Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
 
-1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
-2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
+1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start, not the source cluster's identity.
+2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
 3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
 4. **Wipe the cluster-persistent zone**: One range delete removes source node/cluster identity, Raft peers, removed-member tombstones and stale Bloom blocks. The destination re-seeds its identity and membership and rebuilds Bloom from attributes. The restored genesis boundary is written back to this zone after the delete in the same batch.
-5. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
+5. **Clear the cache zone**: Source-cluster cache rows are not valid in the destination cluster; the restored node boots with a cold cache and re-seeds from the preserved attribute zone on first touch.
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 
 The audit key is a 32-byte random secret committed by Raft before the first
 audit entry. Full backup is refused until it exists. A full checkpoint contains
-the key; later incremental segments contain audit entries and orders but do
+the key; later checkpoints keep the same key and do
 not change the key. Restoring A into B therefore keeps A's audit key while B
 uses its own cluster ID for membership and its default backup namespace. A
 later backup from B carries the same audit key under B's backup namespace.
@@ -349,100 +319,26 @@ sequenceDiagram
     Client->>Follower: Backup RPC
     Follower->>Leader: Forward to leader
 
-    Leader->>Pebble: CreateTemporaryCheckpoint("backup")
+    Leader->>Pebble: Flush memtables and create a temporary checkpoint
     Leader->>Storage: Read previous manifest
-    Leader->>Leader: Compute diff (new/changed/stale)
-    Leader->>Storage: Upload new/changed files
-    Leader->>Storage: Delete stale files
+    Leader->>Leader: Hash all checkpoint files and find missing object keys
+    Leader->>Storage: Upload missing content-addressed files
     Leader->>Storage: Write updated manifest
-    Leader->>Pebble: Remove tmp/backup
+    Leader->>Storage: Prune unreferenced objects
+    Leader->>Pebble: Remove temporary checkpoint
 
     Leader->>Client: Response (files uploaded, deleted, total, duration)
 ```
 
 ---
 
-## Incremental Backup
+## Deprecated incremental entry points
 
-### CLI Command
-
-```bash
-# Incremental backup to S3 (forwarded to the leader)
-ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
-
-# Incremental backup to MinIO
-ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000
-
-# Incremental backup to Azure Blob Storage
-ledgerctl store incremental-backup --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--driver` | `s3` | Storage driver: `s3` or `azure` |
-| `--bucket-id` | cluster-id | Namespace prefix for backup files |
-| `--s3-bucket` | | S3 bucket name (required when `driver=s3`) |
-| `--s3-region` | | AWS region for S3 bucket |
-| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
-| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
-| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
-| `--azure-account-name` | | Azure storage account name (required when `driver=azure`) |
-| `--azure-account-key` | | Azure storage account key (omit to use `DefaultAzureCredential`) |
-| `--azure-container` | | Azure Blob Storage container name (required when `driver=azure`) |
-| `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
-| `--timeout` | `1000s` | Request timeout |
-
-### How It Works
-
-The `store incremental-backup` command calls the `ClusterService.IncrementalBackup` gRPC RPC. Like the full backup, this RPC is **forwarded to the leader**: backup jobs are tracked by the FSM under a per-destination lock, so only the node currently driving Raft proposals can open one.
-
-1. **Forward**: A request hitting a follower is transparently forwarded to the leader.
-2. **Start**: The leader proposes a `BackupOrder.Start` through Raft. A duplicate destination is rejected with `FailedPrecondition` (`ErrBackupInProgress`); a duplicate `job_id` with `FailedPrecondition` (`ErrBackupJobIDCollision`).
-3. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
-4. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
-5. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
-6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments. Each segment streams through an `io.Pipe` into a multipart upload, so memory stays bounded and a single object can exceed the 5 GB single-`PutObject` limit. A range whose serialized entries exceed `--backup-max-segment-bytes` (default 4Gi) is split into multiple segments at sequence boundaries. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
-7. **Update manifest**: Appends new export segments to the manifest.
-8. **Complete / Fail**: The leader proposes the terminal order under a bounded background context (so a client disconnect does not strand the destination lock).
-
-### Prerequisites
-
-A **full backup must exist** before running an incremental backup. The incremental backup needs a checkpoint as a base.
-
-### Leadership and Mutual Exclusion
-
-Although log and audit sequences are deterministic across replicas — so any node could in principle read the same delta — incremental backups go through the leader for two reasons:
-
-- The FSM owns the destination lock. Two concurrent runs against the same destination would otherwise race the same on-S3 manifest. Pushing the lifecycle through Raft inherits cross-node mutual exclusion from apply determinism, with no separate lease primitive and no clock-skew window.
-- The leader is the only node that can propose. A follower-driven backup would have to round-trip every progress beat through the leader anyway.
-
-If leadership changes mid-backup, `OnLeadershipChange(false)` on the previous leader cancels the context that the in-flight upload runs under — the S3 SDK respects the cancellation and aborts the request, closing the two-writer race that would otherwise open between the old executor and the new leader. The new leader inherits the `RUNNING` FSM entry via cache snapshot restore but sees no live executor for it in its in-memory registry; the next cleanup tick proposes `Fail` to free the destination slot. The client retries explicitly.
-
-### Manifest Structure
-
-The manifest combines checkpoint metadata with incremental exports:
-
-```json
-{
-  "checkpoint": {
-    "timestamp": "2024-01-15T10:30:00Z",
-    "lastAppliedIndex": 12345,
-    "lastLogSequence": 500,
-    "lastAuditSequence": 300,
-    "files": {"000001.sst": 1234, "000002.sst": 5678}
-  },
-  "exports": [
-    {"type": "log", "startSeq": 501, "endSeq": 600, "key": "...", "size": 12345},
-    {"type": "audit", "startSeq": 301, "endSeq": 350, "key": "...", "size": 6789}
-  ]
-}
-```
-
-When a new **full backup** is taken, old exports are cleaned up and the exports list is reset to empty.
-
-**File**: `internal/infra/backup/manager.go` — `RunIncrementalBackup()`
-
----
+`ClusterService.IncrementalBackup` remains on the published wire surface but
+runs the same checkpoint path as `ClusterService.Backup`. Its legacy export
+counters are zero. `ledgerctl store incremental-backup` is a hidden alias of
+`store backup` and prints the normal checkpoint result. The operator no longer
+schedules incremental runs.
 
 ## Restore
 
@@ -514,7 +410,7 @@ The server-side job:
    sha256 embedded in its object key. A mismatch fails the job
    (`DOWNLOAD_STATE_FAILED`) with an error that names the file, and the
    staging directory is wiped.
-4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must terminate with the explicit stream footer at the exact end, match the manifest byte size, and contain the complete sequence range advertised by the manifest; physical EOF, trailing bytes, size mismatch, or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
+4. Opens the complete checkpoint in staging. Per-replica read indexes are rebuilt by each node from the restored primary-store registry; see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle).
 5. On success, marks the staging as ready.
 
 If the job fails or is cancelled, the staging directory is wiped so the
@@ -536,7 +432,7 @@ enforces `--total-stop-timeout`. That budget includes `--grace-period` and all
 Fx stop hooks. Deadline expiry returns a shutdown error and an unsuccessful
 command exit without guaranteeing that every hook completed. Process exit can
 therefore interrupt cleanup and leave staging files or an uncleanly closed
-staging store. Deferred log-export cleanup runs after the Fx lifecycle. After a
+staging store. Cleanup runs after the Fx lifecycle. After a
 termination signal it uses the remaining signal-time deadline, distinct from
 the normal Fx stop budget; expiry or finalization failure exits unsuccessfully.
 See [server termination](cli.md#server-termination) for startup-unwind and zero
@@ -551,8 +447,7 @@ becomes live: `restore validate` invokes it through the restore-mode server's
 gRPC API, while offline `store bootstrap --validate` runs it without a server.
 It is a prerequisite of `FinalizeRestore`.
 
-For recovery and restore drills, run validation after download and incremental
-replay complete, before finalization. Investigate any reported integrity errors
+For recovery and restore drills, run validation after checkpoint download completes, before finalization. Investigate any reported integrity errors
 before proceeding. The numbered workflow is the recommended operational
 sequence; the server enforces successful validation before gRPC finalization.
 
@@ -689,33 +584,34 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 | `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--bucket-id` | | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
-| `--validate` | `false` | Run Checker after download/replay and before finalization; abort on validation failure |
+| `--validate` | `false` | Run Checker after checkpoint download and before finalization; abort on validation failure |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
 ### How It Works
 
 1. **Fresh directory guard**: Rejects a `RESTORED` marker, live database or incompatible checkpoint layout. A lone unmarked `checkpoints/0` from interrupted finalization is reclaimed before downloading.
-2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then inspects `restore-staging/` with rooted `Lstat`. An existing symlink (even to a target inside the data directory) or non-directory is rejected. Any old real staging directory is removed through the data-directory root before a fresh directory is created and opened. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. Staging is reset even for an export-only manifest.
-3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state. Before downloading any segment, bootstrap rejects a manifest whose log, audit, or audit-item segments do not continue each other from the checkpoint boundary, so a missing interior segment or an overlap fails even without `--validate`. A missing final segment is not detected by this check; use `--validate` to catch it.
-4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
-5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
-6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
-7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
-8. **Finalize**: After closing the prepared store and rereading its metadata, hard-links staging into a temporary checkpoint directory and renames it to `{data-dir}/checkpoints/0`. Only then writes the atomic `RESTORED` commit marker. A marker-write failure attempts to remove the placed checkpoint; remove it manually if rollback fails.
-9. **Cleanup**: Removes the staging directory. A cleanup error is reported as a warning after the restore has committed.
+2. **Download**: Reads the manifest from the configured backend, creates or opens the selected data directory, then inspects `restore-staging/` with rooted `Lstat`. An existing symlink (even to a target inside the data directory) or non-directory is rejected. Any old real staging directory is removed through the data-directory root before a fresh directory is created and opened. Downloads checkpoint files sequentially through a filesystem root opened on staging. Each manifest filename is converted from slash-separated form and must be lexically local before parent creation, object lookup or file creation for that entry. Rooted parent and file creation reject symlink escapes. Each checkpoint file is verified against its manifest size and the sha256 in its object key; a mismatch aborts bootstrap and names the file. An export-only manifest is rejected before staging.
+3. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
+4. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
+5. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
+6. **Prepare**: Clears source cluster identity, peers, backup jobs and cache; drops persisted Bloom blocks; and writes the checkpoint's applied index back as the destination genesis boundary (the restored genesis' WAL-snapshot index). Global business and governance state and the attribute zone remain intact.
+7. **Finalize**: After closing the prepared store and rereading its metadata, hard-links staging into a temporary checkpoint directory and renames it to `{data-dir}/checkpoints/0`. Only then writes the atomic `RESTORED` commit marker. A marker-write failure attempts to remove the placed checkpoint; remove it manually if rollback fails.
+8. **Cleanup**: Removes the staging directory. A cleanup error is reported as a warning after the restore has committed.
 
 Use the target directory exclusively while this offline command runs. Every
-attempt discards prior staging before downloading or replaying, including for
-export-only backups. This prevents committed projection batches from an earlier
-rebuild being folded again. Reset failure aborts before replay or publication;
-old staging may be partly removed or absent. A later download or rebuild failure,
-or EOF at confirmation, can leave new partial or fully rebuilt staging. It is
-not activated and the next invocation resets it again. An explicit negative
+attempt discards prior staging before downloading checkpoint files, including
+after an incomplete attempt. This prevents stale files from a prior attempt
+from mixing with the current checkpoint. Reset failure aborts before publication;
+old staging may be partly removed or absent. A download failure can leave
+partially downloaded staging. Validation failure or EOF at confirmation leaves
+a fully downloaded but unprepared checkpoint. A preparation failure may leave
+partially prepared staging. None of these states is activated; the next
+invocation resets staging again. An explicit negative
 confirmation instead attempts to remove staging. The existing freshness and
 `RESTORED` marker guards still apply: retries do not repair an already finalized
 restore.
 
-The download roots close before export replay, preview, validation, confirmation
+The download roots close before preview, validation, confirmation
 and finalization. Download rejection is per entry: earlier files and partial
 bytes can remain after an error, with no immediate cleanup. A failed download
 reaches none of the later steps. Size/hash verification detects object corruption;
@@ -786,7 +682,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 }
 ```
 
-- `lastAppliedIndex`: The Raft index the restored genesis occupies in the new log — the checkpoint's applied index preserved by backup preparation (1 for a genesis checkpoint, never 0). The restored bootstrap creates its WAL snapshot at this index. A boundary label only: after a full + incremental restore the restored state is newer than this index.
+- `lastAppliedIndex`: The Raft index the restored genesis occupies in the new log — the checkpoint's applied index preserved by backup preparation (1 for a genesis checkpoint, never 0). The restored bootstrap creates its WAL snapshot at this index. It labels the restored checkpoint in the destination log.
 - `lastAppliedTimestamp`: The HLC timestamp (microseconds) of the last applied entry.
 
 **File**: `internal/infra/node/restored_marker.go`
@@ -798,7 +694,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 | Guarantee | Mechanism |
 |-----------|-----------|
 | **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
-| **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
+| **Content deduplication** | Every checkpoint file is hashed; identical content is reused, and unreferenced objects are pruned after manifest publication. |
 | **Self-contained on restore** | During restore finalize, the applied index is preserved as the genesis boundary and persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. The new log's index space starts at the boundary; nothing depends on the original cluster's later Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |
 | **Fresh directory required** | Restore mode refuses to start if existing checkpoints are found in `checkpoints/`, preventing accidental overwrites. |
@@ -844,7 +740,7 @@ ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootst
 | `internal/infra/backup/manager.go` | `RunBackup()` — diff, upload, manifest |
 | `internal/infra/backup/s3.go` | S3 storage driver |
 | `internal/infra/backup/storage.go` | Storage interface and driver factory |
-| `internal/infra/attributes/prepare.go` | `PrepareForBackup()` — Global-zone resets for portable backup (used during restore) |
+| `internal/infra/attributes/prepare.go` | `PrepareForBackup()` — source cluster-local zone and cache reset during restore |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |

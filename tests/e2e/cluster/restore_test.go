@@ -231,10 +231,6 @@ var _ = Describe("Restore", Ordered, func() {
 			// no full 0xF1 rescan) — the condition under which a
 			// post-checkpoint account can be bloom-false-negatived.
 			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
-			// A 1-byte segment cap forces the incremental export to split at every
-			// sequence boundary, so a multi-sequence post-checkpoint range fans out
-			// into several segments per type — exercising split-and-restore below.
-			instruments = append(instruments, testserver.WithBackupMaxSegmentBytes(1))
 
 			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
@@ -268,9 +264,9 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
-			// eve is funded BEFORE the checkpoint (input=1000, output=0). Its 0xFF
-			// cache entry is captured in the checkpoint; the drain below (post
-			// checkpoint) makes that cache entry stale. Phase 3 exercises it via apply.
+			// eve is funded before the first checkpoint (input=1000, output=0),
+			// then drained before the later checkpoint. Phase 3 verifies that
+			// restore seeds a cold cache from the updated attribute value.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "eve", big.NewInt(1000), "USD"),
 			}, nil, nil)))
@@ -308,8 +304,8 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should take a backup to S3", func() {
 			// Seed the full checkpoint with an enabled schedule. Its deletion is
-			// deliberately committed only after this checkpoint, so restore must
-			// fold the deletion from a non-empty incremental export.
+			// deliberately committed only after this checkpoint, so the second
+			// checkpoint must include the deletion.
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("* * * * * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
@@ -325,23 +321,20 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("should write post-checkpoint data and take an incremental backup", func() {
+		It("should write more data and take a second checkpoint", func() {
 			deleteResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(deleteResp.GetLogs()).To(HaveLen(1))
 			scheduleDeletionLogSequence = deleteResp.GetLogs()[0].GetSequence()
 
-			// This transaction is written AFTER the full checkpoint, so it
-			// lives only in incremental export segments — never in the
-			// checkpoint files. A restore that ignores exports loses it.
+			// This transaction is written after the first checkpoint and must
+			// appear in the next checkpoint.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(deltaCallerKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(1500), "USD"),
 			}, map[string]string{"type": "post-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
 
-			// More post-checkpoint transactions so the incremental log/audit
-			// ranges span many sequences; with the 1-byte segment cap the export
-			// splits into several segments per type.
+			// More transactions make the second capture cover several sequences.
 			for i := range 8 {
 				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("split-acct-%d", i), big.NewInt(100), "USD"),
@@ -350,15 +343,14 @@ var _ = Describe("Restore", Ordered, func() {
 			}
 
 			// Drain eve (a PRE-checkpoint account) AFTER the checkpoint: its volume
-			// changes only in the delta (output 0 → 1000, balance → 0). eve's 0xFF
-			// cache entry is now checkpoint-era stale while 0xF1 is rebuilt fresh.
+			// changes in the second checkpoint (output 0 → 1000, balance → 0).
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("eve", "world", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Add an account type AFTER the checkpoint, so the chart-ledger's chart
-			// changes only in the delta. Phase 3 checks the apply path enforces it.
+			// changes in the second checkpoint. Phase 3 checks the apply path enforces it.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
@@ -383,9 +375,8 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(sourceCheck.Errors).To(BeEmpty(), "the source checker must accept the exact skip fact")
 
-			// A ledger created AFTER the full checkpoint lives only in the
-			// incremental exports. Its LedgerInfo + LedgerBoundaries must be
-			// rebuilt into the 0xF1 attribute zone the apply-path preload reads,
+			// A ledger created after the first checkpoint must be captured with
+			// its LedgerInfo + LedgerBoundaries in the 0xF1 attribute zone,
 			// or a later write to it fails ErrLedgerNotFound. The funding tx
 			// carries a reference so Phase 3 can check reference idempotency.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
@@ -397,9 +388,8 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", fundDelta))
 			Expect(err).To(Succeed())
 
-			// Declare metadata field types AFTER the full checkpoint, so they live
-			// only in the incremental export segments — the RebuildDelta replay
-			// path, not the raw checkpoint copy. Phase 3 reads them back.
+			// Declare metadata field types after the first checkpoint. Phase 3
+			// reads them back from the second checkpoint.
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_LEDGER, "region", commonpb.MetadataType_METADATA_TYPE_STRING)))
@@ -407,9 +397,8 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category", commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
-			// This checkpoint is created only after the full backup. Its metadata
-			// row — including applied_index — must therefore be rebuilt from the
-			// incremental log export rather than copied from checkpoint files.
+			// This query checkpoint is created after the first backup. Its metadata
+			// row, including applied_index, must be in the second backup.
 			deltaCheckpointID, deltaCheckpointMaxSequence, err = actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(deltaCheckpointID).NotTo(BeZero())
@@ -426,7 +415,7 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(unfiltered).To(ContainElement(HaveField("Sequence", deltaCallerAuditSequence)),
 				"the source checkpoint's authoritative audit zone must contain the filtered entry")
 
-			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
@@ -434,55 +423,29 @@ var _ = Describe("Restore", Ordered, func() {
 				}),
 			})
 			Expect(err).To(Succeed())
-			Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0),
-				"incremental backup must export the post-checkpoint log entries")
-			Expect(resp.GetSegmentsUploaded()).To(BeNumerically(">", 0))
+			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 
-			// The tiny segment cap must have split the log export into multiple
-			// segments — proving splitting through the real server → S3 path.
 			manifest, err := readS3Manifest(ctx, s3Client)
 			Expect(err).To(Succeed())
+			Expect(manifest.Exports).To(BeEmpty())
+			Expect(manifest.Checkpoint.Files).NotTo(BeEmpty())
+			Expect(manifest.Checkpoint.LastLogSequence).To(BeNumerically(">=", scheduleDeletionLogSequence))
+			Expect(manifest.Checkpoint.LastLogSequence).To(BeNumerically(">", deltaCheckpointMaxSequence))
 
-			logSegments := 0
-			checkpointLogExported := false
-			scheduleDeletionExported := false
-			checkpointLogSequence := deltaCheckpointMaxSequence + 1
-			for _, seg := range manifest.Exports {
-				if seg.Type == "log" {
-					logSegments++
-					if seg.StartSeq <= scheduleDeletionLogSequence && seg.EndSeq >= scheduleDeletionLogSequence {
-						scheduleDeletionExported = true
-					}
-					if seg.StartSeq <= checkpointLogSequence && seg.EndSeq >= checkpointLogSequence {
-						checkpointLogExported = true
-					}
-				}
-			}
-
-			Expect(logSegments).To(BeNumerically(">", 1),
-				"a 1-byte segment cap must split the multi-sequence log export into multiple segments")
-			Expect(checkpointLogExported).To(BeTrue(),
-				"the manifest must export the post-checkpoint query-checkpoint creation log")
-			Expect(scheduleDeletionExported).To(BeTrue(),
-				"the manifest must export the post-checkpoint schedule deletion log")
 		})
 
-		It("should write more data and take a SECOND incremental backup", func() {
-			// A second incremental round: data written here lives only in the
-			// export segments appended by THIS run, on top of the segments the
-			// first incremental already published. A restore must apply the full
-			// checkpoint + BOTH incrementals to see it — the full + multiple
-			// incrementals chain EN-888 requires.
+		It("should write more data and take a third checkpoint", func() {
+			// This mutation must be included in the latest published checkpoint.
 			exportsBefore, err := readS3Manifest(ctx, s3Client)
 			Expect(err).To(Succeed())
-			segCountBefore := len(exportsBefore.Exports)
+			logSequenceBefore := exportsBefore.Checkpoint.LastLogSequence
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "erin", big.NewInt(2500), "USD"),
-			}, map[string]string{"type": "second-incremental"}, nil)))
+			}, map[string]string{"type": "second-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
 
-			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
@@ -490,22 +453,23 @@ var _ = Describe("Restore", Ordered, func() {
 				}),
 			})
 			Expect(err).To(Succeed())
-			Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0),
-				"the second incremental must export its own post-checkpoint log entries")
+			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 
 			manifestAfter, err := readS3Manifest(ctx, s3Client)
 			Expect(err).To(Succeed())
-			Expect(len(manifestAfter.Exports)).To(BeNumerically(">", segCountBefore),
-				"the second incremental must accumulate additional export segments in the manifest")
+			Expect(manifestAfter.Exports).To(BeEmpty())
+			Expect(manifestAfter.Checkpoint.LastLogSequence).To(BeNumerically(">", logSequenceBefore))
 		})
 
-		It("should be a no-op incremental when nothing changed since the last one", func() {
+		It("should reuse unchanged checkpoint objects on a repeated backup", func() {
 			// Not a concurrency test — the FSM per-destination mutual exclusion
 			// (EN-1055) is covered deterministically by the unit/state tests
 			// (internal/infra/state/backup_jobs_test.go). This documents the
-			// sequential idempotency of a repeated incremental: with no new
-			// data, it exports nothing and does not disturb the manifest.
-			req := &clusterpb.IncrementalBackupRequest{
+			// Backup admission itself writes job state, so the checkpoint may
+			// change. At least one unchanged checkpoint file should retain its key.
+			before, err := readS3Manifest(ctx, s3Client)
+			Expect(err).To(Succeed())
+			req := &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
@@ -513,10 +477,23 @@ var _ = Describe("Restore", Ordered, func() {
 				}),
 			}
 
-			resp, err := clusterClient.IncrementalBackup(ctx, req)
+			resp, err := clusterClient.Backup(ctx, req)
 			Expect(err).To(Succeed())
-			Expect(resp.GetLogEntriesExported()).To(BeZero(),
-				"a no-op incremental after the second round must export nothing")
+			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0),
+				"a repeated checkpoint still publishes a complete file inventory")
+			Expect(resp.GetFilesUploaded()).To(BeNumerically("<", resp.GetTotalFiles()),
+				"unchanged checkpoint objects should be reused")
+			after, err := readS3Manifest(ctx, s3Client)
+			Expect(err).To(Succeed())
+			Expect(after.Exports).To(BeEmpty())
+			reusedFile := false
+			for name, previous := range before.Checkpoint.Files {
+				if current, ok := after.Checkpoint.Files[name]; ok && current.Key == previous.Key {
+					reusedFile = true
+					break
+				}
+			}
+			Expect(reusedFile).To(BeTrue(), "an unchanged file should reuse its content-addressed object")
 		})
 	})
 
@@ -753,10 +730,8 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should preserve the metadata schema declared after the checkpoint", func() {
-			// The field types were declared post-checkpoint, so they exist only in
-			// the incremental exports and must be reconstructed by the RebuildDelta
-			// replay. RebuildDelta currently rebuilds only volumes/metadata/tx state
-			// and drops the schema, so this fails on a restored node.
+			// Field types declared after the first checkpoint must survive in
+			// the latest checkpoint and remain usable after restore.
 			resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
 
@@ -773,26 +748,24 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(treasuryResp.FindVolume("EUR", "").GetInput().DecimalString()).To(Equal("50000"))
 		})
 
-		It("should have post-checkpoint data restored from export segments", func() {
-			// dave was funded after the full checkpoint, so this balance can
-			// only be present if the restore applied the incremental exports.
+		It("should have data from the second checkpoint", func() {
+			// Dave was funded after the first checkpoint and before the second.
 			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
 			Expect(err).To(Succeed())
 			Expect(daveResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1500"),
-				"transaction written after the checkpoint must be restored from export segments")
+				"transaction written before the second checkpoint must be restored")
 		})
 
-		It("should have data from the SECOND incremental restored", func() {
-			// erin was funded in the second incremental round, so this balance
-			// is present only if the restore applied the FULL checkpoint plus
-			// BOTH incrementals — the full + multiple incrementals chain.
+		It("should have data from the third checkpoint", func() {
+			// Erin was funded after the second checkpoint. The latest manifest
+			// must point at a checkpoint containing her transaction.
 			erinResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "erin"})
 			Expect(err).To(Succeed())
 			Expect(erinResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("2500"),
-				"transaction written in the second incremental must be restored from the full + multi-incremental chain")
+				"transaction written before the third checkpoint must be restored")
 		})
 
-		It("should rebuild the post-checkpoint query checkpoint and pass CheckStore", func() {
+		It("should preserve the query checkpoint and pass CheckStore", func() {
 			info, err := clusterClient.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
 				CheckpointId: deltaCheckpointID,
 			})
@@ -802,7 +775,7 @@ var _ = Describe("Restore", Ordered, func() {
 				"the restored logical projection must match the live source row")
 			// The source checkpoint's physical files are deliberately absent from
 			// a cross-cluster backup. A fresh checkpoint on the restored cluster
-			// freezes its rebuilt audit index for the source-history comparison.
+			// freezes its restored audit index for the source-history comparison.
 			restoredCheckpointID, _, err := actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
 			var unfilteredCheckpoint []*auditpb.AuditEntry
@@ -844,21 +817,21 @@ var _ = Describe("Restore", Ordered, func() {
 				}
 			}
 			Expect(deltaEntry).NotTo(BeNil(),
-				"the post-checkpoint audit entry must survive the non-empty incremental delta")
+				"the later audit entry must survive in the latest checkpoint")
 			Expect(deltaEntry.GetCallerSnapshot().GetAuthDisabled()).NotTo(BeNil(),
 				"restore must preserve the explicit authentication-disabled principal")
 
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty(),
-				"CheckStore must validate the rebuilt applied_index against the exported audit chain")
+				"CheckStore must validate the restored applied_index against the audit chain")
 		})
 
 		It("should keep the deleted checkpoint schedule disabled", func() {
 			resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetCron()).To(BeEmpty(),
-				"the restored schedule must reflect the deletion in the incremental delta")
+				"the latest checkpoint must include the deleted schedule")
 
 			checkpoints, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 			Expect(err).To(Succeed())
@@ -873,11 +846,10 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should account for a post-checkpoint balance on the apply path after restore", func() {
-			// The GetAccount above reads 0xF1, which the incremental restore
-			// rebuilt correctly. The apply path instead reads balances from the
+			// The GetAccount above reads 0xF1 from the restored checkpoint.
+			// The apply path instead reads balances from the
 			// in-memory cache only (no Pebble reads on the hot path), warmed via
-			// a bloom-gated preload. The restore rebuilds 0xF1 but not the
-			// cache/bloom zones, so a post-checkpoint-only account can be
+			// a bloom-gated preload. A post-first-checkpoint account can be
 			// bloom-false-negatived and seen as {0,0} by apply. Funding dave
 			// again and reading back exposes it: a cache-aware apply yields
 			// 1500+500=2000; a cache-blind apply overwrites 0xF1 with 500.
@@ -894,9 +866,8 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should apply against a PRE-checkpoint account's post-checkpoint balance after restore", func() {
 			// eve was funded before the checkpoint (input=1000) and drained after
-			// it (output=1000, balance 0). The drain lives only in the delta, so
-			// eve's 0xFF cache entry is checkpoint-era (input=1000, output=0) while
-			// 0xF1 is rebuilt fresh. The apply path reads the cache: a cache-blind
+			// it (output=1000, balance 0). The latest checkpoint must contain
+			// the drained balance. The apply path reads the cache: a cache-blind
 			// restore adds to the stale (1000,0) and writes it back to 0xF1,
 			// clobbering the drain; a cache-aware restore refreshes 0xFF so apply
 			// sees (1000,1000). GetAccount below reads 0xF1 and exposes the clobber.
@@ -941,7 +912,7 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(HaveOccurred(), "under strict enforcement, an account matching no declared type must be rejected")
 		})
 
-		It("should have the delta ledger's data restored from export segments", func() {
+		It("should have the later ledger's data restored from the checkpoint", func() {
 			founderResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "founder"})
 			Expect(err).To(Succeed())
 			Expect(founderResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("9000"))
@@ -949,8 +920,8 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should reconstruct ledger stats for a ledger created after the checkpoint", func() {
 			// deltaLedger was created and funded (1 tx, 1 posting world->founder)
-			// entirely in the delta. RebuildDelta must rebuild its boundary
-			// counters from the exports, not leave them at zero.
+			// after the first checkpoint. The latest checkpoint must carry its
+			// boundary counters, not leave them at zero.
 			stats, err := actions.GetLedgerStats(ctx, client, deltaLedger)
 			Expect(err).To(Succeed())
 			Expect(stats.GetTransactionCount()).To(Equal(uint64(1)))
@@ -961,9 +932,9 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(stats.GetReferenceCount()).To(Equal(uint64(1)), "the funding tx carried a reference")
 		})
 
-		It("should enforce reference idempotency reconstructed from the delta", func() {
-			// The delta funding tx carried deltaRef. RebuildDelta must rebuild
-			// the reference index into the 0xF1 attribute zone, or reusing the
+		It("should enforce reference idempotency from the checkpoint", func() {
+			// The later funding tx carried deltaRef. The checkpoint must contain
+			// the reference index in the 0xF1 attribute zone, or reusing the
 			// reference is wrongly accepted after restore.
 			dup := actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
 				actions.NewPosting("founder", "someone", big.NewInt(1), "USD"),
@@ -977,11 +948,11 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should accept transactions on a ledger created after the checkpoint", func() {
 			// deltaLedger was created after the full checkpoint, so its
-			// LedgerInfo and LedgerBoundaries live only in the incremental
-			// exports. Queries (ListLedgers, GetAccount) read the global/volume
+			// LedgerInfo and LedgerBoundaries must be in the latest checkpoint.
+			// Queries (ListLedgers, GetAccount) read the global/volume
 			// zones and see it, but the apply path preloads the ledger and its
-			// boundaries from the 0xF1 attribute zone: RebuildDelta must rebuild
-			// both there, or loadLedger/loadBoundaries return ErrLedgerNotFound
+			// boundaries from the 0xF1 attribute zone: both must be captured
+			// there, or loadLedger/loadBoundaries return ErrLedgerNotFound
 			// and this write fails.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
 				actions.NewPosting("founder", "employee", big.NewInt(1200), "USD"),

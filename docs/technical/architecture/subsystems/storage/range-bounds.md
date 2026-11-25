@@ -12,7 +12,7 @@ Keys under `[zone][sub]` carry an eight-byte big-endian sequence:
 
 The store used to bound those scans with `dal.MaxUint64Bytes`, an eight-byte `0xFF` run appended to the prefix. That value is byte-identical to the key of the row whose sequence is `math.MaxUint64`, so an exclusive bound built from it excluded **exactly that row** — silently, with no error and no short read.
 
-Every sequence-keyed reader inherited the hole: `dal.ReadLastEntry` (and through it `query.ReadLastSequence` / `ReadLastAuditEntry` / `ReadLastAppliedProposal`, so recovery, restore, the index builder and query alignment), `query.ReadLogsSince` / `ReadLogsSinceRaw` (event emission, index building, restore replay), `query.ReadAuditEntries`, `query.ReadAppliedProposals`, and the checker's own log scan. A `Log` row planted at the top of the key space was invisible to the one pass built to see planted rows.
+Every sequence-keyed reader inherited the hole: `dal.ReadLastEntry` (and through it `query.ReadLastSequence` / `ReadLastAuditEntry` / `ReadLastAppliedProposal`, so recovery, the index builder and query alignment), `query.ReadLogsSince` / `ReadLogsSinceRaw` (event emission and index building), `query.ReadAuditEntries`, `query.ReadAppliedProposals`, and the checker's own log scan. A `Log` row planted at the top of the key space was invisible to the one pass built to see planted rows.
 
 A second shape of the same wrap: a bound built as `PutUint64(seq + 1)` overflows to `[zone][sub][0x00 x8]`, which sorts **below** the lower bound. Pebble reads the inverted range as empty, so the scan returns nothing rather than failing.
 
@@ -41,7 +41,6 @@ Where a bound or a counter is derived by adding one to a stored sequence, `math.
 | Site | Handling |
 |------|----------|
 | `query.ReadAuditItems` | Falls back to the prefix successor; a wrapped bound would report the entry as carrying no items, a shape no writer produces. |
-| `backup.exportEntries` | Falls back to the prefix successor; a wrapped bound would export an empty segment and lose the rows the delta must carry (invariant #11). |
 | `query.readAuditPageFromZone` | Already branched on `hi == ^uint64(0)`; that branch now uses the prefix successor instead of the `0xFF` run it reached for. |
 | `state.LoadFSMStateFromStore` | **Refuses to boot.** `lastSeq + 1` would wrap to 0 and the FSM would start allocating at a sequence the checker reports as impossible, on top of whatever row is there. Same for the audit head, which would rewrite the chain from its beginning. |
 
@@ -49,11 +48,13 @@ Where a bound or a counter is derived by adding one to a stored sequence, `math.
 
 The FSM cannot allocate `math.MaxUint64`. `FSMState.NextSequenceID` and `NextAuditSequenceID` are seeded at 1 and advanced by a plain `+1` (`internal/infra/state/write_set.go`, `internal/infra/state/fsmstate.go`), so reaching the top of the space would take 2^64 committed proposals.
 
-It is reachable through a **restore stream or storage corruption**. `backup.validateExportKey` checks the key prefix, the key length, and that the decoded sequence lies inside the segment range declared by the manifest — bounds that come from the manifest itself. A segment declaring `StartSeq = EndSeq = math.MaxUint64` and carrying the matching key passes every check and is written raw into the main store.
+It is reachable through storage corruption or a tampered checkpoint. The
+checkpoint restore path copies Pebble files and validates their object hashes;
+it does not replay individual exported rows.
 
 That is the threat model these bounds serve: not a live cluster mis-serving data, but a corrupted or hostile store that the checker must be able to see and that recovery must refuse to build on.
 
 ## Related
 
 - [Checker](../checker/checker.md) — the stored log bounds pass, which reports a row at either end of the audited interval.
-- [Incremental restore contract](../backup/incremental-restore-contract.md) — why an empty export segment is a correctness failure.
+- [Checkpoint restore contract](../backup/incremental-restore-contract.md) — which persisted effects must survive a backup.

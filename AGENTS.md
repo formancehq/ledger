@@ -17,15 +17,18 @@ current StatefulSet image tag with the requested Cluster image tag. RC upgrades
 are rolling unless the embedded operator lists a mandatory stopped-upgrade
 boundary. Such a boundary must preserve committed data and prove non-empty
 replay. Old and new voters must apply entries identically whenever they coexist.
-The RC.3 to RC.4 proposal payload cutover is a mandatory stopped boundary:
-the operator must stop every RC.3 voter before starting an RC.4 voter.
-The RC.4 to RC.5 upgrade is another mandatory stopped boundary: the peer-service
-port and control-state migrations (schema 3 and native configuration/capability
-controls) cannot coexist with RC.4. RC.5 also retypes `AggregatedVolume` totals
-as a wire exception at the unchanged service protocol revision.
+The operator's `mandatoryStopVersions` lists those boundaries; the
+[upgrade guide](docs/ops/upgrades.md#release-requirement-from-v300-rc1) gives
+each one's reason and procedure.
 
 - Classify persisted, Raft, snapshot, backup, and audit changes against the RC
   baseline. Include a tested migration or prove existing data remains valid.
+- The checkpoint-only backup change in PR #2600 is a maintainer-approved,
+  narrow exception for previously published RC incremental backup artifacts.
+  The target restore paths reject manifests with exports or a policy sidecar.
+  This does not permit loss of live persisted Ledger, Raft, or audit state
+  during an upgrade; see the explicit recovery window and risk in
+  `docs/ops/backup-restore.md`.
 - Compatibility with beta or development revisions before `v3.0.0-rc.1` is
   not required.
 - Preserve published gRPC services, methods, request and response types, field
@@ -91,7 +94,7 @@ These are guardrails, not complete explanations. Before changing the affected su
 8. **Audit is business truth:** the audit chain is authoritative. New persisted primary-store projections must be checker-verified or have an explicitly documented valid exemption.
 9. **Never bypass the coverage gate:** use the scoped/gated cache APIs in order/TU handlers; never read the parent registry/key store directly from the FSM path.
 10. **Accepted orders are immutable until audit capture:** do not mutate business payloads, including indirectly through aliased maps/slices/messages. Only the explicitly technical order fields are outside business-intent hashing.
-11. **Incremental restore parity:** every committed effect intended to survive a cross-cluster restore must be preserved by the checkpoint or reconstructed from the exported delta. Changes to persisted state, audited orders, or deletion cascades must classify their restore behavior and prove it with a non-empty post-checkpoint delta. See [the incremental restore contract](docs/technical/architecture/subsystems/backup/incremental-restore-contract.md).
+11. **Checkpoint restore parity:** every committed effect before the backup capture point that must survive cross-cluster restore must be present in the flushed Pebble checkpoint. Changes to persisted state, audited orders, or deletion cascades must prove parity with a second checkpoint taken after a meaningful mutation. See [the checkpoint restore contract](docs/technical/architecture/subsystems/backup/incremental-restore-contract.md).
 
 Required reading for FSM/cache/preload work:
 - `docs/technical/architecture/subsystems/fsm/`
@@ -100,7 +103,7 @@ Required reading for FSM/cache/preload work:
 Required reading for persisted projections/checker work:
 - `docs/technical/architecture/subsystems/checker/`
 - `docs/technical/architecture/audit-vs-technical-state.md`
-- `docs/technical/architecture/subsystems/backup/incremental-restore-contract.md` when the projection changes during audited apply or another lifecycle path covered by incremental backup
+- `docs/technical/architecture/subsystems/backup/incremental-restore-contract.md` when the projection changes during audited apply or another lifecycle path covered by checkpoint backup
 
 The pre-refactor, fully expanded instruction set is retained temporarily at `docs/technical/agent-reference-legacy.md` for migration safety. It is **reference material, not automatically loaded context**. If a rule in this file or current subsystem documentation conflicts with that legacy snapshot, the current file/subsystem documentation wins.
 

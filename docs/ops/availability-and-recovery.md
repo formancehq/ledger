@@ -95,8 +95,8 @@ recover the existing cluster safely.
 ## Disaster-Recovery Baseline
 
 1. Define RPO and RTO from customer requirements.
-2. Run full backups periodically and incremental backups at least as often as
-   the required RPO. Store them outside the cluster and region failure domain.
+2. Run checkpoint backups at least as often as the required RPO. Store them
+   outside the cluster and region failure domain.
 3. Retain the credentials, encryption/signing material, and compatible Ledger
    binary required by the restore procedure.
 4. Exercise `restore validate`, a full bootstrap of production-sized data, and

@@ -299,7 +299,7 @@ func TestTLSDisableBackupRetainsLiveCertificates(t *testing.T) {
 	require.NoError(t, c.Update(context.Background(), cluster))
 	sts := tlsReconcile(t, c, client.ObjectKeyFromObject(cluster))
 	requireTLSCertificates(t, sts, tlsModeOptional)
-	run := &ledgerv1alpha1.BackupRun{ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: cluster.Namespace, UID: "run-uid"}, Spec: ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull}}
+	run := &ledgerv1alpha1.BackupRun{ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: cluster.Namespace, UID: "run-uid"}, Spec: ledgerv1alpha1.BackupRunSpec{}}
 	backup := &ledgerv1alpha1.Backup{Spec: ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3", S3: &ledgerv1alpha1.S3Config{Bucket: "backups", Region: "eu-west-1"}}}}
 	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
 	job, err := r.ensureBackupJob(context.Background(), run, backup, cluster)

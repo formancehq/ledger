@@ -95,15 +95,13 @@ wire decoding and pool release, not FSM processing.
 ## Persistence, restore, and rollback
 
 The migration reads both formats and writes the new format after the full stop.
-Existing WAL, snapshots, and backups need no rewrite or backfill. Released field
-numbers and historical audit bytes remain intact. Full checkpoints include the
-policy row. Incremental manifests carry an optional `clusterPolicy` snapshot
-with the deterministic protobuf bytes and source applied index, taken from the
-same read snapshot as the history exports. This also captures policy-only
-changes. Restore folds released history first, then applies this operational
-snapshot to the staging store. Older manifests continue to restore their
-checkpoint and historical policy logs. See the
-[incremental restore contract](../backup/incremental-restore-contract.md#operational-cluster-policy).
+Existing WAL and snapshots need no rewrite or backfill. Released field numbers
+and historical audit bytes remain intact. Complete checkpoints include the
+policy row, including policy-only changes made since the preceding backup.
+Restore reads that row with the rest of the checkpoint. Old manifests with a
+separate `clusterPolicy` snapshot are rejected; take a new checkpoint backup
+before restore. See the
+[checkpoint restore contract](../backup/incremental-restore-contract.md#operational-cluster-policy).
 
 Do not restart RC.3 on volumes used by the target binary. The first payload
 entry appended to the WAL closes the rollback window, including a technical
@@ -118,7 +116,7 @@ new operational policy changes no longer appear in business audit listings.
 Unit tests cover payload immutability, historical audit integrity and native policy audit omission,
 coverage targets, actual payload serialization on failed-then-successful retries,
 old/new outcome and recovery parity, technical-only HLC behavior, mirror rollback,
-checkpoint boundaries, and incremental restore.
+checkpoint boundaries, and checkpoint restore.
 
 The three-node e2e test intercepts Raft log replication, requires batch and
 policy payloads without legacy fields, transfers leadership, restarts nodes,

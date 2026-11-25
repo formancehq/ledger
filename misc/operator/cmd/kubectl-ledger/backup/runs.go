@@ -60,7 +60,7 @@ func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 }
 
 func renderRunsTable(runs *ledgerv1alpha1.BackupRunList) error {
-	header := []string{"NAME", "TYPE", "PHASE", "STARTED", "DURATION", "AGE"}
+	header := []string{"NAME", "PHASE", "STARTED", "DURATION", "AGE"}
 
 	rows := make([][]string, 0, len(runs.Items))
 	for i := range runs.Items {
@@ -78,7 +78,6 @@ func renderRunsTable(runs *ledgerv1alpha1.BackupRunList) error {
 
 		rows = append(rows, []string{
 			pterm.Cyan(r.Name),
-			string(r.Spec.Type),
 			runPhaseColor(string(r.Status.Phase)),
 			started,
 			duration,

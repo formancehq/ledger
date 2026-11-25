@@ -12,15 +12,6 @@
           "rule": "self == oldSelf"
         }
       ]
-    },
-    "type": {
-      "default": "Full",
-      "description": "Type is the backup type. Defaults to Full.",
-      "enum": [
-        "Full",
-        "Incremental"
-      ],
-      "type": "string"
     }
   },
   "required": [

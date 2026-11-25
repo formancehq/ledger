@@ -7060,6 +7060,7 @@ components:
             / internal reasons) are rejected at admission. Accepted
             reasons per action on this REST endpoint:
               - `CREATE_TRANSACTION` → `TRANSACTION_REFERENCE_CONFLICT`
+              - `EXECUTE_NUMSCRIPT` → `TRANSACTION_REFERENCE_CONFLICT`
               - `REVERT_TRANSACTION` → `TRANSACTION_ALREADY_REVERTED`
               - `DELETE_METADATA`    → `METADATA_NOT_FOUND`
             The FSM also supports skipping `ADD_ACCOUNT_TYPE`
@@ -7255,7 +7256,7 @@ components:
                 `skippableReasons` and the FSM matched one): an
                 `OrderSkippedResponse` with `skipped: true`, `reason`, and
                 reason-specific `context`. Emitted for every REST-supported
-                skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
+                skippable action — CREATE_TRANSACTION, EXECUTE_NUMSCRIPT, REVERT_TRANSACTION,
                 DELETE_METADATA — not just create.
               - Other successful actions: `data` is omitted.
             Branch on `OrderSkippedResponse.skipped` to distinguish a skip

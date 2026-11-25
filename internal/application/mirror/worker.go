@@ -444,7 +444,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		// Fully caught up: the ingest path (which normally bundles the source
 		// head and the error clear into its data proposal) never runs, so
 		// publish them on their own. Without this a correctly restored, idle
-		// mirror reports SYNCING forever because RebuildDelta reconstructs
+		// mirror reports SYNCING forever if the restored checkpoint contains
 		// last_mirror_v2_log_id but not SubPLMirrorSourceHead, and a source
 		// that recovers without producing a new log never gets its persisted
 		// error cleared (EN-1773).

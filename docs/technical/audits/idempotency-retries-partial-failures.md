@@ -20,6 +20,20 @@ the branch is reached. Evidence must distinguish those cases and show that a
 same-key retry after repair can establish one definitive outcome, while a
 same-key retry of an earlier committed outcome does not execute it again.
 
+## Forwarded preload gaps inside a keyed batch
+
+Admission forwards a keyed order whose dependency discovery failed, marked
+`OrderTechnical.preload_unavailable`, so the FSM dedup gate can replay a frozen
+outcome. Without one, the batch executes in sequence and the forwarded order
+fails at its own position with the uncommitted `PRELOAD_UNAVAILABLE`. An earlier
+order's definitive rejection (`INSUFFICIENT_FUNDS`, `VOLUME_OVERFLOW`, ...) is
+therefore audited and frozen under the key and replays on retry. Admission's
+overlay folds earlier effects without checking funds, so this ordering is what
+keeps a retry-forever client from looping on a gap that masks a real verdict.
+Evidence must show both directions: the earlier rejection wins and replays, and
+a gap after successful orders discards their effects, leaves no audit or
+idempotency row and lets a re-admitted retry under the same key execute.
+
 ## Prepared-query ID target changes (EN-2601)
 
 New prepared-query updates carry their target explicitly. A retry of the same
@@ -69,7 +83,7 @@ Initial metadata shares the CreateLedger operation identity and proposal atomici
 
 After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Technical-update submission boundary
 

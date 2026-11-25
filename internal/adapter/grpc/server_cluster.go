@@ -768,19 +768,21 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 		return nil, err
 	}
 
-	result, err := impl.backupOrchestra.RunIncremental(ctx, dst, storage)
+	// Preserve the published RPC while making every new backup a checkpoint.
+	// The old response has no file counters; its export counters remain zero.
+	result, err := impl.backupOrchestra.RunFull(ctx, dst, storage)
 	if err != nil {
 		if errors.Is(err, state.ErrBackupInProgress) {
-			return nil, fmt.Errorf("incremental backup already in progress for this destination: %w", err)
+			return nil, fmt.Errorf("backup already in progress for this destination: %w", err)
 		}
 
-		return nil, fmt.Errorf("incremental backup failed: %w", err)
+		return nil, fmt.Errorf("backup failed: %w", err)
 	}
 
 	return &clusterpb.IncrementalBackupResponse{
-		LogEntriesExported:   result.LogEntriesExported,
-		AuditEntriesExported: result.AuditEntriesExported,
-		SegmentsUploaded:     uint32(result.SegmentsUploaded),
+		LogEntriesExported:   0,
+		AuditEntriesExported: 0,
+		SegmentsUploaded:     0,
 		OrphansDeleted:       uint32(result.OrphansDeleted),
 		DurationMs:           result.Duration.Milliseconds(),
 		LastLogSequence:      result.LastLogSequence,
