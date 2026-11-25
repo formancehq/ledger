@@ -11,7 +11,7 @@ The replication and ordering layer (`internal/infra/node`, `internal/infra/trans
 | [global-log.md](global-log.md) | Two-level log architecture enabling system-level atomic bulk operations. |
 | [log-integrity.md](log-integrity.md) | Continuous cross-replica comparison of persisted global log results at a shared durable Raft horizon. |
 | [hybrid-logical-clock.md](hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew. |
-| [removed-member-registry.md](removed-member-registry.md) | Universal member-identity invariant, committed-only peer routing, and replicated `(nodeID, instanceID)` set that prevents a removed member from silently rejoining and being auto-promoted; replay-safe per-event admission barriers, lookup costs, removal write ordering and durable restart states. |
+| [removed-member-registry.md](removed-member-registry.md) | Universal member-identity invariant, committed-only peer routing, and replicated `(nodeID, instanceID)` set that prevents a removed member from silently rejoining and being auto-promoted; replay-safe per-event admission barriers, force-removal recovery marker, lookup costs, removal write ordering and durable restart states. |
 | [controlled-shutdown.md](controlled-shutdown.md) | Raft-ordered admission cutoff, local persistence confirmation, restart behavior, rolling-upgrade capability gate, and operator completion contract. |
 | [capabilities.md](capabilities.md) | Stable capability declarations, single-commit automatic activation and creation fence, persisted policy, membership evidence, and mixed-version rollout boundaries. |
 

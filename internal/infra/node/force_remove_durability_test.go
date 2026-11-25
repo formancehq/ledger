@@ -21,6 +21,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
@@ -130,6 +131,8 @@ type forceRemoveHarness struct {
 	durableWAL      wal.WAL
 	injectedWAL     *forceRemoveWAL
 	membership      *membership.Membership
+	membershipStore *dal.Store
+	membershipPath  string
 	walDir          string
 	baselineCommit  uint64
 	stagedIndex     uint64
@@ -225,7 +228,7 @@ func newForceRemoveHarness(
 			"two acknowledgements are not a quorum of four")
 	}
 
-	m := newTestMembership(t, peerTransports...)
+	m, membershipStore, membershipPath := newTestMembershipWithStore(t, peerTransports...)
 	for _, id := range voters {
 		require.NoError(t, m.Register(
 			id,
@@ -253,7 +256,7 @@ func newForceRemoveHarness(
 		wal:              injectedWAL,
 		fsm:              setup.fsm,
 		transport:        newForceRemoveTransport(t),
-		config:           NodeConfig{NodeID: 1, TickInterval: time.Hour},
+		config:           NodeConfig{NodeID: 1, WalDir: setup.walDir, TickInterval: time.Hour},
 		proposeCh:        make(chan *Proposal, 16),
 		clusterCommandCh: make(chan *clusterCommand, 16),
 		readyTerminated:  make(chan readyResult),
@@ -271,6 +274,8 @@ func newForceRemoveHarness(
 		durableWAL:      setup.wal,
 		injectedWAL:     injectedWAL,
 		membership:      m,
+		membershipStore: membershipStore,
+		membershipPath:  membershipPath,
 		walDir:          setup.walDir,
 		baselineCommit:  baselineCommit,
 		stagedIndex:     stagedIndex,
@@ -408,6 +413,63 @@ func (h *forceRemoveHarness) restartedState(t *testing.T) (*raftpb.HardState, ma
 
 func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 	t.Parallel()
+
+	t.Run("tombstone batch failure stops admission after ConfState persistence", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false)
+			injected := errors.New("injected tombstone batch failure")
+			h.n.forceRemovePeerCleanup = func(uint64, []byte, uint64) error { return injected }
+
+			err := h.n.ForceRemoveNode(context.Background(), 3)
+			require.ErrorIs(t, err, injected)
+			require.ErrorContains(t, err, "force-remove atomic batch")
+			require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
+			_, voters := walState(t, h.durableWAL)
+			require.Equal(t, []uint64{1, 2}, voters)
+			require.Contains(t, h.membership.PeerAddresses(), uint64(3),
+				"the failed batch must leave the identity available for startup repair")
+			require.ErrorContains(t, h.waitForTerminal(t), "force-remove atomic batch")
+			require.ErrorIs(t, h.n.ForceRemoveNode(context.Background(), 3), err)
+			require.ErrorIs(t, h.n.JoinAsLearner(context.Background(), 3,
+				"node-3:7000", "node-3:8000", []byte("0000000000000003"), nil), err)
+			marker, markerErr := readForceRemoveMarker(h.walDir)
+			require.NoError(t, markerErr)
+			require.NotNil(t, marker)
+			require.Equal(t, uint64(3), marker.nodeID)
+			require.Equal(t, []byte("0000000000000003"), marker.instanceID)
+
+			_, restartedVoters := h.restartedState(t)
+			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}}, restartedVoters)
+			require.NoError(t, h.membershipStore.Close())
+			store, openErr := dal.NewStore(h.membershipPath, logging.Testing(),
+				noop.NewMeterProvider().Meter("force-remove-restart"), dal.DefaultConfig())
+			require.NoError(t, openErr)
+			t.Cleanup(func() { require.NoError(t, store.Close()) })
+			restarted, openErr := membership.NewMembership(
+				membership.NewPeerStore(store), noopMemTransport{}, noopMemPool{},
+				42, "self:7777", "self:8888", []byte("self-instance-id"),
+				logging.Testing(), membership.NoopClusterPolicyProvider,
+			)
+			require.NoError(t, openErr)
+			require.NoError(t, recoverForceRemoveMarker(h.walDir,
+				&raftpb.ConfState{Voters: []uint64{1, 2}}, restarted))
+			require.NoError(t, restarted.ReconcileAgainstConfState(
+				&raftpb.ConfState{Voters: []uint64{1, 2}}))
+			require.NotContains(t, restarted.PeerAddresses(), uint64(3))
+			removed, lookupErr := restarted.IsRemoved(3, []byte("0000000000000003"))
+			require.NoError(t, lookupErr)
+			require.True(t, removed)
+			fresh, lookupErr := restarted.IsRemoved(3, []byte("different-id-000"))
+			require.NoError(t, lookupErr)
+			require.False(t, fresh)
+			marker, markerErr = readForceRemoveMarker(h.walDir)
+			require.NoError(t, markerErr)
+			require.Nil(t, marker)
+			require.NoError(t, recoverForceRemoveMarker(h.walDir,
+				&raftpb.ConfState{Voters: []uint64{1, 2}}, restarted))
+		})
+	})
 
 	t.Run("validation failure happens before live mutation", func(t *testing.T) {
 		t.Parallel()

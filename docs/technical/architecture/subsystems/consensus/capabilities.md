@@ -5,6 +5,14 @@ features deployed with a coordinated stop-and-restart. It is separate from the
 client-facing gRPC protocol revision. This release does not implement a
 mixed-version rolling activation path.
 
+The force-removal recovery marker is local WAL-directory state, not a Raft
+proposal or replicated schema. It selects startup repair for an identity whose
+force removal persisted in ConfState but whose Pebble tombstone batch failed.
+It changes no FSM apply result, wire payload, or capability declaration, so it
+is backward-compatible with existing Raft entries and needs no capability ID.
+An older binary does not perform this repair; operators must upgrade the node
+before restarting it after a failed force-removal batch.
+
 ## Wire contract
 
 `common.ClusterPolicy` carries the replicated activation state.

@@ -929,6 +929,9 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 
 		got := m.PeerAddresses()
 		require.NotContains(t, got, uint64(99), "peer not in ConfState must be dropped")
+		removed, err := m.IsRemoved(99, fixedInstanceID(99))
+		require.NoError(t, err)
+		require.False(t, removed, "unmarked stale rows may be later committed adds")
 		require.Contains(t, got, uint64(1))
 		require.Contains(t, got, uint64(2))
 		require.Contains(t, got, uint64(3), "learner must be kept")

@@ -38,6 +38,7 @@ func TestForceRemoveNodeDurabilityFailureStopsRun(t *testing.T) {
 		n, err := NewNode(
 			NodeConfig{
 				NodeID:                 1,
+				WalDir:                 setup.walDir,
 				AdvertiseAddr:          "node-1:7000",
 				ServiceAdvertiseAddr:   "node-1:8000",
 				InstanceID:             []byte("0000000000000001"),
