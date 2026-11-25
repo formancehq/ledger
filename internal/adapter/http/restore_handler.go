@@ -35,12 +35,13 @@ type restoreServer struct {
 
 // NewRestoreHandler serves the restore-mode HTTP API. Like the restore gRPC
 // service, it has no authentication; restore mode serves it only on a
-// loopback listen address.
+// loopback listen address, and restoreRequestGuard refuses browser requests.
 func NewRestoreHandler(logger logging.Logger, backend RestoreBackend) http.Handler {
 	r := newRestoreRouter(logger)
 	server := &restoreServer{backend: backend}
 
 	r.Route(APIVersionPrefix+"/_/restore", func(r chi.Router) {
+		r.Use(restoreRequestGuard)
 		r.Post("/downloads", knownQuery(server.handleStartRestoreDownload))
 		r.Get("/downloads/{jobId}", knownQuery(server.handleGetRestoreDownload))
 		r.Delete("/downloads/{jobId}", knownQuery(server.handleCancelRestoreDownload))

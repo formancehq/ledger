@@ -127,6 +127,8 @@ authentication, like the restore RPCs. They are served only when
 `--restore-listen` is a loopback address, because the HTTP listener has no TLS
 and a download request carries storage credentials. A non-loopback restore
 listener serves only `/health` over HTTP; use the gRPC service with TLS there.
+The restore routes also refuse browser requests (non-loopback `Host`, `Origin`,
+cross-site `Sec-Fetch-Site`) and require JSON on every POST.
 The download job belongs to the restore process, not to an HTTP request.
 
 The routes are additive: protobuf wire formats, persisted formats and service

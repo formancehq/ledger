@@ -140,6 +140,7 @@ func TestOpenAPI_ValidateRestoreStream(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
 	require.NoError(t, err)
 	r := httptest.NewRequest(http.MethodPost, "http://localhost:9000/v3/_/restore/validate", nil)
+	r.Header.Set("Content-Type", "application/json")
 	validateOpenAPIRequest(t, doc, r)
 
 	backend := NewMockRestoreBackend(gomock.NewController(t))

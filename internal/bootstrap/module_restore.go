@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"fmt"
-	"net"
 
 	"go.uber.org/fx"
 	"google.golang.org/grpc/health"
@@ -44,7 +43,7 @@ func RestoreModule() fx.Option {
 				// --restore-listen stays the only lever in a deployment.
 				host := cfg.EffectiveRestoreListen()
 
-				if !isLoopbackHost(host) {
+				if !httpcompat.IsLoopbackHost(host) {
 					logger.WithFields(map[string]any{"restoreListen": host}).
 						Errorf("WARNING: restore mode bound to a non-loopback address (%s). The restore RPCs are not authenticated; ensure TLS and upstream firewalling are in place.", host)
 				}
@@ -115,7 +114,7 @@ func RestoreModule() fx.Option {
 			// over plaintext HTTP, so a non-loopback bind serves /health only.
 			func(lc fx.Lifecycle, cfg Config, bindings network.Bindings, logger logging.Logger, shutdowner fx.Shutdowner, restoreServer *grpcadp.RestoreServiceServerImpl) {
 				handler := httpcompat.NewRestoreHealthHandler(logger)
-				if isLoopbackHost(cfg.EffectiveRestoreListen()) {
+				if httpcompat.IsLoopbackHost(cfg.EffectiveRestoreListen()) {
 					handler = httpcompat.NewRestoreHandler(logger, restoreServer)
 				} else {
 					logger.Infof("Restore HTTP API disabled on non-loopback address %s; use the gRPC RestoreService with TLS", cfg.EffectiveRestoreListen())
@@ -132,13 +131,4 @@ func RestoreModule() fx.Option {
 			},
 		),
 	)
-}
-
-func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-
-	return ip != nil && ip.IsLoopback()
 }

@@ -19,7 +19,7 @@ import (
 
 func serveRestore(t *testing.T, backend RestoreBackend, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := httptest.NewRequest(method, target, strings.NewReader(body))
+	r := httptest.NewRequest(method, "http://127.0.0.1:9000"+target, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	NewRestoreHandler(logging.Testing(), backend).ServeHTTP(w, r)

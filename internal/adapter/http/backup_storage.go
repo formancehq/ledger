@@ -34,6 +34,10 @@ func (b *backupStorageBody) toProto() (*commonpb.BackupStorage, error) {
 	case b == nil || (b.S3 == nil) == (b.Azure == nil):
 		return nil, errBackupStorageProvider
 	case b.S3 != nil:
+		if b.S3.Bucket == "" {
+			return nil, errors.New("storage.s3.bucket is required")
+		}
+
 		return &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_S3{S3: &commonpb.S3StorageConfig{
 			Bucket:          b.S3.Bucket,
 			Region:          b.S3.Region,
@@ -42,6 +46,10 @@ func (b *backupStorageBody) toProto() (*commonpb.BackupStorage, error) {
 			SecretAccessKey: b.S3.SecretAccessKey,
 		}}}, nil
 	default:
+		if b.Azure.AccountName == "" || b.Azure.Container == "" {
+			return nil, errors.New("storage.azure.accountName and storage.azure.container are required")
+		}
+
 		return &commonpb.BackupStorage{Provider: &commonpb.BackupStorage_Azure{Azure: &commonpb.AzureStorageConfig{
 			AccountName: b.Azure.AccountName,
 			AccountKey:  b.Azure.AccountKey,

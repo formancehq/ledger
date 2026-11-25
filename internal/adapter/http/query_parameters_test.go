@@ -100,8 +100,15 @@ func TestQueryParameters_MatchOpenAPI(t *testing.T) {
 		}
 		pathSpec := raw.(map[string]any)
 		handler := mainHandler
+		newProbe := func(method, target string) *http.Request { return httptest.NewRequest(method, target, nil) }
 		if strings.HasPrefix(path, APIVersionPrefix+"/_/restore/") {
 			handler = restoreHandler
+			newProbe = func(method, target string) *http.Request {
+				r := httptest.NewRequest(method, "http://127.0.0.1:9000"+target, nil)
+				r.Header.Set("Content-Type", "application/json")
+
+				return r
+			}
 		}
 		for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
 			opRaw, ok := pathSpec[strings.ToLower(method)]
@@ -114,7 +121,7 @@ func TestQueryParameters_MatchOpenAPI(t *testing.T) {
 			probePath := pathParam.ReplaceAllString(path, "probe")
 			t.Run(method+" "+path+" unknown", func(t *testing.T) {
 				w := httptest.NewRecorder()
-				handler.ServeHTTP(w, httptest.NewRequest(method, probePath+"?__unknown=1", nil))
+				handler.ServeHTTP(w, newProbe(method, probePath+"?__unknown=1"))
 				require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 				resp := decodeResponse[ErrorResponse](t, w)
 				require.Equal(t, "INVALID_REQUEST", resp.ErrorCode)
@@ -136,7 +143,7 @@ func TestQueryParameters_MatchOpenAPI(t *testing.T) {
 				t.Run(method+" "+path+" "+name, func(t *testing.T) {
 					w := httptest.NewRecorder()
 					target := probePath + "?" + url.QueryEscape(name) + "=test"
-					handler.ServeHTTP(w, httptest.NewRequest(method, target, nil))
+					handler.ServeHTTP(w, newProbe(method, target))
 					require.NotEqual(t, http.StatusNotFound, w.Code, w.Body.String())
 					require.NotContains(t, w.Body.String(), "unknown query parameter", w.Body.String())
 				})

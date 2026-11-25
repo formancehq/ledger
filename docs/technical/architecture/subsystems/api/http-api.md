@@ -1743,6 +1743,15 @@ listen host is a loopback address: the listener has no TLS, a download request
 carries storage credentials, and finalize is destructive. On another address,
 HTTP serves `/health` only and the server logs that the API is disabled.
 
+Loopback is still reachable from a browser on the same host, so the restore
+routes also refuse requests a web page can make. A `Host` that is not a
+loopback name or address (DNS rebinding), any `Origin` header, or a
+`Sec-Fetch-Site` other than `none` returns `403 PERMISSION_DENIED`. Every POST,
+including the body-less `validate` and `finalize`, requires
+`Content-Type: application/json` and otherwise returns `415`; a cross-origin
+JSON POST needs a CORS preflight, which this router never grants. `/health` is
+not guarded.
+
 | Method and path | RPC | Success |
 |---|---|---|
 | `POST /v3/_/restore/downloads` `{bucketId, storage}` | `StartDownloadBackup` | `202`, `Location`, `{data: {jobId}}` |
@@ -1752,7 +1761,9 @@ HTTP serves `/health` only and the server logs that the API is disabled.
 | `GET /v3/_/restore/preview` | `PreviewRestore` | `200`, staged summary |
 | `POST /v3/_/restore/finalize` | `FinalizeRestore` | `200`, `{data: {message}}` |
 
-The download body uses the backup `storage` shape. The job runs on the restore
+The download body uses the backup `storage` shape, and a provider missing a
+required field (`s3.bucket`, `azure.accountName`, `azure.container`) returns
+`400` on both routes. The job runs on the restore
 process lifetime, not the request: poll its status until
 `DOWNLOAD_STATE_SUCCEEDED`, `DOWNLOAD_STATE_FAILED` or `DOWNLOAD_STATE_CANCELED`.
 Cancelling a finished job succeeds without effect; an unknown job ID returns

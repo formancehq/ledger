@@ -33,6 +33,9 @@ func TestHandleStartRestoreDownload_InvalidInput(t *testing.T) {
 	for name, body := range map[string]string{
 		"empty body":      ``,
 		"missing storage": `{"bucketId":"prod"}`,
+		"s3 without bucket":      `{"storage":{"s3":{"region":"r"}}}`,
+		"azure without container": `{"storage":{"azure":{"accountName":"a"}}}`,
+		"azure without account":   `{"storage":{"azure":{"container":"c"}}}`,
 		"both providers":  `{"storage":{"s3":{"bucket":"b"},"azure":{"accountName":"a","container":"c"}}}`,
 		"unknown field":   `{"basePath":"x","storage":{"s3":{"bucket":"b"}}}`,
 	} {

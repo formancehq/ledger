@@ -3876,6 +3876,9 @@ paths:
 
         Restore routes are served without authentication on the restore-mode
         HTTP listener, and only when `--restore-listen` is a loopback address.
+        They refuse browser requests with 403: a non-loopback `Host`, any
+        `Origin`, or a `Sec-Fetch-Site` other than `none`. Every restore POST
+        requires `Content-Type: application/json`, else 415.
       operationId: v3StartRestoreDownload
       x-speakeasy-name-override: StartRestoreDownload
       tags:
@@ -3890,6 +3893,8 @@ paths:
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '202':
           description: Download started.
           headers:
@@ -3943,6 +3948,8 @@ paths:
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '200':
           description: Download status.
           content:
@@ -4021,6 +4028,8 @@ paths:
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '204':
           description: Cancellation requested. No response body.
         '404':
@@ -4050,6 +4059,8 @@ paths:
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '200':
           description: Validation events, one JSON object per line.
           content:
@@ -4077,6 +4088,8 @@ paths:
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '200':
           description: Staged backup summary.
           content:
@@ -4138,6 +4151,8 @@ paths:
       responses:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '200':
           description: Restore finalized.
           content:

@@ -288,6 +288,9 @@ leader re-checks the RPC policy.
 other `/v3/_/cluster` routes. Restore mode keeps the gRPC trust boundary: its
 HTTP routes have no authentication, like the restore RPCs. Because the HTTP
 listener has no TLS, `RestoreModule` mounts them only when `--restore-listen`
-is a loopback address; any other bind serves `/health` alone. A finding must
-show an unauthenticated restore route reachable off loopback, or a backup
-route reachable without its scope.
+is a loopback address; any other bind serves `/health` alone. A browser on the
+same host can still address loopback, so `restoreRequestGuard` refuses a
+non-loopback `Host`, any `Origin`, a `Sec-Fetch-Site` other than `none`, and a
+POST without `Content-Type: application/json`. A finding must show an
+unauthenticated restore route reachable off loopback or from a web page, or a
+backup route reachable without its scope.
