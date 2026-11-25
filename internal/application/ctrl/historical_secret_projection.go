@@ -33,8 +33,6 @@ func (c *historicalCursor[T]) Next() (T, error) {
 
 func (c *historicalCursor[T]) Close() error { return c.inner.Close() }
 
-func (c *historicalCursor[T]) HasMore() bool { return cursor.SourceHasMore(c.inner) }
-
 func projectHistoricalLog(log *commonpb.Log) (*commonpb.Log, error) {
 	if log == nil {
 		return nil, nil
