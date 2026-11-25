@@ -765,6 +765,9 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 		)
 
 		next := func() (analysis.CompactTransaction, error) {
+			if err := ctx.Err(); err != nil {
+				return analysis.CompactTransaction{}, err
+			}
 			if done {
 				return analysis.CompactTransaction{}, io.EOF
 			}
@@ -779,6 +782,9 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 			}
 
 			for {
+				if err := ctx.Err(); err != nil {
+					return analysis.CompactTransaction{}, err
+				}
 				log, err := cursor.Next()
 				if errors.Is(err, io.EOF) {
 					done = true
