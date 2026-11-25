@@ -850,7 +850,13 @@ func NewNode(
 		panic(err)
 	}
 
-	storeUpToDate, err := applier.RecoverAndReplay(context.Background())
+	// A learner with only its initial index-0 snapshot has no authoritative
+	// cluster state. Even when the leader retains its whole log, replaying it
+	// from this member's node-local cache threshold can derive a different
+	// cache epoch. Fetch the donor's checkpoint before applying entries.
+	forceJoinCheckpoint := snapshot.GetMetadata().GetIndex() == 0 &&
+		slices.Contains(initialConfState.GetLearners(), cfg.NodeID)
+	storeUpToDate, err := applier.recoverAndReplay(context.Background(), forceJoinCheckpoint)
 	if err != nil {
 		return nil, err
 	}

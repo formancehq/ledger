@@ -20,6 +20,23 @@ A Raft node can be in one of the following states:
 
 Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](../../../../ops/cluster-operations.md) for the complete bootstrap/join/promotion flow.
 
+A learner with only its initial index-0 WAL snapshot fetches a donor checkpoint
+before applying retained Raft entries. This also covers a restart before its
+first successful synchronization. If the checkpoint predates the first
+committed `ClusterConfig`, the learner stays out of sync and retries. A usable
+checkpoint supplies the persisted cache
+epoch; replaying the first `ClusterConfig` against a node-local startup threshold
+could otherwise produce a different epoch and reject later committed proposals.
+Established members continue local WAL replay. This changes no persisted or
+Raft format and needs no RC data migration. It adds a checkpoint transfer for
+each new learner even when the donor retains the full log. A failed transfer
+leaves the learner out of sync and is retried; it does not apply that log.
+The FSM's historical first-`ClusterConfig` replay rule is unchanged for mixed
+RC voters. Directly replaying an old cluster's complete log into an empty FSM
+without the join protocol can still derive a different cache epoch; that is
+not a supported way to add a member. Existing members continue to restore
+their persisted epoch on restart.
+
 Every configured member carries a mandatory 16-byte `instanceID`, including
 the bootstrap seed and peers learned through discovery. Membership admission,
 ConfChange apply, persisted-row loading, removal, and promotion all validate
