@@ -144,3 +144,30 @@ API boundary owns conversion/output fidelity; authentication owns scopes and
 caller capture; idempotency owns durable atomicity and retry identity; signed
 response integrity owns the returned cryptographic proof. Deduplicate by the
 mechanism that must change, not by the number of affected operations.
+
+## Dedicated HTTP mutation keys (EN-3286)
+
+Seven single-request HTTP mutations now forward the optional `Idempotency-Key`
+header as the existing Apply batch identity: account-type add/remove, metadata
+field-type set/remove, default enforcement-mode set, and prepared-query
+update/delete. Check every handler and its OpenAPI operation for the header.
+An absent key retains at-least-once retry behavior; an HTTP request rejected
+before Apply must not consume a key. A prepared-query update with explicit
+`filter: null` reaches Apply with its key, while the current HTTP contract
+rejects an omitted filter before Apply.
+
+The representative real-node control is
+`tests/e2e/business/http_idempotency_en3286_test.go`. Add an account type with a
+key, replay the same request, remove it with another key, then replay the old
+add: the type must stay absent. Recreate it under a fresh key, replay the old
+remove, and verify the replacement remains. Reusing the add key with a changed
+pattern must return `IDEMPOTENCY_KEY_CONFLICT`, preserve the original frozen
+outcome, and leave business state unchanged. Compare audit sequence or entries
+around each identical replay: a second audit entry is a duplicate effect even
+if the HTTP status matches. The current E2E control proves business-state
+non-reapplication and conflict; the audit-entry comparison is an additional
+oracle for future audits. A mocked Apply forwarding test cannot establish
+durable replay. Investigate the other five routes for their own state effects
+when a route-specific failure is suspected.
+
+See [the HTTP identity contract](../architecture/subsystems/api/http-api.md#bulk-identity-and-response-contract).
