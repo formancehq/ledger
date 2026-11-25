@@ -63,6 +63,15 @@ type CredentialsStatus struct {
 	// +optional
 	KeyID string `json:"keyID,omitempty"`
 
+	// CanonicalSecretUID identifies the canonical Secret created by this Credentials incarnation.
+	// +optional
+	CanonicalSecretUID string `json:"canonicalSecretUID,omitempty"`
+
+	// BootstrapPending indicates that the key identity was recorded before its
+	// first canonical Secret and distribution were completed.
+	// +optional
+	BootstrapPending bool `json:"bootstrapPending,omitempty"`
+
 	// DistributedSecretRefs lists every namespace where the credentials's Secret has
 	// been written. All replicas carry identical data; consumers can read any
 	// entry — typically the first.
@@ -89,6 +98,10 @@ type SecretReference struct {
 
 	// Name of the Secret.
 	Name string `json:"name"`
+
+	// UID identifies the exact Secret written by the operator. Empty on legacy status.
+	// +optional
+	UID string `json:"uid,omitempty"`
 }
 
 // MatchedCluster identifies a namespaced Cluster matched by the credentials selector.

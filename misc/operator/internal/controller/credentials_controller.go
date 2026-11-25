@@ -150,10 +150,11 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// targets; losing that Secret must fail instead of silently rotating it.
 	var (
 		canonicalData map[string][]byte
+		canonicalUID  types.UID
 		refs          = make([]ledgerv1alpha1.SecretReference, 0, len(desiredNamespaces))
 	)
 	if len(desiredNamespaces) > 0 || len(existingReplicas) > 0 || credentials.Status.KeyID != "" {
-		canonicalData, err = r.ensureCanonicalSecret(ctx, credentials, existingReplicas)
+		canonicalData, canonicalUID, err = r.ensureCanonicalSecret(ctx, credentials, existingReplicas)
 		if err != nil {
 			meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 				Type:               "Ready",
@@ -173,7 +174,8 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if len(desiredNamespaces) > 0 {
 		for _, ns := range desiredNamespaces {
-			if err := r.ensureReplica(ctx, credentials, ns, canonicalData); err != nil {
+			uid, err := r.ensureReplica(ctx, credentials, ns, canonicalData)
+			if err != nil {
 				meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 					Type:               "Ready",
 					Status:             metav1.ConditionFalse,
@@ -191,6 +193,7 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			refs = append(refs, ledgerv1alpha1.SecretReference{
 				Namespace: ns,
 				Name:      credentialsSecretName(credentials),
+				UID:       string(uid),
 			})
 		}
 	}
@@ -217,6 +220,8 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	credentials.Status.MatchedClusters = matchedClusters
 	credentials.Status.DistributedSecretRefs = refs
+	credentials.Status.CanonicalSecretUID = string(canonicalUID)
+	credentials.Status.BootstrapPending = false
 	credentials.Status.ObservedGeneration = credentials.Generation
 
 	if len(refs) == 0 {
@@ -369,37 +374,38 @@ func (r *CredentialsReconciler) listCredentialsReplicaSecrets(ctx context.Contex
 	return filtered, nil
 }
 
-// A legacy Secret has no controller reference. Its exact name and a prior
-// status reference bind its location; the status key ID binds its seed. A new
-// Credentials incarnation has no such status and cannot claim an old Secret.
+// A recorded UID binds a Secret to the operator's prior write. Legacy status
+// without UIDs can only authenticate a seed using the recorded key identity.
 func verifiedCredentialsReplica(secret *corev1.Secret, credentials *ledgerv1alpha1.Credentials) bool {
 	if secret.Name != credentialsSecretName(credentials) {
 		return false
 	}
-	if metav1.IsControlledBy(secret, credentials) {
-		return true
-	}
-	if secret.Labels[credentialsNameLabel] != credentials.Name || len(secret.OwnerReferences) != 0 || !validLegacySeed(secret.Data, credentials.Status.KeyID) {
-		return false
-	}
 	for _, ref := range credentials.Status.DistributedSecretRefs {
 		if ref.Name == secret.Name && ref.Namespace == secret.Namespace {
-			return true
+			if ref.UID != "" {
+				return ref.UID == string(secret.UID) && metav1.IsControlledBy(secret, credentials)
+			}
+			return (metav1.IsControlledBy(secret, credentials) ||
+				(secret.Labels[credentialsNameLabel] == credentials.Name && len(secret.OwnerReferences) == 0)) &&
+				validLegacySeed(secret.Data, credentials.Status.KeyID)
 		}
 	}
-
-	return false
+	// A create may have succeeded before its status reference was written.
+	// The prior key identity authenticates its seed without trusting the owner
+	// reference as authorship. A missing key identity cannot take this path.
+	return metav1.IsControlledBy(secret, credentials) && validLegacySeed(secret.Data, credentials.Status.KeyID)
 }
 
 func verifiedCredentialsCanonical(secret *corev1.Secret, credentials *ledgerv1alpha1.Credentials) bool {
 	if secret.Name != credentialsCanonicalSecretName(credentials.Name) {
 		return false
 	}
-	if metav1.IsControlledBy(secret, credentials) {
-		return true
+	if credentials.Status.CanonicalSecretUID != "" {
+		return credentials.Status.CanonicalSecretUID == string(secret.UID) && metav1.IsControlledBy(secret, credentials)
 	}
-
-	return secret.Labels[credentialsNameLabel] == credentials.Name && len(secret.OwnerReferences) == 0 && validLegacySeed(secret.Data, credentials.Status.KeyID)
+	return (metav1.IsControlledBy(secret, credentials) ||
+		(secret.Labels[credentialsNameLabel] == credentials.Name && len(secret.OwnerReferences) == 0)) &&
+		validLegacySeed(secret.Data, credentials.Status.KeyID)
 }
 
 func validLegacySeed(data map[string][]byte, statusKeyID string) bool {
@@ -436,12 +442,12 @@ func deleteCredentialsSecret(ctx context.Context, c client.Client, secret *corev
 // Upgrade path: existingReplicas contains only identity-verified Secrets
 // carrying seed material under the older canonical-less layout. Their seed
 // can bootstrap the canonical without invalidating previously issued bundles.
-func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, credentials *ledgerv1alpha1.Credentials, existingReplicas []corev1.Secret) (map[string][]byte, error) {
+func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, credentials *ledgerv1alpha1.Credentials, existingReplicas []corev1.Secret) (map[string][]byte, types.UID, error) {
 	if r.OperatorNamespace == "" {
-		return nil, errors.New("operator namespace not configured")
+		return nil, "", errors.New("operator namespace not configured")
 	}
 	if r.APIReader == nil {
-		return nil, errors.New("APIReader not configured")
+		return nil, "", errors.New("APIReader not configured")
 	}
 
 	key := types.NamespacedName{
@@ -453,15 +459,15 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 	switch err := r.APIReader.Get(ctx, key, existing); {
 	case err == nil:
 		if !verifiedCredentialsCanonical(existing, credentials) {
-			return nil, fmt.Errorf("unverified credentials Secret %s/%s blocks canonical seed; restore its ownership or remove it", key.Namespace, key.Name)
+			return nil, "", fmt.Errorf("unverified credentials Secret %s/%s blocks canonical seed; restore its ownership or remove it", key.Namespace, key.Name)
 		}
-		if len(existing.Data[keySeedHex]) == 0 {
-			return nil, fmt.Errorf("canonical secret %s/%s exists but has no seed", key.Namespace, key.Name)
+		if !validLegacySeed(existing.Data, credentials.Status.KeyID) {
+			return nil, "", fmt.Errorf("canonical secret %s/%s has invalid seed identity", key.Namespace, key.Name)
 		}
 		needsMetadataUpdate := !metav1.IsControlledBy(existing, credentials) || existing.Labels[credentialsNameLabel] != credentials.Name
 		if !metav1.IsControlledBy(existing, credentials) {
 			if err := controllerutil.SetControllerReference(credentials, existing, r.Scheme); err != nil {
-				return nil, fmt.Errorf("claiming verified legacy canonical secret: %w", err)
+				return nil, "", fmt.Errorf("claiming verified legacy canonical secret: %w", err)
 			}
 		}
 		if needsMetadataUpdate {
@@ -470,13 +476,13 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 			}
 			existing.Labels[credentialsNameLabel] = credentials.Name
 			if err := r.Update(ctx, existing); err != nil {
-				return nil, fmt.Errorf("updating canonical secret identity: %w", err)
+				return nil, "", fmt.Errorf("updating canonical secret identity: %w", err)
 			}
 		}
 
-		return existing.Data, nil
+		return existing.Data, existing.UID, nil
 	case !apierrors.IsNotFound(err):
-		return nil, fmt.Errorf("reading canonical secret: %w", err)
+		return nil, "", fmt.Errorf("reading canonical secret: %w", err)
 	}
 	var adopted map[string][]byte
 	if credentials.Status.KeyID != "" {
@@ -488,10 +494,8 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 		}
 		adopted = adoptSeedFromReplica(recoverable)
 		if adopted == nil {
-			return nil, fmt.Errorf("canonical seed for Credentials %q is missing and no verified legacy replica can restore key %q", credentials.Name, credentials.Status.KeyID)
+			return nil, "", fmt.Errorf("canonical seed for Credentials %q is missing and no verified legacy replica can restore key %q", credentials.Name, credentials.Status.KeyID)
 		}
-	} else {
-		adopted = adoptSeedFromReplica(existingReplicas)
 	}
 
 	// Not found — mint a new canonical, adopting a legacy replica's seed
@@ -512,12 +516,20 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 	} else {
 		seed, pubKey, keyID, err := generateEd25519KeyPair()
 		if err != nil {
-			return nil, fmt.Errorf("generating Ed25519 keypair: %w", err)
+			return nil, "", fmt.Errorf("generating Ed25519 keypair: %w", err)
 		}
 		fresh.Data = map[string][]byte{
 			keySeedHex:   []byte(hex.EncodeToString(seed)),
 			keyPubKeyHex: []byte(hex.EncodeToString(pubKey)),
 			keyKeyID:     []byte(keyID),
+		}
+		// Publish the key identity before writing any seed. If a later write
+		// fails, the next reconcile can verify the created Secret by deriving
+		// this key ID; a caller-supplied owner reference alone is insufficient.
+		credentials.Status.KeyID = keyID
+		credentials.Status.BootstrapPending = true
+		if err := r.Status().Update(ctx, credentials); err != nil {
+			return nil, "", fmt.Errorf("recording credentials bootstrap identity: %w", err)
 		}
 	}
 
@@ -526,19 +538,22 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 			// A concurrent reconcile beat us to it. Re-read via APIReader
 			// (the write may not be visible on the cached client yet).
 			if err := r.APIReader.Get(ctx, key, existing); err != nil {
-				return nil, fmt.Errorf("re-reading canonical secret after AlreadyExists: %w", err)
+				return nil, "", fmt.Errorf("re-reading canonical secret after AlreadyExists: %w", err)
 			}
 			if !verifiedCredentialsCanonical(existing, credentials) {
-				return nil, fmt.Errorf("unverified credentials Secret %s/%s appeared during canonical creation", key.Namespace, key.Name)
+				return nil, "", fmt.Errorf("unverified credentials Secret %s/%s appeared during canonical creation", key.Namespace, key.Name)
+			}
+			if !validLegacySeed(existing.Data, credentials.Status.KeyID) {
+				return nil, "", fmt.Errorf("canonical secret %s/%s has invalid seed identity", key.Namespace, key.Name)
 			}
 
-			return existing.Data, nil
+			return existing.Data, existing.UID, nil
 		}
 
-		return nil, fmt.Errorf("creating canonical secret: %w", err)
+		return nil, "", fmt.Errorf("creating canonical secret: %w", err)
 	}
 
-	return fresh.Data, nil
+	return fresh.Data, fresh.UID, nil
 }
 
 // adoptSeedFromReplica returns a copy of the seed material found on any
@@ -575,7 +590,7 @@ func adoptSeedFromReplica(replicas []corev1.Secret) map[string][]byte {
 
 // ensureReplica creates or updates the credentials's replica Secret in the given
 // namespace with a projection of the canonical data.
-func (r *CredentialsReconciler) ensureReplica(ctx context.Context, credentials *ledgerv1alpha1.Credentials, namespace string, data map[string][]byte) error {
+func (r *CredentialsReconciler) ensureReplica(ctx context.Context, credentials *ledgerv1alpha1.Credentials, namespace string, data map[string][]byte) (types.UID, error) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      credentialsSecretName(credentials),
@@ -599,7 +614,7 @@ func (r *CredentialsReconciler) ensureReplica(ctx context.Context, credentials *
 		return nil
 	})
 
-	return err
+	return secret.UID, err
 }
 
 // computeDesiredNamespaces returns the sorted, deduplicated list of namespaces

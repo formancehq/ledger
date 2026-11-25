@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -51,13 +52,17 @@ func TestCredentialsReconcileFailureStatus(t *testing.T) {
 					},
 					Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}},
 				}
+				seed, pub, keyID, err := generateEd25519KeyPair()
+				require.NoError(t, err)
+				credentials.Status.KeyID = keyID
 				canonical := &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: credentialsCanonicalSecretName(credentials.Name), Namespace: "operator",
+						UID:             "canonical",
 						Labels:          map[string]string{credentialsNameLabel: credentials.Name},
 						OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))},
 					},
-					Data: map[string][]byte{keySeedHex: []byte("test-seed")},
+					Data: map[string][]byte{keySeedHex: []byte(hex.EncodeToString(seed)), keyPubKeyHex: []byte(hex.EncodeToString(pub)), keyKeyID: []byte(keyID)},
 				}
 				baseClient := fake.NewClientBuilder().WithScheme(scheme).
 					WithStatusSubresource(&ledgerv1alpha1.Credentials{}).

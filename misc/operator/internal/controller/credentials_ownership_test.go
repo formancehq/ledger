@@ -37,6 +37,168 @@ func TestCredentialsReconcileRejectsUnverifiedReplicaSeed(t *testing.T) {
 	require.Error(t, c.Get(t.Context(), client.ObjectKey{Namespace: "operator", Name: credentialsCanonicalSecretName(credentials.Name)}, canonical))
 }
 
+func TestCredentialsReconcileRejectsForgedOwnerReference(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		canonical bool
+	}{
+		{name: "replica"},
+		{name: "canonical", canonical: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			seed, pub, keyID, err := generateEd25519KeyPair()
+			require.NoError(t, err)
+			credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}}
+			name, namespace := credentialsSecretName(credentials), "target"
+			if tc.canonical {
+				name, namespace = credentialsCanonicalSecretName(credentials.Name), "operator"
+			}
+			planted := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, UID: "planted", Labels: map[string]string{credentialsNameLabel: credentials.Name}, OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}}, Data: map[string][]byte{keySeedHex: []byte(hex.EncodeToString(seed)), keyPubKeyHex: []byte(hex.EncodeToString(pub)), keyKeyID: []byte(keyID)}}
+			scheme := ownershipTestScheme(t)
+			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials, planted).Build()
+			r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
+
+			_, err = r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
+			require.ErrorContains(t, err, "unverified credentials Secret")
+			actual := &corev1.Secret{}
+			require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(planted), actual))
+			require.Equal(t, planted.Data, actual.Data)
+			if !tc.canonical {
+				require.Error(t, c.Get(t.Context(), client.ObjectKey{Namespace: "operator", Name: credentialsCanonicalSecretName(credentials.Name)}, &corev1.Secret{}))
+			}
+		})
+	}
+}
+
+func TestCredentialsReconcileRejectsRecreatedRecordedSecret(t *testing.T) {
+	t.Parallel()
+	seed, pub, keyID, err := generateEd25519KeyPair()
+	require.NoError(t, err)
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}, Status: ledgerv1alpha1.CredentialsStatus{KeyID: keyID, DistributedSecretRefs: []ledgerv1alpha1.SecretReference{{Namespace: "target", Name: "ledger-identity-credentials-keys", UID: "original"}}}}
+	recreated := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsSecretName(credentials), Namespace: "target", UID: "replacement", Labels: map[string]string{credentialsNameLabel: credentials.Name}, OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}}, Data: map[string][]byte{keySeedHex: []byte(hex.EncodeToString(seed)), keyPubKeyHex: []byte(hex.EncodeToString(pub)), keyKeyID: []byte(keyID)}}
+	scheme := ownershipTestScheme(t)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials, recreated).Build()
+	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
+
+	_, err = r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
+	require.ErrorContains(t, err, "unverified credentials Secret")
+	actual := &corev1.Secret{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(recreated), actual))
+	require.Equal(t, recreated.Data, actual.Data)
+}
+
+func TestCredentialsReconcileRecordsCreatedSecretUIDs(t *testing.T) {
+	t.Parallel()
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}}
+	scheme := ownershipTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials).Build()
+	c := interceptor.NewClient(base, interceptor.Funcs{Create: func(ctx context.Context, current client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+		if _, ok := obj.(*corev1.Secret); ok {
+			obj.SetUID(types.UID(obj.GetNamespace() + "-uid"))
+		}
+		return current.Create(ctx, obj, opts...)
+	}})
+	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
+	request := ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}}
+
+	_, err := r.Reconcile(t.Context(), request)
+	require.NoError(t, err)
+	actual := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(credentials), actual))
+	require.Equal(t, "operator-uid", actual.Status.CanonicalSecretUID)
+	require.Equal(t, []ledgerv1alpha1.SecretReference{{Namespace: "target", Name: credentialsSecretName(credentials), UID: "target-uid"}}, actual.Status.DistributedSecretRefs)
+	require.NotEmpty(t, actual.Status.KeyID)
+
+	_, err = r.Reconcile(t.Context(), request)
+	require.NoError(t, err)
+}
+
+func TestCredentialsReconcileRetriesAfterPartialDistribution(t *testing.T) {
+	t.Parallel()
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"first", "second"}}}
+	scheme := ownershipTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials).Build()
+	createErr := errors.New("second replica unavailable")
+	var secondAttempts int
+	c := interceptor.NewClient(base, interceptor.Funcs{Create: func(ctx context.Context, current client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+		if _, ok := obj.(*corev1.Secret); ok {
+			obj.SetUID(types.UID(obj.GetNamespace() + "-uid"))
+			if obj.GetNamespace() == "second" {
+				secondAttempts++
+				if secondAttempts == 1 {
+					return createErr
+				}
+			}
+		}
+		return current.Create(ctx, obj, opts...)
+	}})
+	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
+	request := ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}}
+
+	_, err := r.Reconcile(t.Context(), request)
+	require.ErrorIs(t, err, createErr)
+	intermediate := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(credentials), intermediate))
+	require.True(t, intermediate.Status.BootstrapPending)
+	require.NotEmpty(t, intermediate.Status.KeyID)
+	require.Empty(t, intermediate.Status.CanonicalSecretUID)
+	require.Empty(t, intermediate.Status.DistributedSecretRefs)
+
+	_, err = r.Reconcile(t.Context(), request)
+	require.NoError(t, err)
+	actual := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(credentials), actual))
+	require.False(t, actual.Status.BootstrapPending)
+	require.Equal(t, "operator-uid", actual.Status.CanonicalSecretUID)
+	require.Equal(t, []ledgerv1alpha1.SecretReference{{Namespace: "first", Name: credentialsSecretName(credentials), UID: "first-uid"}, {Namespace: "second", Name: credentialsSecretName(credentials), UID: "second-uid"}}, actual.Status.DistributedSecretRefs)
+	require.Equal(t, intermediate.Status.KeyID, actual.Status.KeyID)
+	require.Equal(t, 2, secondAttempts)
+}
+
+func TestCredentialsReconcileRetriesAfterFinalStatusFailure(t *testing.T) {
+	t.Parallel()
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}}
+	scheme := ownershipTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials).Build()
+	statusErr := errors.New("status unavailable")
+	var failed bool
+	c := interceptor.NewClient(base, interceptor.Funcs{
+		Create: func(ctx context.Context, current client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if _, ok := obj.(*corev1.Secret); ok {
+				obj.SetUID(types.UID(obj.GetNamespace() + "-uid"))
+			}
+			return current.Create(ctx, obj, opts...)
+		},
+		SubResourceUpdate: func(ctx context.Context, current client.Client, subResource string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			if subResource == "status" && !obj.(*ledgerv1alpha1.Credentials).Status.BootstrapPending && !failed {
+				failed = true
+				return statusErr
+			}
+			return current.SubResource(subResource).Update(ctx, obj, opts...)
+		},
+	})
+	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
+	request := ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}}
+
+	_, err := r.Reconcile(t.Context(), request)
+	require.ErrorIs(t, err, statusErr)
+	intermediate := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(credentials), intermediate))
+	require.True(t, intermediate.Status.BootstrapPending)
+	require.Empty(t, intermediate.Status.DistributedSecretRefs)
+
+	_, err = r.Reconcile(t.Context(), request)
+	require.NoError(t, err)
+	actual := &ledgerv1alpha1.Credentials{}
+	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(credentials), actual))
+	require.False(t, actual.Status.BootstrapPending)
+	require.Equal(t, "operator-uid", actual.Status.CanonicalSecretUID)
+	require.Equal(t, "target-uid", actual.Status.DistributedSecretRefs[0].UID)
+	require.Equal(t, intermediate.Status.KeyID, actual.Status.KeyID)
+}
+
 func TestCredentialsReconcileRejectsInconsistentLegacyProof(t *testing.T) {
 	t.Parallel()
 	seed, pub, keyID, err := generateEd25519KeyPair()
@@ -138,6 +300,7 @@ func TestCredentialsDeletionUsesInspectedUID(t *testing.T) {
 	deletionTime := metav1.NewTime(time.Now())
 	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current", Finalizers: []string{credentialsFinalizer}, DeletionTimestamp: &deletionTime}}
 	owned := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsSecretName(credentials), Namespace: "target", UID: "original", Labels: map[string]string{credentialsNameLabel: credentials.Name}, OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}}}
+	credentials.Status.DistributedSecretRefs = []ledgerv1alpha1.SecretReference{{Namespace: owned.Namespace, Name: owned.Name, UID: string(owned.UID)}}
 	replacement := owned.DeepCopy()
 	replacement.UID = "replacement"
 	scheme := ownershipTestScheme(t)
@@ -167,18 +330,26 @@ func TestCredentialsDeletionUsesInspectedUID(t *testing.T) {
 
 func TestCredentialsReconcileDoesNotRotateMissingCanonicalSeed(t *testing.T) {
 	t.Parallel()
-	credentials := &ledgerv1alpha1.Credentials{
-		ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"},
-		Status:     ledgerv1alpha1.CredentialsStatus{KeyID: "previous-key"},
-	}
-	scheme := ownershipTestScheme(t)
-	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials).Build()
-	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
+	for _, pending := range []bool{false, true} {
+		t.Run(map[bool]string{false: "established", true: "pending"}[pending], func(t *testing.T) {
+			t.Parallel()
+			credentials := &ledgerv1alpha1.Credentials{
+				ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"},
+				Status:     ledgerv1alpha1.CredentialsStatus{KeyID: "previous-key", BootstrapPending: pending},
+			}
+			scheme := ownershipTestScheme(t)
+			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials).Build()
+			r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
 
-	_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
-	require.ErrorContains(t, err, "canonical seed for Credentials")
-	require.ErrorContains(t, err, "no verified legacy replica")
-	require.Error(t, c.Get(t.Context(), client.ObjectKey{Namespace: "operator", Name: credentialsCanonicalSecretName(credentials.Name)}, &corev1.Secret{}))
+			_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
+			require.ErrorContains(t, err, "canonical seed for Credentials")
+			require.ErrorContains(t, err, "no verified legacy replica")
+			require.Error(t, c.Get(t.Context(), client.ObjectKey{Namespace: "operator", Name: credentialsCanonicalSecretName(credentials.Name)}, &corev1.Secret{}))
+			actual := &ledgerv1alpha1.Credentials{}
+			require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(credentials), actual))
+			require.Equal(t, "previous-key", actual.Status.KeyID)
+		})
+	}
 }
 
 func TestCredentialsReconcileRejectsUnrecoverableOwnedReplica(t *testing.T) {
@@ -205,7 +376,7 @@ func TestCredentialsReconcileRejectsUnrecoverableOwnedReplica(t *testing.T) {
 			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials, replica).Build()
 			r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
 			_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
-			require.ErrorContains(t, err, "no verified legacy replica can restore key")
+			require.ErrorContains(t, err, "unverified credentials Secret")
 			require.Error(t, c.Get(t.Context(), client.ObjectKey{Namespace: "operator", Name: credentialsCanonicalSecretName(credentials.Name)}, &corev1.Secret{}))
 			actual := &corev1.Secret{}
 			require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(replica), actual))
@@ -245,15 +416,17 @@ func TestCredentialsReconcileRejectsForeignCanonical(t *testing.T) {
 
 func TestCredentialsReconcileRepairsLabelsOnOwnedSecrets(t *testing.T) {
 	t.Parallel()
-	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}}
+	seed, pub, keyID, err := generateEd25519KeyPair()
+	require.NoError(t, err)
+	credentials := &ledgerv1alpha1.Credentials{ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"}, Spec: ledgerv1alpha1.CredentialsSpec{AdditionalNamespaces: []string{"target"}}, Status: ledgerv1alpha1.CredentialsStatus{KeyID: keyID, CanonicalSecretUID: "canonical", DistributedSecretRefs: []ledgerv1alpha1.SecretReference{{Namespace: "target", Name: "ledger-identity-credentials-keys", UID: "replica"}}}}
 	owner := []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}
-	canonical := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsCanonicalSecretName(credentials.Name), Namespace: "operator", UID: "canonical", OwnerReferences: owner}, Data: map[string][]byte{keySeedHex: []byte("owned-seed"), keyKeyID: []byte("owned-key")}}
+	canonical := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsCanonicalSecretName(credentials.Name), Namespace: "operator", UID: "canonical", OwnerReferences: owner}, Data: map[string][]byte{keySeedHex: []byte(hex.EncodeToString(seed)), keyPubKeyHex: []byte(hex.EncodeToString(pub)), keyKeyID: []byte(keyID)}}
 	replica := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsSecretName(credentials), Namespace: "target", UID: "replica", OwnerReferences: owner}, Data: map[string][]byte{keySeedHex: []byte("old-seed")}}
 	scheme := ownershipTestScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials, canonical, replica).Build()
 	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
 
-	_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
+	_, err = r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
 	require.NoError(t, err)
 	for _, secret := range []*corev1.Secret{canonical, replica} {
 		actual := &corev1.Secret{}
@@ -268,21 +441,24 @@ func TestCredentialsReconcileRepairsLabelsOnOwnedSecrets(t *testing.T) {
 
 func TestCredentialsReconcileDeletesStatusReferencedOwnedReplicaAfterLabelDrift(t *testing.T) {
 	t.Parallel()
+	seed, pub, keyID, err := generateEd25519KeyPair()
+	require.NoError(t, err)
 	credentials := &ledgerv1alpha1.Credentials{
 		ObjectMeta: metav1.ObjectMeta{Name: "identity", UID: "current"},
 		Status: ledgerv1alpha1.CredentialsStatus{
-			KeyID:                 "owned-key",
-			DistributedSecretRefs: []ledgerv1alpha1.SecretReference{{Namespace: "old", Name: "ledger-identity-credentials-keys"}},
+			KeyID:                 keyID,
+			CanonicalSecretUID:    "canonical",
+			DistributedSecretRefs: []ledgerv1alpha1.SecretReference{{Namespace: "old", Name: "ledger-identity-credentials-keys", UID: "replica"}},
 		},
 	}
 	owner := []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))}
-	canonical := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsCanonicalSecretName(credentials.Name), Namespace: "operator", UID: "canonical", Labels: map[string]string{credentialsNameLabel: credentials.Name}, OwnerReferences: owner}, Data: map[string][]byte{keySeedHex: []byte("owned-seed"), keyKeyID: []byte("owned-key")}}
+	canonical := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsCanonicalSecretName(credentials.Name), Namespace: "operator", UID: "canonical", Labels: map[string]string{credentialsNameLabel: credentials.Name}, OwnerReferences: owner}, Data: map[string][]byte{keySeedHex: []byte(hex.EncodeToString(seed)), keyPubKeyHex: []byte(hex.EncodeToString(pub)), keyKeyID: []byte(keyID)}}
 	replica := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: credentialsSecretName(credentials), Namespace: "old", UID: "replica", OwnerReferences: owner}}
 	scheme := ownershipTestScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(credentials).WithObjects(credentials, canonical, replica).Build()
 	r := &CredentialsReconciler{Client: c, APIReader: c, Scheme: scheme, OperatorNamespace: "operator"}
 
-	_, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
+	_, err = r.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: credentials.Name}})
 	require.NoError(t, err)
 	require.Error(t, c.Get(t.Context(), client.ObjectKeyFromObject(replica), &corev1.Secret{}))
 	require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(canonical), &corev1.Secret{}))
