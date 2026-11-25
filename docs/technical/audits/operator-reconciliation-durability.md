@@ -18,6 +18,18 @@ Filtered or internal logs can advance the cursor without external delivery;
 
 ## Reachability and proof
 
+For Credentials Secret identity, distinguish a controller reference to the
+current Credentials UID from a legacy Secret with no owner reference. Legacy
+adoption requires prior status key identity, seed/public-key consistency, and
+an exact prior status reference for a replica. Check canonical creation,
+replica update, no-target cleanup, finalizer deletion, same-name recreation,
+label repair on a current-UID owned Secret, and UID-preconditioned deletion
+separately. Prior status references may find owned replicas after label drift;
+verify them again before cleanup. A label or derived name is not
+ownership proof. Record whether an unverified Secret blocks distribution or is
+left alone outside desired namespaces; do not treat manual recovery as an
+automatic upgrade path.
+
 For each hypothesis, establish all of the following from the audited SHA:
 
 1. **Entry and identity:** an admitted CR, supported spec edit, deletion, child

@@ -129,6 +129,39 @@ audit records, backup formats, or service APIs.
 
 ## Derived object ownership
 
+### Credentials Secret ownership
+
+Canonical and replica Secrets created for a Credentials resource have a
+controller reference to its UID. A matching label or name alone does not
+authorize reading a seed, updating a Secret, or deleting one. A same-name
+Secret owned by another Credentials incarnation, or an unverified Secret in a
+desired namespace, blocks distribution and reports an error on Credentials.
+Unverified labeled Secrets outside desired namespaces are left untouched.
+The controller reference remains authoritative when a label drifts; a desired
+owned Secret's label is repaired during reconciliation. Prior status references
+also locate owned replicas with missing labels for cleanup when their namespace
+is no longer desired.
+Deletes use the inspected Secret UID as a precondition, so replacement under
+the same name is retained for the next reconcile.
+
+On upgrade, a legacy Secret without an owner reference can be claimed only
+when the existing Credentials status records its key ID, the seed derives that
+key ID and public key, and a replica's exact namespace and name appear in
+`status.distributedSecretRefs`. A verified canonical Secret is also claimed by
+UID before use. Legacy Secrets lacking this status proof are not adopted or
+deleted. Recover them by restoring the prior Credentials status or, after
+verifying the Secret and Credentials identity out of band, adding the
+Credentials controller reference with its current UID. A Credentials resource
+recreated under the same name cannot claim the prior incarnation's Secrets.
+When no targets remain, a preserved canonical seed keeps its key ID in status
+so a later reconcile can still verify it.
+
+The status and owner-reference writes happen after the Secret read. A conflict
+on a metadata update leaves the old Secret unchanged and reconciliation retries.
+Replica and canonical deletes happen before finalizer removal; a failed delete
+keeps the finalizer for retry. No Ledger persisted, Raft, audit, or backup
+format changes are involved.
+
 Directly owned resources derived from a Cluster name carry a controller
 reference with that Cluster's UID; a name match is never proof of ownership.
 Pods instead carry the StatefulSet UID: the operator checks the Cluster to

@@ -54,6 +54,8 @@ func TestCredentialsReconcileFailureStatus(t *testing.T) {
 				canonical := &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: credentialsCanonicalSecretName(credentials.Name), Namespace: "operator",
+						Labels:          map[string]string{credentialsNameLabel: credentials.Name},
+						OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))},
 					},
 					Data: map[string][]byte{keySeedHex: []byte("test-seed")},
 				}

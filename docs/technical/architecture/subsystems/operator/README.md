@@ -35,6 +35,11 @@ reference carrying the Cluster UID. The operator never adopts, mutates,
 deletes or execs into a same-name object it does not control, and reports the
 conflict as `ResourceNamesAvailable=False`.
 
+Credentials seed Secrets and replicas carry a controller reference to the
+Credentials UID. Legacy Secrets without that reference are accepted only when
+prior Credentials status identifies their key and, for replicas, their exact
+namespace and name. See [Credentials Secret ownership](../../../../../misc/operator/README.md#credentials-secret-ownership).
+
 ## Documents
 
 - [Declarative storage reconciliation](storage-reconciliation.md) — configured

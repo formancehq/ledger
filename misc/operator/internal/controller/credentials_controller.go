@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -108,26 +109,50 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Compute the desired target namespaces (matched clusters + additional).
 	desiredNamespaces := computeDesiredNamespaces(matchedClusters, credentials.Spec.AdditionalNamespaces)
 
-	// List existing replicas across all namespaces (canonical excluded via label filter).
-	existingReplicas, err := r.listCredentialsReplicaSecrets(ctx, credentials.Name)
+	// List candidate replicas across all namespaces; only verified entries may
+	// supply a seed or be garbage-collected.
+	existingReplicas, err := r.listCredentialsReplicaSecrets(ctx, credentials)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("listing credentials replica secrets: %w", err)
 	}
+	verifiedReplicas := existingReplicas[:0]
+	for i := range existingReplicas {
+		secret := &existingReplicas[i]
+		if verifiedCredentialsReplica(secret, credentials) {
+			verifiedReplicas = append(verifiedReplicas, *secret)
+
+			continue
+		}
+		if secret.Name == credentialsSecretName(credentials) {
+			if slices.Contains(desiredNamespaces, secret.Namespace) {
+				err := fmt.Errorf("unverified credentials Secret %s/%s blocks distribution; restore its ownership or remove it", secret.Namespace, secret.Name)
+				meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
+					Type: "Ready", Status: metav1.ConditionFalse, Reason: "SecretFailed",
+					Message: err.Error(), ObservedGeneration: credentials.Generation,
+				})
+				credentials.Status.Phase = "Error"
+				if statusErr := r.Status().Update(ctx, credentials); statusErr != nil {
+					err = errors.Join(err, fmt.Errorf("updating credentials error status: %w", statusErr))
+				}
+
+				return ctrl.Result{}, err
+			}
+		}
+	}
+	existingReplicas = verifiedReplicas
 
 	// Resolve canonical seed material. The canonical Secret lives in the
 	// operator's namespace and is the sole source of truth for the seed;
 	// per-target replicas are pure projections of its content.
 	//
-	// Bootstrap conditions: at least one desired target OR at least one
-	// existing replica. The second case covers the no-target upgrade path:
-	// legacy replicas from a pre-canonical operator would otherwise be
-	// deleted by the aggressive GC below before their seed could be
-	// adopted, permanently losing the identity.
+	// Bootstrap with a desired target or a verified legacy replica. A prior
+	// key ID also requires re-reading the preserved canonical even with no
+	// targets; losing that Secret must fail instead of silently rotating it.
 	var (
 		canonicalData map[string][]byte
 		refs          = make([]ledgerv1alpha1.SecretReference, 0, len(desiredNamespaces))
 	)
-	if len(desiredNamespaces) > 0 || len(existingReplicas) > 0 {
+	if len(desiredNamespaces) > 0 || len(existingReplicas) > 0 || credentials.Status.KeyID != "" {
 		canonicalData, err = r.ensureCanonicalSecret(ctx, credentials, existingReplicas)
 		if err != nil {
 			meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
@@ -184,7 +209,7 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if _, keep := desiredSet[secret.Namespace]; keep {
 			continue
 		}
-		if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
+		if err := deleteCredentialsSecret(ctx, r.Client, secret); err != nil && !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("deleting orphan secret in %q: %w", secret.Namespace, err)
 		}
 		logger.Info("deleted orphan credentials replica secret", "namespace", secret.Namespace, "name", secret.Name)
@@ -195,7 +220,7 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	credentials.Status.ObservedGeneration = credentials.Generation
 
 	if len(refs) == 0 {
-		credentials.Status.KeyID = ""
+		credentials.Status.KeyID = string(canonicalData[keyKeyID])
 		credentials.Status.Phase = "Pending"
 		meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
@@ -229,28 +254,31 @@ func (r *CredentialsReconciler) handleDeletion(ctx context.Context, credentials 
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(credentials, credentialsFinalizer) {
-		replicas, err := r.listCredentialsReplicaSecrets(ctx, credentials.Name)
+		replicas, err := r.listCredentialsReplicaSecrets(ctx, credentials)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("listing credentials secrets for deletion: %w", err)
 		}
 		for i := range replicas {
 			secret := &replicas[i]
-			if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
+			if !verifiedCredentialsReplica(secret, credentials) {
+				continue
+			}
+			if err := deleteCredentialsSecret(ctx, r.Client, secret); err != nil && !apierrors.IsNotFound(err) {
 				return ctrl.Result{}, fmt.Errorf("deleting credentials replica secret in %q: %w", secret.Namespace, err)
 			}
 			logger.Info("deleted credentials replica secret", "namespace", secret.Namespace, "name", secret.Name)
 		}
 
-		canonical := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      credentialsCanonicalSecretName(credentials.Name),
-				Namespace: r.OperatorNamespace,
-			},
+		canonical := &corev1.Secret{}
+		key := types.NamespacedName{Name: credentialsCanonicalSecretName(credentials.Name), Namespace: r.OperatorNamespace}
+		if err := r.APIReader.Get(ctx, key, canonical); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("reading canonical secret for deletion: %w", err)
+		} else if err == nil && verifiedCredentialsCanonical(canonical, credentials) {
+			if err := deleteCredentialsSecret(ctx, r.Client, canonical); err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("deleting canonical secret: %w", err)
+			}
+			logger.Info("deleted credentials canonical secret", "namespace", r.OperatorNamespace, "name", canonical.Name)
 		}
-		if err := r.Delete(ctx, canonical); err != nil && !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("deleting canonical secret: %w", err)
-		}
-		logger.Info("deleted credentials canonical secret", "namespace", r.OperatorNamespace, "name", canonical.Name)
 
 		controllerutil.RemoveFinalizer(credentials, credentialsFinalizer)
 		if err := r.Update(ctx, credentials); err != nil {
@@ -298,37 +326,106 @@ func (r *CredentialsReconciler) resolveMatchedClusters(ctx context.Context, cred
 	return matched, nil
 }
 
-// listCredentialsReplicaSecrets returns every replica Secret belonging to the given
-// credentials, across all namespaces. The canonical Secret is identified by
-// name + namespace and excluded from the result — filtering by name (rather
-// than by an additional label) means Secrets created by pre-canonical
-// versions of the operator are still discovered, so upgrade adopts them
-// instead of orphaning them.
-func (r *CredentialsReconciler) listCredentialsReplicaSecrets(ctx context.Context, credentialsName string) ([]corev1.Secret, error) {
+// listCredentialsReplicaSecrets returns label-matching candidates plus prior
+// status references whose label may have drifted. Callers verify identity
+// before using or deleting them. The canonical Secret is excluded.
+func (r *CredentialsReconciler) listCredentialsReplicaSecrets(ctx context.Context, credentials *ledgerv1alpha1.Credentials) ([]corev1.Secret, error) {
 	var secrets corev1.SecretList
 	if err := r.List(ctx, &secrets, client.MatchingLabels{
-		credentialsNameLabel: credentialsName,
+		credentialsNameLabel: credentials.Name,
 	}); err != nil {
 		return nil, err
 	}
 
-	canonicalName := credentialsCanonicalSecretName(credentialsName)
+	canonicalName := credentialsCanonicalSecretName(credentials.Name)
 
 	filtered := secrets.Items[:0]
+	seen := make(map[types.NamespacedName]struct{}, len(secrets.Items))
 	for _, s := range secrets.Items {
 		if s.Name == canonicalName && s.Namespace == r.OperatorNamespace {
 			continue
 		}
 		filtered = append(filtered, s)
+		seen[types.NamespacedName{Namespace: s.Namespace, Name: s.Name}] = struct{}{}
+	}
+	for _, ref := range credentials.Status.DistributedSecretRefs {
+		if ref.Namespace == "" || ref.Name != credentialsSecretName(credentials) {
+			continue
+		}
+		key := types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, key, secret); apierrors.IsNotFound(err) {
+			continue
+		} else if err != nil {
+			return nil, fmt.Errorf("reading prior credentials replica %s/%s: %w", key.Namespace, key.Name, err)
+		}
+		filtered = append(filtered, *secret)
 	}
 
 	return filtered, nil
 }
 
+// A legacy Secret has no controller reference. Its exact name and a prior
+// status reference bind its location; the status key ID binds its seed. A new
+// Credentials incarnation has no such status and cannot claim an old Secret.
+func verifiedCredentialsReplica(secret *corev1.Secret, credentials *ledgerv1alpha1.Credentials) bool {
+	if secret.Name != credentialsSecretName(credentials) {
+		return false
+	}
+	if metav1.IsControlledBy(secret, credentials) {
+		return true
+	}
+	if secret.Labels[credentialsNameLabel] != credentials.Name || len(secret.OwnerReferences) != 0 || !validLegacySeed(secret.Data, credentials.Status.KeyID) {
+		return false
+	}
+	for _, ref := range credentials.Status.DistributedSecretRefs {
+		if ref.Name == secret.Name && ref.Namespace == secret.Namespace {
+			return true
+		}
+	}
+
+	return false
+}
+
+func verifiedCredentialsCanonical(secret *corev1.Secret, credentials *ledgerv1alpha1.Credentials) bool {
+	if secret.Name != credentialsCanonicalSecretName(credentials.Name) {
+		return false
+	}
+	if metav1.IsControlledBy(secret, credentials) {
+		return true
+	}
+
+	return secret.Labels[credentialsNameLabel] == credentials.Name && len(secret.OwnerReferences) == 0 && validLegacySeed(secret.Data, credentials.Status.KeyID)
+}
+
+func validLegacySeed(data map[string][]byte, statusKeyID string) bool {
+	if statusKeyID == "" || string(data[keyKeyID]) != statusKeyID {
+		return false
+	}
+	seed, err := hex.DecodeString(string(data[keySeedHex]))
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return false
+	}
+	pub := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
+	hash := sha256.Sum256(pub)
+
+	return hex.EncodeToString(hash[:8]) == statusKeyID && string(data[keyPubKeyHex]) == hex.EncodeToString(pub)
+}
+
+func deleteCredentialsSecret(ctx context.Context, c client.Client, secret *corev1.Secret) error {
+	uid := secret.UID
+
+	return c.Delete(ctx, secret, &client.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}})
+}
+
 // ensureCanonicalSecret creates the canonical seed Secret in the operator's
 // namespace on first call for the credentials, and returns its data on every
-// subsequent call. The seed is generated exactly once and the Secret is
-// never updated after creation — the canonical value is stable across the
+// subsequent call. The seed is generated exactly once and its data is never
+// updated after creation (legacy ownership metadata may be claimed). The value is stable across the
 // credentials's lifetime, independent of the manager cache configuration.
 //
 // Reads go through r.APIReader (uncached) to avoid forcing the caller to
@@ -336,11 +433,9 @@ func (r *CredentialsReconciler) listCredentialsReplicaSecrets(ctx context.Contex
 // the operator namespace is covered. Writes hit the API server directly
 // regardless of cache.
 //
-// Upgrade path: existingReplicas is the set of Secrets carrying seed material
-// under the older (canonical-less) layout. When bootstrapping the canonical
-// for the first time, we adopt the seed from one of them instead of
-// generating fresh material — otherwise upgrading the operator would
-// silently invalidate every bundle already handed out.
+// Upgrade path: existingReplicas contains only identity-verified Secrets
+// carrying seed material under the older canonical-less layout. Their seed
+// can bootstrap the canonical without invalidating previously issued bundles.
 func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, credentials *ledgerv1alpha1.Credentials, existingReplicas []corev1.Secret) (map[string][]byte, error) {
 	if r.OperatorNamespace == "" {
 		return nil, errors.New("operator namespace not configured")
@@ -357,13 +452,34 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 	existing := &corev1.Secret{}
 	switch err := r.APIReader.Get(ctx, key, existing); {
 	case err == nil:
+		if !verifiedCredentialsCanonical(existing, credentials) {
+			return nil, fmt.Errorf("unverified credentials Secret %s/%s blocks canonical seed; restore its ownership or remove it", key.Namespace, key.Name)
+		}
 		if len(existing.Data[keySeedHex]) == 0 {
 			return nil, fmt.Errorf("canonical secret %s/%s exists but has no seed", key.Namespace, key.Name)
+		}
+		needsMetadataUpdate := !metav1.IsControlledBy(existing, credentials) || existing.Labels[credentialsNameLabel] != credentials.Name
+		if !metav1.IsControlledBy(existing, credentials) {
+			if err := controllerutil.SetControllerReference(credentials, existing, r.Scheme); err != nil {
+				return nil, fmt.Errorf("claiming verified legacy canonical secret: %w", err)
+			}
+		}
+		if needsMetadataUpdate {
+			if existing.Labels == nil {
+				existing.Labels = make(map[string]string, 1)
+			}
+			existing.Labels[credentialsNameLabel] = credentials.Name
+			if err := r.Update(ctx, existing); err != nil {
+				return nil, fmt.Errorf("updating canonical secret identity: %w", err)
+			}
 		}
 
 		return existing.Data, nil
 	case !apierrors.IsNotFound(err):
 		return nil, fmt.Errorf("reading canonical secret: %w", err)
+	}
+	if credentials.Status.KeyID != "" && len(existingReplicas) == 0 {
+		return nil, fmt.Errorf("canonical seed for Credentials %q is missing and no verified legacy replica can restore key %q", credentials.Name, credentials.Status.KeyID)
 	}
 
 	// Not found — mint a new canonical, adopting a legacy replica's seed
@@ -375,6 +491,7 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 			Labels: map[string]string{
 				credentialsNameLabel: credentials.Name,
 			},
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(credentials, ledgerv1alpha1.GroupVersion.WithKind("Credentials"))},
 		},
 	}
 
@@ -398,6 +515,9 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, crede
 			// (the write may not be visible on the cached client yet).
 			if err := r.APIReader.Get(ctx, key, existing); err != nil {
 				return nil, fmt.Errorf("re-reading canonical secret after AlreadyExists: %w", err)
+			}
+			if !verifiedCredentialsCanonical(existing, credentials) {
+				return nil, fmt.Errorf("unverified credentials Secret %s/%s appeared during canonical creation", key.Namespace, key.Name)
 			}
 
 			return existing.Data, nil
@@ -452,6 +572,12 @@ func (r *CredentialsReconciler) ensureReplica(ctx context.Context, credentials *
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
+		if secret.ResourceVersion != "" && !verifiedCredentialsReplica(secret, credentials) {
+			return fmt.Errorf("unverified credentials Secret %s/%s blocks distribution; restore its ownership or remove it", secret.Namespace, secret.Name)
+		}
+		if err := controllerutil.SetControllerReference(credentials, secret, r.Scheme); err != nil {
+			return err
+		}
 		if secret.Labels == nil {
 			secret.Labels = make(map[string]string, 1)
 		}
