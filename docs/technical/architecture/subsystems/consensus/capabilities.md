@@ -171,10 +171,11 @@ stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
 order, proposal, or apply rule changes.
 
 The `common.required_for_input` and `common.non_zero_for_input` field options
-change descriptor metadata and add Go `ValidateInput` methods without changing
-field numbers, wire types, or serialized message bytes. Admission invokes the
-annotated checks for new input and maps failures to the existing validation
-errors. Raft apply and historical replay do not invoke them. Old and new voters
+on request, shared, and order messages change descriptor metadata and add Go
+`ValidateInput` methods without changing field numbers, wire types, or
+serialized message bytes. Admission invokes the annotated checks for new input
+at the existing validation positions and maps failures to the existing errors.
+Raft apply and historical replay do not invoke them. Old and new voters
 therefore apply every committed order identically, including historical
 postings with nil amounts. No capability, migration, or stopped-upgrade
 boundary is needed.

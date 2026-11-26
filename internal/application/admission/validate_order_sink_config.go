@@ -15,6 +15,9 @@ func validateOrderSinkConfig(order *raftcmdpb.Order) domain.Describable {
 	if add == nil {
 		return nil
 	}
+	if err := add.ValidateInput(); err != nil {
+		return ErrSinkConfigIncomplete
+	}
 	cfg := add.GetConfig()
 	if cfg.ValidateInput() != nil || cfg.GetType() == nil {
 		return ErrSinkConfigIncomplete

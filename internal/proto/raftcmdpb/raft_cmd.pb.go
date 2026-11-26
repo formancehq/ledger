@@ -5957,18 +5957,18 @@ const file_raft_cmd_proto_rawDesc = "" +
 	" delete_query_checkpoint_schedule\x18\n" +
 	" \x01(\v2(.raft.DeleteQueryCheckpointScheduleOrderH\x00R\x1ddeleteQueryCheckpointSchedule\x12O\n" +
 	"\x12set_cluster_policy\x18\v \x01(\v2\x1b.raft.SetClusterPolicyOrderB\x02\x18\x01H\x00R\x10setClusterPolicyB\t\n" +
-	"\apayload\"G\n" +
-	"\x18CreatePreparedQueryOrder\x12+\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x98\x01\n" +
-	"\x18UpdatePreparedQueryOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
+	"\apayload\"M\n" +
+	"\x18CreatePreparedQueryOrder\x121\n" +
+	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryB\x04\xf0\xd5\"\x01R\x05query\"\x9e\x01\n" +
+	"\x18UpdatePreparedQueryOrder\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x04name\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x120\n" +
 	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetH\x00R\x06target\x88\x01\x01B\t\n" +
-	"\a_target\".\n" +
-	"\x18DeletePreparedQueryOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"@\n" +
-	"\x12AddEventsSinkOrder\x12*\n" +
-	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"P\n" +
+	"\a_target\"4\n" +
+	"\x18DeletePreparedQueryOrder\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x04name\"F\n" +
+	"\x12AddEventsSinkOrder\x120\n" +
+	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigB\x04\xf0\xd5\"\x01R\x06config\"P\n" +
 	"\x15RemoveEventsSinkOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
 	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"s\n" +

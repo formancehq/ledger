@@ -15,7 +15,8 @@ generated methods.
 
 | Existing check | Classification | Decision |
 | --- | --- | --- |
-| Prepared-query creation `query` | Message presence | Remains at the converted-order gate to preserve validation precedence. |
+| Prepared-query creation `query` and sink `config` | Message presence | Generated checks run at the existing converted-order gates to preserve validation precedence. |
+| Prepared-query update/delete names | Non-zero string | Generated checks run before the existing name-shape validator at the same admission position. |
 | Prepared-query name, sink name, mirror IAM region | Non-zero string | Generated check replaces the empty-value branch at the existing boundary. |
 | Sink `type` | Oneof selection | Remains manual; a direct scalar rule cannot express oneof selection. |
 | Ledger and account names, metadata keys, signing key IDs | Value shape and context | Existing domain validators also enforce characters, length or scope and retain their error order. |

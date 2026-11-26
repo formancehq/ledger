@@ -388,10 +388,10 @@ func validateOrderCreateIndex(order *raftcmdpb.Order) domain.Describable {
 func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	switch p := order.GetLedgerScoped().GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
-		q := p.CreatePreparedQuery.GetQuery()
-		if q == nil {
+		if err := p.CreatePreparedQuery.ValidateInput(); err != nil {
 			return domain.ErrPreparedQueryRequired
 		}
+		q := p.CreatePreparedQuery.GetQuery()
 		if err := q.ValidateInput(); err != nil {
 			return domain.ErrPreparedQueryNameRequired
 		}
@@ -416,6 +416,9 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 
 		return domain.ValidateFilterAdmissionShape(q.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
+		if err := p.UpdatePreparedQuery.ValidateInput(); err != nil {
+			return domain.ErrPreparedQueryNameRequired
+		}
 		if err := domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName()); err != nil {
 			return err
 		}
@@ -433,6 +436,10 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
+		if err := p.DeletePreparedQuery.ValidateInput(); err != nil {
+			return domain.ErrPreparedQueryNameRequired
+		}
+
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
 	default:
 		return nil

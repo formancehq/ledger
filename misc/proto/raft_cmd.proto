@@ -127,11 +127,11 @@ message SystemScopedOrder {
 }
 
 message CreatePreparedQueryOrder {
-  common.PreparedQuery query = 1;
+  common.PreparedQuery query = 1 [(common.required_for_input) = true];
 }
 
 message UpdatePreparedQueryOrder {
-  string name = 1;
+  string name = 1 [(common.non_zero_for_input) = true];
   common.QueryFilter filter = 2;
   // Omitted by historical orders and existing clients, in which case the
   // stored target is retained. New updates may replace the target atomically.
@@ -139,11 +139,11 @@ message UpdatePreparedQueryOrder {
 }
 
 message DeletePreparedQueryOrder {
-  string name = 1;
+  string name = 1 [(common.non_zero_for_input) = true];
 }
 
 message AddEventsSinkOrder {
-  common.SinkConfig config = 1;
+  common.SinkConfig config = 1 [(common.required_for_input) = true];
 }
 
 message RemoveEventsSinkOrder {
