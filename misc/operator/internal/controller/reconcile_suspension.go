@@ -172,6 +172,13 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, ledger *led
 		}
 	case suspensionPhaseStopping:
 		if *sts.Spec.Replicas != 0 {
+			if !ledger.Spec.Disabled && *sts.Spec.Replicas == status.ExpectedReplicas {
+				// The stop checkpoint is durable, but no workload effect has
+				// happened yet. Keep the voters running on early cancellation.
+				status.Phase = suspensionPhaseVerifying
+
+				break
+			}
 			if err := suspensionTemplatePinned(sts, status); err != nil {
 				r.suspensionBlocked(ledger, err.Error())
 
@@ -256,10 +263,40 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, ledger *led
 
 			return retry, nil
 		}
-		if ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && ledger.Spec.Auth.Issuer == "" && len(keys) == 0 {
+		hasIssuer := ledger.Spec.Auth != nil && (ledger.Spec.Auth.Issuer != "" || len(ledger.Spec.Auth.Issuers) > 0)
+		if ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && !hasIssuer && len(keys) == 0 {
 			r.suspensionBlocked(ledger, "auth-enabled cluster has no resolved keys or OIDC issuer for restart")
 
 			return retry, nil
+		}
+		if len(keys) == 0 {
+			changed := false
+			for i := range sts.Spec.Template.Spec.Containers {
+				if sts.Spec.Template.Spec.Containers[i].Name != "ledger" {
+					continue
+				}
+				envs := sts.Spec.Template.Spec.Containers[i].Env[:0]
+				for _, env := range sts.Spec.Template.Spec.Containers[i].Env {
+					if env.Name == "AUTH_ED25519_KEYS" {
+						changed = true
+
+						continue
+					}
+					envs = append(envs, env)
+				}
+				sts.Spec.Template.Spec.Containers[i].Env = envs
+			}
+			if changed {
+				// The retained empty ConfigMap remains mounted, but boot must
+				// not ask LoadEd25519KeySet to parse its empty key set.
+				if err := r.Update(ctx, sts); err != nil {
+					r.suspensionBlocked(ledger, fmt.Sprintf("dropping empty static-key wiring before restart: %v", err))
+
+					return retry, nil
+				}
+
+				return retry, nil
+			}
 		}
 		if *sts.Spec.Replicas == 0 {
 			replicas := status.ExpectedReplicas

@@ -118,7 +118,7 @@ func TestSuspensionResumeRevokesKeysBeforeStartingPods(t *testing.T) {
 	cluster := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default", UID: "cluster-original"},
 		Spec: ledgerv1alpha1.ClusterSpec{Replicas: &replicas, ClusterID: "original-id", Image: ledgerv1alpha1.ImageSpec{Repository: "ledger", Tag: "pinned"},
-			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: new(true), Issuer: "https://issuer.example"}},
+			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: new(true), Issuers: []string{"https://issuer.example"}}},
 	}
 	wal, data := boundSuspensionPVC("wal-ledger-test-0"), boundSuspensionPVC("data-ledger-test-0")
 	cluster.Status.Suspension = &ledgerv1alpha1.SuspensionStatus{
@@ -130,7 +130,7 @@ func TestSuspensionResumeRevokesKeysBeforeStartingPods(t *testing.T) {
 	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "ledger-test", Namespace: "default", UID: "sts-original"},
 		Spec: appsv1.StatefulSetSpec{Replicas: &zero,
 			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{annotationSpecHash: computeSpecHash(&cluster.Spec)}},
-				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:pinned", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}}}}}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:pinned", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}, {Name: "AUTH_ED25519_KEYS", Value: "/auth-keys/auth-keys.json"}}}}}},
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}}}}
 	staleKeys := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}},
@@ -148,20 +148,30 @@ func TestSuspensionResumeRevokesKeysBeforeStartingPods(t *testing.T) {
 	require.JSONEq(t, `{"keys":[]}`, updatedKeys.Data["auth-keys.json"], "revoked keys must be removed before replicas are restored")
 	updatedSTS := &appsv1.StatefulSet{}
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, updatedSTS))
+	require.Equal(t, zero, *updatedSTS.Spec.Replicas, "remove stale static-key boot wiring before restoring replicas")
+	require.NotContains(t, updatedSTS.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{Name: "AUTH_ED25519_KEYS", Value: "/auth-keys/auth-keys.json"})
+	_, err = r.reconcileSuspension(ctx, cluster, nil)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, updatedSTS))
 	require.Equal(t, replicas, *updatedSTS.Spec.Replicas)
 }
 
 func TestSuspensionCycleRetainsIdentityVolumesAndMembership(t *testing.T) {
 	t.Parallel()
-	runSuspensionCycle(t, false)
+	runSuspensionCycle(t, "")
 }
 
 func TestSuspensionEarlyResumeAfterQuiescing(t *testing.T) {
 	t.Parallel()
-	runSuspensionCycle(t, true)
+	runSuspensionCycle(t, suspensionPhaseBarrier)
 }
 
-func runSuspensionCycle(t *testing.T, earlyResume bool) {
+func TestSuspensionEarlyResumeAfterStoppingCheckpoint(t *testing.T) {
+	t.Parallel()
+	runSuspensionCycle(t, suspensionPhaseStopping)
+}
+
+func runSuspensionCycle(t *testing.T, cancelPhase string) {
 	t.Helper()
 	ctx := t.Context()
 	scheme := runtime.NewScheme()
@@ -215,11 +225,11 @@ func runSuspensionCycle(t *testing.T, earlyResume bool) {
 	for step := range 16 {
 		current := &ledgerv1alpha1.Cluster{}
 		require.NoError(t, c.Get(ctx, key, current))
-		if earlyResume && current.Status.Suspension != nil && current.Status.Suspension.Phase == suspensionPhaseBarrier && current.Status.Suspension.BarrierIndex == 0 && current.Spec.Disabled {
+		if cancelPhase != "" && current.Status.Suspension != nil && current.Status.Suspension.Phase == cancelPhase && current.Spec.Disabled {
 			current.Spec.Disabled = false
 			require.NoError(t, c.Update(ctx, current))
 		}
-		if !earlyResume && current.Status.Suspension != nil && current.Status.Suspension.Phase == suspensionPhaseSuspended && current.Spec.Disabled {
+		if cancelPhase == "" && current.Status.Suspension != nil && current.Status.Suspension.Phase == suspensionPhaseSuspended && current.Spec.Disabled {
 			stopped := &appsv1.StatefulSet{}
 			require.NoError(t, c.Get(ctx, stsKey, stopped))
 			require.Equal(t, int32(0), *stopped.Spec.Replicas)
@@ -250,7 +260,7 @@ func runSuspensionCycle(t *testing.T, earlyResume bool) {
 	require.NotNil(t, final.Status.Suspension)
 	require.Equal(t, suspensionPhaseRunning, final.Status.Suspension.Phase)
 	require.Positive(t, final.Status.Suspension.BarrierIndex)
-	if earlyResume {
+	if cancelPhase != "" {
 		require.False(t, stopped, "canceling disable before the barrier must not stop the StatefulSet")
 	}
 	require.Equal(t, "original-id", final.Spec.ClusterID)

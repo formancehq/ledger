@@ -365,7 +365,10 @@ suspension, it remains enabled. Stack defers image and replica changes until
 this original cluster reaches `Running`. Direct Cluster spec edits during the
 transition block resume until the pinned spec is restored.
 Before restarting Pods, the operator refreshes their mounted auth-key ConfigMap
-from current Credentials; unresolved keys block resume. BackupRun admission
+from current Credentials. If the last static key was removed, it also removes
+the stale static-key boot setting while the Pods are stopped; a cluster with
+no key and no OIDC issuer remains blocked. Unresolved keys block resume.
+BackupRun admission
 reserves the Cluster status before creating a Job, and suspension waits for
 reserved runs to finish before stopping Pods.
 

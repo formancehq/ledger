@@ -23,8 +23,9 @@ durably persisted Raft index through the barrier. It confirms the complete
 voter set from the current leader, since followers do not expose that list.
 If `disabled` is cleared before scale-to-zero, `Barrier` still records and
 verifies that durable index, then proceeds directly to `Verifying` with the
-existing Pods. This lets the operator reopen write admission after an early
-cancel without stopping healthy voters.
+existing Pods. A persisted `Stopping` checkpoint also honors cancellation
+while the StatefulSet still has its original replicas. Once replicas reach
+zero, resume starts the original voters before reopening admission.
 `Stopping` is persisted before the operator
 detaches stale StatefulSet owner references from PVCs and requests zero
 replicas with both retention policies set to `Retain`. The operator reports
@@ -32,9 +33,12 @@ replicas with both retention policies set to `Retain`. The operator reports
 gate reports `SuspensionBlocked` and retries; before the zero update it leaves
 all Pods in place.
 
-`Starting` checks each original PVC is still bound, refreshes the retained
-auth-key ConfigMap from current Credentials, then restores only the
-original replica count on the pinned StatefulSet template. `Verifying` waits
+`Starting` checks each original PVC is still bound and refreshes the retained
+auth-key ConfigMap from current Credentials. If no static keys remain, it
+removes the stale `AUTH_ED25519_KEYS` boot setting from the stopped StatefulSet
+before restoring replicas; auth-enabled clusters without an OIDC issuer remain
+blocked until a key is available. The image, spec hash and original voter
+count stay pinned. `Verifying` waits
 for all replicas and the original voter set with an elected leader. It clears
 maintenance only if this suspension enabled it; `Opening` confirms every
 member has observed the reopened write gate before reporting `Running`. A new
