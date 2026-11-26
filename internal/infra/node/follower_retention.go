@@ -53,6 +53,9 @@ import (
 type followerRetention struct {
 	maxBytes    uint64
 	idleTimeout time.Duration
+	// refreshTimeout bounds how long maintenance waits for the orchestrate
+	// goroutine to refresh the positions.
+	refreshTimeout time.Duration
 
 	// The fields below are owned by the orchestrate goroutine.
 	//
@@ -96,9 +99,14 @@ type followerProgress struct {
 	pendingSnapshot uint64
 }
 
-// retentionSizingWindow is how many entries compactionTarget sizes per WAL
-// read.
-const retentionSizingWindow = 1024
+const (
+	// retentionSizingWindow is how many entries compactionTarget sizes per
+	// WAL read.
+	retentionSizingWindow = 1024
+	// defaultRetentionRefreshTimeout bounds how long maintenance waits for
+	// the orchestrate goroutine to refresh the positions.
+	defaultRetentionRefreshTimeout = 10 * time.Second
+)
 
 // retentionEntries is the WAL surface compactionTarget reads.
 type retentionEntries interface {
@@ -125,10 +133,11 @@ func newFollowerRetention(maxBytes uint64, idleTimeout time.Duration) *followerR
 	}
 
 	return &followerRetention{
-		maxBytes:    maxBytes,
-		idleTimeout: idleTimeout,
-		lastHeard:   make(map[uint64]time.Time),
-		peers:       make(map[uint64]*followerHistory),
+		maxBytes:       maxBytes,
+		idleTimeout:    idleTimeout,
+		refreshTimeout: defaultRetentionRefreshTimeout,
+		lastHeard:      make(map[uint64]time.Time),
+		peers:          make(map[uint64]*followerHistory),
 	}
 }
 
@@ -273,7 +282,17 @@ func (r *followerRetention) observe(now time.Time, term uint64, followers []foll
 // compactionTarget lowers target to keep the entries the followers still
 // need, within maxBytes of entries beyond target.
 func (r *followerRetention) compactionTarget(target uint64, walLog retentionEntries) (uint64, retentionDecision, error) {
-	published := r.published.Load()
+	return r.targetFor(r.published.Load(), target, walLog)
+}
+
+// conservativeCompactionTarget lowers target as if a follower's position were
+// unknown: it keeps the whole retained log, within maxBytes of entries beyond
+// target. Use it when the published positions may be stale.
+func (r *followerRetention) conservativeCompactionTarget(target uint64, walLog retentionEntries) (uint64, retentionDecision, error) {
+	return r.targetFor(&retentionPositions{unknown: true}, target, walLog)
+}
+
+func (r *followerRetention) targetFor(published *retentionPositions, target uint64, walLog retentionEntries) (uint64, retentionDecision, error) {
 	if published == nil || (!published.unknown && published.positions[0] >= target) {
 		return target, retentionDecision{}, nil
 	}

@@ -1092,27 +1092,24 @@ func (node *Node) doMaintenance(stop <-chan struct{}) error {
 	return nil
 }
 
-// retentionRefreshTimeout bounds how long maintenance waits for the
-// orchestrate goroutine to refresh the follower positions.
-const retentionRefreshTimeout = 10 * time.Second
-
 // retainForFollowers lowers a compaction target to keep the entries that
 // followers still catching up need (EN-3429). It returns false when
 // maintenance must skip compaction this tick.
 //
 // Call it after the tick's WAL snapshot is published. RawNode chooses the
 // snapshot it sends while the orchestrate goroutine steps a message, and
-// records it in the peer's Progress at once; finishReady records the
-// positions again before reporting the snapshot sent, so the StateSnapshot
-// transition is seen even when the report returns the peer to the same probe
-// position. Refreshing the positions on that goroutine after the new snapshot
-// is published therefore covers every older snapshot already chosen; a
-// snapshot chosen later is the new one, which is past the target. Positions
-// sampled on the previous Raft tick could miss a snapshot chosen since, so a
-// failed refresh skips compaction rather than using them.
+// records it in the peer's Progress at once; nextReady records it again from
+// the MsgSnap as soon as the Ready that carries it is taken. Refreshing the
+// positions on that goroutine after the new snapshot is published therefore
+// covers every older snapshot already chosen; a snapshot chosen later is the
+// new one, which is past the target. Positions sampled on an earlier Raft
+// tick could miss a snapshot chosen since, so when the refresh fails the hold
+// treats every follower's position as unknown: it keeps the whole retained
+// log, still within the byte cap.
 //
 // The refresh is idempotent, so the wait is abandoned on timeout or when stop
-// closes: a command still queued then runs harmlessly or never.
+// closes: a command still queued then runs harmlessly or never. A stopping
+// task compacts no further.
 //
 // A failure to size the hold keeps the requested target: the margin still
 // applies, and a follower that falls behind it receives a snapshot as before.
@@ -1121,7 +1118,7 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 		return target, true
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), retentionRefreshTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), node.followerRetention.refreshTimeout)
 	defer cancel()
 	if stop != nil {
 		go func() {
@@ -1132,28 +1129,24 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 			}
 		}()
 	}
-	if err := node.execClusterCommand(ctx, false, func() error {
+	refreshErr := node.execClusterCommand(ctx, false, func() error {
 		node.observeFollowerRetention(time.Now())
 
 		return nil
-	}); err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to refresh follower positions, skipping WAL compaction")
-
+	})
+	if isStopping(stop) {
 		return 0, false
 	}
-	// The refresh can complete as stop closes: a stopping task compacts no
-	// further.
-	select {
-	case <-stop:
-		return 0, false
-	default:
+
+	size := node.followerRetention.compactionTarget
+	if refreshErr != nil {
+		node.logger.WithFields(map[string]any{"error": refreshErr}).Errorf("Background maintenance: failed to refresh follower positions, holding the whole retained log within the byte cap")
+		size = node.followerRetention.conservativeCompactionTarget
 	}
 
-	held, decision, err := node.followerRetention.compactionTarget(target, node.wal)
-	select {
-	case <-stop:
+	held, decision, err := size(target, node.wal)
+	if isStopping(stop) {
 		return 0, false
-	default:
 	}
 	if err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to size follower log retention")
@@ -1173,7 +1166,7 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 		"maxBytes":      node.followerRetention.maxBytes,
 	}
 	if decision.capped {
-		node.logger.WithFields(fields).Errorf("Background maintenance: follower log retention reached its byte cap, the lagging follower will need a snapshot")
+		node.logger.WithFields(fields).Errorf("Background maintenance: follower log retention reached its byte cap, a follower that can only resume below compactIndex will need a snapshot")
 	} else {
 		node.logger.WithFields(fields).Infof("Background maintenance: retaining Raft log for a follower that is catching up")
 	}
@@ -2228,7 +2221,7 @@ func snapshotRecipients(outbound []*raftpb.Message) []uint64 {
 }
 
 // isStopping returns true if the stop channel has been closed or a signal is pending.
-func isStopping(stop chan struct{}) bool {
+func isStopping(stop <-chan struct{}) bool {
 	select {
 	case <-stop:
 		return true

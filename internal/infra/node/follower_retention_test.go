@@ -911,32 +911,60 @@ func TestNextReadyRecordsSentSnapshots(t *testing.T) {
 // TestDoMaintenanceStopAbandonsRetentionRefresh covers shutdown: the refresh
 // command can be queued just as the orchestrate goroutine takes its stop
 // branch, and nothing consumes it. Closing the maintenance task's stop
-// channel must release maintenance long before the refresh timeout, and
-// maintenance then skips compaction rather than compact from unrefreshed
-// positions.
+// channel must release maintenance long before the refresh timeout, and a
+// stopping task compacts no further.
 func TestDoMaintenanceStopAbandonsRetentionRefresh(t *testing.T) {
 	t.Parallel()
 
 	node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
+	timeout := node.followerRetention.refreshTimeout
 
 	stop := make(chan struct{})
 	done := make(chan error, 1)
 	go func() { done <- node.doMaintenance(stop) }()
 	require.Eventually(t, func() bool { return len(node.clusterCommandCh) == 1 },
-		retentionRefreshTimeout/2, time.Millisecond, "the refresh command must be queued")
+		timeout/2, time.Millisecond, "the refresh command must be queued")
 
 	close(stop)
 	select {
 	case err := <-done:
 		require.NoError(t, err)
-	case <-time.After(retentionRefreshTimeout / 2):
+	case <-time.After(timeout / 2):
 		require.FailNow(t, "closing stop must release maintenance before the refresh timeout")
 	}
 
 	snapshot, err := node.wal.Snapshot()
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), snapshot.GetMetadata().GetIndex(), "the WAL snapshot does not depend on the refresh")
-	requireFirstIndex(t, node, 1, "compaction must be skipped without refreshed positions")
+	requireFirstIndex(t, node, 1, "a stopping task must not compact")
+}
+
+// TestDoMaintenanceRefreshTimeoutHoldsWithinCap covers an orchestrate
+// goroutine too busy to refresh the positions in time. The published
+// positions may miss a snapshot sent since, so maintenance treats every
+// follower's position as unknown, but it still compacts what lies beyond the
+// byte cap.
+func TestDoMaintenanceRefreshTimeoutHoldsWithinCap(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		maxBytes  uint64
+		wantFirst uint64
+	}{
+		"an unbounded cap holds the whole retained log": {maxBytes: math.MaxUint64, wantFirst: 1},
+		"a cap below one entry compacts to the target":  {maxBytes: 1, wantFirst: 6},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
+			node.followerRetention = newFollowerRetention(tc.maxBytes, time.Hour)
+			node.followerRetention.refreshTimeout = time.Millisecond
+
+			require.NoError(t, node.doMaintenance(nil))
+			requireFirstIndex(t, node, tc.wantFirst, "")
+		})
+	}
 }
 
 // TestObserveFollowerRetentionFollowsSnapshotHandoff drives a real RawNode so

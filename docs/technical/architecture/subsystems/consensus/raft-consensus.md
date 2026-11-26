@@ -798,10 +798,12 @@ still replicating:
    chooses the snapshot it sends while that goroutine steps a message and
    records it in `Progress` at once, so the refresh covers every snapshot
    already sent; any snapshot chosen later is the new one, past the
-   compaction target. If the refresh fails, times out (10s) or the
-   maintenance task stops, maintenance skips compaction for that tick
-   rather than use positions from an earlier tick. The refresh is
-   idempotent, so a command left queued at shutdown is harmless.
+   compaction target. If the refresh fails or times out (10s), maintenance
+   does not trust positions from an earlier tick: it treats every
+   follower's position as unknown and keeps the whole retained log, still
+   within the byte cap. If the maintenance task stops, it skips compaction.
+   The refresh is idempotent, so a command left queued at shutdown is
+   harmless.
 4. **The compaction target.** Maintenance computes the usual target,
    `min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`, and lowers
    it to the lowest candidate position still in the leader's log (at or
@@ -829,8 +831,6 @@ leader keeps, never how an entry applies, and it persists nothing. Its limits:
   snapshot, as it would without the hold.
 - A follower that keeps answering heartbeats without acknowledging entries
   keeps holding, up to the byte cap.
-- A maintenance tick whose refresh times out skips compaction entirely, even
-  when no follower needs a hold; the next successful tick compacts.
 - RawNode can choose a snapshot while an earlier Ready is in flight; the
   index then reaches the hold only through `Progress` until the next Ready
   is taken. If an acknowledgement still in the log clears it first, the hold
