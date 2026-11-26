@@ -8,7 +8,8 @@ ExecuteNumscript proposals carry ID 1 in the Raft proposal and audit entry;
 historical proposals without it retain their original metadata validation.
 Live CreateLedger apply keeps the initial account-type validation shipped in
 RC.5, including for unmarked proposals from an RC.5 leader. Historical audit
-replay retains the earlier creation rule. The capability foundation's
+replay retains the earlier creation rule only for unmarked entries; marked
+entries use the strengthened validation. The capability foundation's
 coordinated upgrade procedure remains the deployment requirement until a
 mixed-version rolling validation proves this activation safe from every
 published RC. Do not activate the capability on a partially upgraded cluster.
@@ -64,8 +65,8 @@ during `CreateLedger` apply, and applies a keyed batch carrying a
 stopped-upgrade drain waits for a durable FSM cursor beyond the admission
 cutoff on every member, so RC.4 business entries are applied by RC.4 before
 RC.5 starts. Keep the retained data and WAL volumes; audit replay preserves the
-historical creation rule for previously successful orders. Existing ledgers are
-not rewritten.
+historical creation rule for previously successful unmarked orders. Marked
+orders use the strengthened validation. Existing ledgers are not rewritten.
 RC.4 also drops the Numscript library version `description` when it applies a
 save, so old and new voters would store different library entries and audit
 bytes for a described save. The stopped boundary prevents that coexistence.
@@ -133,8 +134,10 @@ This release registers capability ID 1 for STRICT account-metadata validation
 in CreateTransaction and ExecuteNumscript. New proposals for these orders carry
 ID 1; historical unmarked proposals keep their original metadata validation.
 CreateLedger retains the RC.5 live validation rule without requiring ID 1;
-historical audit replay keeps the pre-RC.5 creation rule. The ID activates only
-after all current members advertise support.
+historical audit replay keeps the pre-RC.5 creation rule only for unmarked
+entries. Marked entries use the strengthened validation, including when
+CreateLedger and a transaction share a batch. The ID activates only after all
+current members advertise support.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
