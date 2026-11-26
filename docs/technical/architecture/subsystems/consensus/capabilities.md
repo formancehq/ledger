@@ -170,6 +170,14 @@ also serves non-FSM reads. For example, the exact aggregate totals change
 stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
 order, proposal, or apply rule changes.
 
+The public client boundary moves backend-only messages from `common.proto` to
+`internal_state.proto` without changing their package, message names, fields,
+numbers, or wire types. `raft_cmd.proto` imports the new file so the same
+persisted message types remain available to proposals. Serialized Raft entries,
+snapshots, and audit data keep the same bytes and apply semantics; only the
+source file and Go descriptor owner change. No capability or persisted-state
+migration is needed for this relocation.
+
 Removing `FailureDetails()` from uncommitted failures changes only Go types in
 order processing. Every committed entry applies identically on old and new
 voters: the same order fails with the same reason, an uncommitted failure still
