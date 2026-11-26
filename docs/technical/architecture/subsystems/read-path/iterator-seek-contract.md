@@ -228,7 +228,8 @@ Two preconditions make the proof permanent, and both are load-bearing:
 2. **Only clean exhaustion proves anything.** `Seek` also returns false on
    I/O error (`Err()`), and an I/O-failed seek proves nothing about the view's
    contents. `seekFloor.fail`/`seekCeil.fail` take the iterator's storage
-   error and drop the proof when it is non-nil. (Pebble's error is sticky and
-   pagination propagates `Err()` unconditionally, so the query still fails
-   loudly either way — the guard keeps the cache sound on its own terms
-   rather than by leaning on that second-order property.)
+   error and drop the proof when it is non-nil. Pebble may clear an error on
+   absolute repositioning. A reverse event leaf therefore captures a failed
+   `SeekGE` error before trying `Last` as the clean-exhaustion fallback, so
+   pagination still receives the original error and cannot return a group
+   above its cursor.
