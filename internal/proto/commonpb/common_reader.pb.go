@@ -4087,6 +4087,8 @@ type ClusterPolicyReader interface {
 	GetMetadataMaxEntityBytes() uint64
 	GetMetadataMaxCommandBytes() uint64
 	GetCapabilityActivations() CapabilityActivationListReader
+	GetKvMaxKeyBytes() uint64
+	GetKvMaxValueBytes() uint64
 	Mutate() *ClusterPolicy
 }
 
@@ -4126,6 +4128,14 @@ func (r *clusterPolicyReadonly) GetMetadataMaxCommandBytes() uint64 {
 
 func (r *clusterPolicyReadonly) GetCapabilityActivations() CapabilityActivationListReader {
 	return NewCapabilityActivationListReader((*ClusterPolicy)(r).GetCapabilityActivations())
+}
+
+func (r *clusterPolicyReadonly) GetKvMaxKeyBytes() uint64 {
+	return (*ClusterPolicy)(r).GetKvMaxKeyBytes()
+}
+
+func (r *clusterPolicyReadonly) GetKvMaxValueBytes() uint64 {
+	return (*ClusterPolicy)(r).GetKvMaxValueBytes()
 }
 
 func (r *clusterPolicyReadonly) Mutate() *ClusterPolicy {

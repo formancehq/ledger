@@ -98,7 +98,7 @@ func validateOrderKV(order *raftcmdpb.Order) domain.Describable {
 	case *raftcmdpb.LedgerScopedOrder_PutKv:
 		key = payload.PutKv.GetKey()
 		if len(payload.PutKv.GetValue()) > domain.MaxKVValueBytes {
-			return invalidKVOrder{message: "KV value exceeds 1 MiB"}
+			return invalidKVOrder{message: "KV value exceeds transport safety bound"}
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteKv:
 		key = payload.DeleteKv.GetKey()
@@ -107,6 +107,32 @@ func validateOrderKV(order *raftcmdpb.Order) domain.Describable {
 	}
 	if key == "" || len(key) > domain.MaxKVKeyBytes {
 		return invalidKVOrder{message: "KV key must contain 1 to 256 bytes"}
+	}
+
+	return nil
+}
+
+func validateOrderKVPolicy(order *raftcmdpb.Order, policy *commonpb.ClusterPolicy) domain.Describable {
+	ls := order.GetLedgerScoped()
+	if ls == nil {
+		return nil
+	}
+	keyLimit, valueLimit := uint64(domain.DefaultKVKeyBytes), uint64(domain.DefaultKVValueBytes)
+	if policy.GetKvMaxKeyBytes() != 0 {
+		keyLimit = policy.GetKvMaxKeyBytes()
+	}
+	if policy.GetKvMaxValueBytes() != 0 {
+		valueLimit = policy.GetKvMaxValueBytes()
+	}
+	switch payload := ls.GetPayload().(type) {
+	case *raftcmdpb.LedgerScopedOrder_PutKv:
+		if uint64(len(payload.PutKv.GetKey())) > keyLimit || uint64(len(payload.PutKv.GetValue())) > valueLimit {
+			return invalidKVOrder{message: "KV key or value exceeds the committed cluster policy limit"}
+		}
+	case *raftcmdpb.LedgerScopedOrder_DeleteKv:
+		if uint64(len(payload.DeleteKv.GetKey())) > keyLimit {
+			return invalidKVOrder{message: "KV key exceeds the committed cluster policy limit"}
+		}
 	}
 
 	return nil

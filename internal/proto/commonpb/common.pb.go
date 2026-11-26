@@ -4506,8 +4506,11 @@ type ClusterPolicy struct {
 	MetadataMaxCommandBytes     uint64 `protobuf:"fixed64,8,opt,name=metadata_max_command_bytes,json=metadataMaxCommandBytes,proto3" json:"metadata_max_command_bytes,omitempty"`
 	// Capability activation is replicated policy, never a node-local flag.
 	CapabilityActivations []*CapabilityActivation `protobuf:"bytes,13,rep,name=capability_activations,json=capabilityActivations,proto3" json:"capability_activations,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Maximum UTF-8 key bytes and opaque value bytes for ledger KV writes.
+	KvMaxKeyBytes   uint64 `protobuf:"fixed64,14,opt,name=kv_max_key_bytes,json=kvMaxKeyBytes,proto3" json:"kv_max_key_bytes,omitempty"`
+	KvMaxValueBytes uint64 `protobuf:"fixed64,15,opt,name=kv_max_value_bytes,json=kvMaxValueBytes,proto3" json:"kv_max_value_bytes,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ClusterPolicy) Reset() {
@@ -4601,6 +4604,20 @@ func (x *ClusterPolicy) GetCapabilityActivations() []*CapabilityActivation {
 		return x.CapabilityActivations
 	}
 	return nil
+}
+
+func (x *ClusterPolicy) GetKvMaxKeyBytes() uint64 {
+	if x != nil {
+		return x.KvMaxKeyBytes
+	}
+	return 0
+}
+
+func (x *ClusterPolicy) GetKvMaxValueBytes() uint64 {
+	if x != nil {
+		return x.KvMaxValueBytes
+	}
+	return 0
 }
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
@@ -23095,7 +23112,7 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\x9e\x04\n" +
+	"cacheEpoch\"\xf4\x04\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
@@ -23105,7 +23122,9 @@ const file_common_proto_rawDesc = "" +
 	"\x18metadata_max_value_bytes\x18\x06 \x01(\x06R\x15metadataMaxValueBytes\x129\n" +
 	"\x19metadata_max_entity_bytes\x18\a \x01(\x06R\x16metadataMaxEntityBytes\x12;\n" +
 	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\x12S\n" +
-	"\x16capability_activations\x18\r \x03(\v2\x1c.common.CapabilityActivationR\x15capabilityActivations:\x04\xd8\xd5\"\x01\"d\n" +
+	"\x16capability_activations\x18\r \x03(\v2\x1c.common.CapabilityActivationR\x15capabilityActivations\x12'\n" +
+	"\x10kv_max_key_bytes\x18\x0e \x01(\x06R\rkvMaxKeyBytes\x12+\n" +
+	"\x12kv_max_value_bytes\x18\x0f \x01(\x06R\x0fkvMaxValueBytes:\x04\xd8\xd5\"\x01\"d\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query:\x04\xd8\xd5\"\x01\"\xdc\x02\n" +

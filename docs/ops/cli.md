@@ -3560,7 +3560,7 @@ ledgerctl signing get-config --json
 
 ### kv
 
-Manage opaque values scoped to a ledger. Keys are UTF-8 text up to 256 bytes; values are arbitrary bytes up to 1 MiB. `put` replaces the current value, including with an empty value. `delete` succeeds when the key is absent. Access requires `ledger:ReadKV` for `get` and `ledger:WriteKV` for `put` and `delete`; grant these scopes explicitly in custom auth mappings and restricted signing-key allowlists.
+Manage opaque values scoped to a ledger. Keys are UTF-8 text with a default limit of 256 bytes; values are arbitrary bytes with a default limit of 4 KiB. The committed `ClusterPolicy` controls both limits through `kv_max_key_bytes` and `kv_max_value_bytes`, visible in the Discovery RPC. `put` replaces the current value, including with an empty value. `delete` succeeds when the key is absent. Access requires `ledger:ReadKV` for `get` and `ledger:WriteKV` for `put` and `delete`; grant these scopes explicitly in custom auth mappings and restricted signing-key allowlists.
 
 ```bash
 ledgerctl kv put <key> --ledger <ledger-name> [--file <path>] [--idempotency-key <key>]

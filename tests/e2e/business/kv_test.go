@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
@@ -79,5 +81,15 @@ var _ = Describe("Ledger KV", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(value.GetValue()).To(Equal([]byte("first")))
 		expectStoreValid(sharedCtx, sharedClient)
+	})
+
+	It("publishes and enforces the default value limit", func() {
+		discovery, err := sharedClient.Discovery(sharedCtx, &servicepb.DiscoveryRequest{})
+		Expect(err).To(Succeed())
+		Expect(discovery.GetClusterPolicy().GetKvMaxKeyBytes()).To(Equal(uint64(domain.DefaultKVKeyBytes)))
+		Expect(discovery.GetClusterPolicy().GetKvMaxValueBytes()).To(Equal(uint64(domain.DefaultKVValueBytes)))
+		request(http.MethodPut, bytes.Repeat([]byte{1}, domain.DefaultKVValueBytes), http.StatusNoContent)
+		request(http.MethodPut, bytes.Repeat([]byte{2}, domain.DefaultKVValueBytes+1), http.StatusBadRequest)
+		Expect(request(http.MethodGet, nil, http.StatusOK)).To(Equal(bytes.Repeat([]byte{1}, domain.DefaultKVValueBytes)))
 	})
 })

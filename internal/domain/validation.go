@@ -21,8 +21,10 @@ const maxNumscriptNameLength = 256
 const MaxNumscriptDescriptionLength = 1024
 
 const (
-	MaxKVKeyBytes   = 256
-	MaxKVValueBytes = 1 << 20
+	MaxKVKeyBytes       = 256
+	MaxKVValueBytes     = 1 << 20 // absolute request bound
+	DefaultKVKeyBytes   = 256
+	DefaultKVValueBytes = 4 << 10
 )
 
 // maxPreparedQueryNameLength caps prepared-query identifiers. Prepared queries

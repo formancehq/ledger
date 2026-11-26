@@ -95,6 +95,8 @@ func validBaseConfig() Config {
 		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
 		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+		KVMaxKeyBytes:               domain.DefaultKVKeyBytes,
+		KVMaxValueBytes:             domain.DefaultKVValueBytes,
 		TransportConfig: node.TransportConfig{
 			Reception: []int{10, 512, 512},
 			Send:      []int{10, 512, 512},

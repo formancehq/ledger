@@ -1291,6 +1291,8 @@ func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
 	r.MetadataMaxValueBytes = m.MetadataMaxValueBytes
 	r.MetadataMaxEntityBytes = m.MetadataMaxEntityBytes
 	r.MetadataMaxCommandBytes = m.MetadataMaxCommandBytes
+	r.KvMaxKeyBytes = m.KvMaxKeyBytes
+	r.KvMaxValueBytes = m.KvMaxValueBytes
 	if rhs := m.CapabilityActivations; rhs != nil {
 		tmpContainer := make([]*CapabilityActivation, len(rhs))
 		for k, v := range rhs {
@@ -11391,6 +11393,12 @@ func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
 				return false
 			}
 		}
+	}
+	if this.KvMaxKeyBytes != that.KvMaxKeyBytes {
+		return false
+	}
+	if this.KvMaxValueBytes != that.KvMaxValueBytes {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -27058,6 +27066,18 @@ func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.KvMaxValueBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.KvMaxValueBytes))
+		i--
+		dAtA[i] = 0x79
+	}
+	if m.KvMaxKeyBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.KvMaxKeyBytes))
+		i--
+		dAtA[i] = 0x71
 	}
 	if len(m.CapabilityActivations) > 0 {
 		for iNdEx := len(m.CapabilityActivations) - 1; iNdEx >= 0; iNdEx-- {
@@ -46163,6 +46183,12 @@ func (m *ClusterPolicy) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	if m.KvMaxKeyBytes != 0 {
+		n += 9
+	}
+	if m.KvMaxValueBytes != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -61137,6 +61163,26 @@ func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 14:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KvMaxKeyBytes", wireType)
+			}
+			m.KvMaxKeyBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.KvMaxKeyBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 15:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KvMaxValueBytes", wireType)
+			}
+			m.KvMaxValueBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.KvMaxValueBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

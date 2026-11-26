@@ -215,6 +215,8 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Uint64("metadata-max-entries", domain.DefaultMetadataMaxEntriesPerEntity, "Maximum metadata entries one command may carry for a single entity, carried in the replicated cluster policy (must be greater than zero)")
 	runCmd.Flags().Uint64("metadata-max-key-bytes", domain.DefaultMetadataMaxKeyBytes, "Maximum metadata key size in bytes, carried in the replicated cluster policy (must be greater than zero)")
 	runCmd.Flags().Uint64("metadata-max-value-bytes", domain.DefaultMetadataMaxValueBytes, "Maximum metadata value size in bytes, carried in the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("kv-max-key-bytes", domain.DefaultKVKeyBytes, "Maximum ledger KV key size in bytes, carried in the replicated cluster policy")
+	runCmd.Flags().Uint64("kv-max-value-bytes", domain.DefaultKVValueBytes, "Maximum ledger KV value size in bytes, carried in the replicated cluster policy")
 	runCmd.Flags().Uint64("metadata-max-entity-bytes", domain.DefaultMetadataMaxEntityBytes, "Maximum total metadata bytes one command may carry for a single entity, carried in the replicated cluster policy (must be greater than zero)")
 	runCmd.Flags().Uint64("metadata-max-command-bytes", domain.DefaultMetadataMaxCommandBytes, "Maximum total metadata bytes one command may carry across every entity, carried in the replicated cluster policy (must be greater than zero)")
 
@@ -673,6 +675,8 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.MetadataMaxEntriesPerEntity = getUint64("metadata-max-entries", domain.DefaultMetadataMaxEntriesPerEntity)
 	cfg.MetadataMaxKeyBytes = getUint64("metadata-max-key-bytes", domain.DefaultMetadataMaxKeyBytes)
 	cfg.MetadataMaxValueBytes = getUint64("metadata-max-value-bytes", domain.DefaultMetadataMaxValueBytes)
+	cfg.KVMaxKeyBytes = getUint64("kv-max-key-bytes", domain.DefaultKVKeyBytes)
+	cfg.KVMaxValueBytes = getUint64("kv-max-value-bytes", domain.DefaultKVValueBytes)
 	cfg.MetadataMaxEntityBytes = getUint64("metadata-max-entity-bytes", domain.DefaultMetadataMaxEntityBytes)
 	cfg.MetadataMaxCommandBytes = getUint64("metadata-max-command-bytes", domain.DefaultMetadataMaxCommandBytes)
 
