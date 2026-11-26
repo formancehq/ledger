@@ -4929,6 +4929,8 @@ components:
     AtomicApplyHttpSinkConfig:
       additionalProperties: false
       properties:
+        batch:
+          type: boolean
         endpoint:
           type: string
         secret:

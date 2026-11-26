@@ -118,6 +118,7 @@ func (s *HTTPSink) publishBatch(ctx context.Context, events []*eventspb.Event) e
 			return fmt.Errorf("posting batch seq=%d..%d: %w", first.GetLogSequence(), last.GetLogSequence(), err)
 		}
 		body = nil
+
 		return nil
 	}
 	var first, last *eventspb.Event
@@ -152,6 +153,7 @@ func (s *HTTPSink) publishBatch(ctx context.Context, events []*eventspb.Event) e
 		last = event
 		count++
 	}
+
 	return flush(first, last, count)
 }
 

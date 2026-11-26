@@ -864,9 +864,11 @@ func (x *HttpSinkConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Endpoint string `json:"endpoint"`
 		Secret   string `json:"secret"`
+		Batch    bool   `json:"batch"`
 	}{
 		Endpoint: x.Endpoint,
 		Secret:   x.Secret,
+		Batch:    x.Batch,
 	})
 }
 

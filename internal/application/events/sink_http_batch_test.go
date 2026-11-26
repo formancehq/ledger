@@ -13,9 +13,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPSinkBatchRetry(t *testing.T) {
