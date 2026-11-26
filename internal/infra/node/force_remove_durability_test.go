@@ -37,8 +37,10 @@ type batchWriteFailure struct {
 func (f *batchWriteFailure) beforeCommit() error {
 	if f.armed.CompareAndSwap(true, false) {
 		f.count.Add(1)
+
 		return f.err
 	}
+
 	return nil
 }
 
