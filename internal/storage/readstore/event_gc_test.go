@@ -64,9 +64,9 @@ func TestGCEventZone_IteratorFailureDiscardsPendingDeletes(t *testing.T) {
 		failOnNext:      3,
 		err:             injected,
 	}
-	pruned, next, err := gcEventZoneWithIterator(s.DB(), failing, 30, 1<<20)
+	changed, next, err := gcEventZoneWithIterator(s.DB(), failing, 30, 1<<20)
 	require.ErrorIs(t, err, injected)
-	require.Zero(t, pruned)
+	require.Zero(t, changed)
 	require.Nil(t, next)
 
 	kb := dal.NewKeyBuilder()
@@ -104,9 +104,9 @@ func TestGCEventZone(t *testing.T) {
 		before[pin] = collect(t, s, prefix, pin)
 	}
 
-	pruned, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
+	changed, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
 	require.NoError(t, err)
-	require.Equal(t, 4, pruned, "dead's pair + live's superseded pair")
+	require.Equal(t, 4, changed, "dead's pair + live's superseded pair")
 	require.Nil(t, next, "single pass covers the whole zone")
 
 	for _, pin := range []uint64{30, 35, 45} {
@@ -139,7 +139,7 @@ func TestGCEventZone_BudgetedResume(t *testing.T) {
 
 	const watermark = 30
 
-	totalPruned := 0
+	totalChanged := 0
 
 	var resume []byte
 
@@ -148,10 +148,10 @@ func TestGCEventZone_BudgetedResume(t *testing.T) {
 		rounds++
 		require.Less(t, rounds, 10, "walk must terminate")
 
-		pruned, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, resume, watermark, 2)
+		changed, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, resume, watermark, 2)
 		require.NoError(t, err)
 
-		totalPruned += pruned
+		totalChanged += changed
 		if next == nil {
 			break
 		}
@@ -160,6 +160,6 @@ func TestGCEventZone_BudgetedResume(t *testing.T) {
 	}
 
 	require.Greater(t, rounds, 1, "budget of 2 keys must split the walk")
-	require.Equal(t, 4, totalPruned, "a's pair + b's pair reclaimed, c's ADD kept")
+	require.Equal(t, 4, totalChanged, "a's pair + b's pair reclaimed, c's ADD kept")
 	require.Equal(t, []string{"c"}, collect(t, s, prefix, 35))
 }

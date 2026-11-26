@@ -171,7 +171,7 @@ func (b *Builder) purgeOrphanVersions() error {
 // times a second) while keeping each pass well under the tick interval.
 const eventGCKeyBudget = 4096
 
-type eventGCZoneFunc func(zone byte, resume []byte, watermark uint64, budget int) (pruned int, next []byte, err error)
+type eventGCZoneFunc func(zone byte, resume []byte, watermark uint64, budget int) (changed int, next []byte, err error)
 
 type eventGCCycleState struct {
 	active    bool
@@ -264,7 +264,7 @@ func (b *Builder) runEventGC(cursor uint64) {
 			state.cycleWriteEpoch = writeEpoch
 		}
 
-		pruned, next, err := b.gcEventZone(zone, state.resume, state.cycleWatermark, eventGCKeyBudget)
+		changed, next, err := b.gcEventZone(zone, state.resume, state.cycleWatermark, eventGCKeyBudget)
 		if err != nil {
 			// One zone failing says nothing about the other; sweeping it is
 			// what keeps the surviving zone from growing without bound. Keep
@@ -282,8 +282,8 @@ func (b *Builder) runEventGC(cursor uint64) {
 			state.completedWriteEpoch = state.cycleWriteEpoch
 		}
 
-		if pruned > 0 {
-			b.logger.Debugf("event GC reclaimed %d events in zone %#x", pruned, zone)
+		if changed > 0 {
+			b.logger.Debugf("event GC changed %d index rows in zone %#x", changed, zone)
 		}
 	}
 }

@@ -19,11 +19,12 @@ type eventGCIterator interface {
 // GCEventZone reclaims superseded events below the read-lease watermark
 // across one event zone (metadata 0x01, exists 0x02, or account asset 0x0C),
 // walking at most budget keys from resume (nil = zone start) and stopping
-// only at group boundaries. It returns the number of reclaimed events and
-// the cursor to resume from on the next call — nil once the zone walk
-// completed. In 0x0C it also replaces RC.5 first-touch rows with equivalent
-// ADD events in an atomic batch. A group being converted is not pruned in the
-// same pass because its old key sorts before all its events regardless of seq.
+// only at group boundaries. It returns the number of changed index rows
+// (reclaimed events plus converted RC.5 rows) and the cursor for the next
+// call. A nil cursor means the zone walk completed. In 0x0C it also replaces
+// RC.5 first-touch rows with equivalent ADD events in an atomic batch. A
+// group being converted is not pruned in the same pass because its old key
+// sorts before all its events regardless of seq.
 //
 // The pruning rule per event group: every event with seq < watermark is
 // droppable EXCEPT the latest one, and that one survives only as an ADD.
@@ -37,7 +38,7 @@ type eventGCIterator interface {
 //     the group has no event in (watermark, P];
 //   - a latest-below-watermark DEL decides the same verdict as no event at
 //     all ("not matching"), so the whole dead group is reclaimed.
-func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budget int) (pruned int, next []byte, err error) {
+func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budget int) (changed int, next []byte, err error) {
 	zonePrefix := []byte{zone}
 
 	lower := zonePrefix
@@ -57,7 +58,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 	return gcEventZoneWithIterator(db, iter, watermark, budget)
 }
 
-func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint64, budget int) (pruned int, next []byte, err error) {
+func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint64, budget int) (changed int, next []byte, err error) {
 	batch := db.NewBatch()
 	defer func() { _ = batch.Close() }()
 
@@ -95,7 +96,7 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 		if !groupUnsafe {
 			for _, key := range reclaimable {
 				_ = batch.Delete(key, nil)
-				pruned++
+				changed++
 			}
 		}
 
@@ -183,7 +184,7 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 			if err := batch.Delete(key, nil); err != nil {
 				return 0, nil, err
 			}
-			pruned++ // one legacy row replaced, not an event reclaimed
+			changed++ // one legacy row replaced
 			groupUnsafe = true
 
 			continue
@@ -234,11 +235,11 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 		closeGroup()
 	}
 
-	if pruned > 0 {
+	if changed > 0 {
 		if err := batch.Commit(pebble.NoSync); err != nil {
 			return 0, nil, err
 		}
 	}
 
-	return pruned, next, nil
+	return changed, next, nil
 }

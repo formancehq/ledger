@@ -4,7 +4,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// Event-suffixed metadata index keys (EN-1748).
+// Event-suffixed metadata index keys (EN-1748). The suffix encoding and op
+// bytes are also used by the exists and account-by-asset indexes; the
+// MetadataEvent names reflect where this shared format was introduced.
 //
 // The metadata value index is stored as an append-only event log so that a
 // reader pinned at an applied sequence reconstructs the exact membership at

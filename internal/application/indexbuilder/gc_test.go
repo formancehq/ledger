@@ -170,9 +170,9 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 
 	metadataCalls := 0
 	b.eventGCZone = func(zone byte, resume []byte, watermark uint64, _ int) (int, []byte, error) {
-		pruned, next, err := readstore.GCEventZone(b.readStore.DB(), zone, resume, watermark, 2)
+		changed, next, err := readstore.GCEventZone(b.readStore.DB(), zone, resume, watermark, 2)
 		if err != nil || zone != readstore.PrefixMetadataIndex {
-			return pruned, next, err
+			return changed, next, err
 		}
 
 		metadataCalls++
@@ -185,7 +185,7 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			b.eventGCWriteEpoch[zone]++
 		}
 
-		return pruned, next, nil
+		return changed, next, nil
 	}
 
 	for range 20 {

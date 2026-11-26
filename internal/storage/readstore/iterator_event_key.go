@@ -41,6 +41,8 @@ func parseAccountAssetKey(key, value []byte, prefixLen int) (group []byte, seq u
 	}
 	account := key[prefixLen:]
 	if bytes.IndexByte(account, metadataEventTerminator) >= 0 {
+		// The event suffix format is shared with metadata; this index only
+		// permits ADD because a historical asset touch is never revoked.
 		group, seq, op, valid := parseEventKey(key, prefixLen)
 
 		return group, seq, false, valid && op == MetadataEventAdd
