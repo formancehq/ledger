@@ -195,7 +195,7 @@ func (b *Builder) gcEventZone(zone byte, resume []byte, watermark uint64, budget
 
 func (b *Builder) eventGCCycle(zone byte) *eventGCCycleState {
 	if b.eventGCCycles == nil {
-		b.eventGCCycles = make(map[byte]*eventGCCycleState, 2)
+		b.eventGCCycles = make(map[byte]*eventGCCycleState, 3)
 	}
 
 	state := b.eventGCCycles[zone]
@@ -218,10 +218,10 @@ func (b *Builder) flushWriteBatch() error {
 	}
 
 	if b.eventGCWriteEpoch == nil {
-		b.eventGCWriteEpoch = make(map[byte]uint64, 2)
+		b.eventGCWriteEpoch = make(map[byte]uint64, 3)
 	}
 
-	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists} {
+	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists, readstore.PrefixAccountByAsset} {
 		if eventZones.Has(zone) {
 			b.eventGCWriteEpoch[zone]++
 		}
@@ -230,8 +230,7 @@ func (b *Builder) flushWriteBatch() error {
 	return nil
 }
 
-// runEventGC advances edge-triggered reclamation of superseded metadata /
-// exists index events by one budgeted slice per active zone. A completed zone
+// runEventGC advances edge-triggered reclamation of superseded event zones by one budgeted slice per active zone. A completed zone
 // stays idle until either the lease-bounded watermark or that zone's committed
 // write epoch advances.
 //
@@ -247,7 +246,7 @@ func (b *Builder) runEventGC(cursor uint64) {
 		return
 	}
 
-	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists} {
+	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists, readstore.PrefixAccountByAsset} {
 		state := b.eventGCCycle(zone)
 		writeEpoch := b.eventGCWriteEpoch[zone]
 

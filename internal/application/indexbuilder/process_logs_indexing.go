@@ -1,7 +1,6 @@
 package indexbuilder
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -457,60 +456,24 @@ func (b *Builder) indexPostingAddressMappings(
 	return nil
 }
 
-// writeAccountByAssetDedup writes the earliest known account-by-asset touch.
-// Live folds normally see an existing row with an earlier stamp and skip the
-// write. During an index backfill, however, a live write may have populated the
-// row with a later stamp before replay reaches the historical first touch. The
-// minimum-stamp comparison repairs that interleaving without adding writes to
-// the steady-state path.
+// writeAccountByAssetDedup appends each touch once per sequence in this batch.
+// Earlier backfill sequences can arrive after later live folds, so committed
+// membership cannot be used to suppress an event.
 func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, assetBase string, precision uint8) error {
-	// AccountByAssetKey uses Build(), which returns a fresh copy and resets the
-	// builder — so key does not alias the builder buffer and stays valid after
-	// the WriteAccountByAssetIndex call below rebuilds the same key.
-	key := readstore.AccountByAssetKey(kb, ledger, assetBase, precision, account)
+	key := readstore.AccountByAssetEventKey(kb, ledger, assetBase, precision, account, b.wb.EventSequence())
 	sk := string(key)
-
 	if _, ok := b.seenAcctAsset[sk]; ok {
 		return nil
 	}
-
+	if err := b.wb.WriteAccountByAssetIndex(kb, ledger, account, assetBase, precision); err != nil {
+		return err
+	}
 	b.seenAcctAsset[sk] = struct{}{}
 
-	// If this ledger's indexes were range-deleted earlier in the same batch,
-	// the committed-state read is stale: readstoreKeyExists reads committed
-	// Pebble directly and cannot see the pending range delete, so it would
-	// report the about-to-be-deleted row as present and suppress this Put —
-	// which the range delete then wipes at commit, dropping the row. Force the
-	// idempotent Put instead; queued after the range delete (the recreated
-	// ledger's logs have higher sequence), it wins at commit.
-	if _, deleted := b.deletedThisBatch[ledger]; !deleted {
-		stamp, exists, err := b.readstoreAccountByAssetStamp(key)
-		if err != nil {
-			return fmt.Errorf("account-by-asset dedup get: %w", err)
-		}
-
-		if exists && len(stamp) == 8 && binary.BigEndian.Uint64(stamp) <= b.wbEventSequence() {
-			return nil
-		}
-	}
-
-	return b.wb.WriteAccountByAssetIndex(kb, ledger, account, assetBase, precision)
+	return nil
 }
 
-// wbEventSequence returns the sequence currently declared for the fold. The
-// write helper below already enforces that sequence-stamped writes fail when it
-// is unset; this accessor is kept local to the comparison so the hot path does
-// not duplicate that validation or expose WriteBatch internals.
-func (b *Builder) wbEventSequence() uint64 {
-	return b.wb.EventSequence()
-}
-
-// markLedgerDeletedInBatch records that ledger's read indexes were
-// range-deleted in the in-flight batch (DeleteLedger) and drops the
-// account-by-asset dedup set, which the deletion invalidates: any seenAcctAsset
-// entry written before the delete now points at a row the range delete will
-// remove. Subsequent dedup checks for this ledger skip committed-state reads
-// (see deletedThisBatch in writeAccountByAssetDedup).
+// markLedgerDeletedInBatch clears in-batch touch dedup after ledger deletion.
 func (b *Builder) markLedgerDeletedInBatch(name string) {
 	b.deletedThisBatch[name] = struct{}{}
 	b.seenAcctAsset = make(map[string]struct{})
@@ -531,22 +494,6 @@ func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
 	_ = closer.Close()
 
 	return true, nil
-}
-
-// readstoreAccountByAssetStamp reads the committed first-touch stamp. A
-// malformed or legacy value is returned to the caller for repair rather than
-// treated as a valid later stamp.
-func (b *Builder) readstoreAccountByAssetStamp(key []byte) ([]byte, bool, error) {
-	value, closer, err := b.readStore.DB().Get(key)
-	if errors.Is(err, pebble.ErrNotFound) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = closer.Close() }()
-
-	return cloneBytes(value), true, nil
 }
 
 // reverseMapValue returns the encoded value the index currently holds for an

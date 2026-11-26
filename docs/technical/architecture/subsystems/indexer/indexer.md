@@ -146,12 +146,13 @@ uses current exclusions for has-asset and historical exclusions for ANY, SOURCE
 and DESTINATION mappings, in live folding and both backfill engines. Cached
 proposal TRANSIENT sets remain immutable.
 
-The account-by-asset row stores the sequence of the account's earliest known
-touch, not merely membership. A live fold can populate a row while a newly
-created index is still replaying history; when backfill reaches an older touch,
-its deduplication compares stamps and keeps the minimum. This preserves the
-first-touch horizon used by aligned account reads without adding a write when a
-steady-state live fold already has an equal or earlier stamp.
+The account-by-asset index (`0x0C`) stores append-only ADD events keyed by
+ledger, asset base, precision, account, and fold sequence. The writer deduplicates
+identical events within a batch and never probes committed membership. A late
+historical backfill can append an earlier sequence after a live fold; readers
+resolve the latest event at or below their pin. The event GC uses the same
+lease watermark and committed-write epoch as metadata events, retaining the
+latest ADD below the watermark. Ledger deletion range-deletes the entire zone.
 
 The work stays linear in posting count, with constant-time membership probes and
 at most four historical puts per posting (two ANY, one SOURCE, one DESTINATION)

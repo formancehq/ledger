@@ -32,7 +32,7 @@ func TestRunEventGC_StopsScanningAfterCompletedIdleCoverage(t *testing.T) {
 	b.runEventGC(10)
 	b.runEventGC(10)
 
-	require.Equal(t, 2, calls, "each zone must be scanned once, then remain idle")
+	require.Equal(t, 3, calls, "each zone must be scanned once, then remain idle")
 }
 
 func TestRunEventGC_TriggersOnWatermarkAndZoneWriteEpochEdges(t *testing.T) {
@@ -89,7 +89,7 @@ func TestRunEventGC_FreshSchedulerSweepsPositiveWatermarkAfterRestart(t *testing
 	}
 	restarted.runEventGC(10)
 
-	require.Equal(t, 2, calls, "fresh in-memory state conservatively sweeps both zones")
+	require.Equal(t, 3, calls, "fresh in-memory state conservatively sweeps all zones")
 }
 
 func TestRunEventGC_UsesStableCycleTupleAndFollowsMidCycleChanges(t *testing.T) {
@@ -592,4 +592,29 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	current, pending := b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(2), current)
 	assert.Equal(t, uint32(0), pending)
+}
+
+func TestAccountAssetEventCommitRestartsCompletedGCCycle(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	calls := 0
+	b.eventGCZone = func(zone byte, _ []byte, _ uint64, _ int) (int, []byte, error) {
+		if zone == readstore.PrefixAccountByAsset {
+			calls++
+		}
+
+		return 0, nil, nil
+	}
+	b.runEventGC(20)
+	require.Equal(t, 1, calls)
+	b.runEventGC(20)
+	require.Equal(t, 1, calls)
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.wb.SetEventSequence(5) // late historical backfill after the first GC pass
+	require.NoError(t, b.wb.WriteAccountByAssetIndex(b.kb, "test", "accounts:a", "USD", 2))
+	require.NoError(t, b.flushWriteBatch())
+	require.Equal(t, uint64(1), b.eventGCWriteEpoch[readstore.PrefixAccountByAsset])
+	b.runEventGC(20)
+	require.Equal(t, 2, calls)
 }

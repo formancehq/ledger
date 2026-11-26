@@ -66,7 +66,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 		LedgerInfo:      info,
 		IndexRegistry:   registry,
 		IndexVersionFor: resolverZero,
-		Pin:             0,
+		Pin:             1,
 	})
 	require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
@@ -104,7 +104,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 		{"accounts:bob", "USD", 2},
 		{"accounts:carol", "EUR", 2},
 	} {
-		key := readstore.AccountByAssetKey(kb, ledgerName, seed.assetBase, seed.precision, seed.account)
+		key := readstore.AccountByAssetEventKey(kb, ledgerName, seed.assetBase, seed.precision, seed.account, 1)
 		require.NoError(t, batch.SetBytes(key, nil))
 	}
 	require.NoError(t, batch.Commit())
@@ -129,7 +129,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 		IndexRegistry:   registry,
 		IndexVersionFor: resolverReady,
 		MainReader:      reader,
-		Pin:             0,
+		Pin:             1,
 	})
 	require.NoError(t, err)
 
@@ -170,10 +170,8 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 		{"accounts:early", 5},
 		{"accounts:late", 9},
 	} {
-		key := readstore.AccountByAssetKey(kb, ledgerName, "USD", 2, seed.account)
-		stamp := make([]byte, 8)
-		binary.BigEndian.PutUint64(stamp, seed.seq)
-		require.NoError(t, batch.SetBytes(key, stamp))
+		key := readstore.AccountByAssetEventKey(kb, ledgerName, "USD", 2, seed.account, seed.seq)
+		require.NoError(t, batch.SetBytes(key, nil))
 	}
 	require.NoError(t, batch.Commit())
 

@@ -115,3 +115,20 @@ func EntityExistsEventKeyV(
 		PutByte(op).
 		Consume()
 }
+
+// AccountByAssetEventKey records one touch of an asset cell by an account.
+// Repeated touches append ADD events so a pinned reader can resolve membership
+// even when a backfill discovers an earlier touch after a live fold.
+//
+// [0x0C][ledger 64B][assetBase\x00][precision][account\x00][seq BE8][ADD].
+func AccountByAssetEventKey(kb *dal.KeyBuilder, ledgerName, assetBase string, precision uint8, account string, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixAccountByAsset).
+		PutLedgerNameFixed(ledgerName).
+		PutStringNull(assetBase).
+		PutByte(precision).
+		PutStringNull(account).
+		PutUint64(seq).
+		PutByte(MetadataEventAdd).
+		Consume()
+}

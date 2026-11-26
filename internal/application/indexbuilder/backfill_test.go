@@ -2,7 +2,6 @@ package indexbuilder
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
@@ -353,26 +352,31 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 
 // scanAccountByAsset returns the set of accounts recorded in the
 // account-by-asset index for (ledger, assetBase, precision).
+func scanAccountByAssetAtPin(t *testing.T, store *readstore.Store, prefix []byte, pin uint64) []string {
+	t.Helper()
+	iter, err := readstore.NewEventResolveIterator(store.DB(), prefix, pin)
+	require.NoError(t, err)
+	defer iter.Close()
+	var accounts []string
+	for iter.Next() {
+		accounts = append(accounts, string(iter.Current()))
+	}
+	require.NoError(t, iter.Err())
+
+	return accounts
+}
+
 func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase string, precision uint8) map[string]struct{} {
 	t.Helper()
-
 	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), ledger, assetBase, precision)
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: readstore.IncrementBytes(prefix),
-	})
+	iter, err := readstore.NewEventResolveIterator(store.DB(), prefix, ^uint64(0))
 	require.NoError(t, err)
-
-	defer func() { _ = iter.Close() }()
-
+	defer iter.Close()
 	out := make(map[string]struct{})
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-		// Key layout: [prefix][account]; the account is the suffix after prefix.
-		out[string(k[len(prefix):])] = struct{}{}
+	for iter.Next() {
+		out[string(iter.Current())] = struct{}{}
 	}
-
-	require.NoError(t, iter.Error())
+	require.NoError(t, iter.Err())
 
 	return out
 }
@@ -500,12 +504,9 @@ func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
 	))
 	require.NoError(t, b.wb.Flush())
 
-	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), "test", "USD", 2, "accounts:alice")
-	value, closer, err := store.DB().Get(key)
-	require.NoError(t, err)
-	defer func() { _ = closer.Close() }()
-	require.Len(t, value, 8)
-	assert.Equal(t, uint64(5), binary.BigEndian.Uint64(value), "backfill must repair a later live first-touch stamp")
+	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), "test", "USD", 2)
+	assert.Contains(t, scanAccountByAsset(t, store, "test", "USD", 2), "accounts:alice")
+	assert.Equal(t, []string{"accounts:alice", "accounts:bank"}, scanAccountByAssetAtPin(t, store, prefix, 5))
 }
 
 // TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete guards the

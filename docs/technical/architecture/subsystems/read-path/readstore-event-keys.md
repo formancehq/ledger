@@ -1,6 +1,7 @@
 # Read-store event keys
 
-The metadata value index (`0x01`) and the entity-existence index (`0x02`) are
+The metadata value index (`0x01`), entity-existence index (`0x02`), and
+account-by-asset index (`0x0C`) are
 append-only event logs. A mutation never deletes a row: it appends an event
 stamped with the raft sequence that produced it, and a reader resolves the
 membership that held at its own pinned sequence.
@@ -19,7 +20,9 @@ deleted. Only history does.
 ```
 
 `op` is `ADD` (`0x01`) or `DEL` (`0x00`). The exists index uses the same shape
-with the null flag in place of the encoded value.
+with the null flag in place of the encoded value. The account-by-asset key is
+`[0x0C][ledger 64B][assetBase\x00][precision 1B][account\x00][seq BE8][ADD]`;
+its events are ADD-only because a historical touch is never revoked.
 
 Two details are load-bearing:
 
@@ -121,8 +124,8 @@ every pin resolves them correctly.
 
 ## What still uses plain keys
 
-Add-only limbs — timestamp, inserted_at, address→tx (all roles), reference,
-has-asset, reverted_at — keep their plain rows. Membership there is never
+Other add-only limbs — timestamp, inserted_at, address→tx (all roles),
+reference, reverted_at — keep their plain rows. Membership there is never
 revoked, so fold-ahead can only *add* rows, and the per-row keep against the
 pinned main handle (`MainHorizonKeep`) restores exactness without a format
 change. The reverse map (`0x03`) also keeps prompt deletion: it is builder

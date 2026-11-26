@@ -117,22 +117,13 @@ type Builder struct {
 	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
 
-	// seenAcctAsset deduplicates account-by-asset index writes within the
-	// in-flight batch: it holds the AccountByAssetKey bytes (as string) already
-	// written, so a repeated (account, assetBase, precision) cell in the same
-	// batch skips a redundant Get + Put. Reset per batch (initBatch) so it does
-	// not grow unbounded across a long backfill.
+	// seenAcctAsset deduplicates identical sequence-stamped touch events in
+	// the current batch. An earlier historical event remains writable after a
+	// later live event has committed.
 	seenAcctAsset map[string]struct{}
 
-	// deletedThisBatch holds the names of ledgers whose read indexes were
-	// range-deleted earlier in the in-flight batch (DeleteLedger). The
-	// account-by-asset dedup must NOT consult committed state for these
-	// ledgers: readstoreKeyExists reads committed Pebble directly and cannot
-	// see the pending range delete, so a stale committed row would suppress a
-	// later Put for that name — which the range delete then wipes at commit,
-	// silently dropping the row. processCreateLedger rejects a create under
-	// a soft-deleted name, so the guard is defensive. Reset per batch
-	// (initBatch).
+	// deletedThisBatch tracks ledger range deletes so in-batch dedup state can
+	// be cleared before a same-name ledger is indexed again.
 	deletedThisBatch map[string]struct{}
 
 	// batchSchema is the per-batch memoization layer over FSM Pebble

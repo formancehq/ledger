@@ -257,25 +257,18 @@ func seedParityLogs(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 func seedParityAccountAssets(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 	t.Helper()
 
-	stamp := func(seq uint64) []byte {
-		v := make([]byte, 8)
-		binary.BigEndian.PutUint64(v, seq)
-
-		return v
-	}
-
 	for i := range 12 {
 		account := fmt.Sprintf("accounts:%02d", i)
 
 		switch {
 		case i == 1:
 			require.NoError(t, batch.SetBytes(
-				readstore.AccountByAssetKey(kb, parityLedger, parityAsset, parityAssetPrecision, account),
-				stamp(parityPin+5)))
+				readstore.AccountByAssetEventKey(kb, parityLedger, parityAsset, parityAssetPrecision, account, parityPin+5),
+				nil))
 		case i%2 == 0:
 			require.NoError(t, batch.SetBytes(
-				readstore.AccountByAssetKey(kb, parityLedger, parityAsset, parityAssetPrecision, account),
-				stamp(uint64(10+i))))
+				readstore.AccountByAssetEventKey(kb, parityLedger, parityAsset, parityAssetPrecision, account, uint64(10+i)),
+				nil))
 		}
 	}
 }

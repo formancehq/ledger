@@ -359,10 +359,9 @@ func AccountTxPrefix(kb *dal.KeyBuilder, prefix byte, ledgerName string, account
 		Snapshot()
 }
 
-// AccountByAssetKey builds an account-by-asset inverted-index key. The value
-// holds the first touch's fold sequence (see WriteAccountByAssetIndex).
-// Order-preserving so a prefix scan on (assetBase, precision) yields every
-// account that has touched that exact asset cell.
+// AccountByAssetKey builds the group prefix for one account and asset cell.
+// Event keys append a zero terminator, sequence, and operation to this prefix.
+// The terminator keeps accounts such as "a" and "ab" in separate groups.
 //
 //	[0x0C][ledgerName padded 64B][assetBase\x00][precision(1B)][account]
 func AccountByAssetKey(kb *dal.KeyBuilder, ledgerName, assetBase string, precision uint8, account string) []byte {

@@ -1,7 +1,6 @@
 package query_test
 
 import (
-	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -126,13 +125,10 @@ func TestCompileEmptyAnd_UniverseOperandOnAccounts(t *testing.T) {
 
 	store := parityStore(t)
 
-	stamp := make([]byte, 8)
-	binary.BigEndian.PutUint64(stamp, parityPin-1)
-
 	batch := store.NewBatch()
 	require.NoError(t, batch.SetBytes(
-		readstore.AccountByAssetKey(dal.NewKeyBuilder(), parityLedger, parityAsset, parityAssetPrecision, drained),
-		stamp))
+		readstore.AccountByAssetEventKey(dal.NewKeyBuilder(), parityLedger, parityAsset, parityAssetPrecision, drained, parityPin-1),
+		nil))
 	require.NoError(t, batch.Commit())
 
 	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
