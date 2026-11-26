@@ -377,7 +377,7 @@ The cursor is advanced only after the entire batch is successfully published to 
 | **NATS JetStream** | `nats` | Publishes to NATS JetStream for durable consumption. Requires `url` and `topic`. |
 | **ClickHouse** | `clickhouse` | Inserts events into a ClickHouse table for analytics. Requires `dsn`. Optional `table` (default: `ledger_events`). Uses experimental JSON type with Variant support. Always uses ClickHouse-native JSON format (ignores `format` setting). Table uses `ReplacingMergeTree` keyed on `(ledger, log_sequence)`: because delivery is at-least-once, a redelivered batch produces byte-identical duplicate rows that this engine collapses on background merges. Dedup is eventual, so exact queries must use `FINAL` or `GROUP BY`. |
 | **Kafka** | `kafka` | Publishes to Apache Kafka topics. Requires `brokers` and `topic`. Optional TLS and SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512). Uses synchronous producer for delivery guarantees. |
-| **HTTP Webhooks** | `http` | Sends individual HTTP POST requests per event. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
+| **HTTP Webhooks** | `http` | Sends one HTTP POST per event by default; optional `batch` sends versioned batch requests. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
 | **Databricks** | `databricks` | Inserts events into a Databricks SQL Warehouse table via Unity Catalog. Requires `server_hostname`, `http_path`, `catalog`, `schema`, `table`, and exactly one auth method (`token` for a Personal Access Token, or `oauth_m2m` with `client_id`/`client_secret` for OAuth M2M / service principal). |
 
 New sink types can be added by implementing the `Sink` interface and adding a variant to `SinkConfig.oneof type`.
@@ -523,6 +523,7 @@ message KafkaSinkConfig {
 message HttpSinkConfig {
   string endpoint = 1;           // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2;             // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+  bool batch = 3;                // Opt in to HTTP batch v1; false by default
 }
 
 message DatabricksSinkConfig {

@@ -28,7 +28,8 @@ type HTTPSinkConfig struct {
 }
 
 // HTTPSink publishes events to an HTTP endpoint via POST requests.
-// Events are sent one at a time to allow the receiver to process them individually.
+// Events are sent one at a time by default; Batch enables versioned requests
+// containing multiple events for receivers that support the batch contract.
 // Only a 2xx response from the configured endpoint acknowledges an event. The
 // sink never follows redirects: any 3xx is a delivery failure, so the body, its
 // signature and the endpoint URL never reach an unconfigured destination.
