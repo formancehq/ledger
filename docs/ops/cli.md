@@ -4123,17 +4123,25 @@ To change a policy value, raise `--cluster-policy-revision` so the new policy su
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
 
-The KV and metadata ceilings and `--idempotency-ttl` follow the same rule: changing one
-without bumping `--cluster-policy-revision` logs a payload-divergence error and
-changes nothing. With the operator, the `Cluster` CRD rejects such an update,
-and a decrease of `spec.clusterPolicyRevision`, at admission time.
-They are enforced for HTTP, public gRPC and bulk admission, mirror batches before
-proposal and during apply, and metadata a Numscript program merges in. Public
-API violations return HTTP 400 / gRPC
+The KV and metadata ceilings and `--idempotency-ttl` follow the same revision
+rule: changing one without bumping `--cluster-policy-revision` logs a
+payload-divergence error and changes nothing. With the operator, the `Cluster`
+CRD rejects such an update, and a decrease of `spec.clusterPolicyRevision`, at
+admission time.
+
+KV Put checks the applied cluster policy in the FSM after idempotency replay
+lookup. A limit violation returns HTTP 400 / gRPC `InvalidArgument` with reason
+`VALIDATION` and failure detail `KV_LIMIT_EXCEEDED`. Delete can remove a key
+retained after the key ceiling decreases, subject to the absolute 256-byte key
+bound. Zero-valued KV ceilings are rejected at boot.
+
+Metadata ceilings are enforced for HTTP, public gRPC and bulk admission,
+mirror batches before proposal and during apply, and metadata a Numscript
+program merges in. Public API violations return HTTP 400 / gRPC
 `InvalidArgument` with reason `METADATA_LIMIT_EXCEEDED`. Zero is rejected at
 boot rather than treated as unlimited, and a node refuses to start against a
-committed policy carrying no ceilings when `--cluster-policy-revision` cannot
-supersede it. See the [metadata size limits
+committed policy carrying no metadata ceilings when `--cluster-policy-revision`
+cannot supersede it. See the [metadata size limits
 contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 ---
