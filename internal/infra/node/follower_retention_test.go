@@ -22,97 +22,132 @@ func TestNewFollowerRetentionZeroMaxBytesDisablesTheHold(t *testing.T) {
 	require.Nil(t, newFollowerRetention(0, time.Minute))
 }
 
-func publishedNeeds(r *followerRetention) []uint64 {
-	needs := r.needs.Load()
-	if needs == nil {
-		return nil
-	}
-
-	return *needs
-}
-
-func TestFollowerNeed(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, uint64(40), followerNeed(tracker.Progress{State: tracker.StateReplicate, Match: 40, Next: 60}))
-	require.Equal(t, uint64(59), followerNeed(tracker.Progress{State: tracker.StateProbe, Match: 3, Next: 60}),
-		"after a snapshot is reported sent, raft probes from the snapshot index while Match is stale")
-	require.Equal(t, uint64(3), followerNeed(tracker.Progress{State: tracker.StateProbe, Match: 3, Next: 1}))
-	require.Equal(t, uint64(70), followerNeed(tracker.Progress{State: tracker.StateSnapshot, Match: 3, Next: 4, PendingSnapshot: 70}))
+func publishedPositions(r *followerRetention) *retentionPositions {
+	return r.published.Load()
 }
 
 func TestFollowerRetentionObserve(t *testing.T) {
 	t.Parallel()
 
 	t0 := time.Unix(1_000, 0)
+	const term = 3
 
-	t.Run("publishes every advancing follower's position in ascending order", func(t *testing.T) {
+	replicating := func(id, match uint64) followerProgress {
+		return followerProgress{id: id, state: tracker.StateReplicate, match: match}
+	}
+	probing := func(id, match uint64) followerProgress {
+		return followerProgress{id: id, state: tracker.StateProbe, match: match}
+	}
+
+	t.Run("a follower never heard from does not hold", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, true, []followerProgress{{id: 2, need: 50}, {id: 3, need: 30}, {id: 4, need: 0}})
-		require.Equal(t, []uint64{0, 30, 50}, publishedNeeds(r))
+		r.observe(t0, term, []followerProgress{replicating(2, 50)})
+		require.Nil(t, publishedPositions(r))
 	})
 
-	t.Run("a follower whose progress stalls past the idle timeout stops holding", func(t *testing.T) {
+	t.Run("publishes the heard followers' positions in ascending order", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, true, []followerProgress{{id: 2, need: 30}})
-		r.observe(t0.Add(time.Minute), true, []followerProgress{{id: 2, need: 30}})
-		require.Equal(t, []uint64{30}, publishedNeeds(r), "a stall of exactly the idle timeout still holds")
-
-		r.observe(t0.Add(time.Minute+time.Nanosecond), true, []followerProgress{{id: 2, need: 30}})
-		require.Nil(t, publishedNeeds(r))
-
-		// Progress resumes: the follower holds again from its new position.
-		r.observe(t0.Add(2*time.Minute), true, []followerProgress{{id: 2, need: 31}})
-		require.Equal(t, []uint64{31}, publishedNeeds(r))
+		followers := []followerProgress{replicating(2, 50), replicating(3, 30), replicating(4, 40)}
+		r.observe(t0, term, followers)
+		r.heard(2)
+		r.heard(3)
+		r.observe(t0, term, followers)
+		require.Equal(t, &retentionPositions{positions: []uint64{30, 50}}, publishedPositions(r))
 	})
 
-	t.Run("a state change at the same position is activity", func(t *testing.T) {
+	t.Run("a heard follower that acknowledged nothing has an unknown position", func(t *testing.T) {
 		t.Parallel()
 
-		// A new leader probes an offline follower from its log tail 30. The
-		// follower stays away past the idle timeout, then comes back and is
-		// sent a snapshot at the same index 30.
+		// A new leader probes from its log tail; Match stays 0 until the
+		// follower acknowledges. The probe cursor is not a position.
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, true, []followerProgress{{id: 2, state: tracker.StateProbe, need: 30}})
-		r.observe(t0.Add(2*time.Minute), true, []followerProgress{{id: 2, state: tracker.StateProbe, need: 30}})
-		require.Nil(t, publishedNeeds(r))
-
-		r.observe(t0.Add(3*time.Minute), true, []followerProgress{{id: 2, state: tracker.StateSnapshot, need: 30}})
-		require.Equal(t, []uint64{30}, publishedNeeds(r))
+		r.observe(t0, term, []followerProgress{probing(2, 0), replicating(3, 40)})
+		r.heard(2)
+		r.heard(3)
+		r.observe(t0, term, []followerProgress{probing(2, 0), replicating(3, 40)})
+		require.Equal(t, &retentionPositions{positions: []uint64{40}, unknown: true}, publishedPositions(r))
 	})
 
-	t.Run("a follower that keeps advancing keeps holding past the idle timeout", func(t *testing.T) {
+	t.Run("a sent snapshot is a position until Match passes it", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		for i := range uint64(10) {
-			r.observe(t0.Add(time.Duration(i)*50*time.Second), true, []followerProgress{{id: 2, need: 30 + i}})
-		}
-		require.Equal(t, []uint64{39}, publishedNeeds(r))
+		r.observe(t0, term, []followerProgress{probing(2, 3)})
+		r.heard(2)
+		r.observe(t0, term, []followerProgress{{id: 2, state: tracker.StateSnapshot, match: 3, pendingSnapshot: 70}})
+		require.Equal(t, &retentionPositions{positions: []uint64{70}}, publishedPositions(r))
+
+		// Reporting the snapshot sent returns the follower to a probe with
+		// its stale Match: the sent snapshot still counts.
+		r.observe(t0, term, []followerProgress{probing(2, 3)})
+		require.Equal(t, &retentionPositions{positions: []uint64{70}}, publishedPositions(r))
+
+		r.observe(t0, term, []followerProgress{replicating(2, 90)})
+		require.Equal(t, &retentionPositions{positions: []uint64{90}}, publishedPositions(r))
 	})
 
-	t.Run("losing leadership clears the hold and the history", func(t *testing.T) {
+	t.Run("a follower silent past the idle timeout stops holding", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, true, []followerProgress{{id: 2, need: 30}})
-		r.observe(t0, false, nil)
-		require.Nil(t, publishedNeeds(r))
-		require.Empty(t, r.positions)
+		followers := []followerProgress{replicating(2, 30)}
+		r.observe(t0, term, followers)
+		r.heard(2)
+		r.observe(t0.Add(time.Minute), term, followers)
+		require.Equal(t, &retentionPositions{positions: []uint64{30}}, publishedPositions(r), "silence of exactly the idle timeout still holds")
+
+		r.observe(t0.Add(time.Minute+time.Nanosecond), term, followers)
+		require.Nil(t, publishedPositions(r))
+
+		// Any message makes it hold again, whatever its progress did.
+		r.heard(2)
+		r.observe(t0.Add(2*time.Minute), term, followers)
+		require.Equal(t, &retentionPositions{positions: []uint64{30}}, publishedPositions(r))
+	})
+
+	t.Run("a new term starts with no history", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.observe(t0, term, []followerProgress{probing(2, 3)})
+		r.heard(2)
+		r.observe(t0, term, []followerProgress{{id: 2, state: tracker.StateSnapshot, match: 3, pendingSnapshot: 70}})
+		require.NotNil(t, publishedPositions(r))
+
+		r.observe(t0, term+1, []followerProgress{probing(2, 3)})
+		require.Nil(t, publishedPositions(r), "neither the heard time nor the sent snapshot carry over")
+		r.heard(2)
+		r.observe(t0, term+1, []followerProgress{probing(2, 3)})
+		require.Equal(t, &retentionPositions{positions: []uint64{3}}, publishedPositions(r))
+	})
+
+	t.Run("a node that is not the leader holds nothing and ignores messages", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.observe(t0, term, []followerProgress{replicating(2, 30)})
+		r.heard(2)
+		r.observe(t0, 0, nil)
+		require.Nil(t, publishedPositions(r))
+		require.Empty(t, r.peers)
+		r.heard(2)
+		require.Empty(t, r.peers)
 	})
 
 	t.Run("a removed follower is forgotten", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, true, []followerProgress{{id: 2, need: 30}, {id: 3, need: 40}})
-		r.observe(t0, true, []followerProgress{{id: 3, need: 40}})
-		require.Equal(t, []uint64{40}, publishedNeeds(r))
-		require.NotContains(t, r.positions, uint64(2))
+		r.observe(t0, term, []followerProgress{replicating(2, 30), replicating(3, 40)})
+		r.heard(2)
+		r.heard(3)
+		r.observe(t0, term, []followerProgress{replicating(3, 40)})
+		require.Equal(t, &retentionPositions{positions: []uint64{40}}, publishedPositions(r))
+		require.NotContains(t, r.peers, uint64(2))
 	})
 }
 
@@ -160,26 +195,25 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 		Index: proto.Uint64(10), Term: proto.Uint64(1), Data: make([]byte, dataSize),
 	}))
 
-	retention := func(maxBytes uint64, needs ...uint64) *followerRetention {
+	retention := func(maxBytes uint64, published *retentionPositions) *followerRetention {
 		r := newFollowerRetention(maxBytes, time.Minute)
-		if len(needs) > 0 {
-			r.needs.Store(&needs)
-		}
+		r.published.Store(published)
 
 		return r
 	}
+	at := func(positions ...uint64) *retentionPositions { return &retentionPositions{positions: positions} }
 	// The fake WAL retains entries 10..100: the compacted index is 9.
 	walLog := func() *fakeRetentionLog { return newFakeRetentionLog(10, 100, dataSize) }
 
 	t.Run("no follower behind the target keeps the target", func(t *testing.T) {
 		t.Parallel()
 
-		got, decision, err := retention(math.MaxUint64).compactionTarget(80, walLog())
+		got, decision, err := retention(math.MaxUint64, nil).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(80), got)
 		require.Equal(t, retentionDecision{}, decision)
 
-		got, decision, err = retention(math.MaxUint64, 80, 90).compactionTarget(80, walLog())
+		got, decision, err = retention(math.MaxUint64, at(80, 90)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(80), got)
 		require.Equal(t, retentionDecision{}, decision)
@@ -189,7 +223,7 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 		t.Parallel()
 
 		// Compacting at 40 keeps entries 40..79 that compacting at 80 releases.
-		got, decision, err := retention(math.MaxUint64, 40, 90).compactionTarget(80, walLog())
+		got, decision, err := retention(math.MaxUint64, at(40, 90)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(40), got)
 		require.Equal(t, retentionDecision{held: true, need: 40, retainedBytes: 40 * entrySize}, decision)
@@ -198,8 +232,7 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 	t.Run("a follower already compacted away does not cancel the hold for others", func(t *testing.T) {
 		t.Parallel()
 
-		// A new learner at 0 needs a snapshot whatever the leader keeps.
-		got, decision, err := retention(math.MaxUint64, 0, 5, 40).compactionTarget(80, walLog())
+		got, decision, err := retention(math.MaxUint64, at(5, 40)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(40), got)
 		require.Equal(t, retentionDecision{held: true, need: 40, retainedBytes: 40 * entrySize}, decision)
@@ -208,10 +241,19 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 	t.Run("only followers already compacted away keep the target", func(t *testing.T) {
 		t.Parallel()
 
-		got, decision, err := retention(math.MaxUint64, 0, 5).compactionTarget(80, walLog())
+		got, decision, err := retention(math.MaxUint64, at(5)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(80), got)
 		require.Equal(t, retentionDecision{}, decision)
+	})
+
+	t.Run("a follower of unknown position keeps the retained log", func(t *testing.T) {
+		t.Parallel()
+
+		got, decision, err := retention(math.MaxUint64, &retentionPositions{positions: []uint64{90}, unknown: true}).compactionTarget(80, walLog())
+		require.NoError(t, err)
+		require.Equal(t, uint64(9), got)
+		require.Equal(t, retentionDecision{held: true, need: 9, retainedBytes: 70 * entrySize}, decision)
 	})
 
 	t.Run("a follower exactly at the compacted index holds without charging the boundary entry", func(t *testing.T) {
@@ -219,7 +261,7 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 
 		// Entry 9 is the WAL's boundary: raft.Storage cannot read it, so only
 		// entries 10..79 are charged.
-		got, decision, err := retention(math.MaxUint64, 9).compactionTarget(80, walLog())
+		got, decision, err := retention(math.MaxUint64, at(9)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(9), got)
 		require.Equal(t, retentionDecision{held: true, need: 9, retainedBytes: 70 * entrySize}, decision)
@@ -230,7 +272,7 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 
 		// Room for 15 entries and a half: entries 65..79 stay, so compaction
 		// lands on 65 and keeps it as the matching entry.
-		got, decision, err := retention(15*entrySize+entrySize/2, 40).compactionTarget(80, walLog())
+		got, decision, err := retention(15*entrySize+entrySize/2, at(40)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(65), got)
 		require.Equal(t, retentionDecision{held: true, capped: true, need: 40, retainedBytes: 15 * entrySize}, decision)
@@ -239,7 +281,7 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 	t.Run("a cap smaller than one entry keeps the target", func(t *testing.T) {
 		t.Parallel()
 
-		got, decision, err := retention(1, 40).compactionTarget(80, walLog())
+		got, decision, err := retention(1, at(40)).compactionTarget(80, walLog())
 		require.NoError(t, err)
 		require.Equal(t, uint64(80), got)
 		require.Equal(t, retentionDecision{capped: true, need: 40}, decision)
@@ -249,7 +291,7 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 		t.Parallel()
 
 		wantErr := errors.New("boom")
-		got, _, err := retention(math.MaxUint64, 40).compactionTarget(80, &fakeRetentionLog{err: wantErr})
+		got, _, err := retention(math.MaxUint64, at(40)).compactionTarget(80, &fakeRetentionLog{err: wantErr})
 		require.ErrorIs(t, err, wantErr)
 		require.Equal(t, uint64(80), got)
 	})
@@ -262,6 +304,9 @@ type testRetentionLeader struct {
 	rn      *raft.RawNode
 	storage *raft.MemoryStorage
 	conf    *raftpb.ConfState
+	// heard, when set, sees every message stepped from the peer, as the
+	// orchestrate goroutine's stepMessages does.
+	heard func(from uint64)
 }
 
 const (
@@ -323,6 +368,9 @@ func (l *testRetentionLeader) fromPeer(typ raftpb.MessageType, fields func(*raft
 	if fields != nil {
 		fields(m)
 	}
+	if l.heard != nil {
+		l.heard(m.GetFrom())
+	}
 	require.NoError(l.t, l.rn.Step(m))
 }
 
@@ -331,6 +379,12 @@ func (l *testRetentionLeader) propose(n int) {
 	for range n {
 		require.NoError(l.t, l.rn.Propose([]byte("x")))
 	}
+	l.drain()
+}
+
+func (l *testRetentionLeader) ack(index uint64) {
+	l.t.Helper()
+	l.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(index) })
 	l.drain()
 }
 
@@ -353,6 +407,27 @@ func (l *testRetentionLeader) rejectProbe(hint uint64) []*raftpb.Message {
 	})
 
 	return l.drain()
+}
+
+// attach makes node lead through l and records the peer for the hold, as
+// a first Raft tick does; messages stepped from the peer reach the hold.
+func (l *testRetentionLeader) attach(node *Node) {
+	node.rawNode = l.rn
+	node.observeFollowerRetention(time.Now())
+	l.heard = node.followerRetention.heard
+}
+
+func sentSnapshotRecipients(t *testing.T, msgs []*raftpb.Message, wantIndex uint64) []uint64 {
+	t.Helper()
+	var recipients []uint64
+	for _, m := range msgs {
+		if m.GetType() == raftpb.MsgSnap {
+			require.Equal(t, wantIndex, m.GetSnapshot().GetMetadata().GetIndex())
+			recipients = append(recipients, m.GetTo())
+		}
+	}
+
+	return recipients
 }
 
 // newTestRetentionMaintenanceNode returns a maintenance node whose WAL holds
@@ -394,7 +469,7 @@ func newTestRetentionMaintenanceNodeWithoutOrchestrator(t *testing.T) *Node {
 
 	node, setup := newTestMaintenanceNode(t)
 	setup.applier.compactionMargin = 1
-	node.followerRetention = newFollowerRetention(math.MaxUint64, time.Minute)
+	node.followerRetention = newFollowerRetention(math.MaxUint64, time.Hour)
 
 	entries := make([]*raftpb.Entry, 6)
 	for i := range entries {
@@ -418,70 +493,11 @@ func newTestRetentionMaintenanceNodeWithoutOrchestrator(t *testing.T) *Node {
 	return node
 }
 
-// TestDoMaintenanceStopAbandonsRetentionRefresh covers shutdown: the refresh
-// command can be queued just as the orchestrate goroutine takes its stop
-// branch, and nothing consumes it. Closing the maintenance task's stop
-// channel must release maintenance, which then skips compaction rather than
-// compact from unrefreshed positions.
-func TestDoMaintenanceStopAbandonsRetentionRefresh(t *testing.T) {
-	t.Parallel()
-
-	node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
-
-	stop := make(chan struct{})
-	close(stop)
-	require.NoError(t, node.doMaintenance(stop))
-
-	snapshot, err := node.wal.Snapshot()
-	require.NoError(t, err)
-	require.Equal(t, uint64(6), snapshot.GetMetadata().GetIndex(), "the WAL snapshot does not depend on the refresh")
+func requireFirstIndex(t *testing.T, node *Node, want uint64, msg string) {
+	t.Helper()
 	first, err := node.wal.FirstIndex()
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), first, "compaction must be skipped without refreshed positions")
-}
-
-// TestDoMaintenanceSeesSnapshotWhoseReportRestoredTheProbe covers a snapshot
-// sent and reported between two samples. The peer was last seen probing at 3
-// and had gone idle, so it no longer held. It then rejects the probe, is sent
-// the snapshot at 3, and the report returns it to a probe at 3: the sampled
-// position and state are the same as before. The positions recorded before
-// the report must make the peer hold again, so maintenance keeps the entries
-// after 3 instead of compacting to its normal target 5.
-func TestDoMaintenanceSeesSnapshotWhoseReportRestoredTheProbe(t *testing.T) {
-	t.Parallel()
-
-	node := newTestRetentionMaintenanceNode(t)
-	node.followerRetention = newFollowerRetention(math.MaxUint64, time.Hour)
-
-	leader := newTestRetentionLeader(t, 3)
-	leader.propose(2)
-	node.rawNode = leader.rn
-	pr := leader.rn.Status().Progress[testRetentionPeerID]
-	require.Equal(t, tracker.StateProbe, pr.State)
-	require.Equal(t, uint64(3), followerNeed(pr))
-
-	// The peer was last seen at Probe(3) two hours ago: it no longer holds.
-	node.observeFollowerRetention(time.Now().Add(-2 * time.Hour))
-	node.observeFollowerRetention(time.Now())
-	require.Nil(t, publishedNeeds(node.followerRetention))
-
-	var recipients []uint64
-	for _, m := range leader.rejectProbe(1) {
-		if m.GetType() == raftpb.MsgSnap {
-			require.Equal(t, uint64(3), m.GetSnapshot().GetMetadata().GetIndex())
-			recipients = append(recipients, m.GetTo())
-		}
-	}
-	require.Equal(t, []uint64{testRetentionPeerID}, recipients, "the leader must send a snapshot")
-	node.reportSentSnapshots(recipients)
-	pr = leader.rn.Status().Progress[testRetentionPeerID]
-	require.Equal(t, tracker.StateProbe, pr.State)
-	require.Equal(t, uint64(3), followerNeed(pr), "the report restores the sampled position and state")
-
-	require.NoError(t, node.doMaintenance(nil))
-	first, err := node.wal.FirstIndex()
-	require.NoError(t, err)
-	require.Equal(t, uint64(4), first, "entries after the snapshot index must stay available")
+	require.Equal(t, want, first, msg)
 }
 
 // TestDoMaintenanceRetainsLogForCatchingUpFollower reproduces EN-3429 at the
@@ -497,34 +513,56 @@ func TestDoMaintenanceRetainsLogForCatchingUpFollower(t *testing.T) {
 	// The leader's log is 2 (its empty entry) .. 6; the follower acknowledged 2.
 	leader := newTestRetentionLeader(t, 1)
 	leader.propose(4)
-	leader.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(2) })
-	leader.drain()
-	node.rawNode = leader.rn
+	leader.attach(node)
+	leader.ack(2)
 
 	// The margin alone would compact to 5.
 	require.NoError(t, node.doMaintenance(nil))
 	snapshot, err := node.wal.Snapshot()
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), snapshot.GetMetadata().GetIndex())
-	first, err := node.wal.FirstIndex()
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), first, "entries after the follower's position must stay available")
+	requireFirstIndex(t, node, 3, "entries after the follower's position must stay available")
 
 	// The follower catches up: compaction returns to the margin.
-	leader.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(6) })
-	leader.drain()
+	leader.ack(6)
 	require.NoError(t, node.doMaintenance(nil))
-	first, err = node.wal.FirstIndex()
-	require.NoError(t, err)
-	require.Equal(t, uint64(6), first)
+	requireFirstIndex(t, node, 6, "a caught-up follower must not hold")
 }
 
-// TestDoMaintenanceSeesSnapshotSentSinceLastTick covers the race between the
-// tick-sampled positions and a snapshot RawNode chooses between ticks. The
-// last tick saw no follower to hold for; since then the leader sent the
-// follower a snapshot at 3. Maintenance must refresh the positions on the
-// orchestrate goroutine and keep the entries after 3, not compact to its
-// normal target 5 from the stale sample.
+// TestDoMaintenanceKeepsLogForFollowerNotYetAcknowledged covers a new leader
+// whose follower responds but has acknowledged nothing yet. Raft probes it
+// from the leader's log tail as of the election, which says nothing about
+// the follower's log: it may hold an entry the leader would otherwise
+// compact. The leader keeps its retained log until the follower acknowledges
+// a position.
+func TestDoMaintenanceKeepsLogForFollowerNotYetAcknowledged(t *testing.T) {
+	t.Parallel()
+
+	node := newTestRetentionMaintenanceNode(t)
+
+	leader := newTestRetentionLeader(t, 1)
+	leader.propose(4)
+	leader.attach(node)
+	leader.fromPeer(raftpb.MsgHeartbeatResp, nil)
+	leader.drain()
+	pr := leader.rn.Status().Progress[testRetentionPeerID]
+	require.Equal(t, tracker.StateProbe, pr.State)
+	require.Zero(t, pr.Match, "the follower has acknowledged nothing in this term")
+
+	require.NoError(t, node.doMaintenance(nil))
+	requireFirstIndex(t, node, 1, "nothing may be compacted before the follower acknowledges")
+
+	leader.ack(3)
+	require.NoError(t, node.doMaintenance(nil))
+	requireFirstIndex(t, node, 4, "the acknowledged position bounds compaction")
+}
+
+// TestDoMaintenanceSeesSnapshotSentSinceLastTick covers a snapshot RawNode
+// chooses after the last tick sampled the positions. The tick saw the
+// follower before it was heard from, so it held nothing; since then the
+// leader sent the follower a snapshot at 3. Maintenance must refresh the
+// positions on the orchestrate goroutine and keep the entries after 3, not
+// compact to its normal target 5 from the stale sample.
 func TestDoMaintenanceSeesSnapshotSentSinceLastTick(t *testing.T) {
 	t.Parallel()
 
@@ -532,30 +570,76 @@ func TestDoMaintenanceSeesSnapshotSentSinceLastTick(t *testing.T) {
 
 	leader := newTestRetentionLeader(t, 3)
 	leader.propose(2)
-	node.rawNode = leader.rn
+	leader.attach(node)
+	require.Nil(t, publishedPositions(node.followerRetention))
 
 	// The follower's log ends at 1, before the leader's: it is sent the
 	// snapshot at 3. No tick observes it.
-	var sent bool
-	for _, m := range leader.rejectProbe(1) {
-		sent = sent || m.GetType() == raftpb.MsgSnap
-	}
-	require.True(t, sent, "the leader must send a snapshot")
+	require.Equal(t, []uint64{testRetentionPeerID}, sentSnapshotRecipients(t, leader.rejectProbe(1), 3))
 	require.Equal(t, tracker.StateSnapshot, leader.rn.Status().Progress[testRetentionPeerID].State)
-	require.Nil(t, publishedNeeds(node.followerRetention), "no tick has observed the snapshot yet")
+	require.Nil(t, publishedPositions(node.followerRetention), "no tick has observed the snapshot yet")
 
 	require.NoError(t, node.doMaintenance(nil))
-	first, err := node.wal.FirstIndex()
+	requireFirstIndex(t, node, 4, "entries after the snapshot index must stay available")
+}
+
+// TestDoMaintenanceHoldsAtReportedSnapshot covers a snapshot sent and
+// reported between two samples. Reporting it returns the follower to a probe
+// with its pre-snapshot Match, so only the positions recorded before the
+// report know the snapshot index. Maintenance must hold at that index.
+func TestDoMaintenanceHoldsAtReportedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	node := newTestRetentionMaintenanceNode(t)
+
+	leader := newTestRetentionLeader(t, 3)
+	leader.propose(2)
+	leader.attach(node)
+
+	node.reportSentSnapshots(sentSnapshotRecipients(t, leader.rejectProbe(1), 3))
+	pr := leader.rn.Status().Progress[testRetentionPeerID]
+	require.Equal(t, tracker.StateProbe, pr.State)
+	require.Zero(t, pr.Match, "the report leaves Match before the snapshot")
+
+	require.NoError(t, node.doMaintenance(nil))
+	requireFirstIndex(t, node, 4, "entries after the reported snapshot must stay available")
+}
+
+// TestDoMaintenanceStopAbandonsRetentionRefresh covers shutdown: the refresh
+// command can be queued just as the orchestrate goroutine takes its stop
+// branch, and nothing consumes it. Closing the maintenance task's stop
+// channel must release maintenance long before the refresh timeout, and
+// maintenance then skips compaction rather than compact from unrefreshed
+// positions.
+func TestDoMaintenanceStopAbandonsRetentionRefresh(t *testing.T) {
+	t.Parallel()
+
+	node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
+
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- node.doMaintenance(stop) }()
+	require.Eventually(t, func() bool { return len(node.clusterCommandCh) == 1 },
+		retentionRefreshTimeout/2, time.Millisecond, "the refresh command must be queued")
+
+	close(stop)
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(retentionRefreshTimeout / 2):
+		require.FailNow(t, "closing stop must release maintenance before the refresh timeout")
+	}
+
+	snapshot, err := node.wal.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(4), first, "entries after the snapshot index must stay available")
+	require.Equal(t, uint64(6), snapshot.GetMetadata().GetIndex(), "the WAL snapshot does not depend on the refresh")
+	requireFirstIndex(t, node, 1, "compaction must be skipped without refreshed positions")
 }
 
 // TestObserveFollowerRetentionFollowsSnapshotHandoff drives a real RawNode so
-// the hold reads the same Progress fields production reads. It covers the
-// EN-3429 handoff: once the leader sends a snapshot, the follower must hold
-// at the snapshot index both while the snapshot is in flight and after the
-// leader reports it sent, before the follower's acknowledgement advances
-// Match. A node that is not the leader holds nothing.
+// the hold reads the same Progress fields production reads, through the
+// snapshot handoff: in flight, reported sent with a stale Match, then
+// acknowledged. A node that is not the leader holds nothing.
 func TestObserveFollowerRetentionFollowsSnapshotHandoff(t *testing.T) {
 	t.Parallel()
 
@@ -567,22 +651,20 @@ func TestObserveFollowerRetentionFollowsSnapshotHandoff(t *testing.T) {
 	require.NoError(t, err)
 	node := &Node{
 		rawNode:           follower,
-		followerRetention: newFollowerRetention(math.MaxUint64, time.Minute),
+		followerRetention: newFollowerRetention(math.MaxUint64, time.Hour),
 	}
-	now := time.Now()
-	node.observeFollowerRetention(now)
-	require.Nil(t, publishedNeeds(node.followerRetention), "a node that is not the leader does not hold")
+	node.observeFollowerRetention(time.Now())
+	require.Nil(t, publishedPositions(node.followerRetention), "a node that is not the leader does not hold")
 
 	leader := newTestRetentionLeader(t, 8)
-	node.rawNode = leader.rn
+	leader.attach(node)
 
 	// The single voter commits three more entries on its own (10..12), and
 	// the peer acknowledges index 9 (the leader's empty entry).
 	leader.propose(3)
-	leader.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(9) })
-	leader.drain()
-	node.observeFollowerRetention(now)
-	require.Equal(t, []uint64{9}, publishedNeeds(node.followerRetention))
+	leader.ack(9)
+	node.observeFollowerRetention(time.Now())
+	require.Equal(t, &retentionPositions{positions: []uint64{9}}, publishedPositions(node.followerRetention))
 
 	// The leader compacts past the peer's match, then the peer rejects the
 	// entries it was sent: the leader can only send it a snapshot at 12.
@@ -595,32 +677,22 @@ func TestObserveFollowerRetentionFollowsSnapshotHandoff(t *testing.T) {
 		m.RejectHint = proto.Uint64(9)
 		m.LogTerm = proto.Uint64(1)
 	})
-	var sent bool
-	for _, m := range leader.drain() {
-		sent = sent || m.GetType() == raftpb.MsgSnap
-	}
-	require.True(t, sent, "the leader must send a snapshot")
-	pr := leader.rn.Status().Progress[testRetentionPeerID]
-	require.Equal(t, tracker.StateSnapshot, pr.State)
-	require.Equal(t, uint64(9), pr.Match)
-	node.observeFollowerRetention(now)
-	require.Equal(t, []uint64{12}, publishedNeeds(node.followerRetention),
-		"a follower being sent a snapshot needs the entries after it")
+	recipients := sentSnapshotRecipients(t, leader.drain(), 12)
+	require.Equal(t, []uint64{testRetentionPeerID}, recipients)
+	node.observeFollowerRetention(time.Now())
+	require.Equal(t, &retentionPositions{positions: []uint64{12}}, publishedPositions(node.followerRetention),
+		"a follower being sent a snapshot holds at its index")
 
-	// The node reports the snapshot sent (finishReady): raft probes from the
-	// snapshot index while Match is still the stale 9.
-	leader.rn.ReportSnapshot(testRetentionPeerID, raft.SnapshotFinish)
-	pr = leader.rn.Status().Progress[testRetentionPeerID]
+	node.reportSentSnapshots(recipients)
+	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.Equal(t, tracker.StateProbe, pr.State)
 	require.Equal(t, uint64(9), pr.Match)
-	node.observeFollowerRetention(now)
-	require.Equal(t, []uint64{12}, publishedNeeds(node.followerRetention),
+	node.observeFollowerRetention(time.Now())
+	require.Equal(t, &retentionPositions{positions: []uint64{12}}, publishedPositions(node.followerRetention),
 		"the hold must cover the snapshot index until the follower acknowledges it")
 
-	// The follower acknowledges the snapshot and then replicates.
-	leader.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(12) })
-	leader.drain()
+	leader.ack(12)
 	require.Equal(t, uint64(12), leader.rn.Status().Progress[testRetentionPeerID].Match)
-	node.observeFollowerRetention(now)
-	require.Equal(t, []uint64{12}, publishedNeeds(node.followerRetention))
+	node.observeFollowerRetention(time.Now())
+	require.Equal(t, &retentionPositions{positions: []uint64{12}}, publishedPositions(node.followerRetention))
 }

@@ -129,7 +129,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms; at least 10ns when processing interval is 0)")
 	runCmd.Flags().Uint64("raft-compaction-margin", 1000, "Minimum log entries between snapshots (0 = use default 1000)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-follower-retention-max-bytes", 1<<30, "Maximum Raft log the leader keeps beyond the compaction margin for followers still catching up; held in memory and on the WAL volume (0 = disable)")
-	runCmd.Flags().Duration("raft-follower-retention-idle-timeout", 5*time.Minute, "How long a follower's replication progress may stall before it stops holding back leader compaction (0 = use default 5m)")
+	runCmd.Flags().Duration("raft-follower-retention-idle-timeout", 5*time.Minute, "How long the leader may go without a message from a follower before that follower stops holding back leader compaction (0 = use default 5m)")
 	runCmd.Flags().Duration("maintenance-interval", 30*time.Second, "Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s)")
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")

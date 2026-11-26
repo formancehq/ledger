@@ -1193,20 +1193,26 @@ func (node *Node) observeFollowerRetention(now time.Time) {
 	}
 
 	status := node.rawNode.BasicStatus()
-	isLeader := status.RaftState == raft.StateLeader
+	var term uint64
 	progress := node.retentionProgress[:0]
-	if isLeader {
+	if status.RaftState == raft.StateLeader {
+		term = status.GetTerm()
 		node.rawNode.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
 			if id == status.ID {
 				return
 			}
 
-			progress = append(progress, followerProgress{id: id, state: pr.State, need: followerNeed(pr)})
+			progress = append(progress, followerProgress{
+				id:              id,
+				state:           pr.State,
+				match:           pr.Match,
+				pendingSnapshot: pr.PendingSnapshot,
+			})
 		})
 	}
 	node.retentionProgress = progress
 
-	node.followerRetention.observe(now, isLeader, progress)
+	node.followerRetention.observe(now, term, progress)
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
@@ -2206,6 +2212,12 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					"commit":     msg.GetCommit(),
 					"entryCount": len(msg.GetEntries()),
 				}).Debugf("Stepping MsgApp/MsgSnap while Ready in flight")
+			}
+
+			// Any message from a follower shows it is reachable: the
+			// compaction hold counts followers by when they were last heard.
+			if node.followerRetention != nil {
+				node.followerRetention.heard(msg.GetFrom())
 			}
 
 			err := node.rawNode.Step(msg)

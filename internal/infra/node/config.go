@@ -47,8 +47,8 @@ type NodeConfig struct {
 	// retained entries in memory, so this bounds memory and disk. 0 disables
 	// the hold.
 	FollowerRetentionMaxBytes uint64
-	// FollowerRetentionIdleTimeout is how long a follower's replication
-	// position and state may stay unchanged before it stops holding back
+	// FollowerRetentionIdleTimeout is how long the leader may go without a
+	// message from a follower before that follower stops holding back
 	// compaction (default: 5m).
 	FollowerRetentionIdleTimeout time.Duration
 	ProposeQueueCapacity int           // Capacity of the propose queue (default: 100)

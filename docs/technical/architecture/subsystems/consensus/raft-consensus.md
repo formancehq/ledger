@@ -760,55 +760,59 @@ the checkpoint it had just restored, and the cycle could repeat indefinitely.
 The leader therefore holds back its compaction target for followers that are
 still replicating:
 
-1. The orchestrate goroutine reads each follower's `Progress` from `RawNode`
-   and derives the last entry the follower holds or is about to hold: `Match`
-   in `StateReplicate`, `Next-1` in `StateProbe`, and the pending snapshot
-   index in `StateSnapshot`. The probe and snapshot cases cover the handoff
-   after `MsgSnap`: the node reports the snapshot sent at once, raft then
-   probes from the snapshot index, and `Match` stays at the follower's
-   pre-snapshot position until the follower acknowledges. `Next-1` can be
-   speculative: a new leader probes every follower from its own log tail, and
-   a rejected probe lowers it.
-2. It publishes the positions of followers whose position or replication
-   state changed within `--raft-follower-retention-idle-timeout`. The state
-   counts because a speculative probe position can equal the index of the
-   snapshot sent after it. A node that is not the leader publishes nothing
-   and forgets the history. Publication runs on every Raft tick, before
-   `finishReady` reports sent snapshots, and once more on demand from
-   maintenance. Reporting a snapshot sent can return the peer to a probe at
-   the index it held before (`Probe(S) → Snapshot(S) → Probe(S)`); recording
-   the positions before the report keeps that transition visible as
-   activity.
-3. Maintenance creates its WAL snapshot, then asks the orchestrate goroutine
-   to publish the positions again and waits for it. RawNode chooses the
-   snapshot it sends while that goroutine steps a message and records it in
-   `Progress` at once, and a reported snapshot was recorded before its
-   report, so the refreshed positions cover every older snapshot already
-   sent; any snapshot chosen later is the new one, past the compaction
-   target. If the refresh fails, times out (10s) or the maintenance task
-   stops, maintenance skips compaction for that tick rather than use
-   positions from an earlier tick. The refresh is idempotent, so a command
-   left queued at shutdown is harmless.
-4. Maintenance computes the usual target,
+1. **Which followers hold.** The orchestrate goroutine notes every message it
+   steps from a follower. A follower heard from within
+   `--raft-follower-retention-idle-timeout` holds; a silent one does not.
+   Liveness comes from messages, not from sampled progress, so no
+   transition between two samples can hide it.
+2. **Where each follower holds.** A follower's position comes only from facts
+   the leader has in the current term, never from raft's speculative probe
+   cursor `Next-1` (a new leader probes every follower from its own log
+   tail):
+   - `Match`, the last entry the follower acknowledged;
+   - the index of a snapshot this leader sent it, recorded while its
+     `Progress` is in `StateSnapshot`. The node reports every sent snapshot
+     at once, which returns the follower to a probe with its pre-snapshot
+     `Match`; `finishReady` records the positions before that report, so
+     the snapshot index survives it;
+   - unknown, for a follower heard from that has acknowledged nothing and
+     been sent no snapshot, typically just after an election. The leader
+     then keeps its whole retained log until the follower acknowledges.
+
+   Within a term each position only rises and unknown only resolves, so a
+   position read before compaction is never above the one the follower has
+   when compaction runs. A new term, or losing leadership, discards the
+   history.
+3. **Fresh positions before compaction.** The positions are published on
+   every Raft tick. Maintenance creates its WAL snapshot, then has the
+   orchestrate goroutine publish them again and waits for it. RawNode
+   chooses the snapshot it sends while that goroutine steps a message and
+   records it in `Progress` at once, so the refresh covers every snapshot
+   already sent; any snapshot chosen later is the new one, past the
+   compaction target. If the refresh fails, times out (10s) or the
+   maintenance task stops, maintenance skips compaction for that tick
+   rather than use positions from an earlier tick. The refresh is
+   idempotent, so a command left queued at shutdown is harmless.
+4. **The compaction target.** Maintenance computes the usual target,
    `min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`, and lowers
-   it to the lowest published position that is still in the leader's log (at
-   or after `FirstIndex()-1`). A follower already compacted away receives a
-   snapshot whatever the leader keeps, so it does not cancel the hold for the
-   others.
-5. The encoded size of the entries kept beyond the usual target stays within
-   `--raft-follower-retention-max-bytes`, plus at most the WAL's current
-   boundary entry at `FirstIndex()-1`, which `raft.Storage` cannot read. When
-   the cap is reached, the leader keeps the newest entries that fit and logs
-   an error: a follower below them will receive a snapshot. The WAL keeps
-   retained entries in memory, so the cap bounds leader memory and the WAL
-   volume; heap overhead and segment-granular file removal add to it.
+   it to the lowest position still in the leader's log (at or after
+   `FirstIndex()-1`), or to `FirstIndex()-1` for an unknown position. A
+   follower already compacted away receives a snapshot whatever the leader
+   keeps, so it does not cancel the hold for the others.
+5. **The byte cap.** The encoded size of the entries kept beyond the usual
+   target stays within `--raft-follower-retention-max-bytes`, plus at most
+   the WAL's current boundary entry at `FirstIndex()-1`, which
+   `raft.Storage` cannot read. When the cap is reached, the leader keeps the
+   newest entries that fit and logs an error: a follower below them will
+   receive a snapshot. The WAL keeps retained entries in memory, so the cap
+   bounds leader memory and the WAL volume; heap overhead and
+   segment-granular file removal add to it.
 6. A failure to read the retained entries leaves the usual target unchanged.
 
 The hold is node-local policy on the leader. It changes only how much log the
 leader keeps, never how an entry applies, and it persists nothing. A new
-leader starts with no history and builds its floor from its own `Progress`; it
-may already have compacted past a follower that the previous leader was
-holding for.
+leader starts with no history; it may already have compacted past a follower
+that the previous leader was holding for.
 
 #### Snapshot Transfer (MsgSnap)
 
