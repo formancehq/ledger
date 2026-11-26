@@ -234,6 +234,8 @@ func TestForgetRetainedFollowersOnConfChange(t *testing.T) {
 type fakeRetentionLog struct {
 	entries []*raftpb.Entry
 	err     error
+	// reads records each Entries range [lo, hi).
+	reads [][2]uint64
 }
 
 func newFakeRetentionLog(first, last uint64, dataSize int) *fakeRetentionLog {
@@ -258,6 +260,7 @@ func (l *fakeRetentionLog) FirstIndex() (uint64, error) {
 }
 
 func (l *fakeRetentionLog) Entries(lo, hi, _ uint64) ([]*raftpb.Entry, error) {
+	l.reads = append(l.reads, [2]uint64{lo, hi})
 	first := l.entries[0].GetIndex()
 	if lo < first {
 		return nil, raft.ErrCompacted
@@ -370,6 +373,32 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(65), got)
 		require.Equal(t, retentionDecision{held: true, capped: true, need: 40, retainedBytes: 15 * entrySize}, decision)
+	})
+
+	t.Run("sizing reads bounded windows from the target down", func(t *testing.T) {
+		t.Parallel()
+
+		const target = 3000
+		walLog := newFakeRetentionLog(10, 5000, dataSize)
+		var want uint64
+		for _, e := range walLog.entries[:target-10] {
+			want += uint64(proto.Size(e))
+		}
+		got, decision, err := retention(math.MaxUint64, at(9)).compactionTarget(target, walLog)
+		require.NoError(t, err)
+		require.Equal(t, uint64(9), got)
+		require.Equal(t, retentionDecision{held: true, need: 9, retainedBytes: want}, decision)
+		require.Equal(t, [][2]uint64{{1976, 3000}, {952, 1976}, {10, 952}}, walLog.reads)
+	})
+
+	t.Run("sizing stops reading at the cap", func(t *testing.T) {
+		t.Parallel()
+
+		walLog := newFakeRetentionLog(10, 5000, dataSize)
+		_, decision, err := retention(10*entrySize, at(9)).compactionTarget(3000, walLog)
+		require.NoError(t, err)
+		require.True(t, decision.capped)
+		require.Equal(t, [][2]uint64{{1976, 3000}}, walLog.reads)
 	})
 
 	t.Run("a cap smaller than one entry keeps the target", func(t *testing.T) {

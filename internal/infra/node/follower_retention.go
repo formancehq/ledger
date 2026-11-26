@@ -90,6 +90,10 @@ type followerProgress struct {
 	pendingSnapshot uint64
 }
 
+// retentionSizingWindow is how many entries compactionTarget sizes per WAL
+// read.
+const retentionSizingWindow = 1024
+
 // retentionEntries is the WAL surface compactionTarget reads.
 type retentionEntries interface {
 	FirstIndex() (uint64, error)
@@ -244,25 +248,36 @@ func (r *followerRetention) compactionTarget(target uint64, walLog retentionEntr
 		return need, retentionDecision{held: true, need: need}, nil
 	}
 
-	entries, err := walLog.Entries(lo, target, math.MaxUint64)
-	if err != nil {
-		return target, retentionDecision{}, fmt.Errorf("reading retained entries [%d, %d): %w", lo, target, err)
-	}
-
+	// Walk back from the target in bounded windows and stop at the cap: each
+	// Entries call sizes its window under the WAL's read lock, which holds
+	// off appends, so a single call over a large backlog would stall them.
 	var size uint64
-	for j := len(entries) - 1; j >= 0; j-- {
-		entrySize := uint64(proto.Size(entries[j]))
-		if size+entrySize > r.maxBytes {
-			compactIdx := entries[j].GetIndex() + 1
-
-			return compactIdx, retentionDecision{
-				held:          compactIdx < target,
-				capped:        true,
-				need:          need,
-				retainedBytes: size,
-			}, nil
+	for hi := target; hi > lo; {
+		windowLo := lo
+		if hi-lo > retentionSizingWindow {
+			windowLo = hi - retentionSizingWindow
 		}
-		size += entrySize
+
+		entries, err := walLog.Entries(windowLo, hi, math.MaxUint64)
+		if err != nil {
+			return target, retentionDecision{}, fmt.Errorf("reading retained entries [%d, %d): %w", windowLo, hi, err)
+		}
+
+		for j := len(entries) - 1; j >= 0; j-- {
+			entrySize := uint64(proto.Size(entries[j]))
+			if size+entrySize > r.maxBytes {
+				compactIdx := entries[j].GetIndex() + 1
+
+				return compactIdx, retentionDecision{
+					held:          compactIdx < target,
+					capped:        true,
+					need:          need,
+					retainedBytes: size,
+				}, nil
+			}
+			size += entrySize
+		}
+		hi = windowLo
 	}
 
 	return need, retentionDecision{held: true, need: need, retainedBytes: size}, nil

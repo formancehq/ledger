@@ -822,6 +822,14 @@ leader keeps, never how an entry applies, and it persists nothing. Its limits:
   snapshot, as it would without the hold.
 - A follower that keeps answering heartbeats without acknowledging entries
   keeps holding, up to the byte cap.
+- etcd/raft keeps a learner's `Progress` across `ConfChangeUpdateNode`, so a
+  refreshed learner can hold at its predecessor's `Match` or pending
+  snapshot once it answers. That only keeps more log, up to the cap, for a
+  replacement that needs a snapshot anyway.
+
+Sizing the hold reads the retained entries in windows of 1024, from the
+normal target down, and stops at the cap: each read holds the WAL's read lock,
+which holds off appends.
 
 #### Snapshot Transfer (MsgSnap)
 
