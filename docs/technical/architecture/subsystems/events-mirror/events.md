@@ -846,8 +846,13 @@ per event. Existing receivers expect one Event per body, so that contract
 remains the default. Operators set `http.batch: true` when creating the sink
 through the configuration API. The additive `HttpSinkConfig.batch` field is
 false when absent; existing configurations and receivers keep their behavior.
-The field is stored in the replicated sink configuration. Enable it after the
-server rollout completes because an old leader cannot interpret it.
+The field travels in the `AddEventsSink` Raft order and its
+`AddedEventsSinkLog`, and is stored in the replicated sink configuration.
+Existing stored configurations decode with `batch=false`; no migration is
+needed. The previous RC's protobuf decoder and marshaler retain unknown fields,
+so an old voter can preserve field 3 while applying the order, but an old
+leader cannot use it to select the batch HTTP format. Enable it only after
+the server rollout completes.
 
 For example, the HTTP sink configuration sent to `POST /v3/_/events-sinks`
 contains `"http": {"endpoint": "https://receiver.example/events", "batch": true}`.
@@ -871,11 +876,12 @@ its Raft cursor and retries the entire emitter batch. Previously accepted
 POSTs from a split batch can therefore reappear. Receivers must process a POST
 atomically before returning 2xx and deduplicate using the global log sequence.
 After all POSTs succeed, the emitter proposes its cursor update through Raft;
-failure to commit that update can also cause redelivery. Batch mode changes
-only the external HTTP transport, not Raft entries, snapshots, backups, or
-audit records. During a rolling server upgrade, enable it only after all
-voters run a version supporting batch v1; an older leader would revert to
-legacy single-event delivery.
+failure to commit that update can also cause redelivery. The configuration
+field is also present in the persisted global log and the serialized audit
+order, and is carried by snapshots and backups that include the sink config.
+It does not change event payloads or the cursor update format. During a rolling
+server upgrade, an older leader emits legacy single-event requests; wait until
+all voters support batch v1 before creating a batch-enabled sink.
 
 In the default legacy mode, the HTTP sink sends each event as an individual
 HTTP POST request with the following headers:
