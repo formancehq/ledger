@@ -201,6 +201,15 @@ mandatory stopped `rc.4` to `rc.5` upgrade, which stops every RC.4 voter first.
 An order without a description, including every historical order, applies and
 replays exactly as before. No capability ID is needed.
 
+Follower log retention (EN-3429) changes only how much Raft log a leader keeps
+before compacting its own WAL. It reads leader-local Raft progress and message
+arrival times, persists nothing, adds no proposal, order or wire field, and
+does not touch how a committed entry applies. Old and new voters therefore
+apply and replay every entry identically, and either can lead a mixed cluster:
+an older leader just compacts at its usual margin. No capability ID,
+persisted migration, wire revision, or stopped-upgrade boundary is needed. See
+[follower log retention](raft-consensus.md#follower-log-retention-en-3429).
+
 ## Rollout and recovery
 
 Deploy the barrier-aware binary to every member, stop the cluster, and restart
