@@ -164,9 +164,27 @@ blocks the recreation instead of being provisioned empty, and the operator
 does not retry it. The operator cannot tell a lost claim from one that never
 existed, so it also refuses a recreation with more replicas than the retained
 claims cover. Recreate with the previous replica count and scale afterwards.
-If a member's claim is lost, recovering it is an explicit decision: restore the
-claim from a volume snapshot under the same name, or restore the cluster from a
-backup. Then touch the `Cluster` so that it reconciles.
+
+If a member's claim is lost, recovering it is an explicit decision. Either
+restore the cluster from a backup, or restore the claim from a volume snapshot:
+
+1. Use only a snapshot taken after the Pod with that ordinal last stopped, so
+   that it holds the claim's final state. An older snapshot rolls back that
+   member's persisted Raft state, which this procedure does not cover; restore
+   the cluster from a backup instead.
+2. Restore the snapshot into a PVC with the missing claim's exact name, in the
+   same namespace.
+3. The restored PVC is a new object: it does not carry the deleted claim's
+   `ledger.formance.com/data-source-tag` annotation. Unless an orphan Pod
+   running the requested tag remains, the operator rejects it as unrecorded.
+   Attest it with
+   [Attest claims that predate the record](#attest-claims-that-predate-the-record),
+   including it in the per-claim verification with the other claims. Its
+   evidence is the tag of the last Pod that mounted the original claim before
+   the snapshot was taken. Stop if that evidence is missing or differs from the
+   other claims.
+4. Touch the `Cluster` so that it reconciles, then watch `ConfigValid` and the
+   StatefulSet rollout.
 
 This annotation replaces the earlier workaround of creating a placeholder Pod
 with the source image so that the orphan-Pod branch admits the source. Do not
