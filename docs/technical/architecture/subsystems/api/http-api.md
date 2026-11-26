@@ -653,6 +653,9 @@ The HTTP layer needs no status-code branch of its own: both mappers read the
 failure through `apierr.Describe`, which answers identically for a locally
 raised error and a decoded one, so a follower answers with the same status and
 `errorCode` as the leader and the bulk path is repaired by the same change.
+Signing refusals are the exception: a decoded signing failure is not
+`Describable`, so both mappers check `grpcerr.SigningReason` first, which
+matches the local `signing.Err*` sentinels and the decoded failure alike.
 
 At a subsequent gRPC hop, the server uses `grpcerr.OriginalStatus` before generic
 status conversion. This preserves the sender's message and all status details
@@ -738,6 +741,12 @@ error code it already uses for a reason-less classified status
 sanitizer. A bulk element takes its status and message from the same
 `classifyError` dispatch, but its `errorCode` is the generic `ERROR` for every
 failure without a reason.
+
+Client signing refusals sit outside this contract. They carry no domain
+`Reason`; their public code is the `ledger.signing` reason, which
+`grpcerr.SigningReason` returns for a local sentinel and for a decoded
+forwarded refusal alike. `handleError` and the bulk mapper both read it before
+`apierr.Describe`.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
 identity. A locally raised serializable failure renders them from its stable
