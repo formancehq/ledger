@@ -302,9 +302,6 @@ type readyResult struct {
 	// to the transport for; orchestrate must call rawNode.ReportSnapshot for
 	// each of them. See finishReady.
 	snapshotRecipients []uint64
-	// sentSnapshots are the same MsgSnap with their index, recorded for the
-	// follower log retention before the report. See reportSentSnapshots.
-	sentSnapshots []sentSnapshot
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
 	// retained so callers can wait for the matching FSM batch to become durable.
@@ -1153,6 +1150,11 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 	}
 
 	held, decision, err := node.followerRetention.compactionTarget(target, node.wal)
+	select {
+	case <-stop:
+		return 0, false
+	default:
+	}
 	if err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to size follower log retention")
 
@@ -1179,20 +1181,28 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 	return held, true
 }
 
-// reportSentSnapshots reports every snapshot handed to the transport as
-// finished (see finishReady). The report returns a peer to a probe with its
-// pre-snapshot Match, so the follower log retention records each snapshot's
-// index from its message first (EN-3429). Must be called from the
+// nextReady takes the next Ready from rawNode. Must be called from the
 // orchestrate goroutine.
-func (node *Node) reportSentSnapshots(recipients []uint64, sent []sentSnapshot) {
-	if node.followerRetention != nil {
-		for _, s := range sent {
-			node.followerRetention.recordSentSnapshot(s)
-		}
+func (node *Node) nextReady() raft.Ready {
+	rd := node.rawNode.Ready()
+	node.recordSentSnapshots(rd.Messages)
+
+	return rd
+}
+
+// recordSentSnapshots records every MsgSnap in msgs for the follower log
+// retention (EN-3429), as soon as the Ready that carries them exists. A
+// maintenance refresh can run before finishReady handles that Ready, and by
+// then an acknowledgement or the snapshot report can have cleared the pending
+// snapshot from Progress; the message keeps its index. Must be called from
+// the orchestrate goroutine.
+func (node *Node) recordSentSnapshots(msgs []*raftpb.Message) {
+	if node.followerRetention == nil {
+		return
 	}
 
-	for _, peerID := range recipients {
-		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
+	for _, s := range sentSnapshotsOf(msgs) {
+		node.followerRetention.recordSentSnapshot(s)
 	}
 }
 
@@ -1871,7 +1881,6 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
 	result.snapshotRecipients = snapshotRecipients(outbound)
-	result.sentSnapshots = sentSnapshotsOf(outbound)
 
 	node.transport.Send(outbound)
 
@@ -1919,7 +1928,9 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// fresh snapshot. The MsgSnap carries no payload here (the checkpoint is
 	// fetched out-of-band), so handing it to the transport is the send.
 	// Non-leaders and peers no longer in StateSnapshot ignore the report.
-	node.reportSentSnapshots(result.snapshotRecipients, result.sentSnapshots)
+	for _, peerID := range result.snapshotRecipients {
+		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
+	}
 
 	if result.snapshotApplied {
 		node.recordRaftApplied(rd.Snapshot.GetMetadata().GetIndex())
@@ -2299,7 +2310,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 			processingTick.Stop()
 
-			node.readies <- node.rawNode.Ready()
+			node.readies <- node.nextReady()
 		}
 	}
 
@@ -2411,7 +2422,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					// Step()-ed back through localResponseCh.
 
 					if node.rawNode.HasReady() {
-						node.readies <- node.rawNode.Ready()
+						node.readies <- node.nextReady()
 					} else {
 						processingTick.Reset(processingTickInterval)
 
@@ -2426,7 +2437,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 					processingTick.Stop()
 
-					node.readies <- node.rawNode.Ready()
+					node.readies <- node.nextReady()
 				case <-stop:
 					node.logger.Infof("Stopping readyLoop as context was cancelled")
 					node.applier.Interrupt()

@@ -759,10 +759,17 @@ func TestDoMaintenanceSeesSnapshotSentSinceLastTick(t *testing.T) {
 	requireFirstIndex(t, node, 4, "entries after the snapshot index must stay available")
 }
 
+// reportSnapshots does what finishReady does with the MsgSnap in msgs.
+func (l *testRetentionLeader) reportSnapshots(msgs []*raftpb.Message) {
+	for _, to := range snapshotRecipients(msgs) {
+		l.rn.ReportSnapshot(to, raft.SnapshotFinish)
+	}
+}
+
 // TestDoMaintenanceHoldsAtReportedSnapshot covers a snapshot sent and
 // reported between two samples. Reporting it returns the follower to a probe
-// with its pre-snapshot Match, so only the positions recorded before the
-// report know the snapshot index. Maintenance must hold at that index.
+// with its pre-snapshot Match, so only the index recorded from the message
+// knows the snapshot. Maintenance must hold at that index.
 func TestDoMaintenanceHoldsAtReportedSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -773,7 +780,9 @@ func TestDoMaintenanceHoldsAtReportedSnapshot(t *testing.T) {
 	leader.attach(node)
 
 	msgs := leader.rejectProbe(1)
-	node.reportSentSnapshots(sentSnapshotRecipients(t, msgs, 3), sentSnapshotsOf(msgs))
+	require.Equal(t, []uint64{testRetentionPeerID}, sentSnapshotRecipients(t, msgs, 3))
+	node.recordSentSnapshots(msgs) // as nextReady does
+	leader.reportSnapshots(msgs)
 	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.Equal(t, tracker.StateProbe, pr.State)
 	require.Zero(t, pr.Match, "the report leaves Match before the snapshot")
@@ -782,13 +791,14 @@ func TestDoMaintenanceHoldsAtReportedSnapshot(t *testing.T) {
 	requireFirstIndex(t, node, 4, "entries after the reported snapshot must stay available")
 }
 
-// TestReportSentSnapshotsRecordsIndexClearedByAck covers an acknowledgement
-// stepped between RawNode choosing a snapshot and finishReady reporting it.
-// The acknowledgement is still in the leader's log, so raft leaves
-// StateSnapshot and clears the pending snapshot from Progress. The follower
-// may still install the snapshot, so its index must come from the sent
-// message and stay a candidate position.
-func TestReportSentSnapshotsRecordsIndexClearedByAck(t *testing.T) {
+// TestRecordSentSnapshotsKeepsIndexClearedByAck covers an acknowledgement
+// stepped after the Ready carrying a snapshot is created and before
+// finishReady handles it, with a maintenance refresh in between. The
+// acknowledgement is still in the leader's log, so raft leaves StateSnapshot
+// and clears the pending snapshot from Progress. The follower may still
+// install the snapshot, so its index, recorded from the message when the
+// Ready was created, must stay a candidate position.
+func TestRecordSentSnapshotsKeepsIndexClearedByAck(t *testing.T) {
 	t.Parallel()
 
 	node := &Node{followerRetention: newFollowerRetention(math.MaxUint64, time.Hour)}
@@ -805,18 +815,42 @@ func TestReportSentSnapshotsRecordsIndexClearedByAck(t *testing.T) {
 	// snapshot at 5.
 	leader.fromPeer(raftpb.MsgHeartbeatResp, nil)
 	msgs := leader.drain()
-	recipients := sentSnapshotRecipients(t, msgs, 5)
-	require.Equal(t, []uint64{testRetentionPeerID}, recipients)
+	require.Equal(t, []uint64{testRetentionPeerID}, sentSnapshotRecipients(t, msgs, 5))
+	node.recordSentSnapshots(msgs) // as nextReady does
 
-	// A delayed acknowledgement of 4 lands before the report.
+	// A delayed acknowledgement of 4 lands before finishReady.
 	leader.ack(4)
 	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.NotEqual(t, tracker.StateSnapshot, pr.State)
 	require.Zero(t, pr.PendingSnapshot, "the acknowledgement cleared the pending snapshot")
 
-	node.reportSentSnapshots(recipients, sentSnapshotsOf(msgs))
+	// The maintenance refresh runs before finishReady reports the snapshot.
 	node.observeFollowerRetention(time.Now())
 	require.Equal(t, &retentionPositions{positions: []uint64{4, 5}}, publishedPositions(node.followerRetention))
+
+	leader.reportSnapshots(msgs)
+	node.observeFollowerRetention(time.Now())
+	require.Equal(t, &retentionPositions{positions: []uint64{4, 5}}, publishedPositions(node.followerRetention))
+}
+
+// TestNextReadyRecordsSentSnapshots checks the production hook: the Ready
+// that carries a MsgSnap records its index as it is taken from RawNode.
+func TestNextReadyRecordsSentSnapshots(t *testing.T) {
+	t.Parallel()
+
+	node := &Node{followerRetention: newFollowerRetention(math.MaxUint64, time.Hour)}
+	leader := newTestRetentionLeader(t, 1)
+	leader.propose(4)
+	_, err := leader.storage.CreateSnapshot(5, leader.conf, nil)
+	require.NoError(t, err)
+	require.NoError(t, leader.storage.Compact(3))
+	leader.attach(node)
+
+	leader.fromPeer(raftpb.MsgHeartbeatResp, nil)
+	require.True(t, leader.rn.HasReady())
+	rd := node.nextReady()
+	require.Equal(t, []uint64{testRetentionPeerID}, sentSnapshotRecipients(t, rd.Messages, 5))
+	require.Equal(t, []uint64{5}, node.followerRetention.peers[testRetentionPeerID].sentSnapshots)
 }
 
 // TestDoMaintenanceStopAbandonsRetentionRefresh covers shutdown: the refresh
@@ -898,7 +932,7 @@ func TestObserveFollowerRetentionFollowsSnapshotHandoff(t *testing.T) {
 	require.Equal(t, &retentionPositions{positions: []uint64{9, 12}}, publishedPositions(node.followerRetention),
 		"a follower being sent a snapshot can resume from its Match or the snapshot")
 
-	node.reportSentSnapshots(recipients, sentSnapshotsOf(msgs))
+	leader.reportSnapshots(msgs)
 	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.Equal(t, tracker.StateProbe, pr.State)
 	require.Equal(t, uint64(9), pr.Match)

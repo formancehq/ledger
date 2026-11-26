@@ -771,12 +771,13 @@ still replicating:
    log tail):
    - `Match`, the last entry the follower acknowledged;
    - the index of each snapshot this leader sent it and that `Match` has not
-     reached (up to the 8 most recent). `finishReady` records it from each
-     outbound `MsgSnap` before reporting the snapshot sent, and observation
-     also records it while `Progress` is in `StateSnapshot`. The report
-     returns the follower to a probe with its pre-snapshot `Match`, and an
-     acknowledgement stepped before the report can clear the pending
-     snapshot from `Progress`; the message keeps the index either way.
+     reached (up to the 8 most recent). It is recorded from each outbound
+     `MsgSnap` as soon as the orchestrate goroutine takes the Ready that
+     carries it, and observation also records it while `Progress` is in
+     `StateSnapshot`. Reporting the snapshot sent in `finishReady` returns
+     the follower to a probe with its pre-snapshot `Match`, and an
+     acknowledgement stepped before that can clear the pending snapshot
+     from `Progress`; the message keeps the index either way.
 
    All are published: a snapshot handed to the transport can be lost while
    appends resume from `Match`, a newer offer can be lost while the follower
