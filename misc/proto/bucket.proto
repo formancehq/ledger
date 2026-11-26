@@ -101,6 +101,10 @@ service BucketService {
   rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
   }
+  // GetSigningConfig returns the cluster's write-signing policy
+  rpc GetSigningConfig(GetSigningConfigRequest) returns (GetSigningConfigResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // Discovery returns server capabilities and configuration for clients
   rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse) {
     option (common.auth_policy) = { public: true };
@@ -390,6 +394,12 @@ message SetSigningConfigRequest {
 
 message ListSigningKeysRequest {
   common.ListOptions options = 1;
+}
+
+message GetSigningConfigRequest {}
+
+message GetSigningConfigResponse {
+  bool require_signatures = 1;   // Whether unsigned write requests are rejected
 }
 
 // SetMaintenanceModeRequest enables or disables maintenance mode.

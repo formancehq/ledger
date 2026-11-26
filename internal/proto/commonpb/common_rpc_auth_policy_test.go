@@ -118,6 +118,7 @@ func expectedFixedRPCAuthPolicies() map[string]commonpb.AuthScope {
 		"/ledger.BucketService/ListNumscripts":               commonpb.AuthScope_AUTH_SCOPE_QUERY_READ,
 		"/ledger.BucketService/ListPreparedQueries":          commonpb.AuthScope_AUTH_SCOPE_QUERY_READ,
 		"/ledger.BucketService/ListSigningKeys":              commonpb.AuthScope_AUTH_SCOPE_OPS_READ,
+		"/ledger.BucketService/GetSigningConfig":             commonpb.AuthScope_AUTH_SCOPE_OPS_READ,
 		"/ledger.BucketService/ListTransactions":             commonpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ,
 	}
 }

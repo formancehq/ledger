@@ -193,6 +193,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/logs/{sequence}", knownQuery(server.handleGetLog))
 				r.Get("/events-sinks", knownQuery(server.handleGetEventsSinks))
 				r.Get("/signing-keys", knownQuery(server.handleListSigningKeys, "pageSize", "cursor", "reverse"))
+				r.Get("/signing-config", knownQuery(server.handleGetSigningConfig))
 				r.Get("/indexes", knownQuery(server.handleListBucketIndexes, "scope"))
 				r.Get("/indexes/status", knownQuery(server.handleGetIndexStatus, "ledger"))
 				r.Get("/indexes/{canonicalId}", knownQuery(server.handleGetBucketIndex))

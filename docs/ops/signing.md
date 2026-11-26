@@ -263,6 +263,7 @@ Keys are managed via gRPC API calls, replicated through Raft consensus:
 | Register key | `signing register-key` | Register an Ed25519 public key |
 | Revoke key | `signing revoke-key` | Revoke a registered key |
 | Require signatures | `signing require` | Enable/disable mandatory signatures |
+| Show policy | `signing get-config` | Show whether signatures are mandatory (also `GET /v3/_/signing-config`) |
 
 ### Hierarchical Keys
 

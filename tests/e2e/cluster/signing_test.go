@@ -5,7 +5,10 @@ package cluster
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
+	"fmt"
 	"math/big"
+	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -25,9 +28,33 @@ var _ = Describe("Request Signing", func() {
 			ctx     context.Context
 			client  servicepb.BucketServiceClient
 			cluster clusterpb.ClusterServiceClient
+			node    *testutil.ServiceWithClient
 			pubKey  ed25519.PublicKey
 			privKey ed25519.PrivateKey
 		)
+
+		// expectSigningPolicy reads the policy over both transports.
+		expectSigningPolicy := func(want bool) {
+			GinkgoHelper()
+
+			resp, err := client.GetSigningConfig(ctx, &servicepb.GetSigningConfigRequest{})
+			Expect(err).To(Succeed())
+			Expect(resp.GetRequireSignatures()).To(Equal(want))
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+				fmt.Sprintf("http://localhost:%d/v3/_/signing-config", node.HTTPPort), nil)
+			Expect(err).To(Succeed())
+			httpResp, err := http.DefaultClient.Do(req)
+			Expect(err).To(Succeed())
+			defer func() { _ = httpResp.Body.Close() }()
+			Expect(httpResp.StatusCode).To(Equal(http.StatusOK))
+
+			var body struct {
+				Data map[string]any `json:"data"`
+			}
+			Expect(json.NewDecoder(httpResp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Data).To(Equal(map[string]any{"requireSignatures": want}))
+		}
 
 		const (
 			keyID = "admin-key"
@@ -37,10 +64,13 @@ var _ = Describe("Request Signing", func() {
 			var err error
 			pubKey, privKey, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
-			var node *testutil.ServiceWithClient
 			ctx, node = testutil.SetupSingleNode()
 			client = node.Client
 			cluster = node.ClusterClient
+		})
+
+		It("should report signatures as not required on a fresh cluster", func() {
+			expectSigningPolicy(false)
 		})
 
 		It("should accept unsigned requests when no keys exist", func() {
@@ -111,6 +141,8 @@ var _ = Describe("Request Signing", func() {
 			resp, err := client.Apply(ctx, signedEnv2)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
+
+			expectSigningPolicy(true)
 		})
 
 		It("should reject unsigned regular requests after require-signatures is enabled", func() {
@@ -160,6 +192,8 @@ var _ = Describe("Request Signing", func() {
 			resp, err := client.Apply(ctx, signedEnv4)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
+
+			expectSigningPolicy(false)
 
 			// Now unsigned requests should work again
 			resp, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("signing-disabled-again", nil)))

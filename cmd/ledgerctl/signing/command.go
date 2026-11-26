@@ -14,6 +14,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewRevokeKeyCommand())
 	cmd.AddCommand(NewRequireCommand())
 	cmd.AddCommand(NewListKeysCommand())
+	cmd.AddCommand(NewGetConfigCommand())
 
 	return cmd
 }

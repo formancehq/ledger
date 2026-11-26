@@ -49,6 +49,7 @@ var protojsonRoutes = []struct {
 	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &servicepb.IndexEntry{}},
 	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &servicepb.GetIndexStatusResponse{}},
 	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
+	{"GET /v3/_/signing-config", "handlers_get_signing_config.go", &servicepb.GetSigningConfigResponse{}},
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
@@ -67,7 +68,7 @@ var jsonWriterFiles = map[string]bool{
 	"handlers_get_bucket_index_entry_status.go": true, "handlers_get_events_sinks.go": true,
 	"handlers_get_index.go": true, "handlers_get_index_entry_status.go": true,
 	"handlers_get_index_status.go": true, "handlers_get_ledger.go": true,
-	"handlers_get_ledger_stats.go": true, "handlers_get_log.go": true,
+	"handlers_get_ledger_stats.go": true, "handlers_get_log.go": true, "handlers_get_signing_config.go": true,
 	"handlers_get_metadata_schema.go": true, "handlers_get_numscript.go": true,
 	"handlers_get_numscript_usage.go": true, "handlers_get_transaction.go": true,
 	"handlers_health.go": true, "handlers_inspect_index.go": true,

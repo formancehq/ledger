@@ -343,6 +343,15 @@ func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*
 	return c.ListSigningKeys(ctx)
 }
 
+func (b *RoutedController) GetSigningConfig(ctx context.Context) (bool, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return c.GetSigningConfig(ctx)
+}
+
 func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {

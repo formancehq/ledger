@@ -749,6 +749,45 @@ func (c *MockBackendGetNumscriptCall) DoAndReturn(f func(context.Context, string
 	return c
 }
 
+// GetSigningConfig mocks base method.
+func (m *MockBackend) GetSigningConfig(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSigningConfig", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSigningConfig indicates an expected call of GetSigningConfig.
+func (mr *MockBackendMockRecorder) GetSigningConfig(ctx any) *MockBackendGetSigningConfigCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSigningConfig", reflect.TypeOf((*MockBackend)(nil).GetSigningConfig), ctx)
+	return &MockBackendGetSigningConfigCall{Call: call}
+}
+
+// MockBackendGetSigningConfigCall wrap *gomock.Call
+type MockBackendGetSigningConfigCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetSigningConfigCall) Return(arg0 bool, arg1 error) *MockBackendGetSigningConfigCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetSigningConfigCall) Do(f func(context.Context) (bool, error)) *MockBackendGetSigningConfigCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetSigningConfigCall) DoAndReturn(f func(context.Context) (bool, error)) *MockBackendGetSigningConfigCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetTemplateUsage mocks base method.
 func (m *MockBackend) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
 	m.ctrl.T.Helper()

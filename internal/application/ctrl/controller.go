@@ -49,6 +49,8 @@ type Controller interface {
 
 	// Signing key operations
 	ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error)
+	// GetSigningConfig reports whether unsigned write requests are rejected.
+	GetSigningConfig(ctx context.Context) (bool, error)
 
 	// Schema operations
 	GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error)

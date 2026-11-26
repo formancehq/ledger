@@ -3530,6 +3530,20 @@ ledgerctl signing require false --signing-key /path/to/seed
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 10s) |
 
+#### signing get-config
+
+Show whether the cluster rejects unsigned write requests. Calls the gRPC
+`GetSigningConfig` RPC; `--json` prints `{"requireSignatures": <bool>}`.
+
+```bash
+ledgerctl signing get-config
+ledgerctl signing get-config --json
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
 ---
 
 ### numscripts

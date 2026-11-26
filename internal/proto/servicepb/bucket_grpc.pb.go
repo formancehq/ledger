@@ -37,6 +37,7 @@ const (
 	BucketService_ListLogs_FullMethodName                = "/ledger.BucketService/ListLogs"
 	BucketService_GetLog_FullMethodName                  = "/ledger.BucketService/GetLog"
 	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
+	BucketService_GetSigningConfig_FullMethodName        = "/ledger.BucketService/GetSigningConfig"
 	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
 	BucketService_GetMetadataSchemaStatus_FullMethodName = "/ledger.BucketService/GetMetadataSchemaStatus"
 	BucketService_AnalyzeAccounts_FullMethodName         = "/ledger.BucketService/AnalyzeAccounts"
@@ -96,6 +97,8 @@ type BucketServiceClient interface {
 	GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
 	// ListSigningKeys streams all registered signing keys
 	ListSigningKeys(ctx context.Context, in *ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)
+	// GetSigningConfig returns the cluster's write-signing policy
+	GetSigningConfig(ctx context.Context, in *GetSigningConfigRequest, opts ...grpc.CallOption) (*GetSigningConfigResponse, error)
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error)
 	// GetMetadataSchemaStatus returns the declared type of every metadata field.
@@ -374,6 +377,16 @@ func (c *bucketServiceClient) ListSigningKeys(ctx context.Context, in *ListSigni
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListSigningKeysClient = grpc.ServerStreamingClient[commonpb.SigningKey]
 
+func (c *bucketServiceClient) GetSigningConfig(ctx context.Context, in *GetSigningConfigRequest, opts ...grpc.CallOption) (*GetSigningConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSigningConfigResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetSigningConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DiscoveryResponse)
@@ -638,6 +651,8 @@ type BucketServiceServer interface {
 	GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error)
 	// ListSigningKeys streams all registered signing keys
 	ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error
+	// GetSigningConfig returns the cluster's write-signing policy
+	GetSigningConfig(context.Context, *GetSigningConfigRequest) (*GetSigningConfigResponse, error)
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
 	// GetMetadataSchemaStatus returns the declared type of every metadata field.
@@ -740,6 +755,9 @@ func (UnimplementedBucketServiceServer) GetLog(context.Context, *GetLogRequest) 
 }
 func (UnimplementedBucketServiceServer) ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error {
 	return status.Error(codes.Unimplemented, "method ListSigningKeys not implemented")
+}
+func (UnimplementedBucketServiceServer) GetSigningConfig(context.Context, *GetSigningConfigRequest) (*GetSigningConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSigningConfig not implemented")
 }
 func (UnimplementedBucketServiceServer) Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Discovery not implemented")
@@ -1057,6 +1075,24 @@ func _BucketService_ListSigningKeys_Handler(srv interface{}, stream grpc.ServerS
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListSigningKeysServer = grpc.ServerStreamingServer[commonpb.SigningKey]
+
+func _BucketService_GetSigningConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSigningConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetSigningConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetSigningConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetSigningConfig(ctx, req.(*GetSigningConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _BucketService_Discovery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DiscoveryRequest)
@@ -1414,6 +1450,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLog",
 			Handler:    _BucketService_GetLog_Handler,
+		},
+		{
+			MethodName: "GetSigningConfig",
+			Handler:    _BucketService_GetSigningConfig_Handler,
 		},
 		{
 			MethodName: "Discovery",
