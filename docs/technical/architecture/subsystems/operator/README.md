@@ -39,7 +39,8 @@ conflict as `ResourceNamesAvailable=False`.
 
 - [Declarative storage reconciliation](storage-reconciliation.md) — configured
   PVC minima/profiles, actual CSI status, durable claim-template recovery,
-  scale-down retention and guarded layout deletion.
+  scale-down retention, guarded layout deletion and the RC source record on
+  retained claims.
 - [Derived object ownership](derived-object-ownership.md) — ownership checks on
   writes, prunes, status and execs, conflict reporting, and accepted races.
 - [Automatic PVC expansion](volume-auto-expansion.md) — opt-in capacity policy,

@@ -527,6 +527,17 @@ manifests before retiring a shared class. Keep it while inactive claims still
 reference it; never delete claims to retire a profile. See the
 [retirement procedure and EKS/EBS acceptance gate](../../docs/technical/architecture/subsystems/operator/storage-reconciliation.md#retained-claims-and-class-retirement).
 
+### Recreating a Cluster over retained claims
+
+Deleting a Cluster with deletion protection or a `Retain` claim policy keeps its
+WAL and data PVCs. Once a StatefulSet rollout converges, the operator records
+its Ledger tag on those claims in `ledger.formance.com/data-source-tag`. It
+clears the record before publishing another tag and before a stopped upgrade
+deletes its source. A Cluster recreated over the claims with an RC tag starts
+only when every claim records exactly that tag. Claims retained before this
+record existed need a verified manual attestation. See
+[Recreating a Cluster over retained claims](../../docs/ops/upgrades.md#recreating-a-cluster-over-retained-claims).
+
 ### Storage prerequisites and limits
 
 Capacity increases require the PVC's StorageClass to permit expansion

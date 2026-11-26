@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -267,4 +269,87 @@ func storageMount(mounts []corev1.VolumeMount, name string) *corev1.VolumeMount 
 	}
 
 	return nil
+}
+
+func recordedClaim(cluster *ledgerv1alpha1.Cluster, prefix string, ordinal int, tag string) *corev1.PersistentVolumeClaim {
+	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
+		Name:      fmt.Sprintf("%s-%s-%d", prefix, resourceName(cluster.Name), ordinal),
+		Namespace: cluster.Namespace,
+		UID:       types.UID(fmt.Sprintf("%s-uid-%d", prefix, ordinal)),
+	}}
+	if tag != "" {
+		claim.Annotations = map[string]string{annotationClaimSourceTag: tag}
+	}
+
+	return claim
+}
+
+// A Cluster deleted with retained claims and recreated with the same RC tag
+// proves its source from the claim record, without an orphan Pod.
+func TestMissingStatefulSetWithRecordedClaimsValidatesRCSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		target    string
+		tags      []string // per ordinal, for both the WAL and data claim
+		dataTag   string   // overrides the data claim of ordinal 0 when set
+		wantError string
+	}{
+		{name: "every claim records the target", target: "v3.0.0-rc.4", tags: []string{"v3.0.0-rc.4", "v3.0.0-rc.4", "v3.0.0-rc.4"}},
+		{name: "one claim has no record", target: "v3.0.0-rc.4", tags: []string{"v3.0.0-rc.4", "", "v3.0.0-rc.4"}, wantError: "without the ledger.formance.com/data-source-tag annotation"},
+		{name: "claims record different tags", target: "v3.0.0-rc.4", tags: []string{"v3.0.0-rc.4", "v3.0.0-rc.4", "v3.0.0-rc.4"}, dataTag: "v3.0.0-rc.3", wantError: "record different source tags v3.0.0-rc.3, v3.0.0-rc.4"},
+		{name: "adjacent RC needs a StatefulSet", target: "v3.0.0-rc.5", tags: []string{"v3.0.0-rc.4", "v3.0.0-rc.4", "v3.0.0-rc.4"}, wantError: "restore spec.image.tag to v3.0.0-rc.4"},
+		{name: "downgrade", target: "v3.0.0-rc.3", tags: []string{"v3.0.0-rc.4", "v3.0.0-rc.4", "v3.0.0-rc.4"}, wantError: "record source v3.0.0-rc.4"},
+		{name: "non-RC target is outside the rule", target: "latest", tags: []string{"", "", ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cluster := newMinimalCluster()
+			cluster.Spec.Image.Tag = tt.target
+			var objects []client.Object
+			for ordinal, tag := range tt.tags {
+				objects = append(objects, recordedClaim(cluster, "wal", ordinal, tag))
+				dataTag := tag
+				if ordinal == 0 && tt.dataTag != "" {
+					dataTag = tt.dataTag
+				}
+				objects = append(objects, recordedClaim(cluster, "data", ordinal, dataTag))
+			}
+			scheme := runtime.NewScheme()
+			require.NoError(t, clientgoscheme.AddToScheme(scheme))
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+			err := r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster)
+			if tt.wantError == "" {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}
+
+// The record is read through the uncached API reader: a stale cache must not
+// show a record that the operator already cleared.
+func TestMissingStatefulSetReadsClaimRecordsThroughAPIReader(t *testing.T) {
+	t.Parallel()
+
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	cached := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(recordedClaim(cluster, "wal", 0, "v3.0.0-rc.4")).Build()
+	live := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(recordedClaim(cluster, "wal", 0, "")).Build()
+	r := &ClusterReconciler{Client: cached, APIReader: live, Scheme: scheme}
+
+	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster), "cannot verify RC source")
 }

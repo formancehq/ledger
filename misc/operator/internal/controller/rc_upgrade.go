@@ -74,7 +74,8 @@ func ledgerContainerTag(containers []corev1.Container) (string, error) {
 // A missing StatefulSet can be an interrupted orphan-and-recreate operation,
 // not a new cluster. The old Pods retain the source image, and the old PVCs
 // remain when Pods have already gone. Refuse a new RC while that source cannot
-// be verified from a complete StatefulSet rollout.
+// be verified from a complete StatefulSet rollout or from the source record on
+// every retained claim.
 func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	if !rcCandidate(ledger.Spec.Image.Tag) {
 		return nil
@@ -102,19 +103,16 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 		return nil
 	}
 
-	// PVCs are read uncached: the operator has no watch RBAC on them, so a
-	// cached List starts an informer that never syncs.
-	claims := &corev1.PersistentVolumeClaimList{}
-	if err := r.storageAPIReader().List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
+	// Without Pods, retained claims prove the source only through the record
+	// the operator keeps on them (see annotationClaimSourceTag). A Cluster
+	// deleted and recreated with deletion protection reaches this branch.
+	// listOrdinalClaims reads uncached: the operator has no PVC watch RBAC.
+	claims, err := r.listOrdinalClaims(ctx, ledger)
+	if err != nil {
 		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
 	}
-	for _, claim := range claims.Items {
-		if hasStatefulSetOrdinal(claim.Name, "wal-"+name) || hasStatefulSetOrdinal(claim.Name, "data-"+name) {
-			return fmt.Errorf("cannot verify RC source while StatefulSet %q is absent and PVC %q remains", name, claim.Name)
-		}
-	}
 
-	return nil
+	return validateClaimSourceTags(name, ledger.Spec.Image.Tag, claims)
 }
 
 func hasStatefulSetOrdinal(objectName, prefix string) bool {

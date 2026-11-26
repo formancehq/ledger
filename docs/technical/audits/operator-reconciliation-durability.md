@@ -265,6 +265,19 @@ upgrade-path check: a valid target tag alone does not prove that the RC source
 gate can admit the transition. Record a blocked transition as a finding rather
 than describing the tag correction as successful recovery.
 
+A Cluster deleted with deletion protection leaves its WAL/data claims without a
+StatefulSet or Pods. Treat the `ledger.formance.com/data-source-tag` record on
+those claims as the only source evidence, and verify how it is written and
+cleared, not only how it is read. A record may be stamped only from an uncached
+read of the owned StatefulSet converged on one revision. It must be removed
+from every ordinal claim whose record differs before any publish with another
+Ledger tag, and before a stopped upgrade deletes its source; a failed removal
+must stop that publish or deletion. Recreation without a StatefulSet admits
+only a target equal to every retained claim's record, never the next adjacent
+RC. A record written by hand for claims that predate the mechanism is an
+operator attestation; examine the documented verification, but do not report
+the manual write itself as a bypass.
+
 For a hardcoded mandatory stop, prove that the operator persists source, target,
 StatefulSet UID and PVC UIDs, persists a drain epoch, preflights member support,
 and verifies every member has durably applied the Raft admission cutoff before deletion. Then

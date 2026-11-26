@@ -292,10 +292,10 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenDeleted: appsv1.DeletePersistentVolumeClaimRetentionPolicyType, WhenScaled: appsv1.DeletePersistentVolumeClaimRetentionPolicyType}
 	sts.Status.ObservedGeneration = 0
 	claimName := "wal-" + sts.Name + "-0"
-	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: claimName, Namespace: cluster.Namespace, UID: types.UID("claim-uid"), OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: sts.Name, UID: sts.UID}}}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "pv-1"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
+	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: claimName, Namespace: cluster.Namespace, UID: types.UID("claim-uid"), Annotations: map[string]string{annotationClaimSourceTag: "v3.0.0-rc.3"}, OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: sts.Name, UID: sts.UID}}}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "pv-1"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
 	pv := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv-1", UID: types.UID("pv-uid")}, Spec: corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Name: claimName, Namespace: cluster.Namespace, UID: claim.UID}}, Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound}}
 	dataClaimName := "data-" + sts.Name + "-0"
-	dataClaim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: dataClaimName, Namespace: cluster.Namespace, UID: types.UID("data-claim-uid")}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "pv-2"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
+	dataClaim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: dataClaimName, Namespace: cluster.Namespace, UID: types.UID("data-claim-uid"), Annotations: map[string]string{annotationClaimSourceTag: "v3.0.0-rc.3"}}, Spec: corev1.PersistentVolumeClaimSpec{VolumeName: "pv-2"}, Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}}
 	dataPV := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv-2", UID: types.UID("data-pv-uid")}, Spec: corev1.PersistentVolumeSpec{ClaimRef: &corev1.ObjectReference{Name: dataClaimName, Namespace: cluster.Namespace, UID: dataClaim.UID}}, Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: cluster.Namespace, UID: types.UID("old-pod")}}
 	scheme := runtime.NewScheme()
@@ -411,14 +411,38 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Equal(t, "Deleting", cluster.Status.Upgrade.Phase)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: claimName, Namespace: cluster.Namespace}, claim))
 	require.Empty(t, claim.OwnerReferences)
+	require.Equal(t, "v3.0.0-rc.3", claim.Annotations[annotationClaimSourceTag], "the source record survives until the source StatefulSet is deleted")
 	// Restart the reconciler. Deletion cannot cause immediate recreation.
 	r = &ClusterReconciler{Client: c, Scheme: scheme, Config: &rest.Config{}, Clientset: clientset, stopVersions: testStopVersions}
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cluster))
+	// A failed source-record clear must not delete the source StatefulSet.
+	clearFailure := errors.New("claim patch unavailable")
+	r.Client = interceptor.NewClient(c, interceptor.Funcs{Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+		if _, ok := obj.(*corev1.PersistentVolumeClaim); ok {
+			return clearFailure
+		}
+
+		return cl.Patch(ctx, obj, patch, opts...)
+	}})
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
+	require.False(t, proceed)
+	require.ErrorIs(t, err, clearFailure)
+	require.NoError(t, c.Get(ctx, key, sts))
+	require.True(t, sts.DeletionTimestamp.IsZero())
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: claimName, Namespace: cluster.Namespace}, claim))
+	require.Equal(t, "v3.0.0-rc.3", claim.Annotations[annotationClaimSourceTag])
 	r.Client = failingStatefulSetDelete{Client: c}
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "API delete unavailable")
 	require.NoError(t, c.Get(ctx, key, sts))
+	// The clear lands before the delete call, so target Pods never mount a
+	// claim that still names the source tag.
+	for _, name := range []string{claimName, dataClaimName} {
+		retained := &corev1.PersistentVolumeClaim{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, retained))
+		require.NotContains(t, retained.Annotations, annotationClaimSourceTag, name)
+	}
 	r.Client = c
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)

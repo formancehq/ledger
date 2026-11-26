@@ -250,6 +250,71 @@ across scale-down/profile-change/scale-up. Unit/envtest evidence does not
 establish these runtime properties; do not mark this gate complete without
 artifacts from controllers and CSI running in the target environment.
 
+## RC source record on retained claims
+
+The RC predecessor gate reads the running source tag from the owned
+StatefulSet template. When the StatefulSet is absent, orphan Pods prove the
+source. A Cluster deleted with retained claims leaves neither, so the operator
+keeps the source on the claims themselves in the
+`ledger.formance.com/data-source-tag` annotation
+(`misc/operator/internal/controller/rc_source_claims.go`).
+
+Invariant: when a claim carries the annotation, every Ledger Pod that mounted
+the claim since the annotation was written ran exactly that tag. The operator
+maintains it in this order:
+
+1. **Clear before publish.** `upsertStatefulSet` is the create and update path
+   for the workload, with one exception: claim-template recovery recreates the
+   StatefulSet directly from its saved recovery state
+   (`claim_template_recovery.go`). That create restores the saved source
+   template, so it publishes no new Ledger tag and needs no clear. Before
+   `upsertStatefulSet` writes, it lists every WAL/data ordinal
+   claim of the Cluster, at any ordinal, through the uncached API reader and
+   removes each annotation whose value differs from the Ledger tag of the
+   template about to be published. A template whose tag cannot be read clears
+   every record. A failed removal returns before the StatefulSet write, so the
+   old template stays live and the next reconcile retries. A cached list could
+   miss a record written moments earlier and let the new tag publish over it,
+   which is why the clear does not read from the cache. When the live
+   template already runs another tag than the one being published, for example
+   after a manual image edit, the publish clears every record, including one
+   equal to the published tag.
+2. **Clear before a stopped upgrade deletes its source.** In the `Deleting`
+   phase, after the drain recheck and before the source StatefulSet delete, the
+   stopped-upgrade reconciler removes every record. The replacement is created
+   through `upsertStatefulSet`, which would also clear it. The earlier clear
+   keeps a Cluster recreated during the stop from reading a source tag over data
+   that target Pods may already have migrated.
+3. **Stamp after convergence.** At the end of the StatefulSet pass,
+   `reconcileClaimSourceTags` reads the StatefulSet through the API reader. It
+   writes the tag only if the StatefulSet is owned by the Cluster and not
+   deleting, its generation is observed, every replica is updated and ready,
+   and its current and update revisions are equal. It stamps claims of ordinals
+   below the replica count, and only claims created from one of the
+   StatefulSet's claim templates whose volume the `ledger` container mounts. A
+   retained claim whose volume is now hostPath-backed is never stamped. Each
+   write is a merge patch fenced by the claim's UID and resourceVersion. Records
+   on retained higher ordinals stay as they are, because no Pod mounts those
+   claims.
+
+Recreation without a StatefulSet or Pods admits an RC target only when every
+retained WAL/data ordinal claim records exactly that target. A missing, mixed
+or different record is rejected, including the next adjacent RC, because there
+is no rolling transition to validate. The gate also reads the claims through
+the API reader.
+
+Residual risks:
+
+- A manual edit of the StatefulSet image bypasses the clear until the operator
+  reconciles: the operator's restore publish then clears every record. If the
+  manual edit is reverted by hand before the operator observes it, the record
+  survives although Pods on the other tag may have mounted the claims. Manual
+  StatefulSet image edits are unsupported.
+- Claims that predate the mechanism have no record. Recreating their Cluster
+  requires the manual attestation in the
+  [upgrade guide](../../../../ops/upgrades.md#attest-claims-that-predate-the-record).
+  Anyone with PVC patch rights in the namespace can attest.
+
 ## Durable template replacement
 
 Kubernetes claim templates are immutable. For same-name capacity/profile edits,

@@ -262,6 +262,13 @@ func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, le
 		}
 	}
 
+	// Record the RC source on the claims once the live StatefulSet has fully
+	// rolled out one template. A later Cluster recreation over retained
+	// claims proves its source from this record.
+	if err := r.reconcileClaimSourceTags(ctx, ledger); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Reconcile the deletion-protection label on this ledger's PVCs and bound
 	// PVs to match spec.persistence.deletionProtection, so the opt-in volume
 	// protection admission policy selects (or stops selecting) the volumes per-CR.
@@ -526,8 +533,21 @@ type statefulSetScaleDown struct {
 // The stopped-upgrade gate calls the ordinary reconciler only after every old
 // Pod has disappeared; it never constructs a second StatefulSet spec.
 func (r *ClusterReconciler) upsertStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, desired appsv1.StatefulSetSpec, specHash string, scaleDown *statefulSetScaleDown) (*appsv1.StatefulSet, error) {
+	// A retained claim's source record must never name a tag other than the
+	// one a newly published template may run on it. Clear first; a failure
+	// leaves the live workload untouched and is retried.
+	if err := r.clearClaimSourceTagsForTemplate(ctx, ledger, desired.Template); err != nil {
+		return nil, err
+	}
 	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
+		// A live template on another tag, such as a manual image edit, may
+		// already have run on the claims: no record survives that publish.
+		if !sts.CreationTimestamp.IsZero() && ledgerImageTagChanged(sts.Spec.Template, desired.Template) {
+			if err := r.clearClaimSourceTagsExcept(ctx, ledger, ""); err != nil {
+				return err
+			}
+		}
 		sts.Labels = commonLabels(ledger)
 		if scaleDown != nil && scaleDown.cleanupPlanJSON != "" {
 			if !sameScaleDownSource(scaleDown.source, sts, ledger) {

@@ -34,7 +34,8 @@ source rollout, before changing cluster resources. The current image must have
 a canonical RC tag; an untagged digest does not establish its release version.
 If the StatefulSet is temporarily absent during recreation, restore the image
 tag still used by its orphaned Pods before requesting the next RC. If only PVCs
-remain, restore the source StatefulSet before changing the image tag.
+remain, the operator reads the source from their record; see
+[Recreating a Cluster over retained claims](#recreating-a-cluster-over-retained-claims).
 Outside a mandatory stopped boundary, when an RC image change also changes
 volume templates, the operator completes the RC rollout before recreating the
 StatefulSet for the volume change.
@@ -77,6 +78,76 @@ canonical version tag. Moving or non-canonical tags such as `latest` cannot
 prove whether the boundary is crossed, so the operator blocks the change.
 Likewise, the operator blocks a canonical target at or past a boundary when the
 running image has no canonical version tag, such as `latest` or a digest.
+
+### Recreating a Cluster over retained claims
+
+Deleting a `Cluster` deletes its StatefulSet and Pods. With
+`spec.persistence.deletionProtection` or a `Retain` claim policy, the WAL and
+data PVCs remain. A platform that disables a stack and enables it again
+recreates the `Cluster` over those claims. For an RC tag, the operator must
+then prove which Ledger tag wrote the claims without a StatefulSet or Pod.
+
+The operator keeps that proof on each claim in the
+`ledger.formance.com/data-source-tag` annotation:
+
+- After the owned StatefulSet has rolled out one template on every replica,
+  the operator writes that template's Ledger tag on the claims of every
+  replica. It reads the StatefulSet through the API server, not its cache.
+- Before it publishes a StatefulSet template with another Ledger tag, the
+  operator removes the annotation from every WAL/data claim of the Cluster,
+  at any ordinal, whose value differs. If a removal fails, it does not publish
+  and retries.
+- Before a stopped upgrade deletes its source StatefulSet, the operator
+  removes the annotation from every claim. Target Pods may migrate the data.
+
+When the StatefulSet and its Pods are absent and claims remain, the operator
+admits an RC tag only when every remaining WAL/data claim records exactly that
+tag. It rejects a claim without the annotation and claims that record
+different tags. It also rejects the next adjacent RC: without a StatefulSet
+there is no rolling transition. Recreate the Cluster with the recorded tag, wait
+for the rollout to converge, then upgrade through the normal path.
+
+After an upgrade to an operator with this behavior, a running Cluster records
+its tag on the first reconciliation after its rollout has converged. No action
+is required while the Cluster exists.
+
+#### Attest claims that predate the record
+
+Claims retained from a Cluster deleted before the operator recorded the tag
+carry no annotation. The recreated Cluster then stays in `phase: Error` with
+`ConfigValid=False` and a message naming the first unrecorded claim. To admit
+it, attest the source manually:
+
+1. Establish the Ledger tag that the deleted StatefulSet ran on every replica
+   at the moment it stopped. Use evidence that names the running build, such as
+   the `service.version` resource attribute in the Ledger logs or traces of
+   each Pod up to its shutdown, or `/_info` captured before deletion. Image
+   pull events alone are not enough. Every Pod must report the same tag and no
+   rollout to another tag may have started. If the evidence is incomplete or
+   mixed, stop: do not attest.
+2. Confirm that the `Cluster` requests exactly that tag.
+3. Annotate every WAL and data claim of the Cluster, including claims retained
+   beyond the replica count:
+
+   ```bash
+   kubectl -n <namespace> annotate pvc \
+     wal-ledger-<cluster>-0 data-ledger-<cluster>-0 \
+     wal-ledger-<cluster>-1 data-ledger-<cluster>-1 \
+     wal-ledger-<cluster>-2 data-ledger-<cluster>-2 \
+     ledger.formance.com/data-source-tag=<verified-tag>
+   ```
+
+4. Touch the `Cluster`, for example with an annotation, so that it reconciles,
+   then watch `ConfigValid` and the StatefulSet rollout.
+
+This annotation replaces the earlier workaround of creating a placeholder Pod
+with the source image so that the orphan-Pod branch admits the source. Do not
+use that workaround. Anyone who can patch PVCs in the namespace can attest a
+source, so the annotation is only as trustworthy as that RBAC: grant PVC patch
+rights on Ledger namespaces with the same care as Pod creation. Never use an
+attestation to skip an RC or to cross a mandatory stopped boundary. If the
+claims were last written by an earlier RC, recreate the Cluster on that RC and
+upgrade from there.
 
 ### Preflight for Clusters using `latest`
 

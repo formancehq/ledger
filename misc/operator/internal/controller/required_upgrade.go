@@ -144,6 +144,9 @@ func (r *ClusterReconciler) reconcileRequiredUpgradeWithExec(ctx context.Context
 		ensureFinalizer:  r.ensureUpgradeClaimsFinalizer,
 		releaseFinalizer: r.releaseUpgradeClaimsFinalizer,
 		adoptClaims:      r.reconcileUpgradeClaimAdoption,
+		clearSourceRecords: func(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
+			return r.clearClaimSourceTagsExcept(ctx, ledger, "")
+		},
 	})
 }
 
@@ -151,6 +154,10 @@ type stoppedUpgradeClaimLifecycle struct {
 	ensureFinalizer  func(context.Context, *ledgerv1alpha1.Cluster) error
 	releaseFinalizer func(context.Context, *ledgerv1alpha1.Cluster) error
 	adoptClaims      func(context.Context, *ledgerv1alpha1.Cluster, *appsv1.StatefulSet) (bool, ctrl.Result, error)
+	// clearSourceRecords removes the RC source record from every retained
+	// claim. Target Pods may migrate the data, so a Cluster recreated on the
+	// source tag must not find the source record after deletion starts.
+	clearSourceRecords func(context.Context, *ledgerv1alpha1.Cluster) error
 }
 
 type stoppedUpgradeReconciler struct {
@@ -349,6 +356,12 @@ func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledger
 				}
 				if !ready {
 					return false, ctrl.Result{RequeueAfter: requiredUpgradePoll}, nil
+				}
+				if claims.clearSourceRecords == nil {
+					return false, ctrl.Result{}, errors.New("stopped upgrade has no claim source-record callback")
+				}
+				if err := claims.clearSourceRecords(ctx, ledger); err != nil {
+					return false, ctrl.Result{}, fmt.Errorf("clearing claim source records before deleting source StatefulSet: %w", err)
 				}
 				if err := deleteInspected(ctx, r.client, sts, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 					return false, ctrl.Result{}, fmt.Errorf("deleting source StatefulSet: %w", err)
