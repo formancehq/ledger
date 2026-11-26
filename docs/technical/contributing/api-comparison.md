@@ -117,8 +117,10 @@ signing does not provide HTTP response authenticity.
 
 Malformed signed wrappers, missing/empty/repeated signing headers, invalid
 base64 and invalid signature length return 400; HTTP-to-signed-batch mismatch
-and invalid, unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
-signatures on ordinary unsigned requests return 401 `UNAUTHENTICATED`.
+and invalid signatures return 403 `INVALID_SIGNATURE`, unknown or revoked signing
+keys 403 `UNKNOWN_KEY_ID`. Mandatory missing signatures on ordinary unsigned
+requests return 401 `MISSING_SIGNATURE`. These `errorCode` values are v3-only;
+JWT failures keep `UNAUTHENTICATED`/`PERMISSION_DENIED`.
 Unsupported routes return 415 for either signing header; either signing header
 with a non-JSON or missing content type also returns 415. Bulk 401/403
 cannot be suppressed by `continueOnFailure`, and all processing outcomes remain available. JWT authentication/scopes remain separate.
@@ -1882,7 +1884,7 @@ with the original idempotency key and payload. See the
 
 That proviso is the catch for third-party SDKs: a client older than the server, or one that derives the kind from the status code alone, still reports `KindPrecondition` for every `FailedPrecondition` response and will misclassify a conflict (e.g. ledger deleted, transaction already reverted). Match on `Reason()` (`LEDGER_DELETED`, `TRANSACTION_ALREADY_REVERTED`, etc.) rather than on the reconstructed `Kind()` — the reason is preserved end-to-end and never depends on the client's version.
 
-**The normalized boundary contract.** Inside ledger, every business-facing surface — the HTTP error handler, the bulk per-element mapper and `ledgerctl` — reads a failure through one contract, `internal/adapter/apierr`. `apierr.Describe(err)` returns a `Descriptor` (semantic `Kind`, stable `Reason`, client-safe `Message`, structured `Facts`) and hides which of two provenances the failure had: raised locally, where the kind is `domain.Kind(d)` and therefore a pure function of the reason; or decoded from a peer, where the kind is the one the wire carried. There is no second mapping table per surface — HTTP maps `Kind` to a status through `kindToHTTPStatus`, gRPC through `grpcerr.CodeForKind`, and the decoder reverses that same table. `apierr` imports `internal/domain` and nothing else, so HTTP is not coupled to any gRPC detail.
+**The normalized boundary contract.** Inside ledger, every business-facing surface — the HTTP error handler, the bulk per-element mapper and `ledgerctl` — reads a failure through one contract, `internal/adapter/apierr`. `apierr.Describe(err)` returns a `Descriptor` (semantic `Kind`, stable `Reason`, client-safe `Message`, structured `Facts`) and hides which of two provenances the failure had: raised locally, where the kind is `domain.Kind(d)` and therefore a pure function of the reason; or decoded from a peer, where the kind is the one the wire carried. There is no second mapping table per surface — HTTP maps `Kind` to a status through `kindToHTTPStatus`, gRPC through `grpcerr.CodeForKind`, and the decoder reverses that same table. `apierr` imports `internal/domain` and nothing else, so HTTP is not coupled to any gRPC detail through it. Client signing refusals are the one exception: they are not domain failures, and both HTTP mappers read their public code through `grpcerr.SigningReason`, which covers local and forwarded refusals.
 
 The decoded representation lives at the adapter boundary by design, not in `internal/domain`. A decoded failure carries a reason and message belonging to the *sending* build. The audit chain hashes the stable reason, code and facts from `FailureDetails()`, never the diagnostic `Error()` text. No package under `internal/domain`, `internal/application/admission`, `internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may import `apierr`; `scripts/check-repo-invariants` enforces that as a dependency rule.
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -361,7 +362,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 
 // bulkElementError renders a per-element failure with the status and
 // description handleError answers for it on a single request. The code is the
-// apierr reason, INTERNAL_ERROR for a contradicting reason/code pair, and the
+// apierr or signing reason, INTERNAL_ERROR for a contradicting reason/code pair, and the
 // generic "ERROR" for every failure without a reason. The runBulkSequential
 // context.Canceled sentinel marking skipped elements has no single-request
 // counterpart: it carries status 0 and contributes nothing to the rollup — the
@@ -373,7 +374,9 @@ func bulkElementError(r *http.Request, err error) (status int, code, description
 
 	c := classifyError(err)
 	code = "ERROR"
-	if d, ok := apierr.Describe(err); ok {
+	if reason, ok := grpcerr.SigningReason(err); ok {
+		code = reason
+	} else if d, ok := apierr.Describe(err); ok {
 		code = d.Reason
 	} else if _, ok := apierr.InvalidWire(err); ok {
 		code = c.code

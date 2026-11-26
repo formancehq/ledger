@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -306,6 +307,32 @@ func TestBulkPerElementForwardedFromLeader(t *testing.T) {
 			status, code, _ := bulkElementError(testBulkRequest(), forwarded)
 			require.Equal(t, tc.expectStatus, status)
 			require.Equal(t, tc.expectCode, code)
+		})
+	}
+}
+
+// TestBulkPerElementSigningRejection pins that a signing refusal inside a bulk
+// element answers the single-request status and code, locally and forwarded.
+func TestBulkPerElementSigningRejection(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{signing.ErrMissingSignature, http.StatusUnauthorized, "MISSING_SIGNATURE"},
+		{signing.ErrInvalidSignature, http.StatusForbidden, "INVALID_SIGNATURE"},
+		{signing.ErrUnknownKeyID, http.StatusForbidden, "UNKNOWN_KEY_ID"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			t.Parallel()
+
+			for _, err := range []error{tc.err, grpcerr.FromStatusError(grpcerr.SigningStatus(tc.err).Err())} {
+				status, code, _ := bulkElementError(testBulkRequest(), err)
+				require.Equal(t, tc.status, status)
+				require.Equal(t, tc.code, code)
+			}
 		})
 	}
 }

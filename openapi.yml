@@ -901,9 +901,9 @@ paths:
         empty or repeated signing headers, invalid base64 and wrong signature
         length return 400. Signing headers with a non-JSON or missing content type return 415.
         Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
+        returns 401 `MISSING_SIGNATURE` when required but absent, 403
+        `INVALID_SIGNATURE` for invalid or mismatched signatures and 403
+        `UNKNOWN_KEY_ID` for unknown or revoked keys. Malformed signed envelopes return 400. The complete
         wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3CreateTransaction
       x-speakeasy-name-override: CreateTransaction
@@ -1472,9 +1472,9 @@ paths:
         empty or repeated signing headers, invalid base64 and wrong signature
         length return 400. Signing headers with a non-JSON or missing content type return 415.
         Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
+        returns 401 `MISSING_SIGNATURE` when required but absent, 403
+        `INVALID_SIGNATURE` for invalid or mismatched signatures and 403
+        `UNKNOWN_KEY_ID` for unknown or revoked keys. Malformed signed envelopes return 400. The complete
         wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3SaveTransactionMetadata
       x-speakeasy-name-override: SaveTransactionMetadata
@@ -1584,9 +1584,9 @@ paths:
         empty or repeated signing headers, invalid base64 and wrong signature
         length return 400. Signing headers with a non-JSON or missing content type return 415.
         Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
+        returns 401 `MISSING_SIGNATURE` when required but absent, 403
+        `INVALID_SIGNATURE` for invalid or mismatched signatures and 403
+        `UNKNOWN_KEY_ID` for unknown or revoked keys. Malformed signed envelopes return 400. The complete
         wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3DeleteTransactionMetadata
       x-speakeasy-name-override: DeleteTransactionMetadata
@@ -1656,9 +1656,9 @@ paths:
         empty or repeated signing headers, invalid base64 and wrong signature
         length return 400. Signing headers with a non-JSON or missing content type return 415.
         Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
+        returns 401 `MISSING_SIGNATURE` when required but absent, 403
+        `INVALID_SIGNATURE` for invalid or mismatched signatures and 403
+        `UNKNOWN_KEY_ID` for unknown or revoked keys. Malformed signed envelopes return 400. The complete
         wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
       operationId: v3RevertTransaction
       x-speakeasy-name-override: RevertTransaction
@@ -2431,9 +2431,9 @@ paths:
         empty or repeated signing headers, invalid base64 and wrong signature
         length return 400. Signing headers with a non-JSON or missing content type return 415.
         Signature enforcement
-        returns 401 `UNAUTHENTICATED` when required but absent and 403
-        `PERMISSION_DENIED` for invalid, unknown/revoked-key or mismatched
-        signatures. Malformed signed envelopes return 400. The complete
+        returns 401 `MISSING_SIGNATURE` when required but absent, 403
+        `INVALID_SIGNATURE` for invalid or mismatched signatures and 403
+        `UNKNOWN_KEY_ID` for unknown or revoked keys. Malformed signed envelopes return 400. The complete
         wrapper counts toward the 4 MiB body limit. JWT scopes still apply.
         Signing requires a nonempty array and `atomic=true` (otherwise 400).
         The header key applies; per-element `ik` is ignored. Authentication
@@ -2506,7 +2506,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '401':
-          description: Authentication failure before processing or in an element, including a missing mandatory signature (UNAUTHENTICATED); never suppressed by continueOnFailure
+          description: Authentication failure before processing or in an element, including a missing mandatory signature (MISSING_SIGNATURE); never suppressed by continueOnFailure
           content:
             application/json:
               schema:
@@ -2515,7 +2515,7 @@ paths:
               schema:
                 type: string
         '403':
-          description: Insufficient scope, mismatched signed batch, or invalid/unknown/revoked signature (PERMISSION_DENIED); never suppressed by continueOnFailure
+          description: Insufficient scope (PERMISSION_DENIED), mismatched signed batch or invalid signature (INVALID_SIGNATURE), or unknown/revoked key (UNKNOWN_KEY_ID); never suppressed by continueOnFailure
           content:
             application/json:
               schema:
@@ -4191,7 +4191,7 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
     Unauthorized:
-      description: Authentication required (missing or invalid JWT token, or missing mandatory request signature with errorCode UNAUTHENTICATED)
+      description: Authentication required (missing or invalid JWT token with errorCode UNAUTHENTICATED, or missing mandatory request signature with errorCode MISSING_SIGNATURE)
       content:
         application/json:
           schema:
@@ -4201,7 +4201,7 @@ components:
             type: string
 
     Forbidden:
-      description: Insufficient permissions (missing required scope, or invalid/unknown/revoked request signature or batch mismatch with errorCode PERMISSION_DENIED)
+      description: Insufficient permissions (missing required scope with errorCode PERMISSION_DENIED, invalid request signature or batch mismatch with errorCode INVALID_SIGNATURE, or unknown/revoked signing key with errorCode UNKNOWN_KEY_ID)
       content:
         application/json:
           schema:

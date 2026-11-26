@@ -17,13 +17,14 @@ import (
 func TestSigningStatusRoundTrip(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		err  error
-		code codes.Code
-		kind domain.ErrorKind
+		err    error
+		code   codes.Code
+		kind   domain.ErrorKind
+		reason string
 	}{
-		{signing.ErrMissingSignature, codes.Unauthenticated, domain.KindUnauthenticated},
-		{signing.ErrInvalidSignature, codes.PermissionDenied, domain.KindPermissionDenied},
-		{signing.ErrUnknownKeyID, codes.PermissionDenied, domain.KindPermissionDenied},
+		{signing.ErrMissingSignature, codes.Unauthenticated, domain.KindUnauthenticated, SigningReasonMissingSignature},
+		{signing.ErrInvalidSignature, codes.PermissionDenied, domain.KindPermissionDenied, SigningReasonInvalidSignature},
+		{signing.ErrUnknownKeyID, codes.PermissionDenied, domain.KindPermissionDenied, SigningReasonUnknownKeyID},
 	} {
 		t.Run(tc.err.Error(), func(t *testing.T) {
 			t.Parallel()
@@ -37,9 +38,16 @@ func TestSigningStatusRoundTrip(t *testing.T) {
 			require.True(t, ok)
 			require.Equal(t, tc.kind, classified.Kind())
 			require.Equal(t, st.Proto(), OriginalStatus(fmt.Errorf("routing: %w", decoded)).Proto())
+			for _, err := range []error{original, fmt.Errorf("routing: %w", decoded)} {
+				reason, ok := SigningReason(err)
+				require.True(t, ok)
+				require.Equal(t, tc.reason, reason)
+			}
 		})
 	}
 	require.Nil(t, SigningStatus(errors.New("unrelated")))
+	_, ok := SigningReason(errors.New("unrelated"))
+	require.False(t, ok)
 }
 
 func TestSigningStatusDoesNotReclassifyTransportFailures(t *testing.T) {
@@ -53,6 +61,8 @@ func TestSigningStatusDoesNotReclassifyTransportFailures(t *testing.T) {
 		{codes.Internal, "ledger.signing", "INVALID_SIGNATURE"},
 		{codes.PermissionDenied, "ledger.signing", "UNKNOWN_REASON"},
 		{codes.PermissionDenied, "ledger.signing", "MISSING_SIGNATURE"},
+		{codes.Unauthenticated, "ledger.signing", "INVALID_SIGNATURE"},
+		{codes.Unauthenticated, "ledger.signing", "UNKNOWN_KEY_ID"},
 	} {
 		t.Run(fmt.Sprint(tc), func(t *testing.T) {
 			t.Parallel()
@@ -66,6 +76,8 @@ func TestSigningStatusDoesNotReclassifyTransportFailures(t *testing.T) {
 			_, ok := errors.AsType[domain.Classifiable](decoded)
 			require.False(t, ok)
 			require.Nil(t, OriginalStatus(decoded))
+			_, ok = SigningReason(decoded)
+			require.False(t, ok)
 		})
 	}
 }

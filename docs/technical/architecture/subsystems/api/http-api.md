@@ -257,17 +257,19 @@ scope checks.
 Ignored JSON, response presentation and JWT claims are outside the batch proof.
 
 Malformed envelopes, missing/empty/repeated signing headers, invalid base64 and
-invalid signature length are 400; semantic mismatch is 403 `PERMISSION_DENIED`.
+invalid signature length are 400; semantic mismatch is 403 `INVALID_SIGNATURE`.
 Ordinary unsigned requests with mandatory signing produce 401
-`UNAUTHENTICATED`; invalid signatures
-and unknown/revoked keys produce 403 `PERMISSION_DENIED`. Local signature
-sentinels and reconstructed typed signing failures share this mapping. Forwarded
+`MISSING_SIGNATURE`; invalid signatures produce 403 `INVALID_SIGNATURE` and
+unknown/revoked keys 403 `UNKNOWN_KEY_ID`. The `errorMessage` stays the generic
+`unauthenticated` or `permission denied`. Local signature sentinels and
+reconstructed typed signing failures share this mapping through
+`grpcerr.SigningReason`, in single responses and bulk elements alike. Forwarded
 signature errors retain their existing gRPC status/message and add
 `google.rpc.ErrorInfo` in domain `ledger.signing`, with reason
 `MISSING_SIGNATURE`, `INVALID_SIGNATURE` or `UNKNOWN_KEY_ID`. Only correctly
 paired signing domain/reason/status details reconstruct a classifiable signing
-failure; preserve the original `GRPCStatus` and do not expose those internal
-reasons as public HTTP error codes. Bare or foreign gRPC auth errors retain the
+failure, which keeps that reason as its HTTP `errorCode` and the original
+`GRPCStatus`. Bare or foreign gRPC auth errors retain the
 existing 500 cluster-secret failure contract. Signing does not broaden generic
 Unauthenticated/PermissionDenied handling or weaken JWT/peer trust boundaries.
 
@@ -601,7 +603,8 @@ shapes:
 - a signing rejection carrying a validated `ledger.signing` `ErrorInfo`:
   `MISSING_SIGNATURE` with `Unauthenticated`, or `INVALID_SIGNATURE` /
   `UNKNOWN_KEY_ID` with `PermissionDenied`. It retains the coarse authentication
-  class and original `GRPCStatus`, without exposing a business reason;
+  class, the signing reason and the original `GRPCStatus`, without exposing the
+  peer's message;
 - a status carrying a ledger-domain `ErrorInfo` — **whatever its code** —
   becomes an `*apierr.Remote`;
 - a **bare** `codes.NotFound` — one carrying no `ErrorInfo` at all — becomes a
@@ -650,6 +653,9 @@ The HTTP layer needs no status-code branch of its own: both mappers read the
 failure through `apierr.Describe`, which answers identically for a locally
 raised error and a decoded one, so a follower answers with the same status and
 `errorCode` as the leader and the bulk path is repaired by the same change.
+Signing refusals are the exception: a decoded signing failure is not
+`Describable`, so both mappers check `grpcerr.SigningReason` first, which
+matches the local `signing.Err*` sentinels and the decoded failure alike.
 
 At a subsequent gRPC hop, the server uses `grpcerr.OriginalStatus` before generic
 status conversion. This preserves the sender's message and all status details
@@ -735,6 +741,12 @@ error code it already uses for a reason-less classified status
 sanitizer. A bulk element takes its status and message from the same
 `classifyError` dispatch, but its `errorCode` is the generic `ERROR` for every
 failure without a reason.
+
+Client signing refusals sit outside this contract. They carry no domain
+`Reason`; their public code is the `ledger.signing` reason, which
+`grpcerr.SigningReason` returns for a local sentinel and for a decoded
+forwarded refusal alike. `handleError` and the bulk mapper both read it before
+`apierr.Describe`.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
 identity. A locally raised serializable failure renders them from its stable

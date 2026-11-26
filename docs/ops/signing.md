@@ -221,10 +221,15 @@ omitted execution-time defaults remain omitted in the signed command.
 | Condition | HTTP result |
 | --- | --- |
 | Malformed wrapper; missing, empty or repeated signing headers; invalid payload/signature base64 or signature length; empty or non-atomic signed bulk | 400 |
-| Signed payload cannot be decoded or its batch differs from the HTTP-derived operation | 403 `PERMISSION_DENIED` |
-| Ordinary unsigned request while cluster signing is mandatory | 401 `UNAUTHENTICATED` |
-| Invalid signature, unknown key or revoked key | 403 `PERMISSION_DENIED` |
+| Signed payload cannot be decoded or its batch differs from the HTTP-derived operation | 403 `INVALID_SIGNATURE` |
+| Ordinary unsigned request while cluster signing is mandatory | 401 `MISSING_SIGNATURE` |
+| Invalid signature | 403 `INVALID_SIGNATURE` |
+| Unknown or revoked key | 403 `UNKNOWN_KEY_ID` |
 | Either signing header on an unsupported route, or with a non-JSON/missing content type | 415 |
+
+The code after a 401/403 status is the response `errorCode`, also used for a
+bulk element; JWT failures answer `UNAUTHENTICATED` or `PERMISSION_DENIED`
+instead, so a client can tell a signing refusal from a bad token.
 
 Legacy `application/json` without signing headers remains unsigned and works
 when signing is optional. Signing headers with a non-JSON or missing content
