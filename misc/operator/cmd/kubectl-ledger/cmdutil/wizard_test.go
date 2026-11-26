@@ -1,11 +1,13 @@
 package cmdutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
 	"testing"
 
+	"github.com/pterm/pterm"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,6 +17,108 @@ import (
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func TestResolveResourceNamesStructured(t *testing.T) {
+	for _, kind := range []string{"Cluster", "Backup", "Credentials"} {
+		for _, format := range []string{"table", "json", "yaml"} {
+			for _, scenario := range []string{"single", "multiple", "explicit"} {
+				t.Run(kind+"/"+format+"/"+scenario, func(t *testing.T) {
+					var output bytes.Buffer
+					infoWriter := pterm.Info.Writer
+					pterm.Info.Writer = &output
+					t.Cleanup(func() { pterm.Info.Writer = infoWriter })
+					scheme := runtime.NewScheme()
+					require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+					names := []string{"first"}
+					if scenario != "single" {
+						names = append(names, "second")
+					}
+					var objects []client.Object
+					for _, name := range names {
+						metadata := metav1.ObjectMeta{Name: name, Namespace: "selected"}
+						switch kind {
+						case "Cluster":
+							objects = append(objects, &ledgerv1alpha1.Cluster{ObjectMeta: metadata})
+						case "Backup":
+							objects = append(objects, &ledgerv1alpha1.Backup{ObjectMeta: metadata})
+						case "Credentials":
+							metadata.Namespace = ""
+							objects = append(objects, &ledgerv1alpha1.Credentials{ObjectMeta: metadata})
+						}
+					}
+					var clientCalls, listCalls, promptCalls int
+					crdClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).WithInterceptorFuncs(interceptor.Funcs{
+						List: func(ctx context.Context, underlying client.WithWatch, list client.ObjectList, options ...client.ListOption) error {
+							listCalls++
+
+							return underlying.List(ctx, list, options...)
+						},
+					}).Build()
+					opts := &Options{
+						namespace: "selected",
+						output:    format,
+						newCRDClient: func() (client.Client, error) {
+							clientCalls++
+
+							return crdClient, nil
+						},
+						selectResource: func(string, []string) (string, error) {
+							promptCalls++
+
+							return "second", nil
+						},
+					}
+					var args []string
+					if scenario == "explicit" {
+						args = []string{"provided"}
+					}
+					var name, namespace string
+					var err error
+					switch kind {
+					case "Cluster":
+						name, namespace, err = ResolveClusterName(t.Context(), opts, args)
+					case "Backup":
+						name, namespace, err = ResolveBackupName(t.Context(), opts, args)
+					case "Credentials":
+						name, err = ResolveCredentialsName(t.Context(), opts, args)
+					}
+					noun := map[string]string{"Cluster": "ledger", "Backup": "backup", "Credentials": "credentials"}[kind]
+					if scenario == "multiple" && format != "table" {
+						require.EqualError(t, err, "multiple "+kind+" resources found: specify an explicit "+noun+" name with -o "+format)
+						require.Empty(t, name)
+						require.Empty(t, namespace)
+					} else {
+						require.NoError(t, err)
+						require.Equal(t, map[string]string{"single": "first", "explicit": "provided", "multiple": "second"}[scenario], name)
+						if kind != "Credentials" {
+							require.Equal(t, "selected", namespace)
+						}
+					}
+					if scenario == "explicit" {
+						require.Zero(t, clientCalls)
+						require.Zero(t, listCalls)
+					} else {
+						require.Equal(t, 1, clientCalls)
+						require.Equal(t, 1, listCalls)
+					}
+					if scenario == "multiple" && format == "table" {
+						require.Equal(t, 1, promptCalls)
+					} else {
+						require.Zero(t, promptCalls)
+					}
+					if format == "table" && scenario != "explicit" {
+						require.Contains(t, output.String(), "Fetching "+kind+" resources")
+						if scenario == "single" {
+							require.Contains(t, output.String(), "Using "+noun+":")
+						}
+					} else {
+						require.Empty(t, output.String())
+					}
+				})
+			}
+		}
+	}
+}
 
 func TestResolveResourceNamesNamespaceResolution(t *testing.T) {
 	for _, kind := range []string{"Cluster", "Backup", "Credentials"} {

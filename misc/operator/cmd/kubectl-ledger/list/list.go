@@ -50,16 +50,18 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster resources...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching Cluster resources...")
+	}
 
 	ledgers, err := cmdutil.ListClusters(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list Cluster resources")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to list Cluster resources")
+		}
 
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
-
-	_ = spinner.Stop()
 
 	switch opts.OutputFormat() {
 	case "json":

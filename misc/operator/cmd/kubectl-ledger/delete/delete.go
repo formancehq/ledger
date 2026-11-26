@@ -90,15 +90,15 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Deleting Cluster...")
+	pterm.Info.Println("Deleting Cluster...")
 
 	if err := crdClient.Delete(ctx, ledger); err != nil {
-		spinner.Fail("Failed to delete Cluster")
+		pterm.Error.Println("Failed to delete Cluster")
 
 		return fmt.Errorf("deleting ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Cluster %s deleted", pterm.Cyan(name)))
+	pterm.Success.Printfln("Cluster %s deleted", pterm.Cyan(name))
 
 	return nil
 }

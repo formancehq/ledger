@@ -43,23 +43,23 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating clientset: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster details...")
+	if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+		pterm.Info.Println("Fetching Cluster details...")
+	}
 
 	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
 	if err != nil {
-		spinner.Fail("Failed to get Cluster")
+		if opts.OutputFormat() != "json" && opts.OutputFormat() != "yaml" {
+			pterm.Error.Println("Failed to get Cluster")
+		}
 
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
 
 	switch opts.OutputFormat() {
 	case "json":
-		_ = spinner.Stop()
-
 		return cmdutil.OutputJSON(ledger)
 	case "yaml":
-		_ = spinner.Stop()
-
 		return cmdutil.OutputYAML(ledger)
 	}
 
@@ -68,8 +68,6 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
 	}
-
-	_ = spinner.Stop()
 	pterm.Println()
 
 	pterm.DefaultSection.Println("Overview")

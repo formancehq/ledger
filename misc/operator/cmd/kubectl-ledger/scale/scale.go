@@ -81,15 +81,15 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 	patch := client.MergeFrom(ledger.DeepCopy())
 	ledger.Spec.Replicas = &newReplicas
 
-	spinner, _ := pterm.DefaultSpinner.Start("Scaling Cluster...")
+	pterm.Info.Println("Scaling Cluster...")
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
-		spinner.Fail("Failed to scale Cluster")
+		pterm.Error.Println("Failed to scale Cluster")
 
 		return fmt.Errorf("scaling ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Cluster %s scaled to %d replicas", pterm.Cyan(name), newReplicas))
+	pterm.Success.Printfln("Cluster %s scaled to %d replicas", pterm.Cyan(name), newReplicas)
 
 	return nil
 }
