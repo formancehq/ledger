@@ -3,7 +3,6 @@ package main
 import (
 	"math"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
@@ -39,7 +38,7 @@ func mutateFilter(src *generation.Source, f *commonpb.QueryFilter) *commonpb.Que
 
 	out := f.CloneVT()
 
-	var nodes []*ledgerpb.QueryFilter
+	var nodes []*commonpb.QueryFilter
 	collectNodes(out, &nodes)
 	node := nodes[src.Intn(len(nodes))]
 
@@ -47,7 +46,7 @@ func mutateFilter(src *generation.Source, f *commonpb.QueryFilter) *commonpb.Que
 	case 0:
 		node.Filter = nil
 	case 1:
-		node.Filter = &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{Filter: &ledgerpb.QueryFilter{Filter: node.GetFilter()}}}
+		node.Filter = &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: &commonpb.QueryFilter{Filter: node.GetFilter()}}}
 	case 2:
 		node.Filter = genAnyLeaf(src).GetFilter()
 	case 3:
@@ -62,19 +61,19 @@ func mutateFilter(src *generation.Source, f *commonpb.QueryFilter) *commonpb.Que
 // collectNodes lists every node of f in tree order. Repeated children are
 // never nil: a nil element marshals as an empty node, which genAnyFilter
 // produces explicitly when it wants one.
-func collectNodes(f *ledgerpb.QueryFilter, out *[]*ledgerpb.QueryFilter) {
+func collectNodes(f *commonpb.QueryFilter, out *[]*commonpb.QueryFilter) {
 	*out = append(*out, f)
 
 	switch x := f.GetFilter().(type) {
-	case *ledgerpb.QueryFilter_And:
+	case *commonpb.QueryFilter_And:
 		for _, child := range x.And.GetFilters() {
 			collectNodes(child, out)
 		}
-	case *ledgerpb.QueryFilter_Or:
+	case *commonpb.QueryFilter_Or:
 		for _, child := range x.Or.GetFilters() {
 			collectNodes(child, out)
 		}
-	case *ledgerpb.QueryFilter_Not:
+	case *commonpb.QueryFilter_Not:
 		if child := x.Not.GetFilter(); child != nil {
 			collectNodes(child, out)
 		}
@@ -86,7 +85,7 @@ func collectNodes(f *ledgerpb.QueryFilter, out *[]*ledgerpb.QueryFilter) {
 func depthChain(src *generation.Source, f *commonpb.QueryFilter) *commonpb.QueryFilter {
 	n := domain.MaxFilterDepth - 2 + src.Intn(4)
 	for range n {
-		f = &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{Filter: f}}}
+		f = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: f}}}
 	}
 
 	return f
@@ -114,11 +113,11 @@ func genAnyFilter(src *generation.Source, depth int) *commonpb.QueryFilter {
 
 	switch generation.Choice(src, []uint8{0, 1, 2, 3}) {
 	case 0:
-		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{And: &ledgerpb.AndFilter{Filters: children()}}}
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: children()}}}
 	case 1:
-		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{Filters: children()}}}
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: children()}}}
 	case 2:
-		return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{}}}
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{}}}
 	default:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: genAnyFilter(src, depth+1)}}}
 	}
@@ -158,7 +157,7 @@ func genAnyLeaf(src *generation.Source) *commonpb.QueryFilter {
 	case 9:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: anyAuditCondition(src)}}
 	default:
-		return &ledgerpb.QueryFilter{}
+		return &commonpb.QueryFilter{}
 	}
 }
 
@@ -188,7 +187,7 @@ func anyStringCondition(src *generation.Source) *commonpb.StringCondition {
 	case 0:
 		return nil
 	case 1:
-		return &ledgerpb.StringCondition{}
+		return &commonpb.StringCondition{}
 	case 2:
 		return &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: anyString(src)}}
 	default:
@@ -199,7 +198,7 @@ func anyStringCondition(src *generation.Source) *commonpb.StringCondition {
 func anyBoolCondition(src *generation.Source) *commonpb.BoolCondition {
 	switch generation.Choice(src, []uint8{0, 1, 2}) {
 	case 0:
-		return &ledgerpb.BoolCondition{}
+		return &commonpb.BoolCondition{}
 	case 1:
 		return &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: oneIn(src, 2)}}
 	default:
@@ -281,7 +280,7 @@ func anyStringConditionNonNil(src *generation.Source) *commonpb.StringCondition 
 		return c
 	}
 
-	return &ledgerpb.StringCondition{}
+	return &commonpb.StringCondition{}
 }
 
 func anyUintConditionNonNil(src *generation.Source) *commonpb.UintCondition {
@@ -289,7 +288,7 @@ func anyUintConditionNonNil(src *generation.Source) *commonpb.UintCondition {
 		return c
 	}
 
-	return &ledgerpb.UintCondition{}
+	return &commonpb.UintCondition{}
 }
 
 func anyAddressMatch(src *generation.Source) *commonpb.AddressMatch {

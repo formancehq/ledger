@@ -9,9 +9,9 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -65,7 +65,7 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 // isSuccessfulBusinessWrite reports whether a committed Apply proved that a
 // promoted ledger accepts ordinary business traffic. Mirror-safe configuration
 // actions and skipped orders do not establish that property.
-func isSuccessfulBusinessWrite(req *servicepb.Request, log *ledgerpb.Log) bool {
+func isSuccessfulBusinessWrite(req *servicepb.Request, log *commonpb.Log) bool {
 	action := req.GetApply().GetAction()
 	if action == nil || log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
 		return false
@@ -165,7 +165,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 	for i, req := range bulk.Requests {
-		var payload *ledgerpb.LogPayload
+		var payload *commonpb.LogPayload
 		if i < len(logs) {
 			payload = logs[i].GetPayload()
 		}
@@ -196,7 +196,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		// create, RevertedTransaction.RevertTransaction for a revert — and is
 		// part of every persisted transaction, so it is always present.
 		data := logs[i].GetPayload().GetApply().GetLog().GetData()
-		var serverPCV *ledgerpb.PostCommitVolumes
+		var serverPCV *commonpb.PostCommitVolumes
 		switch {
 		case data.GetCreatedTransaction() != nil:
 			serverPCV = data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes()
@@ -458,7 +458,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 
 		tt := smft.GetTargetType()
-		if tt != ledgerpb.TargetType_TARGET_TYPE_ACCOUNT && tt != ledgerpb.TargetType_TARGET_TYPE_TRANSACTION {
+		if tt != commonpb.TargetType_TARGET_TYPE_ACCOUNT && tt != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
 			continue
 		}
 
@@ -486,7 +486,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 // original's reverted_at (the compensating transaction's timestamp). Runs in
 // the same critical section that advanced the state — the safety condition
 // LearnTxStamps documents.
-func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*ledgerpb.Log) {
+func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log) {
 	for i, req := range bulk.Requests {
 		if i >= len(logs) {
 			break
@@ -676,7 +676,7 @@ func liveLedgerState(base oracle.GlobalState, ledger string) (oracle.LedgerState
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*ledgerpb.MetadataValue, found, collapsed bool) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found, collapsed bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
@@ -749,7 +749,7 @@ func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[assetColor]
 // metadataMatches reports whether ls holds exactly serverMeta for addr — same
 // keys, same verbatim values. Reads surface the stored value as-written; the
 // declared type is an index hint, not applied on read.
-func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*ledgerpb.MetadataValue) bool {
+func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*commonpb.MetadataValue) bool {
 	modelMeta := ls.AccountMetadata(addr)
 	if len(modelMeta) != len(serverMeta) {
 		return false
@@ -769,7 +769,7 @@ func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*
 // some candidate base holds both the server's chart (account types) and exactly
 // the server's ledger metadata and enforcement mode. All must hold on the SAME base — the read is one
 // atomic snapshot.
-func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*ledgerpb.AccountType, serverMeta map[string]*ledgerpb.MetadataValue, mode ledgerpb.ChartEnforcementMode) {
+func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) {
 	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
 		lc, exists := base.Lifecycle(ledger)
 		if !exists || lc.Deleted {
@@ -792,7 +792,7 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 	})
 }
 
-func ledgerReadMatches(ls oracle.LedgerState, types map[string]*ledgerpb.AccountType, meta map[string]*ledgerpb.MetadataValue, mode ledgerpb.ChartEnforcementMode) bool {
+func ledgerReadMatches(ls oracle.LedgerState, types map[string]*commonpb.AccountType, meta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) bool {
 	return chartMatches(ls, types) && ledgerMetaMatches(ls, meta) && ls.DefaultEnforcementMode() == mode
 }
 
@@ -815,7 +815,7 @@ func (c *Checker) validateLedgerNotFound(maxTicket uint64, ledger, operation str
 
 // chartMatches reports whether ls's chart equals the server's account types
 // exactly — same names, patterns, and persistence.
-func chartMatches(ls oracle.LedgerState, serverTypes map[string]*ledgerpb.AccountType) bool {
+func chartMatches(ls oracle.LedgerState, serverTypes map[string]*commonpb.AccountType) bool {
 	if ls.Types().Len() != len(serverTypes) {
 		return false
 	}
@@ -833,7 +833,7 @@ func chartMatches(ls oracle.LedgerState, serverTypes map[string]*ledgerpb.Accoun
 // ledgerMetaMatches reports whether ls's ledger metadata equals serverMeta
 // exactly — same keys, same verbatim values. Reads surface the stored value
 // as-written; the declared type is an index hint, not applied on read.
-func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*ledgerpb.MetadataValue) bool {
+func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.MetadataValue) bool {
 	if ls.LedgerMeta().Len() != len(serverMeta) {
 		return false
 	}
@@ -859,7 +859,7 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*ledgerpb.Me
 // transaction metadata back (create/add/overwrite/delete/revert), so a divergent
 // stored projection with correct per-write echoes — the ledger-metadata
 // cross-routing bug class — is caught here for transactions.
-func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *ledgerpb.Transaction, found bool) {
+func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
@@ -922,7 +922,7 @@ func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn,
 
 // fieldTypesMatch reports whether the model's declared field types equal the
 // server's for one target — same keys, same declared type.
-func fieldTypesMatch(model oracle.Map[string, ledgerpb.MetadataType], server map[string]*servicepb.MetadataFieldStatus) bool {
+func fieldTypesMatch(model oracle.Map[string, commonpb.MetadataType], server map[string]*servicepb.MetadataFieldStatus) bool {
 	if model.Len() != len(server) {
 		return false
 	}
@@ -941,7 +941,7 @@ func fieldTypesMatch(model oracle.Map[string, ledgerpb.MetadataType], server map
 // committed metadata write from its response log, dispatching on the request
 // type. Returns nil for non-metadata requests and for deletes, whose log carries
 // only the target and key (validated through subsequent reads).
-func responseMetaEffect(req *servicepb.Request, log *ledgerpb.Log) (saved map[string]*ledgerpb.MetadataValue) {
+func responseMetaEffect(req *servicepb.Request, log *commonpb.Log) (saved map[string]*commonpb.MetadataValue) {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_Apply:
 		data := log.GetPayload().GetApply().GetLog().GetData()
@@ -960,7 +960,7 @@ func responseMetaEffect(req *servicepb.Request, log *ledgerpb.Log) (saved map[st
 
 // postingsEqual reports whether two posting lists match field-for-field
 // (source, destination, asset, amount).
-func postingsEqual(a, b []*ledgerpb.Posting) bool {
+func postingsEqual(a, b []*commonpb.Posting) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -983,7 +983,7 @@ func postingsEqual(a, b []*ledgerpb.Posting) bool {
 }
 
 // renderPostings formats a posting list for assertion details.
-func renderPostings(ps []*ledgerpb.Posting) string {
+func renderPostings(ps []*commonpb.Posting) string {
 	out := ""
 	for _, p := range ps {
 		var amt uint256.Int
@@ -999,7 +999,7 @@ func renderPostings(ps []*ledgerpb.Posting) string {
 
 // metaMapEqual reports whether two metadata maps hold the same keys and the same
 // type-tagged values.
-func metaMapEqual(a, b map[string]*ledgerpb.MetadataValue) bool {
+func metaMapEqual(a, b map[string]*commonpb.MetadataValue) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -1016,7 +1016,7 @@ func metaMapEqual(a, b map[string]*ledgerpb.MetadataValue) bool {
 
 // accountMetaMapEqual reports whether two account-metadata maps (address -> map)
 // hold the same addresses and, per address, the same metadata.
-func accountMetaMapEqual(a, b map[string]*ledgerpb.MetadataMap) bool {
+func accountMetaMapEqual(a, b map[string]*commonpb.MetadataMap) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -1036,13 +1036,13 @@ func accountMetaMapEqual(a, b map[string]*ledgerpb.MetadataMap) bool {
 // type. The cell is addressed by (account, asset, color), so a bucket the key
 // does not name is not a match. ok is false when the cell is absent or the
 // values don't parse.
-func postCommitVolume(pcv *ledgerpb.PostCommitVolumes, key oracle.VolumeKey) (in, out uint256.Int, ok bool) {
+func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in, out uint256.Int, ok bool) {
 	byAsset, found := pcv.GetVolumesByAccount()[key.Address]
 	if !found {
 		return in, out, false
 	}
 
-	var vol *ledgerpb.Volumes
+	var vol *commonpb.Volumes
 	for _, entry := range byAsset.GetVolumes() {
 		if entry.GetAsset() == key.Asset && entry.GetColor() == key.Color {
 			vol = entry.GetVolumes()

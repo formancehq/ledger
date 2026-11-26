@@ -7,8 +7,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -21,10 +21,10 @@ func main() {
 		payloads := make([]*servicepb.CreateTransactionPayload, 5)
 		for i := range payloads {
 			payloads[i] = &servicepb.CreateTransactionPayload{
-				Postings: []*ledgerpb.Posting{{
+				Postings: []*commonpb.Posting{{
 					Source:      "world",
 					Destination: fmt.Sprintf("users:%d", src.Intn(int(internal.UserAccountCount))),
-					Amount:      ledgerpb.NewUint256FromUint64(100),
+					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD/2",
 				}},
 				Force: true,
@@ -127,10 +127,10 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*ledgerpb.Posting{{
+							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: "users:0",
-								Amount:      ledgerpb.NewUint256FromUint64(1),
+								Amount:      commonpb.NewUint256FromUint64(1),
 								Asset:       "USD/2",
 							}},
 							Force: true,

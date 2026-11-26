@@ -6,7 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -33,13 +33,13 @@ func main() {
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &ledgerpb.SaveMetadataCommand{
-							Target: &ledgerpb.Target{
-								Target: &ledgerpb.Target_Account{
-									Account: &ledgerpb.TargetAccount{Addr: address},
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: address},
 								},
 							},
-							Metadata: ledgerpb.MetadataFromGoMap(map[string]string{key: value}),
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
 						},
 					}},
 				},
@@ -76,10 +76,10 @@ func main() {
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
-							Target: &ledgerpb.Target{
-								Target: &ledgerpb.Target_Account{
-									Account: &ledgerpb.TargetAccount{Addr: address},
+						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: address},
 								},
 							},
 							Key: key,
@@ -113,7 +113,7 @@ func main() {
 	})
 }
 
-func findMetadata(acct *ledgerpb.Account, key string) string {
+func findMetadata(acct *commonpb.Account, key string) string {
 	if v, ok := acct.GetMetadata()[key]; ok {
 		return v.GetStringValue()
 	}

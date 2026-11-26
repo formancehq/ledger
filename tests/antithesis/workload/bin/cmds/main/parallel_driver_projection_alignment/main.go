@@ -19,8 +19,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/invariants"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
@@ -100,16 +100,16 @@ func runProjectionAlignment(ctx context.Context, client servicepb.BucketServiceC
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 				Ledger: ledger,
-				Query: &ledgerpb.PreparedQuery{
+				Query: &commonpb.PreparedQuery{
 					Name:   queryName,
-					Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: &ledgerpb.QueryFilter{
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: &commonpb.QueryFilter{
 						// AccountHasAsset is served by the asynchronous read
 						// projection. The acknowledged transaction below creates
 						// exactly this asset membership, so a successful query can
 						// only include the probe after projection certification.
-						Filter: &ledgerpb.QueryFilter_AccountHasAsset{
-							AccountHasAsset: &ledgerpb.AccountHasAssetCondition{
+						Filter: &commonpb.QueryFilter_AccountHasAsset{
+							AccountHasAsset: &commonpb.AccountHasAssetCondition{
 								AssetBase: assetBase,
 								Precision: precision,
 							},
@@ -134,10 +134,10 @@ func runProjectionAlignment(ctx context.Context, client servicepb.BucketServiceC
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*ledgerpb.Posting{{
+						Postings: []*commonpb.Posting{{
 							Source:      "world",
 							Destination: probeAccount,
-							Amount:      ledgerpb.NewUint256FromUint64(1),
+							Amount:      commonpb.NewUint256FromUint64(1),
 							Asset:       invariants.FormatAsset(assetBase, uint8(precision)),
 						}},
 						Reference: fmt.Sprintf("projection-%d", run),

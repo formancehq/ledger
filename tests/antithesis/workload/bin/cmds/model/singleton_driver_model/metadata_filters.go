@@ -3,7 +3,6 @@ package main
 import (
 	"math"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -21,50 +20,50 @@ import (
 
 // --- constructors ----------------------------------------------------------
 
-func fieldRef(key string) *ledgerpb.FieldRef {
-	return &ledgerpb.FieldRef{Metadata: key}
+func fieldRef(key string) *commonpb.FieldRef {
+	return &commonpb.FieldRef{Metadata: key}
 }
 
-func filterFieldString(key, value string) *ledgerpb.QueryFilter {
-	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+func filterFieldString(key, value string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
 		Field: fieldRef(key),
-		Condition: &ledgerpb.FieldCondition_StringCond{StringCond: &ledgerpb.StringCondition{
-			Value: &ledgerpb.StringCondition_Hardcoded{Hardcoded: value},
+		Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{
+			Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
 		}},
 	}}}
 }
 
 // filterFieldInt matches key values in [lo, hi], both bounds inclusive; nil
 // leaves a side open.
-func filterFieldInt(key string, lo, hi *int64) *ledgerpb.QueryFilter {
-	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+func filterFieldInt(key string, lo, hi *int64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
 		Field:     fieldRef(key),
-		Condition: &ledgerpb.FieldCondition_IntCond{IntCond: &ledgerpb.IntCondition{Min: lo, Max: hi}},
+		Condition: &commonpb.FieldCondition_IntCond{IntCond: &commonpb.IntCondition{Min: lo, Max: hi}},
 	}}}
 }
 
 // filterFieldUint matches key values in [lo, hi], both bounds inclusive; nil
 // leaves a side open.
-func filterFieldUint(key string, lo, hi *uint64) *ledgerpb.QueryFilter {
-	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+func filterFieldUint(key string, lo, hi *uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
 		Field:     fieldRef(key),
-		Condition: &ledgerpb.FieldCondition_UintCond{UintCond: &ledgerpb.UintCondition{Min: lo, Max: hi}},
+		Condition: &commonpb.FieldCondition_UintCond{UintCond: &commonpb.UintCondition{Min: lo, Max: hi}},
 	}}}
 }
 
-func filterFieldBool(key string, value bool) *ledgerpb.QueryFilter {
-	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+func filterFieldBool(key string, value bool) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
 		Field: fieldRef(key),
-		Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{
-			Value: &ledgerpb.BoolCondition_Hardcoded{Hardcoded: value},
+		Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{
+			Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: value},
 		}},
 	}}}
 }
 
-func filterFieldExists(key string, includeNull bool) *ledgerpb.QueryFilter {
-	return &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
+func filterFieldExists(key string, includeNull bool) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
 		Field:     fieldRef(key),
-		Condition: &ledgerpb.FieldCondition_ExistsCond{ExistsCond: &ledgerpb.ExistsCondition{IncludeNull: includeNull}},
+		Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{IncludeNull: includeNull}},
 	}}}
 }
 
@@ -75,7 +74,7 @@ func filterFieldExists(key string, includeNull bool) *ledgerpb.QueryFilter {
 // declared type, so the model coerces identically (the server's own
 // ConvertMetadataValue) before comparing. An undeclared key or a missing value
 // has no index row and never matches.
-func matchFieldCondition(declared oracle.Map[string, ledgerpb.MetadataType], lookup func(string) (*ledgerpb.MetadataValue, bool), fc *ledgerpb.FieldCondition) bool {
+func matchFieldCondition(declared oracle.Map[string, commonpb.MetadataType], lookup func(string) (*commonpb.MetadataValue, bool), fc *commonpb.FieldCondition) bool {
 	key := fc.GetField().GetMetadata()
 
 	declaredType, ok := declared.Get(key)
@@ -89,27 +88,27 @@ func matchFieldCondition(declared oracle.Map[string, ledgerpb.MetadataType], loo
 	}
 
 	coerced := stored
-	if !ledgerpb.TypeMatches(stored, declaredType) {
-		coerced = ledgerpb.ConvertMetadataValue(stored, declaredType)
+	if !commonpb.TypeMatches(stored, declaredType) {
+		coerced = commonpb.ConvertMetadataValue(stored, declaredType)
 	}
 
 	switch c := fc.GetCondition().(type) {
-	case *ledgerpb.FieldCondition_ExistsCond:
+	case *commonpb.FieldCondition_ExistsCond:
 		if c.ExistsCond.GetIncludeNull() {
 			return true
 		}
-		_, isNull := coerced.GetType().(*ledgerpb.MetadataValue_NullValue)
+		_, isNull := coerced.GetType().(*commonpb.MetadataValue_NullValue)
 
 		return !isNull
-	case *ledgerpb.FieldCondition_StringCond:
-		sv, isStr := coerced.GetType().(*ledgerpb.MetadataValue_StringValue)
+	case *commonpb.FieldCondition_StringCond:
+		sv, isStr := coerced.GetType().(*commonpb.MetadataValue_StringValue)
 
 		return isStr && sv.StringValue == c.StringCond.GetHardcoded()
-	case *ledgerpb.FieldCondition_BoolCond:
-		bv, isBool := coerced.GetType().(*ledgerpb.MetadataValue_BoolValue)
+	case *commonpb.FieldCondition_BoolCond:
+		bv, isBool := coerced.GetType().(*commonpb.MetadataValue_BoolValue)
 
 		return isBool && bv.BoolValue == c.BoolCond.GetHardcoded()
-	case *ledgerpb.FieldCondition_IntCond:
+	case *commonpb.FieldCondition_IntCond:
 		// Datetime shares the order-preserving int64 index encoding, so an int
 		// range scans datetime rows too (validateAndCoerceCondition admits it).
 		// On an unsigned-declared field the compiler coerces the int bounds
@@ -117,19 +116,19 @@ func matchFieldCondition(declared oracle.Map[string, ledgerpb.MetadataType], loo
 		// the same numeric bounds; negative bounds never reach here — they are
 		// a compilation rejection (fieldKindMismatch).
 		switch t := coerced.GetType().(type) {
-		case *ledgerpb.MetadataValue_IntValue:
+		case *commonpb.MetadataValue_IntValue:
 			return matchIntBounds(c.IntCond, t.IntValue)
-		case *ledgerpb.MetadataValue_DatetimeValue:
+		case *commonpb.MetadataValue_DatetimeValue:
 			return matchIntBounds(c.IntCond, t.DatetimeValue)
-		case *ledgerpb.MetadataValue_UintValue:
+		case *commonpb.MetadataValue_UintValue:
 			uc, ok := intCondAsUint(c.IntCond)
 
 			return ok && matchUintBounds(uc, t.UintValue)
 		default:
 			return false
 		}
-	case *ledgerpb.FieldCondition_UintCond:
-		uv, isUint := coerced.GetType().(*ledgerpb.MetadataValue_UintValue)
+	case *commonpb.FieldCondition_UintCond:
+		uv, isUint := coerced.GetType().(*commonpb.MetadataValue_UintValue)
 
 		return isUint && matchUintBounds(c.UintCond, uv.UintValue)
 	default:
@@ -140,8 +139,8 @@ func matchFieldCondition(declared oracle.Map[string, ledgerpb.MetadataType], loo
 // intCondAsUint mirrors the compiler's coerceIntToUint: the int bounds carried
 // into the unsigned domain, ok=false on a negative bound (the compiler rejects
 // those, so a match verdict is never reached).
-func intCondAsUint(cond *ledgerpb.IntCondition) (*ledgerpb.UintCondition, bool) {
-	uc := &ledgerpb.UintCondition{
+func intCondAsUint(cond *commonpb.IntCondition) (*commonpb.UintCondition, bool) {
+	uc := &commonpb.UintCondition{
 		MinExclusive: cond.GetMinExclusive(),
 		MaxExclusive: cond.GetMaxExclusive(),
 	}
@@ -174,9 +173,9 @@ func intCondAsUint(cond *ledgerpb.IntCondition) (*ledgerpb.UintCondition, bool) 
 // them earlier as index-not-found. The compiler only reaches the coercion
 // check after requireIndexReady, so a mismatch verdict competes with the
 // not-ready rejection — validateFieldMismatchProbe accepts either.
-func fieldKindMismatch(ls oracle.LedgerState, f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) bool {
-	return anyLeaf(f, func(leaf *ledgerpb.QueryFilter) bool {
-		x, ok := leaf.GetFilter().(*ledgerpb.QueryFilter_Field)
+func fieldKindMismatch(ls oracle.LedgerState, f *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
+	return anyLeaf(f, func(leaf *commonpb.QueryFilter) bool {
+		x, ok := leaf.GetFilter().(*commonpb.QueryFilter_Field)
 		if !ok {
 			return false
 		}
@@ -187,27 +186,27 @@ func fieldKindMismatch(ls oracle.LedgerState, f *ledgerpb.QueryFilter, target le
 		}
 
 		switch cond := x.Field.GetCondition().(type) {
-		case *ledgerpb.FieldCondition_ExistsCond:
+		case *commonpb.FieldCondition_ExistsCond:
 			return false
-		case *ledgerpb.FieldCondition_IntCond:
+		case *commonpb.FieldCondition_IntCond:
 			// Signed and datetime verbatim; unsigned via coerceIntToUint,
 			// which rejects negative bounds.
-			if ledgerpb.IsSignedType(declaredType) || ledgerpb.IsDatetimeType(declaredType) {
+			if commonpb.IsSignedType(declaredType) || commonpb.IsDatetimeType(declaredType) {
 				return false
 			}
 
-			if ledgerpb.IsUnsignedType(declaredType) {
+			if commonpb.IsUnsignedType(declaredType) {
 				return (cond.IntCond.Min != nil && cond.IntCond.GetMin() < 0) ||
 					(cond.IntCond.Max != nil && cond.IntCond.GetMax() < 0)
 			}
 
 			return true
-		case *ledgerpb.FieldCondition_UintCond:
-			return !ledgerpb.IsUnsignedType(declaredType)
-		case *ledgerpb.FieldCondition_StringCond:
-			return declaredType != ledgerpb.MetadataType_METADATA_TYPE_STRING
-		case *ledgerpb.FieldCondition_BoolCond:
-			return declaredType != ledgerpb.MetadataType_METADATA_TYPE_BOOL
+		case *commonpb.FieldCondition_UintCond:
+			return !commonpb.IsUnsignedType(declaredType)
+		case *commonpb.FieldCondition_StringCond:
+			return declaredType != commonpb.MetadataType_METADATA_TYPE_STRING
+		case *commonpb.FieldCondition_BoolCond:
+			return declaredType != commonpb.MetadataType_METADATA_TYPE_BOOL
 		default:
 			return false
 		}
@@ -215,8 +214,8 @@ func fieldKindMismatch(ls oracle.LedgerState, f *ledgerpb.QueryFilter, target le
 }
 
 // declaredFieldTypes returns the declared-type map matching a query target.
-func declaredFieldTypes(ls oracle.LedgerState, target ledgerpb.QueryTarget) oracle.Map[string, ledgerpb.MetadataType] {
-	if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+func declaredFieldTypes(ls oracle.LedgerState, target commonpb.QueryTarget) oracle.Map[string, commonpb.MetadataType] {
+	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		return ls.TransactionFieldTypes()
 	}
 
@@ -229,19 +228,19 @@ func declaredFieldTypes(ls oracle.LedgerState, target ledgerpb.QueryTarget) orac
 // generator can aim a hit at.
 type fieldSeed struct {
 	key          string
-	declaredType ledgerpb.MetadataType
-	sample       *ledgerpb.MetadataValue
+	declaredType commonpb.MetadataType
+	sample       *commonpb.MetadataValue
 }
 
 // sampleFieldSeeds snapshots the declared fields of the target plus one stored
 // value per key (coerced-comparable as-is; the generator coerces itself).
 // Caller holds c.mu (like the other committed-state samplers).
-func sampleFieldSeeds(ls oracle.LedgerState, target ledgerpb.QueryTarget) []fieldSeed {
+func sampleFieldSeeds(ls oracle.LedgerState, target commonpb.QueryTarget) []fieldSeed {
 	var seeds []fieldSeed
 	for key, dt := range declaredFieldTypes(ls, target).All() {
 		seed := fieldSeed{key: key, declaredType: dt}
 
-		if target == ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 			for _, rec := range ls.Txs().All() {
 				if v, ok := rec.Metadata()[key]; ok {
 					seed.sample = v
@@ -279,11 +278,11 @@ func genFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilt
 	seed := seeds[src.Intn(len(seeds))]
 
 	// Coerce the sample to the declared type — the value space the index holds.
-	var coerced *ledgerpb.MetadataValue
+	var coerced *commonpb.MetadataValue
 	if seed.sample != nil {
 		coerced = seed.sample
-		if !ledgerpb.TypeMatches(coerced, seed.declaredType) {
-			coerced = ledgerpb.ConvertMetadataValue(coerced, seed.declaredType)
+		if !commonpb.TypeMatches(coerced, seed.declaredType) {
+			coerced = commonpb.ConvertMetadataValue(coerced, seed.declaredType)
 		}
 	}
 
@@ -300,7 +299,7 @@ func genFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilt
 		return filterFieldString(seed.key, "absent-value")
 	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_BOOL:
 		return filterFieldBool(seed.key, oneIn(src, 2))
-	case ledgerpb.IsUnsignedType(seed.declaredType):
+	case commonpb.IsUnsignedType(seed.declaredType):
 		center := src.Uint64Range(0, 1024-1)
 		if uv, ok := coerced.GetType().(*commonpb.MetadataValue_UintValue); ok && !oneIn(src, 4) {
 			center = uv.UintValue
@@ -325,9 +324,9 @@ func genFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb.QueryFilt
 		// Signed and datetime both take int bounds.
 		var center int64
 		switch t := coerced.GetType().(type) {
-		case *ledgerpb.MetadataValue_IntValue:
+		case *commonpb.MetadataValue_IntValue:
 			center = t.IntValue
-		case *ledgerpb.MetadataValue_DatetimeValue:
+		case *commonpb.MetadataValue_DatetimeValue:
 			center = t.DatetimeValue
 		default:
 			center = src.Int63n(1024)
@@ -383,13 +382,13 @@ func genMismatchedFieldLeaf(src *generation.Source, seeds []fieldSeed) *commonpb
 	seed := seeds[src.Intn(len(seeds))]
 
 	switch {
-	case seed.declaredType == ledgerpb.MetadataType_METADATA_TYPE_STRING:
+	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_STRING:
 		return filterFieldBool(seed.key, true)
-	case seed.declaredType == ledgerpb.MetadataType_METADATA_TYPE_BOOL:
+	case seed.declaredType == commonpb.MetadataType_METADATA_TYPE_BOOL:
 		lo := int64(0)
 
 		return filterFieldInt(seed.key, &lo, nil)
-	case ledgerpb.IsUnsignedType(seed.declaredType):
+	case commonpb.IsUnsignedType(seed.declaredType):
 		return filterFieldString(seed.key, "x")
 	default:
 		return filterFieldString(seed.key, "x")

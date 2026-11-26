@@ -36,7 +36,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 
@@ -71,10 +71,10 @@ func main() {
 
 		for i := range txCount {
 			payload := &servicepb.CreateTransactionPayload{
-				Postings: []*ledgerpb.Posting{{
+				Postings: []*commonpb.Posting{{
 					Source:      "world",
 					Destination: "tsorder-dst:probe",
-					Amount:      ledgerpb.NewUint256FromUint64(1),
+					Amount:      commonpb.NewUint256FromUint64(1),
 					Asset:       "USD/2",
 				}},
 				Reference: fmt.Sprintf("tsorder-%d-%d", run, i),
@@ -84,7 +84,7 @@ func main() {
 			// Every third write carries a backdated user timestamp — input
 			// variety only: stored verbatim, no effect on HLC log dates.
 			if i%3 == 1 {
-				payload.Timestamp = &ledgerpb.Timestamp{Data: backdatedEpochMicros}
+				payload.Timestamp = &commonpb.Timestamp{Data: backdatedEpochMicros}
 			}
 
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -143,7 +143,7 @@ func main() {
 			}
 			stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
 				Ledger: ledger,
-				Options: &ledgerpb.ListOptions{
+				Options: &commonpb.ListOptions{
 					PageSize: pageSize,
 					Cursor:   cursor,
 				},

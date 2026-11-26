@@ -7,7 +7,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -45,10 +45,10 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, src *generat
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{
 			AddEventsSink: &servicepb.AddEventsSinkRequest{
-				Config: &ledgerpb.SinkConfig{
+				Config: &commonpb.SinkConfig{
 					Name: sinkName,
-					Type: &ledgerpb.SinkConfig_Nats{
-						Nats: &ledgerpb.NatsSinkConfig{
+					Type: &commonpb.SinkConfig_Nats{
+						Nats: &commonpb.NatsSinkConfig{
 							Url:   "nats://nats:4222",
 							Topic: topic,
 						},
