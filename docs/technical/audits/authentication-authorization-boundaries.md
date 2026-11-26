@@ -251,8 +251,9 @@ to establish that existing signing failures remain distinguishable from bare or
 foreign gRPC auth failures and cannot change trust/scopes/attribution. Correct
 pairs are MISSING_SIGNATURE/Unauthenticated and INVALID_SIGNATURE or
 UNKNOWN_KEY_ID/PermissionDenied. Compare exact local and forwarded decisions,
-including absent/foreign/wrong-status controls. Public HTTP codes remain generic
-UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth errors retain 500. Key lifecycle
+including absent/foreign/wrong-status controls. Public HTTP codes are the signing
+reasons, distinct from JWT UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth
+errors retain 500. Key lifecycle
 and cryptographic primitive analysis remain excluded. See
 [HTTP signing](../architecture/subsystems/api/http-api.md#signed-transaction-requests).
 

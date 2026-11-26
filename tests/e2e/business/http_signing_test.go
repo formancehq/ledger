@@ -106,12 +106,14 @@ var _ = Describe("HTTP request signing", func() {
 		invalid.Signature[0] ^= 1
 		code, raw = send(http.MethodPost, "/transactions", body("optional-invalid"), invalid, "")
 		Expect(code).To(Equal(http.StatusForbidden), string(raw))
+		Expect(string(raw)).To(ContainSubstring(`"errorCode":"INVALID_SIGNATURE"`))
 		apply(actions.SetSigningConfigAction(true))
 		apply(create("grpc"))
 		_, err := node.Client.Apply(GinkgoT().Context(), servicepb.UnsignedApplyRequest("", create("unsigned-grpc")))
 		Expect(status.Code(err)).To(Equal(codes.Unauthenticated))
 		code, raw = send(http.MethodPost, "/transactions", body("unsigned-http"), nil, "")
 		Expect(code).To(Equal(http.StatusUnauthorized), string(raw))
+		Expect(string(raw)).To(ContainSubstring(`"errorCode":"MISSING_SIGNATURE"`))
 		transactions, err := actions.ListAllTransactions(GinkgoT().Context(), node.Client, ledger)
 		Expect(err).To(Succeed())
 		Expect(transactions).To(HaveLen(3))
@@ -257,27 +259,32 @@ var _ = Describe("HTTP request signing", func() {
 			signed     *signaturepb.SignedApplyBatch
 			key        string
 			code       int
+			errorCode  string
 		}{
-			{"invalid signature", "/transactions", body("signed"), invalid, "", 403},
-			{"wrong key", "/transactions", body("signed"), wrong, "", 403},
-			{"unknown key", "/transactions", body("signed"), unknown, "", 403},
-			{"payload bytes", "/transactions", body("signed"), payload, "", 403},
-			{"body", "/transactions", body("tampered"), valid, "", 403},
-			{"idempotency header", "/transactions", body("signed"), valid, "tampered", 403},
-			{"URL target", "/transactions/999/metadata", map[string]any{"note": "signed"}, sign("", actions.SaveTransactionMetadataAction(ledger, 1, map[string]string{"note": "signed"})), "", 403},
-			{"bulk order", "/bulk?atomic=true&continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("second")}, map[string]any{"action": "CREATE_TRANSACTION", "data": body("first")}}, sign("", create("first"), create("second")), "", 403},
-			{"sequential signed bulk", "/bulk?continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("signed")}}, valid, "", 400},
-			{"unsigned bulk auth", "/bulk?atomic=true&continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("signed")}}, nil, "", 401},
-			{"invalid bulk auth", "/bulk?atomic=true&continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("signed")}}, invalid, "", 403},
+			{"invalid signature", "/transactions", body("signed"), invalid, "", 403, "INVALID_SIGNATURE"},
+			{"wrong key", "/transactions", body("signed"), wrong, "", 403, "INVALID_SIGNATURE"},
+			{"unknown key", "/transactions", body("signed"), unknown, "", 403, "UNKNOWN_KEY_ID"},
+			{"payload bytes", "/transactions", body("signed"), payload, "", 403, "INVALID_SIGNATURE"},
+			{"body", "/transactions", body("tampered"), valid, "", 403, "INVALID_SIGNATURE"},
+			{"idempotency header", "/transactions", body("signed"), valid, "tampered", 403, "INVALID_SIGNATURE"},
+			{"URL target", "/transactions/999/metadata", map[string]any{"note": "signed"}, sign("", actions.SaveTransactionMetadataAction(ledger, 1, map[string]string{"note": "signed"})), "", 403, "INVALID_SIGNATURE"},
+			{"bulk order", "/bulk?atomic=true&continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("second")}, map[string]any{"action": "CREATE_TRANSACTION", "data": body("first")}}, sign("", create("first"), create("second")), "", 403, "INVALID_SIGNATURE"},
+			{"sequential signed bulk", "/bulk?continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("signed")}}, valid, "", 400, ""},
+			{"unsigned bulk auth", "/bulk?atomic=true&continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("signed")}}, nil, "", 401, "MISSING_SIGNATURE"},
+			{"invalid bulk auth", "/bulk?atomic=true&continueOnFailure=true", []any{map[string]any{"action": "CREATE_TRANSACTION", "data": body("signed")}}, invalid, "", 403, "INVALID_SIGNATURE"},
 		}
 		for _, test := range cases {
 			By(test.name)
 			code, raw := send(http.MethodPost, test.path, test.body, test.signed, test.key)
 			Expect(code).To(Equal(test.code), test.name+": "+string(raw))
+			if test.errorCode != "" {
+				Expect(string(raw)).To(ContainSubstring(`"errorCode":"`+test.errorCode+`"`), test.name)
+			}
 		}
 		apply(actions.RevokeSigningKeyAction(keyID, false))
 		code, raw := send(http.MethodPost, "/transactions", body("signed"), valid, "")
 		Expect(code).To(Equal(http.StatusForbidden), string(raw))
+		Expect(string(raw)).To(ContainSubstring(`"errorCode":"UNKNOWN_KEY_ID"`))
 		transactions, err := actions.ListAllTransactions(GinkgoT().Context(), node.Client, ledger)
 		Expect(err).To(Succeed())
 		Expect(transactions).To(BeEmpty())
@@ -312,8 +319,15 @@ var _ = Describe("HTTP request signing", func() {
 		invalid.Signature[0] ^= 1
 		code, raw = send(http.MethodPost, "/transactions", body("invalid-follower"), invalid, "")
 		Expect(code).To(Equal(http.StatusForbidden), string(raw))
+		Expect(string(raw)).To(ContainSubstring(`"errorCode":"INVALID_SIGNATURE"`))
+		unknown := sign("", create("unknown-follower"))
+		unknown.KeyId = "unknown"
+		code, raw = send(http.MethodPost, "/transactions", body("unknown-follower"), unknown, "")
+		Expect(code).To(Equal(http.StatusForbidden), string(raw))
+		Expect(string(raw)).To(ContainSubstring(`"errorCode":"UNKNOWN_KEY_ID"`))
 		code, raw = send(http.MethodPost, "/transactions", body("unsigned-follower"), nil, "")
 		Expect(code).To(Equal(http.StatusUnauthorized), string(raw))
+		Expect(string(raw)).To(ContainSubstring(`"errorCode":"MISSING_SIGNATURE"`))
 		transactions, err := actions.ListAllTransactions(GinkgoT().Context(), leader.Client, ledger)
 		Expect(err).To(Succeed())
 		Expect(transactions).To(HaveLen(1))

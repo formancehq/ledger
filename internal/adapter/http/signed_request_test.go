@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -138,13 +139,23 @@ func TestSignedHTTPRoutes_KeepJWTScopes(t *testing.T) {
 
 func TestSigningRejectionsHTTP_ForwardingParity(t *testing.T) {
 	t.Parallel()
-	for _, err := range []error{signing.ErrMissingSignature, signing.ErrInvalidSignature, signing.ErrUnknownKeyID} {
-		t.Run(err.Error(), func(t *testing.T) {
+	for _, tc := range []struct {
+		err     error
+		status  int
+		code    string
+		message string
+	}{
+		{signing.ErrMissingSignature, http.StatusUnauthorized, "MISSING_SIGNATURE", "unauthenticated"},
+		{signing.ErrInvalidSignature, http.StatusForbidden, "INVALID_SIGNATURE", "permission denied"},
+		{signing.ErrUnknownKeyID, http.StatusForbidden, "UNKNOWN_KEY_ID", "permission denied"},
+	} {
+		t.Run(tc.err.Error(), func(t *testing.T) {
 			t.Parallel()
-			local := classifyError(err)
-			remote := classifyError(grpcerr.FromStatusError(grpcerr.SigningStatus(err).Err()))
+			want := errorClass{status: tc.status, code: tc.code, message: tc.message}
+			local := classifyError(fmt.Errorf("verification: %w", tc.err))
+			remote := classifyError(grpcerr.FromStatusError(grpcerr.SigningStatus(tc.err).Err()))
+			require.Equal(t, want, local)
 			require.Equal(t, local, remote)
-			require.False(t, remote.sanitized)
 		})
 	}
 	for _, code := range []codes.Code{codes.Unauthenticated, codes.PermissionDenied} {

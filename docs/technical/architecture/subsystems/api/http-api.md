@@ -257,17 +257,19 @@ scope checks.
 Ignored JSON, response presentation and JWT claims are outside the batch proof.
 
 Malformed envelopes, missing/empty/repeated signing headers, invalid base64 and
-invalid signature length are 400; semantic mismatch is 403 `PERMISSION_DENIED`.
+invalid signature length are 400; semantic mismatch is 403 `INVALID_SIGNATURE`.
 Ordinary unsigned requests with mandatory signing produce 401
-`UNAUTHENTICATED`; invalid signatures
-and unknown/revoked keys produce 403 `PERMISSION_DENIED`. Local signature
-sentinels and reconstructed typed signing failures share this mapping. Forwarded
+`MISSING_SIGNATURE`; invalid signatures produce 403 `INVALID_SIGNATURE` and
+unknown/revoked keys 403 `UNKNOWN_KEY_ID`. The `errorMessage` stays the generic
+`unauthenticated` or `permission denied`. Local signature sentinels and
+reconstructed typed signing failures share this mapping through
+`grpcerr.SigningReason`, in single responses and bulk elements alike. Forwarded
 signature errors retain their existing gRPC status/message and add
 `google.rpc.ErrorInfo` in domain `ledger.signing`, with reason
 `MISSING_SIGNATURE`, `INVALID_SIGNATURE` or `UNKNOWN_KEY_ID`. Only correctly
 paired signing domain/reason/status details reconstruct a classifiable signing
-failure; preserve the original `GRPCStatus` and do not expose those internal
-reasons as public HTTP error codes. Bare or foreign gRPC auth errors retain the
+failure, which keeps that reason as its HTTP `errorCode` and the original
+`GRPCStatus`. Bare or foreign gRPC auth errors retain the
 existing 500 cluster-secret failure contract. Signing does not broaden generic
 Unauthenticated/PermissionDenied handling or weaken JWT/peer trust boundaries.
 
@@ -601,7 +603,8 @@ shapes:
 - a signing rejection carrying a validated `ledger.signing` `ErrorInfo`:
   `MISSING_SIGNATURE` with `Unauthenticated`, or `INVALID_SIGNATURE` /
   `UNKNOWN_KEY_ID` with `PermissionDenied`. It retains the coarse authentication
-  class and original `GRPCStatus`, without exposing a business reason;
+  class, the signing reason and the original `GRPCStatus`, without exposing the
+  peer's message;
 - a status carrying a ledger-domain `ErrorInfo` — **whatever its code** —
   becomes an `*apierr.Remote`;
 - a **bare** `codes.NotFound` — one carrying no `ErrorInfo` at all — becomes a

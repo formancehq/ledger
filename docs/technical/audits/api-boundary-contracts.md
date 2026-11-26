@@ -530,8 +530,9 @@ continueOnFailure while retaining every element result. Dedicated forwarded
 signing ErrorInfo uses domain `ledger.signing` and reason/status pairs
 MISSING_SIGNATURE/Unauthenticated or INVALID_SIGNATURE and
 UNKNOWN_KEY_ID/PermissionDenied; preserve original gRPC status/message. Only
-validated pairs gain classifiable 401/403 handling, and the public codes remain
-UNAUTHENTICATED/PERMISSION_DENIED. Bare/foreign auth errors retain 500. Probe wrong
+validated pairs gain classifiable 401/403 handling, and the public HTTP
+`errorCode` is that reason, identical for local and forwarded refusals and in
+bulk elements. Bare/foreign auth errors retain 500. Probe wrong
 domains, reasons and statuses separately from a real signature rejection.
 
 This domain owns conversion, exact-byte forwarding, media/schema/error

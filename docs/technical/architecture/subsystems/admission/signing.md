@@ -49,7 +49,7 @@ The HTTP adapter builds the same `ApplyBatch` as its ordinary decoder from the
 URL, decoded body and `Idempotency-Key`. It decodes the supplied payload only as
 untrusted input and compares the complete messages with `proto.Equal`, including
 request count/order, oneofs, skippable reasons and the batch key. A mismatch is
-403 `PERMISSION_DENIED` before dispatch. A match forwards the original
+403 `INVALID_SIGNATURE` before dispatch. A match forwards the original
 `SignedApplyBatch` unchanged into the existing backend/admission path; only
 admission's key lookup and Ed25519 verification authenticate it. No HTTP signing
 key cache or alternative verifier is introduced. JWT scopes and caller attribution

@@ -117,8 +117,10 @@ signing does not provide HTTP response authenticity.
 
 Malformed signed wrappers, missing/empty/repeated signing headers, invalid
 base64 and invalid signature length return 400; HTTP-to-signed-batch mismatch
-and invalid, unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
-signatures on ordinary unsigned requests return 401 `UNAUTHENTICATED`.
+and invalid signatures return 403 `INVALID_SIGNATURE`, unknown or revoked signing
+keys 403 `UNKNOWN_KEY_ID`. Mandatory missing signatures on ordinary unsigned
+requests return 401 `MISSING_SIGNATURE`. These `errorCode` values are v3-only;
+JWT failures keep `UNAUTHENTICATED`/`PERMISSION_DENIED`.
 Unsupported routes return 415 for either signing header; either signing header
 with a non-JSON or missing content type also returns 415. Bulk 401/403
 cannot be suppressed by `continueOnFailure`, and all processing outcomes remain available. JWT authentication/scopes remain separate.
