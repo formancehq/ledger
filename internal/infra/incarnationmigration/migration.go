@@ -687,9 +687,9 @@ func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
 	return f.touchWithVolumeDelta(key, date, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, 0, false)
 }
 
-// A normal account may become transient while it still owns persisted cells.
-// The FSM continues to count those cells, but transient writes do not touch
-// account timestamps or create an incarnation of their own.
+// An account may become transient while it still owns persisted cells.
+// The FSM continues to count those cells without touching timestamps, and
+// closes an existing ephemeral incarnation when its last cell is purged.
 func (f *folder) adjustExistingVolumeCount(key domain.AccountKey, delta int64) error {
 	row := f.rows[key]
 	if row == nil {
@@ -712,6 +712,13 @@ func (f *folder) adjustExistingVolumeCount(key domain.AccountKey, delta int64) e
 		row.VolumeCount -= uint64(-delta)
 	} else {
 		row.VolumeCount += uint64(delta)
+	}
+	if row.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL && row.GetVolumeCount() == 0 {
+		delete(f.rows, key)
+		if f.closed == nil {
+			f.closed = make(map[domain.AccountKey]struct{})
+		}
+		f.closed[key] = struct{}{}
 	}
 
 	return nil
