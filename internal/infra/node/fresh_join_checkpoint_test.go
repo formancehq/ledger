@@ -72,6 +72,7 @@ func waitJoinSyncResult(t *testing.T, applier *Applier) gatingResult {
 		return result
 	case <-time.After(5 * time.Second):
 		t.Fatal("checkpoint synchronization did not finish")
+
 		return gatingResult{}
 	}
 }
