@@ -82,7 +82,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 			require.NoError(t, err)
 			registry := state.NewStateRegistry(c, attrs)
 			notifier := signal.NewNotifications()
-			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), notifier, nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), notifier, nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 			require.NoError(t, err)
 			writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 			require.NoError(t, state.NewRecovery(machine, store).RecoverState())
@@ -123,12 +123,12 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 					}
 				}
 				require.True(t, found)
-				require.NotEmpty(t, cmd.GetTechnicalUpdates()[0].GetCoverageBits())
+				require.NotEmpty(t, cmd.GetBatch().GetTechnicalUpdates()[0].GetCoverageBits())
 				if idle {
-					require.Empty(t, cmd.GetOrders())
+					require.Empty(t, cmd.GetBatch().GetOrders())
 				} else {
-					require.Len(t, cmd.GetOrders(), 1)
-					require.NotEmpty(t, cmd.GetOrders()[0].GetTechnical().GetCoverageBits())
+					require.Len(t, cmd.GetBatch().GetOrders(), 1)
+					require.NotEmpty(t, cmd.GetBatch().GetOrders()[0].GetTechnical().GetCoverageBits())
 				}
 			}}
 			source := v2.NewMockSource(gomock.NewController(t))

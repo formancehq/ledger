@@ -394,7 +394,7 @@ func (a *FieldCond) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter,
 		return a.auditToProto()
 	}
 
-	return a.intrinsicToProto()
+	return a.intrinsicToProto(target)
 }
 
 // auditToProto resolves a bare field on the AUDIT target into the matching
@@ -422,7 +422,7 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // logs / accounts) into its own proto arm, using the field names of the
 // structured JSON DSL so both forms cover the same fields:
 //
-//   - `id` → transaction id range (raw uint);
+//   - `id` → transaction or log id range by query target (raw uint);
 //   - `timestamp`, `insertedAt`, `revertedAt` → transaction date ranges;
 //   - `reference` → ReferenceCondition; `reverted` → RevertedCondition;
 //   - `logId` → log id range (raw uint); `date` → log date range;
@@ -433,15 +433,14 @@ func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
 // vanish. Whether a resolved field is valid on the SPECIFIC non-audit target
 // (e.g. `date` on transactions) is not decided here — the downstream per-target
 // validity gate (domain.ValidateFilterForTarget) handles that, the same way the
-// structured JSON DSL does. The resolution itself never depends on which
-// non-audit target is queried, which is what lets the prepared-query update
-// path parse without knowing the stored target.
-func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
+// structured JSON DSL does. The public `id` field is the exception: it resolves
+// to a log ID on LOGS and a transaction ID otherwise.
+func (a *FieldCond) intrinsicToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	switch a.Field {
 	case "timestamp", "date", "insertedAt", "revertedAt":
 		return a.dateToProto()
 	case "id", "logId":
-		return a.idToProto()
+		return a.idToProto(target)
 	case "reference":
 		return a.referenceToProto()
 	case "reverted":
@@ -696,11 +695,11 @@ func txBuiltinQF(field commonpb.TransactionBuiltinIndex, uc *commonpb.UintCondit
 
 // --- Id conditions ---
 
-// idToProto resolves the bare `id OP value` (transactions) / `logId OP value`
-// (logs) range filter. Ids are plain counters: the operand is a raw unsigned
+// idToProto resolves `id OP value` by query target, and accepts `logId OP value`
+// as a legacy log range alias. IDs are plain counters: the operand is a raw unsigned
 // integer, never an RFC3339 timestamp. Like the date fields, a bound may be a
 // $param, resolved when a prepared query executes.
-func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
+func (d *FieldCond) idToProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		n, err := strconv.ParseUint(v.resolve(), 10, 64)
 		if err != nil {
@@ -717,6 +716,12 @@ func (d *FieldCond) idToProto() (*commonpb.QueryFilter, error) {
 
 	switch d.Field {
 	case "id":
+		if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: uc},
+			}}, nil
+		}
+
 		return txBuiltinQF(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, uc), nil
 	case "logId":
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
@@ -1029,48 +1034,39 @@ func (v *Value) resolve() string {
 func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.QueryFilter, error) {
 	fc := &commonpb.FieldCondition{Field: field}
 
-	if val.Param != "" {
+	// Use the lexical kind, not the resolved text: quoted "true" or "42"
+	// is a string, regardless of what the characters could also represent.
+	switch {
+	case val.Param != "":
 		// Parameterized: default to string
 		fc.Condition = &commonpb.FieldCondition_StringCond{
 			StringCond: &commonpb.StringCondition{
 				Value: &commonpb.StringCondition_Param{Param: val.Param},
 			},
 		}
-
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Field{Field: fc},
-		}, nil
-	}
-
-	raw := val.resolve()
-
-	switch raw {
-	case "true":
+	case val.Bool != "":
 		fc.Condition = &commonpb.FieldCondition_BoolCond{
 			BoolCond: &commonpb.BoolCondition{
-				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true},
+				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: val.Bool == "true"},
 			},
 		}
-	case "false":
-		fc.Condition = &commonpb.FieldCondition_BoolCond{
-			BoolCond: &commonpb.BoolCondition{
-				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: false},
+	case val.Num != "":
+		intVal, err := strconv.ParseInt(val.Num, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("metadata comparison requires a signed 64-bit integer, got %q: %w", val.Num, err)
+		}
+
+		fc.Condition = &commonpb.FieldCondition_IntCond{
+			IntCond: &commonpb.IntCondition{
+				Min: &intVal,
+				Max: &intVal,
 			},
 		}
 	default:
-		if intVal, intErr := strconv.ParseInt(raw, 10, 64); intErr == nil {
-			fc.Condition = &commonpb.FieldCondition_IntCond{
-				IntCond: &commonpb.IntCondition{
-					Min: &intVal,
-					Max: &intVal,
-				},
-			}
-		} else {
-			fc.Condition = &commonpb.FieldCondition_StringCond{
-				StringCond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: raw},
-				},
-			}
+		fc.Condition = &commonpb.FieldCondition_StringCond{
+			StringCond: &commonpb.StringCondition{
+				Value: &commonpb.StringCondition_Hardcoded{Hardcoded: val.resolve()},
+			},
 		}
 	}
 
@@ -1106,11 +1102,9 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 		}, nil
 	}
 
-	raw := val.resolve()
-
-	intVal, intErr := strconv.ParseInt(raw, 10, 64)
-	if intErr != nil {
-		return nil, fmt.Errorf("range operators only support integer values, got %q", raw)
+	intVal, err := parseIntValue(val)
+	if err != nil {
+		return nil, err
 	}
 
 	ic := &commonpb.IntCondition{}
@@ -1197,11 +1191,13 @@ func metadataBetweenToProto(field *commonpb.FieldRef, r *BetweenRange) (*commonp
 // error message that metadataRangeToProto uses so the two operators report
 // type-mismatches consistently.
 func parseIntValue(v *Value) (int64, error) {
-	raw := v.resolve()
+	if v.Num == "" {
+		return 0, fmt.Errorf("range operators only support integer values, got %q", v.resolve())
+	}
 
-	n, err := strconv.ParseInt(raw, 10, 64)
+	n, err := strconv.ParseInt(v.Num, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("range operators only support integer values, got %q", raw)
+		return 0, fmt.Errorf("range operators only support integer values, got %q", v.Num)
 	}
 
 	return n, nil

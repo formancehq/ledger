@@ -2,10 +2,10 @@ package auditpb
 
 import (
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"reflect"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -22,10 +22,11 @@ import (
 // Timestamps reuse commonpb.Timestamp.MarshalJSON (RFC3339), keeping audit
 // timestamps identical to Log/Transaction timestamps on the wire. Sub-messages
 // that have no hand-written Go marshaler (CallerSnapshot, Idempotency,
-// SignedApplyBatch) and the ErrorReason enum are rendered via protojson, which
-// also emits camelCase field names and the enum's string form.
+// SignedApplyBatch) and the ErrorReason enum are rendered via the descriptor
+// JSON runtime, which emits camelCase field names and the enum's string form.
 
-// protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
+// protoFieldJSON marshals a proto.Message field to json.RawValue using the
+// descriptor JSON runtime,
 // preserving camelCase field names.
 //
 // A nil message — including a typed-nil pointer (e.g. a *CallerSnapshot that is
@@ -33,7 +34,7 @@ import (
 // marshal to "{}" and slip past the omitempty guard — yields (nil, nil): the
 // field is simply absent.
 //
-// A protojson failure is PROPAGATED, never swallowed. These fields
+// A JSON projection failure is PROPAGATED, never swallowed. These fields
 // (callerSnapshot, idempotency, signature) are chain-bound audit evidence; a
 // serialization defect must surface as a failed response, not a valid-looking
 // record with the field silently dropped (invariant #7: never silently skip a
@@ -47,7 +48,7 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 		return nil, nil
 	}
 
-	b, err := protojson.Marshal(msg)
+	b, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}
@@ -66,31 +67,33 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 // submessages, and the empty-on-list slices.
 func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Sequence       uint64              `json:"sequence"`
-		Timestamp      *commonpb.Timestamp `json:"timestamp,omitempty"`
-		ProposalId     uint64              `json:"proposalId"`
-		Success        *AuditSuccess       `json:"success,omitempty"`
-		Failure        *AuditFailure       `json:"failure,omitempty"`
-		OrderCount     uint32              `json:"orderCount"`
-		Items          []*AuditItem        `json:"items,omitempty"`
-		Ledgers        []string            `json:"ledgers,omitempty"`
-		Hash           string              `json:"hash,omitempty"`
-		HashVersion    uint32              `json:"hashVersion"`
-		CallerSnapshot json.RawValue       `json:"callerSnapshot,omitempty"`
-		Idempotency    json.RawValue       `json:"idempotency,omitempty"`
-		Signature      json.RawValue       `json:"signature,omitempty"`
+		Sequence             uint64              `json:"sequence"`
+		Timestamp            *commonpb.Timestamp `json:"timestamp,omitempty"`
+		ProposalId           uint64              `json:"proposalId"`
+		Success              *AuditSuccess       `json:"success,omitempty"`
+		Failure              *AuditFailure       `json:"failure,omitempty"`
+		OrderCount           uint32              `json:"orderCount"`
+		Items                []*AuditItem        `json:"items,omitempty"`
+		Ledgers              []string            `json:"ledgers,omitempty"`
+		Hash                 string              `json:"hash,omitempty"`
+		HashVersion          uint32              `json:"hashVersion"`
+		CallerSnapshot       json.RawValue       `json:"callerSnapshot,omitempty"`
+		Idempotency          json.RawValue       `json:"idempotency,omitempty"`
+		Signature            json.RawValue       `json:"signature,omitempty"`
+		RequiredCapabilities []uint32            `json:"requiredCapabilities,omitempty"`
 	}
 
 	aux := Aux{
-		Sequence:    x.GetSequence(),
-		Timestamp:   x.GetTimestamp(),
-		ProposalId:  x.GetProposalId(),
-		Success:     x.GetSuccess(),
-		Failure:     x.GetFailure(),
-		OrderCount:  x.GetOrderCount(),
-		Items:       x.GetItems(),
-		Ledgers:     x.GetLedgers(),
-		HashVersion: x.GetHashVersion(),
+		Sequence:             x.GetSequence(),
+		Timestamp:            x.GetTimestamp(),
+		ProposalId:           x.GetProposalId(),
+		Success:              x.GetSuccess(),
+		Failure:              x.GetFailure(),
+		OrderCount:           x.GetOrderCount(),
+		Items:                x.GetItems(),
+		Ledgers:              x.GetLedgers(),
+		HashVersion:          x.GetHashVersion(),
+		RequiredCapabilities: x.GetRequiredCapabilities(),
 	}
 
 	var err error

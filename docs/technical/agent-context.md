@@ -45,6 +45,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
 | contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md`, `docs/technical/contributing/local-validation.md` as relevant |
+| `.goreleaser*.yml`, release/nightly workflows, cutting a `release/*` branch, version tags | `docs/technical/contributing/release-versioning.md` |
 | `misc/operator/**` | `misc/operator/README.md`, `docs/ops/deployment.md`; `docs/ops/tls-migration.md` for TLS/auth transitions; `docs/ops/backup-restore.md` for backup/restore orchestration |
 
 If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.
@@ -90,12 +91,12 @@ Read:
 
 A new primary-store projection requires checker coverage or an explicitly justified documented exemption.
 
-If a persisted value can change after a full checkpoint, also read
+If a persisted value can change after a backup, also read
 `docs/technical/architecture/subsystems/backup/incremental-restore-contract.md`.
 Classify it as preserved, rebuilt, or deliberately discarded during a
-cross-cluster restore, then exercise the classification with a non-empty
-post-checkpoint delta. This applies to updates and deletion cascades as well as
-new projections.
+cross-cluster restore, then exercise the classification with a meaningful
+mutation followed by a second complete checkpoint. This applies to updates
+and deletion cascades as well as new projections.
 
 ### FSM / proposal changes
 
@@ -187,7 +188,7 @@ Read the API subsystem docs and update the compatibility/spec material required 
 
 ### CLI changes
 
-Read `docs/ops/cli.md` and keep it synchronized with flags/commands/behavior. Regenerate demos when applicable.
+Read `docs/ops/cli.md` and keep it synchronized with flags/commands/behavior.
 
 ### Protocol Buffers
 

@@ -69,6 +69,16 @@ type mirrorSourceBody struct {
 	// proto — the default JSON decoder can't dispatch its `scope` oneof, so we
 	// route each rule through protojson.
 	RewriteRules []stdjson.RawMessage `json:"rewriteRules,omitempty"`
+	// AssetMappings translate v2 posting assets that v3 cannot represent
+	// into a v3 asset and color. Applied after RewriteRules.
+	AssetMappings []mirrorAssetMappingBody `json:"assetMappings,omitempty"`
+}
+
+// mirrorAssetMappingBody is one MirrorAssetMapping in the create body.
+type mirrorAssetMappingBody struct {
+	SourceAsset string `json:"sourceAsset"`
+	Asset       string `json:"asset"`
+	Color       string `json:"color,omitempty"`
 }
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger.
@@ -105,17 +115,17 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 		createReq.Mode = ledgerMode
 
-		if ledgerMode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-			if body.MirrorSource != nil {
-				cfg, err := mirrorSourceToProto(body.MirrorSource)
-				if err != nil {
-					writeBadRequest(w, "INVALID_REQUEST", err)
+		if body.MirrorSource != nil {
+			// Preserve the supplied source so admission can validate that it
+			// agrees with the mode, just as it does for a native Apply request.
+			cfg, err := mirrorSourceToProto(body.MirrorSource)
+			if err != nil {
+				writeBadRequest(w, "INVALID_REQUEST", err)
 
-					return
-				}
-
-				createReq.MirrorSource = cfg
+				return
 			}
+
+			createReq.MirrorSource = cfg
 		}
 
 		if body.DefaultEnforcementMode != "" {
@@ -177,7 +187,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	info := createLedgerLog.ToLedgerInfo()
 	info.Metadata = createLedgerLog.GetMetadata()
-	writeCreated(w, r, info)
+	writeMutationCreated(w, r, logEntry, info)
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.
@@ -198,6 +208,14 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 		}
 
 		cfg.RewriteRules = append(cfg.RewriteRules, rule)
+	}
+
+	for _, m := range body.AssetMappings {
+		cfg.AssetMappings = append(cfg.AssetMappings, &commonpb.MirrorAssetMapping{
+			SourceAsset: m.SourceAsset,
+			Asset:       m.Asset,
+			Color:       m.Color,
+		})
 	}
 
 	switch body.Type {

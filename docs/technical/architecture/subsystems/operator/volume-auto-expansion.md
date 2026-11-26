@@ -9,9 +9,11 @@ code responsible for cloud storage mutations.
 
 The mechanism is implemented by a dedicated `VolumeExpansionReconciler` in the
 existing Ledger v3 Operator. It is separate from `ClusterReconciler`: the latter
-owns declarative workload resources and the general Cluster status, while volume
-expansion owns two per-volume readiness conditions, live PVC storage requests,
-and two bookkeeping annotations.
+owns declarative workload resources and the general Cluster status. The volume
+controller owns the two automatic-expansion conditions, the two explicit storage
+conditions, live PVC storage/profile requests and two expansion annotations.
+Explicit minima/profile reconciliation runs even when automatic growth is off;
+see [declarative storage reconciliation](storage-reconciliation.md).
 
 ## Interface and prerequisites
 
@@ -78,20 +80,22 @@ It waits while any PVC is unbound, while requested capacity exceeds reported
 capacity, while Kubernetes reports `Resizing` or `FileSystemResizePending`, and
 until the group cooldown expires.
 
-PVC patches carry a Kubernetes `resourceVersion` precondition. A concurrent
-manual or controller-driven request increase therefore causes a conflict and a
-fresh reconcile instead of allowing the stale auto-expansion target to overwrite
-the newer request.
+PVC patches carry a Kubernetes `resourceVersion` precondition. Each retry reads
+the current claim and live StatefulSet directly, revalidates their identities
+and ownership, and skips a target already met by a larger request. A concurrent
+manual or controller-driven increase therefore cannot be overwritten by a stale
+automatic target, including after an optimistic-lock conflict.
 
 One patch changes both `spec.resources.requests.storage` and:
 
 - `ledger.formance.com/last-expansion-at`
 - `ledger.formance.com/last-expansion-target`
 
-The Cluster spec and StatefulSet VolumeClaimTemplates remain unchanged: their
-`size` is the initial/minimum request, not mutable operational state. Kubernetes
-CSI performs the cloud-volume and filesystem resize; the operator has no AWS
-client or cloud credentials.
+Automatic growth leaves the Cluster spec and StatefulSet VolumeClaimTemplates
+unchanged. Explicitly increasing their configured minimum uses the separate
+declarative reconciliation path; `maximumSize` caps only automatic decisions.
+Kubernetes CSI performs the cloud-volume and filesystem resize; the operator
+has no AWS client or cloud credentials.
 
 ## Failure modes and operations
 

@@ -143,6 +143,46 @@ func TestOpenAPISpec_BulkIdempotencyHeader(t *testing.T) {
 	require.True(t, header.Schema.Value.Type.Is("string"))
 }
 
+func TestOpenAPISpec_ExecuteNumscriptRequestSources(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	schema := doc.Components.Schemas["ExecuteNumscriptRequest"].Value
+
+	for _, request := range []map[string]any{
+		{"script": map[string]any{"plain": "send [USD 1] (source = @world destination = @bank)"}},
+		{"scriptReference": map[string]any{"name": "transfer", "version": "1.0.0"}},
+		{"script": map[string]any{"plain": "x"}, "unknown": true},
+		{"script": map[string]any{"plain": "x"}, "postings": []any{}},
+		{"script": map[string]any{"plain": "x"}, "reference": "R"},
+	} {
+		require.NoError(t, schema.VisitJSON(request))
+	}
+
+	for _, request := range []map[string]any{
+		{},
+		{"script": map[string]any{"plain": "x"}, "scriptReference": map[string]any{"name": "transfer", "version": "1.0.0"}},
+	} {
+		require.Error(t, schema.VisitJSON(request))
+	}
+}
+
+func TestOpenAPISpec_BulkNumscriptMetadataResult(t *testing.T) {
+	t.Parallel()
+
+	doc, err := openapi3.NewLoader().LoadFromFile("../../../openapi.yml")
+	require.NoError(t, err)
+	data := doc.Components.Schemas["BulkResult"].Value.Properties["data"].Value
+	require.NoError(t, data.VisitJSON(map[string]any{
+		"users:alice": map[string]any{"owner": "customer", "verified": true},
+		"users:bob":   map[string]any{"limit": float64(42)},
+	}))
+	require.Error(t, data.VisitJSON(map[string]any{
+		"users:alice": []any{"owner"},
+	}))
+}
+
 func TestOpenAPISpec_LogPayloadPreservation(t *testing.T) {
 	t.Parallel()
 
@@ -206,8 +246,12 @@ func TestOpenAPISpec_SystemLogPayloadPreservation(t *testing.T) {
 			require.NoError(t, json.Unmarshal(encoded, &actual))
 			require.Contains(t, actual, field.JSONName())
 			require.Len(t, actual, 1)
+			// EmitUnpopulated projections may add protobuf default fields, but
+			// every configured fixture value must survive serialization. The
+			// apply fixture is output-only and cannot be decoded back into the
+			// protobuf input, so its schema/variant checks remain above.
 			if field.JSONName() != "apply" {
-				require.Equal(t, fixture, actual)
+				requireJSONSubset(t, fixture, actual)
 			}
 		})
 	}
@@ -262,12 +306,15 @@ func TestOpenAPISpec_PreparedQueryFilterInputs(t *testing.T) {
 			for _, value := range []any{map[string]any{}, []any{}, float64(7), true} {
 				require.Error(t, filter.VisitJSON(value), "%s filter %#v", name, value)
 			}
-			// Optional update filters must distinguish omission from explicit null.
-			withoutFilter := map[string]any{}
+			// Create permits omission; update requires target and filter, including null.
+			var withoutFilter map[string]any
 			if name == "CreatePreparedQueryRequest" {
 				withoutFilter = map[string]any{"name": "by-reference", "target": "TRANSACTIONS"}
+				require.NoError(t, request.VisitJSON(withoutFilter))
+			} else {
+				withoutFilter = map[string]any{"target": "TRANSACTIONS"}
+				require.Error(t, request.VisitJSON(withoutFilter))
 			}
-			require.NoError(t, request.VisitJSON(withoutFilter))
 			withoutFilter["filter"] = nil
 			require.NoError(t, request.VisitJSON(withoutFilter))
 		})

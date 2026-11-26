@@ -10,12 +10,62 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestApplyProposalPersistsRequiredCapabilities(t *testing.T) {
+	t.Parallel()
+	machine, store, _ := newTestMachine(t)
+	declarations := [][]uint32{{7}, {7, 11}}
+	for i, ids := range declarations {
+		proposal := makeProposal(uint64(i+1), createLedgerOrder("capability-audit"))
+		// Exercise the FSM write path directly. Admission currently has no active
+		// semantic capabilities and would not produce a nonempty declaration.
+		proposal.RequiredCapabilities = ids
+		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, uint64(i+1), proposal))
+		require.NoError(t, err)
+		require.True(t, result.Results[0].AuditEntryWritten)
+		if i == 0 {
+			require.NoError(t, result.Results[0].Error)
+		} else {
+			require.Error(t, result.Results[0].Error)
+		}
+	}
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	var previousHash []byte
+	for i, ids := range declarations {
+		sequence := uint64(i + 1)
+		entry, err := query.ReadAuditEntry(t.Context(), handle, sequence)
+		require.NoError(t, err)
+		require.Equal(t, ids, entry.GetRequiredCapabilities())
+		if i == 0 {
+			require.NotNil(t, entry.GetSuccess())
+		} else {
+			require.NotNil(t, entry.GetFailure())
+		}
+		items, err := query.ReadAuditItems(t.Context(), handle, sequence)
+		require.NoError(t, err)
+		header, err := BuildHashedHeaderPayload(entry)
+		require.NoError(t, err)
+		payloads := [][]byte{header}
+		for _, item := range items {
+			payloads = append(payloads, BuildPerItemPayload(item))
+		}
+		generator := processing.NewHashGenerator(commonpb.HashAlgorithm(entry.GetHashVersion()), machine.State.AuditKey)
+		_, hash := generator.Compute(nil, previousHash, payloads)
+		require.Equal(t, entry.GetHash(), hash)
+		previousHash = hash
+	}
+}
 
 func TestApplyProposalRejectsAuditExhaustionBeforeStateOrDurableMutation(t *testing.T) {
 	t.Parallel()

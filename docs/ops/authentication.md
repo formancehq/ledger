@@ -1,10 +1,12 @@
 # Authentication & Authorization
 
-The ledger supports optional JWT/OIDC authentication with scope-based authorization. When enabled, all API requests (HTTP and gRPC) must carry a valid Bearer token issued by a trusted OIDC provider.
+The ledger supports optional JWT/OIDC authentication with scope-based authorization. When enabled, public HTTP and gRPC API requests must carry a valid Bearer token issued by a trusted OIDC provider. Authenticated node-to-node forwarding uses the separate peer transport credential described below.
 
 ## Quick Start
 
 ```bash
+export CLUSTER_SECRET="$(openssl rand -hex 32)"
+
 ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
@@ -12,6 +14,7 @@ ledger run \
   --tls-mode required \
   --tls-cert-file /etc/ledger/tls.crt \
   --tls-key-file /etc/ledger/tls.key \
+  --cluster-secret "$CLUSTER_SECRET" \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-service ledger
@@ -24,19 +27,34 @@ ledger run \
 > (HTTPS at the ingress/proxy) when authentication is enabled.
 > See [Configuration Invariants](#configuration-invariants).
 
+The `cluster-secret` above is the separate inter-node bearer used by Raft and
+peer forwarding. It is not a user JWT or an operator `Credentials` key, and
+the same value must be provisioned on every node in the cluster.
+
 ## CLI Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
+| `--auth-issuers` | string slice | `[]` | Additional trusted OIDC issuer URLs, comma-separated (env `AUTH_ISSUERS`). Merged with `--auth-issuer` |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
 When `--auth-enabled` is set:
-1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration`
-2. Downloads the JWKS (JSON Web Key Set) from the discovered `jwks_uri`
+1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration` for every trusted issuer
+2. Downloads each issuer's JWKS (JSON Web Key Set) from its discovered `jwks_uri`
 3. Validates JWT signatures, issuer, and expiration on every request
 4. Enforces scope-based authorization on all endpoints
+
+### Multiple issuers
+
+The trusted issuers are `--auth-issuer` followed by `--auth-issuers`, with
+duplicates removed. The operator sets them from `spec.auth.issuer` and
+`spec.auth.issuers`. Startup fails when discovery fails for any trusted issuer.
+
+A token is accepted only if its `iss` claim names a trusted issuer and its
+signature verifies against that issuer's JWKS. The keys of one issuer never
+validate a token that names another issuer.
 
 ## Scopes
 
@@ -50,7 +68,7 @@ The ledger accepts virtual scopes in JWTs and expands them to granular Ledger sc
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
 
-Granular scopes use the Ledger application namespace with the `ledger:<Action><Resource>` shape:
+Granular Ledger scopes use the `ledger:<Action><Resource>` shape:
 
 ```
 ledger:ReadLedger       ledger:WriteLedger
@@ -60,6 +78,7 @@ ledger:ReadAudit        ledger:WriteAudit
 ledger:ReadOps          ledger:WriteOps
 ledger:ReadQuery        ledger:WriteQuery
 ledger:ReadCluster      ledger:WriteCluster
+ledger:ExecuteNumscript
 ```
 
 ### Migration from RC.1 granular labels
@@ -73,8 +92,9 @@ granular labels are not recognized as effective rights by the new default
 mapping. The aggregate token labels `ledger:read`, `ledger:write`, and
 `ledger:admin` are unchanged and continue to map to the corresponding new
 granular rights. Custom mapping files replace the default mapping, so update
-their values before deploying this revision. Ledger-local `*:read` and
-`*:write` values still expand to all matching rights.
+their values before deploying this revision. Ledger-local `*:read` values
+expand to all `Read` rights. `*:write` values expand to all `Write` rights and
+`ledger:ExecuteNumscript`.
 
 This change does not alter a business storage key or protobuf field. Effective
 scope strings are captured in persisted audit `CallerSnapshot` records and
@@ -86,19 +106,23 @@ Do not rewrite historical audit entries during the rollout.
 
 The server enforces the following rules at startup:
 
-- `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
-  `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
+- `--auth-enabled` requires `--cluster-secret` so peers can authenticate
+  follower-to-leader forwarding. Provision the same secret on every node, as
+  described in the [Quick Start](#quick-start).
+- `--auth-enabled` requires at least one of `--auth-issuer` or
+  `--auth-issuers` (OIDC), or `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
 - `--auth-enabled` requires `--tls-mode=required`. Over a plaintext transport
   the bearer JWT/Ed25519 tokens would be sent in the clear and could be
   intercepted and replayed by an on-path attacker, so both
   `--tls-mode=disabled` and `--tls-mode=optional` are rejected at startup —
   `optional` runs a dual listener that still accepts plaintext client
-  connections, so it is not sufficient. This is intentionally stricter than the
-  `--cluster-secret` rule (which permits `optional`): the operator drives
-  zero-downtime inter-node TLS migration through the transitional `optional`
-  mode, but the external service API has no such requirement. There is no
-  opt-out; terminate TLS on the ledger process itself even when an ingress or
+  connections, so it is not sufficient. The inter-node cluster secret has a
+  separate rule: it requires TLS to be available, so `disabled` is rejected.
+  During `optional`, peers send the secret only over TLS; connections to
+  legacy plaintext peers carry no secret and do not gain forwarding trust.
+  External API authentication has no opt-out from strict TLS; terminate TLS
+  on the ledger process itself even when an ingress or
   service mesh also terminates TLS upstream. Note this guard covers the
   **gRPC service transport** only — `--tls-mode` does not govern the HTTP
   REST-compat listener, which remains plaintext and must be protected by
@@ -106,6 +130,8 @@ The server enforces the following rules at startup:
 - Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
+  `--auth-issuers` is not part of this check: it is ignored when
+  authentication is disabled.
 
 ## Unauthenticated Endpoints
 
@@ -127,6 +153,7 @@ The writes-only configuration is:
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
   --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
+  --cluster-secret "$CLUSTER_SECRET" \
   --auth-anonymous-scopes "*:read"
 ```
 
@@ -161,6 +188,15 @@ gRPC clients must include the JWT token in the `authorization` metadata:
 md := metadata.Pairs("authorization", "Bearer <token>")
 ctx := metadata.NewOutgoingContext(ctx, md)
 ```
+
+Ledger's internal peer listener uses a separate `x-ledger-peer-auth` metadata
+value for node-to-node transport authentication. It is not a user credential
+and is never accepted as a JWT on the public gRPC listener. Forwarded requests
+carry the original user JWT in `authorization`, which is evaluated by the node
+that executes the operation. An authenticated peer marks forwarded anonymous
+requests with `x-ledger-forwarded-anonymous: true`; the executing node applies
+its own anonymous scopes. Peer calls without either caller marker are internal
+node actions.
 
 ## HTTP Authentication
 
@@ -415,3 +451,18 @@ The generated key configuration and `kubectl-ledger credentials get-key` bundle
 use `superuser` as well. Update Credentials manifests, auth key JSON, OIDC claim
 mappings, and token-generation commands together. The previous privileged field,
 claim, and flag were removed before `v3.0.0-rc.1`.
+
+
+The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
+certificate rather than `localhost` or `127.0.0.1`. For authenticated clusters,
+the operator creates a scoped, operator-owned `Credentials` resource and uses
+its private signing key to mint short-lived tokens for maintenance commands.
+The credential includes `ledger:ReadAudit` to verify index ownership from
+audit entries and `ledger:ReadAccount` to read the metadata schema when
+reconciling metadata indexes.
+The cluster secret is never used as a `ledgerctl` user token. When
+`tls.caSecretKey` is configured, the operator also injects
+`LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
+`LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
+StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
+must override `LEDGERCTL_SERVER` with a resolvable address.

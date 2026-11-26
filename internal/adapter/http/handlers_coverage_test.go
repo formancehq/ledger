@@ -32,7 +32,7 @@ func TestNewHandler_ReturnsNonNil(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 	require.NotNil(t, handler)
 }
 
@@ -41,7 +41,7 @@ func TestNewHandler_HealthEndpoint(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -70,7 +70,7 @@ func TestNewHandler_SystemRoutesUnderReservedSegment(t *testing.T) {
 	// that path returns a clean error instead of an unexpected-call panic.
 	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("no such ledger")).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	// The system route resolves under the reserved `_` segment.
 	w := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestNewHandler_LivezEndpoint(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/livez", nil)
@@ -105,7 +105,7 @@ func TestNewHandler_ReadyzEndpoint(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().NotReadyReasons().Return(nil).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -1095,7 +1095,7 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestWriteBulkResponse_NilLog(t *testing.T) {
+func TestWriteBulkResponse_RejectsNilLog(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
@@ -1109,9 +1109,9 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, testBulkRequest(), elements, results, false)
-
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Panics(t, func() {
+		writeBulkResponse(w, testBulkRequest(), elements, results, false)
+	})
 }
 
 func TestWriteBulkErrorResponse_NilError(t *testing.T) {
@@ -1366,7 +1366,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 			}}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/v3/test", nil)
@@ -1385,7 +1385,7 @@ func TestNewHandler_GetLedgerRoute(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: name}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger", nil)
@@ -1404,7 +1404,7 @@ func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v3/", nil)
@@ -1472,7 +1472,7 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	require.Contains(t, w.Body.String(), "CREATE_TRANSACTION")
 }
 
-func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
+func TestWriteBulkResponse_RejectsLogWithoutData(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
@@ -1491,9 +1491,9 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, testBulkRequest(), elements, results, false)
-
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Panics(t, func() {
+		writeBulkResponse(w, testBulkRequest(), elements, results, false)
+	})
 }
 
 // --------------------------------------------------------------------------

@@ -4,21 +4,31 @@
 
 The Ledger v3 uses gRPC for inter-node communication within the Raft cluster. This document describes the connection architecture and the measures implemented to ensure the fastest possible automatic reconnection during rolling deployments or network failures.
 
-## Two gRPC Servers per Node
+## Three gRPC Servers per Node
 
-Each node runs **two separate gRPC servers** on different ports:
+Each node runs three separate gRPC servers on different ports:
 
 | Server | Port | Purpose | Services |
 |--------|------|---------|----------|
-| **Service Server** | 8888 | External API & request forwarding | `BucketService`, `ClusterService`, `Health` |
-| **Raft Server** | 7777 | Internal Raft communication | `RaftTransport`, `SnapshotService` |
+| **Public service server** | 8888 by default (`--grpc-port`) | External client API | `BucketService`, `ClusterService`, `Health` |
+| **Peer service server** | 8889 by default (`--grpc-peer-port`) | Inter-node request forwarding | `BucketService`, `ClusterService` |
+| **Raft server** | 7777 by default (`--bind-addr`) | Internal Raft and cluster bootstrap | `RaftTransport`, `SnapshotService`, `ClusterBootstrapService` |
+
+The peer service port is internal to the Ledger cluster. The operator does not
+publish it through the public gRPC Ingress; deployments should restrict it to
+Ledger pods with a `NetworkPolicy`. With TLS and a configured cluster secret,
+peer requests authenticate on this listener; the public listener uses client
+authentication and rejects the cluster secret as a client credential.
 
 ### Two Connection Pools
 
-Correspondingly, each node maintains **two connection pools**:
+Each node maintains two named instances of `ConnectionPool`:
 
-1. **ConnectionPool** (`internal/infra/transport/connection_pool.go`): Manages connections to peers' **Raft ports** (7777) for Raft message exchange
-2. **ServiceConnectionPool** (`internal/infra/transport/service_pool.go`): Manages connections to peers' **Service ports** (8888) for request forwarding to the leader
+1. **Raft pool** (`name:"raft"`): Connects to peers' Raft addresses (port 7777 by default) for Raft messages.
+2. **Service pool** (`name:"service"`): Connects to peers' advertised peer service addresses (`--grpc-peer-port`, 8889 by default) to forward requests to the leader.
+
+Both pools use `internal/infra/transport/connection_pool.go`; their named
+constructors are wired in `internal/infra/transport/module.go`.
 
 ### Peer Configuration
 
@@ -33,7 +43,7 @@ Peers are discovered dynamically using the bootstrap/join model:
 ./ledger run --node-id 3 --cluster-id prod-ledger --join node-1:7777
 ```
 
-When a node joins, it discovers all existing cluster members via `ClusterBootstrapService.GetPeers` on the RaftServer and registers itself as a learner through `JoinAsLearner`. Both RPCs are gated by cluster-id metadata (and the cluster-secret bearer when configured), not by the user-JWT pipeline. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).
+When a node joins, it discovers all existing cluster members via `ClusterBootstrapService.GetPeers` on the RaftServer and registers itself as a learner through `JoinAsLearner`. Both RPCs are gated by cluster-id metadata (and the cluster-secret bearer on TLS connections when configured), not by the user-JWT pipeline. An `optional` listener temporarily accepts legacy plaintext peers without the secret. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).
 
 Both RPCs may land on a follower, which forwards them to the leader over the Raft transport's shared peer connection. The joiner retries `Unavailable` with backoff and treats every other status as final (`FailedPrecondition` with `STALE_RAFT_PROGRESS`, the removed-member rejection, `Unauthenticated`). A failure of the forwarding hop itself — the shared connection being restarted mid-call, or the leader not answering in time — is reported to the joiner as `Unavailable`, so it retries; the leader never produces `Canceled` or `DeadlineExceeded` itself, as it maps its own context errors to `Unavailable`. Any status the leader returns is passed through unchanged. `AlreadyExists` from the leader is treated as success: it means a previous attempt's ConfChange committed before its reply reached the joiner, and the leader only answers it while it has replicated nothing to that node yet.
 
@@ -94,27 +104,19 @@ graph TB
 
 **File**: `internal/infra/transport/connection_pool.go`
 
-The Raft connection pool manages gRPC connections to peers' **Raft ports** (7777) for consensus messages. Each connection is created lazily when needed.
-
-```go
-type ConnectionPool struct {
-    peers       map[uint64]string        // peer ID -> raft address
-    connections map[uint64]*grpc.ClientConn
-}
-```
+The Raft pool connects to peers' advertised Raft addresses for consensus
+messages. `NewRaftConnectionPool` configures the Raft authorization metadata
+contract. Connections are created lazily when needed.
 
 ### Service Connection Pool
 
-**File**: `internal/infra/transport/service_pool.go`
+**Files**: `internal/infra/transport/connection_pool.go`,
+`internal/infra/transport/module.go`
 
-The service connection pool manages gRPC connections to peers' **Service ports** (8888) for request forwarding. When a follower receives a write request, it uses this pool to forward the request to the leader's `BucketService`.
-
-```go
-type ServiceConnectionPool struct {
-    peers       map[uint64]string        // peer ID -> service address
-    connections map[uint64]*grpc.ClientConn
-}
-```
+The service pool connects to the peer service address advertised in membership,
+including its configured peer port. When a follower receives a request that
+must run on the leader, it uses this pool to forward the call to the leader's
+`BucketService` or `ClusterService`. It does not dial the public service port.
 
 ### Transport Layer
 
@@ -601,7 +603,10 @@ Key log messages for debugging connection issues:
 
 ## TLS Support
 
-Both gRPC servers and all connection pools support opt-in TLS. When the server is started with `--tls-cert-file` and `--tls-key-file`, both the Raft server and Service server require TLS. Inter-node connections (Raft and Service pools) also use TLS automatically.
+All three gRPC servers and both connection pools support TLS. With
+`--tls-cert-file` and `--tls-key-file`, the listeners enable TLS. Required mode
+rejects plaintext; optional mode also accepts plaintext during migration. The
+Raft and service pools follow the configured TLS policy for inter-node calls.
 
 If `--tls-ca-cert-file` is provided, the server enables optional client certificate verification (`tls.VerifyClientCertIfGiven`) by default. Set `--tls-require-client-cert` to switch the posture to `tls.RequireAndVerifyClientCert` — peers without a CA-signed certificate are rejected at the TLS layer before any application code runs.
 

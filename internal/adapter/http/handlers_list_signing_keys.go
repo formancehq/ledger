@@ -37,12 +37,5 @@ func (s *Server) handleListSigningKeys(w http.ResponseWriter, r *http.Request) {
 
 	keys, links := pageSorted(page, keys, keyID)
 
-	data, err := protoListJSON(keys)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-		return
-	}
-
-	writePageOK(w, r, data, links)
+	writePageOK(w, r, keys, links)
 }

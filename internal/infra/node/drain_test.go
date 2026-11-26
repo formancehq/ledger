@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
@@ -11,13 +12,79 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestDrainProducersEmitNativeTechnicalPayloads(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*Node)
+		propose func(context.Context, *Node) error
+		check   func(*testing.T, *raftcmdpb.TechnicalUpdate)
+	}{
+		{
+			name: "marker",
+			propose: func(ctx context.Context, n *Node) error {
+				_, err := n.BeginDrain(ctx, "epoch", []uint64{1, 2}, 0)
+
+				return err
+			},
+			check: func(t *testing.T, update *raftcmdpb.TechnicalUpdate) {
+				require.Equal(t, "epoch", update.GetDrainMarker().GetEpoch())
+				require.Equal(t, []uint64{1, 2}, update.GetDrainMarker().GetMembers())
+			},
+		},
+		{
+			name: "release",
+			prepare: func(n *Node) {
+				n.fsm.State.DrainState = &raftcmdpb.DrainState{Epoch: "epoch"}
+			},
+			propose: func(ctx context.Context, n *Node) error {
+				_, err := n.EndDrain(ctx, "epoch", 0)
+
+				return err
+			},
+			check: func(t *testing.T, update *raftcmdpb.TechnicalUpdate) {
+				require.Equal(t, "epoch", update.GetDrainRelease().GetEpoch())
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n, _ := newTestMaintenanceNode(t)
+			n.proposeCh = make(chan *Proposal, 1)
+			n.indexTracker = NewIndexTracker(1)
+			if tc.prepare != nil {
+				tc.prepare(n)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- tc.propose(ctx, n) }()
+
+			var proposal *Proposal
+			select {
+			case proposal = <-n.proposeCh:
+			case <-time.After(5 * time.Second):
+				t.Fatal("drain producer did not enqueue a proposal")
+			}
+			var wire raftcmdpb.Proposal
+			require.NoError(t, wire.UnmarshalVT(proposal.Data()))
+			require.NotNil(t, wire.GetBatch())
+			require.Empty(t, wire.GetOrders())
+			require.Empty(t, wire.GetTechnicalUpdates())
+			require.Len(t, wire.GetBatch().GetTechnicalUpdates(), 1)
+			tc.check(t, wire.GetBatch().GetTechnicalUpdates()[0])
+			cancel()
+			require.ErrorIs(t, <-done, context.Canceled)
+		})
+	}
+}
 
 func TestProposeRejectsAfterDrainEnqueue(t *testing.T) {
 	t.Parallel()
 	n, _ := newTestMaintenanceNode(t)
 	n.drainOutstanding = 1
-	_, err := n.Propose(t.Context(), NewProposal(1, []byte("business")))
+	_, err := n.Propose(t.Context(), newProposal(1, []byte("business"), nil))
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
 }
 
@@ -63,7 +130,7 @@ func TestDrainProposalRejectsPreflightFromPriorLeadershipTerm(t *testing.T) {
 	require.Contains(t, rn.Status().Progress, uint64(2))
 	require.False(t, rn.HasReady())
 
-	marker := NewProposal(1, []byte("stale drain marker for member 1"))
+	marker := newProposal(1, []byte("stale drain marker for member 1"), nil)
 	marker.drainMarker = true
 	marker.expectedTerm = preflightTerm
 	n.indexTracker.Lock()
@@ -79,7 +146,7 @@ func TestDrainProposalRejectsPreflightFromPriorLeadershipTerm(t *testing.T) {
 	require.False(t, n.drainActiveOrPending())
 	require.False(t, rn.HasReady(), "stale marker must not enter the Raft log")
 
-	release := NewProposal(2, []byte("stale release marker"))
+	release := newProposal(2, []byte("stale release marker"), nil)
 	release.releaseMarker = true
 	release.expectedTerm = preflightTerm
 	n.indexTracker.Lock()
@@ -100,7 +167,7 @@ func TestMembershipFenceOutlivesTimedOutDrainCaller(t *testing.T) {
 	n, setup := newTestMaintenanceNode(t)
 	n.proposeCh = make(chan *Proposal, 1)
 	n.indexTracker = NewIndexTracker(1)
-	marker := NewProposal(1, []byte("drain marker"))
+	marker := newProposal(1, []byte("drain marker"), nil)
 	marker.drainMarker = true
 	n.indexTracker.Lock()
 	future, err := n.Propose(t.Context(), marker)
@@ -139,7 +206,7 @@ func TestReleaseMarkerCanCrossClosedAdmission(t *testing.T) {
 	n.proposeCh = make(chan *Proposal, 1)
 	n.indexTracker = NewIndexTracker(1)
 	n.drainOutstanding = 1
-	release := NewProposal(1, []byte("release"))
+	release := newProposal(1, []byte("release"), nil)
 	release.releaseMarker = true
 	n.indexTracker.Lock()
 	_, err := n.Propose(t.Context(), release)
@@ -152,20 +219,20 @@ func TestDroppedDrainMarkerReopensAdmission(t *testing.T) {
 	n, _ := newTestMaintenanceNode(t)
 	n.proposeCh = make(chan *Proposal, 3)
 	n.indexTracker = NewIndexTracker(1)
-	first := NewProposal(1, []byte("first marker"))
+	first := newProposal(1, []byte("first marker"), nil)
 	first.drainMarker = true
 	n.indexTracker.Lock()
 	_, err := n.Propose(t.Context(), first)
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
-	second := NewProposal(2, []byte("second marker"))
+	second := newProposal(2, []byte("second marker"), nil)
 	second.drainMarker = true
 	n.indexTracker.Lock()
 	secondFuture, err := n.Propose(t.Context(), second)
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
 	n.applier.ResolveDroppedFuture(first.commandID, ErrNotLeader)
-	_, err = n.Propose(t.Context(), NewProposal(1, []byte("still blocked")))
+	_, err = n.Propose(t.Context(), newProposal(1, []byte("still blocked"), nil))
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
 	// The original RPC may have timed out. The applier still owns the
 	// callback, so a later-term truncation releases the remaining slot.
@@ -177,7 +244,7 @@ func TestDroppedDrainMarkerReopensAdmission(t *testing.T) {
 	_, err = secondFuture.Wait(t.Context())
 	require.ErrorIs(t, err, ErrLeadershipLost)
 	n.indexTracker.Lock()
-	_, err = n.Propose(t.Context(), NewProposal(3, []byte("admitted after definitive drops")))
+	_, err = n.Propose(t.Context(), newProposal(3, []byte("admitted after definitive drops"), nil))
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
 }
@@ -187,7 +254,7 @@ func TestRejectedQueuedDrainMarkerReopensAdmission(t *testing.T) {
 	n, _ := newTestMaintenanceNode(t)
 	n.proposeCh = make(chan *Proposal, 2)
 	n.indexTracker = NewIndexTracker(1)
-	marker := NewProposal(1, []byte("drain marker"))
+	marker := newProposal(1, []byte("drain marker"), nil)
 	marker.drainMarker = true
 	n.indexTracker.Lock()
 	_, err := n.Propose(t.Context(), marker)
@@ -196,7 +263,7 @@ func TestRejectedQueuedDrainMarkerReopensAdmission(t *testing.T) {
 	require.Same(t, marker, <-n.proposeCh)
 	n.rejectQueuedProposal(marker, ErrNotLeader)
 	n.indexTracker.Lock()
-	_, err = n.Propose(t.Context(), NewProposal(2, []byte("business after drop")))
+	_, err = n.Propose(t.Context(), newProposal(2, []byte("business after drop"), nil))
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
 }
@@ -206,18 +273,18 @@ func TestDrainEnqueueOrdersInFlightProposals(t *testing.T) {
 	n, _ := newTestMaintenanceNode(t)
 	n.proposeCh = make(chan *Proposal, 3)
 	n.indexTracker = NewIndexTracker(1)
-	pre := NewProposal(1, []byte("already admitted"))
+	pre := newProposal(1, []byte("already admitted"), nil)
 	n.indexTracker.Lock()
 	_, err := n.Propose(t.Context(), pre)
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
-	marker := NewProposal(2, []byte("drain marker"))
+	marker := newProposal(2, []byte("drain marker"), nil)
 	marker.drainMarker = true
 	n.indexTracker.Lock()
 	_, err = n.Propose(t.Context(), marker)
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
-	_, err = n.Propose(t.Context(), NewProposal(3, []byte("later write")))
+	_, err = n.Propose(t.Context(), newProposal(3, []byte("later write"), nil))
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
 	require.Same(t, pre, <-n.proposeCh)
 	require.Same(t, marker, <-n.proposeCh)
@@ -229,25 +296,25 @@ func TestOldDrainDropCannotOpenNewEpoch(t *testing.T) {
 	n, setup := newTestMaintenanceNode(t)
 	n.proposeCh = make(chan *Proposal, 3)
 	n.indexTracker = NewIndexTracker(1)
-	old := NewProposal(1, []byte("old marker"))
+	old := newProposal(1, []byte("old marker"), nil)
 	old.drainMarker = true
 	n.indexTracker.Lock()
 	_, err := n.Propose(t.Context(), old)
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
 	setup.sharedState.SetDrainReleased(7)
-	newMarker := NewProposal(2, []byte("new marker"))
+	newMarker := newProposal(2, []byte("new marker"), nil)
 	newMarker.drainMarker = true
 	n.indexTracker.Lock()
 	_, err = n.Propose(t.Context(), newMarker)
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
 	n.applier.ResolveDroppedFuture(old.commandID, ErrNotLeader)
-	_, err = n.Propose(t.Context(), NewProposal(3, []byte("must stay closed")))
+	_, err = n.Propose(t.Context(), newProposal(3, []byte("must stay closed"), nil))
 	require.ErrorIs(t, err, domain.ErrMaintenanceMode)
 	n.applier.ResolveDroppedFuture(newMarker.commandID, ErrNotLeader)
 	n.indexTracker.Lock()
-	_, err = n.Propose(t.Context(), NewProposal(4, []byte("new marker dropped")))
+	_, err = n.Propose(t.Context(), newProposal(4, []byte("new marker dropped"), nil))
 	n.indexTracker.Unlock()
 	require.NoError(t, err)
 }

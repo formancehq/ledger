@@ -81,7 +81,7 @@ func TestListTransactions_AlignsComplementWithPrimaryHorizon(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 
-	unexpected, err := ctrl.ListTransactions(ctx, ledger, 100, 0, notTimestamp, false)
+	unexpected, err := ctrl.ListTransactions(ctx, ledger, 100, nil, notTimestamp, false)
 	if unexpected != nil {
 		require.NoError(t, unexpected.Close())
 	}
@@ -99,12 +99,48 @@ func TestListTransactions_AlignsComplementWithPrimaryHorizon(t *testing.T) {
 	require.NoError(t, indexBatch.Commit())
 	rs.NotifyProgress()
 
-	txs, err := ctrl.ListTransactions(t.Context(), ledger, 100, 0, notTimestamp, false)
+	txs, err := ctrl.ListTransactions(t.Context(), ledger, 100, nil, notTimestamp, false)
 	require.NoError(t, err)
 
 	got, err := cursor.Collect(txs)
 	require.NoError(t, err)
 	require.Empty(t, got)
+}
+
+func TestListTransactions_ZeroCursor(t *testing.T) {
+	t.Parallel()
+	const ledger = "mirror"
+	logger := logging.FromContext(logging.TestingContext())
+	store := newCtrlTestStore(t)
+	attrs := attributes.New()
+	for id := range uint64(3) {
+		seedCreatedTransaction(t, store, attrs, ledger, id, id+1, &commonpb.Transaction{Id: id})
+	}
+	rs, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, rs.Close()) })
+	controller := NewDefaultController(nil, store, logger, attrs, rs, nil, noop.NewMeterProvider().Meter("test"))
+	collectIDs := func(after *uint64, pageSize uint32, reverse bool) []uint64 {
+		t.Helper()
+		page, err := controller.ListTransactions(t.Context(), ledger, pageSize, after, nil, reverse)
+		require.NoError(t, err)
+		rows, err := cursor.Collect(page)
+		require.NoError(t, err)
+		ids := make([]uint64, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.GetId())
+		}
+
+		return ids
+	}
+	zero := uint64(0)
+	one, two := uint64(1), uint64(2)
+	require.Equal(t, []uint64{0}, collectIDs(nil, 1, true))
+	require.Equal(t, []uint64{1}, collectIDs(&zero, 1, true))
+	require.Equal(t, []uint64{2}, collectIDs(&one, 1, true))
+	require.Empty(t, collectIDs(&two, 1, true))
+	require.Equal(t, []uint64{1, 2}, collectIDs(&zero, 2, true))
+	require.Empty(t, collectIDs(&zero, 2, false))
 }
 
 // seedCreatedTransaction writes the minimum authoritative state required by

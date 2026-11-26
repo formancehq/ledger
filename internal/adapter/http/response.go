@@ -1,13 +1,11 @@
 package http
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -74,8 +72,8 @@ func writeCreated(w http.ResponseWriter, r *http.Request, data any) {
 // an already-committed 200 stream.
 //
 // This matters for the audit surface: audit DTOs render chain-bound submessages
-// (callerSnapshot, idempotency, signature) via protojson, whose MarshalJSON can
-// genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
+// (callerSnapshot, idempotency, signature) via the generated JSON projection,
+// whose MarshalJSON can genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
 // a valid-looking truncated record (invariant #7).
 //
 // The transactions list and single-log routes are the second
@@ -107,73 +105,6 @@ func writeCheckedJSONResponse(w http.ResponseWriter, r *http.Request, value any,
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
-}
-
-// writeProtoOK writes a 200 OK response whose `data` is a single protobuf
-// message serialized via protojson, which renders protobuf-JSON camelCase from
-// the descriptor (e.g. lastIndexedSequence) rather than the snake_case Go
-// `json:` tags protoc-gen emits.
-//
-// Use this ONLY for messages that have no custom MarshalJSON. protojson works
-// off protobuf reflection and ignores json.Marshaler, so for a message that has
-// one it silently discards the intended shape — that was EN-1622, where the
-// transactions list leaked amount:{v0} and timestamp:{data} while the detail
-// route emitted decimals and RFC3339. When the message has a MarshalJSON, that
-// method IS the public contract: use writeOKChecked.
-//
-// Nested large integers also require an option-aware public projection.
-// encoder_contract_test.go enforces this split against the descriptor graph.
-func writeProtoOK(w http.ResponseWriter, r *http.Request, msg proto.Message) {
-	raw, err := protojson.Marshal(msg)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-		return
-	}
-
-	writeOK(w, r, json.RawValue(raw))
-}
-
-// writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
-// protobuf messages, each serialized via protojson (see writeProtoOK for when
-// that is correct — messages with no custom MarshalJSON only). protojson has no
-// slice entry point, so each element is marshaled individually and assembled
-// into the array here; the option-aware encoder walks a slice and
-// calls MarshalJSON per element. A nil/empty slice serializes as `[]`, matching
-// the drained-cursor list handlers.
-func writeProtoListOK[T proto.Message](w http.ResponseWriter, r *http.Request, msgs []T) {
-	data, err := protoListJSON(msgs)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-		return
-	}
-
-	writeOK(w, r, data)
-}
-
-// protoListJSON renders msgs as a JSON array of protojson objects.
-func protoListJSON[T proto.Message](msgs []T) (json.RawValue, error) {
-	var buf bytes.Buffer
-
-	buf.WriteByte('[')
-
-	for i, msg := range msgs {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-
-		raw, err := protojson.Marshal(msg)
-		if err != nil {
-			return nil, err
-		}
-
-		buf.Write(raw)
-	}
-
-	buf.WriteByte(']')
-
-	return json.RawValue(buf.Bytes()), nil
 }
 
 // writeBadRequest writes a 400 Bad Request response.

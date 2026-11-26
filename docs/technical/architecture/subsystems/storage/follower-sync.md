@@ -8,14 +8,19 @@ in parallel.
 ## Protocol
 
 1. `PrepareSnapshot` waits for the serving FSM to reach the requested Raft
-   index, creates a temporary Pebble checkpoint, and returns a session ID plus
-   a manifest containing only each regular file's relative path and size. A
-   server whose own store is behind its Raft log (out of sync, fetching a
-   checkpoint, or installing a Raft snapshot) refuses with
-   `FailedPrecondition` before waiting: it reaches the requested index only
-   after fetching a checkpoint itself. The fetcher treats that code as final
-   and the requester moves on to another voter (see
-   [Donor Selection](../../data-flows.md#donor-selection)).
+   index, then creates a temporary Pebble checkpoint and returns a session ID
+   plus a manifest containing only each regular file's relative path and size.
+   Identified retries from the same follower share one in-flight preparation
+   when its applied-index floor is sufficient; a higher requested floor waits
+   for that preparation and creates a fresh checkpoint. Requests without a
+   follower identity are never coalesced. All preparations still share one
+   global checkpoint slot because Pebble's synchronous `Checkpoint` cannot be
+   interrupted once it has started. A server whose own store is behind its
+   Raft log (out of sync, fetching a checkpoint, or installing a Raft snapshot)
+   refuses with `FailedPrecondition` before waiting: it reaches the requested
+   index only after fetching a checkpoint itself. The fetcher treats that code
+   as final and the requester moves on to another voter (see [Donor
+   Selection](../../data-flows.md#donor-selection)).
 2. `FetchFile` streams one manifest file in chunks. The server computes SHA-256
    while reading the file and puts the lowercase hexadecimal digest on the EOF
    response.
@@ -105,6 +110,12 @@ temporary checkpoint is created. A future protocol revision may expose the
 checkpoint index and source generation explicitly, but changing donors within
 one session is never valid.
 
+If a caller cancels while its preparation is queued for the global checkpoint
+slot, that preparation is discarded. A live retry from the same follower may
+replace it; it never inherits the canceled caller's error. Cancellation after
+Pebble has entered `Checkpoint` only cancels the RPC wait, because that Pebble
+operation is synchronous and does not accept a context.
+
 The final rename is the trust boundary. Truncated content, excess content, a
 missing or malformed digest, and a digest mismatch all leave the final path
 untouched.
@@ -151,22 +162,29 @@ and staging-path collisions. See `docs/technical/contributing/testing.md`.
 
 ## WAL reclamation after restore
 
-Installing a received Raft snapshot first replaces the in-memory snapshot
-pointer, discards the entire cached entry slice, and raises the in-memory
-HardState commit when necessary. It then writes the full snapshot file and a
-durable guard snapshot record before buffering the HardState WAL record. A
-second identical snapshot record supplies the sync barrier for the HardState.
-This ordering makes every durable prefix recoverable: the old HardState ignores
-an ahead-of-commit guard record, while any durable new HardState already has a
-matching durable snapshot record. After cleaning old snapshot files, the node
-drops the in-memory WAL mutex and releases etcd WAL segment locks through the
-installed index. A durable-write failure is returned but does not roll back the
-earlier in-memory replacement and cache clear.
+After Raft accepts a received snapshot, the node skips the ordinary Ready
+append to the old WAL. `ApplySnapshot` writes the full
+snapshot file. It prepares and syncs `etcd.next/` with the snapshot record,
+HardState, and only the Ready entries after the snapshot index. The old WAL
+remains the recovery source until the directory switch begins. Before the
+switch, the node stops the old WAL purger and closes the old WAL while its
+original path still names it. The node then renames the old directory to
+`etcd.previous/` and the candidate to `etcd/`, syncing the parent directory
+after each rename.
 
-Every runtime path that creates, updates, or installs a snapshot serializes the
-complete snapshot-file and WAL-record persistence sequence. The persistence
-lock is acquired before the in-memory WAL lock so snapshots are captured and
-made durable in the same order. This prevents concurrent membership updates
+The node opens the selected WAL and uses `ReadAll` to check that it is readable.
+It does not compare the recovered HardState or entry suffix with the Ready.
+Only then does it replace the in-memory snapshot, HardState, and cached entries.
+It then removes older snapshot files and inactive WAL directories. A failure
+before the first rename leaves the in-memory state
+unchanged, although the old WAL may already be closed. A failure during or
+after the switch stops Ready processing. Restart selects a complete WAL from
+the durable directories. No received-snapshot path calls `ReleaseLockTo` on
+the replaced WAL.
+
+Every runtime path that creates, updates, or installs a snapshot holds
+`walWriteMu` before the in-memory WAL lock for the complete snapshot-file and
+WAL-record persistence sequence. This prevents concurrent membership updates
 from racing on the deterministic `.snap.tmp` name and keeps the final snapshot
 file aligned with the latest WAL snapshot record.
 
@@ -175,6 +193,6 @@ snapshot and calls `Compact`, which releases locks through the compaction index.
 Regression coverage must retain both the steady-state `Compact` trigger and the
 received-snapshot trigger.
 
-Lock release is best effort: failure is logged but cannot roll back an already
-persisted snapshot or completed in-memory compaction. The background WAL purger
-removes unlocked segment files.
+Lock release during normal `Compact` is best effort: failure is logged but
+cannot roll back an already persisted snapshot or completed in-memory
+compaction. The background WAL purger removes unlocked segment files.

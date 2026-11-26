@@ -14,7 +14,7 @@ import (
 // (notably *state.ErrCoverageMiss) propagates verbatim so the FSM rejects it
 // without auditing a storage fault (EN-1379); any other
 // error wraps into ErrStorageOperation. Mirrors the loadLedger pattern.
-func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.SerializableError) {
+func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.Describable) {
 	pq, err := s.PreparedQueries().Get(domain.PreparedQueryKey{LedgerName: ledger, Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
@@ -27,7 +27,7 @@ func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryRe
 	return pq, nil
 }
 
-func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	// Validate payload BEFORE loading the ledger. After moving `ledger` off
 	// `PreparedQuery` onto the surrounding request (PR #522), a malformed
@@ -84,7 +84,7 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 	}, nil
 }
 
-func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
@@ -107,46 +107,44 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 	}
 
 	updated := existing.Mutate()
-
-	// An update carries only the new filter; the target is fixed at creation and
-	// read here from the stored query (the cache, per invariant #3).
-	//
-	// Guard the stored target's executability before condition validity. CLI/gRPC
-	// creation used to allow non-executable targets (e.g. AUDIT) before this PR, so
-	// a pre-existing non-executable query can already sit in storage; rewriting its
-	// filter here would persist a query ExecutePreparedQuery still cannot hydrate.
-	// Reject the update loudly (delete stays allowed) so a stored prepared query
-	// is always executable — mirroring the create-path gate. LOGS is executable as
-	// of EN-1503, so a stored LOGS query passes this gate and reaches the filter
-	// validation below.
-	if !domain.IsPreparedQueryExecutableTarget(updated.GetTarget()) {
+	previousTarget := updated.GetTarget()
+	target := previousTarget
+	if order.Target != nil {
+		target = order.GetTarget()
+	}
+	if !domain.IsPreparedQueryExecutableTarget(target) {
 		return nil, domain.ErrPreparedQueryTargetUnsupported
 	}
 
-	// Validate the new filter against that stored target so an update cannot
-	// smuggle in a condition invalid for the query's target — the case admission
-	// cannot catch because the update request has no target field.
-	if err := domain.ValidateFilterForTarget(order.GetFilter(), updated.GetTarget()); err != nil {
+	// The target is an explicit order input when it changes. Historical orders
+	// omit it and continue to validate against the cached stored target.
+	if err := domain.ValidateFilterForTarget(order.GetFilter(), target); err != nil {
 		return nil, err
 	}
 
 	previousFilter := updated.GetFilter().CloneVT()
 	updated.Filter = order.GetFilter()
+	updated.Target = target
 	s.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: updated.GetName()}, updated)
+	log := &commonpb.UpdatedPreparedQueryLog{
+		Ledger:         ledger,
+		Name:           order.GetName(),
+		PreviousFilter: previousFilter,
+		NewFilter:      order.GetFilter(),
+	}
+	if order.Target != nil {
+		log.PreviousTarget = previousTarget.Enum()
+		log.NewTarget = target.Enum()
+	}
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
-			UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
-				Ledger:         ledger,
-				Name:           order.GetName(),
-				PreviousFilter: previousFilter,
-				NewFilter:      order.GetFilter(),
-			},
+			UpdatedPreparedQuery: log,
 		},
 	}, nil
 }
 
-func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err

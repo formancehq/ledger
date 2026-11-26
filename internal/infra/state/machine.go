@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -158,8 +160,14 @@ type Machine struct {
 	// cluster membership atomic with FSM state and makes the spool/WAL
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
-	confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error
+	confChangeHandler             func(entry *raftpb.Entry, session *dal.WriteSession) error
+	capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)
 }
+
+// NoopCapabilityPolicyCommitHandler is an explicit dependency for callers
+// that do not maintain an in-memory membership gate (for example replay and
+// isolated FSM tests). Production bootstrap injects the membership publisher.
+func NoopCapabilityPolicyCommitHandler(*commonpb.ClusterPolicy) {}
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
 // (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
@@ -171,7 +179,11 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error, capabilityPolicyCommitHandler func(*commonpb.ClusterPolicy)) (*Machine, error) {
+	if capabilityPolicyCommitHandler == nil {
+		return nil, errors.New("capability policy commit handler is required")
+	}
+
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -246,6 +258,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 		confChangeHandler:              confChangeHandler,
+		capabilityPolicyCommitHandler:  capabilityPolicyCommitHandler,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -312,6 +325,16 @@ func (fsm *Machine) DrainDecision() *raftcmdpb.DrainState {
 // "is this index durable?" checks.
 func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
+}
+
+// ClusterPolicy returns the policy state at the current apply position. It is
+// intended for callbacks invoked while PrepareEntries holds fsm.mu.
+func (fsm *Machine) ClusterPolicy() *commonpb.ClusterPolicy {
+	if fsm.State.ClusterPolicy == nil {
+		return nil
+	}
+
+	return fsm.State.ClusterPolicy.CloneVT()
 }
 
 // RestoreState atomically replaces the FSM-level state. The intended callers
@@ -557,7 +580,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 				return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
 			}
 
-			if len(cmd.GetOrders()) > 0 || len(cmd.GetTechnicalUpdates()) > 0 || cmd.GetCallerSnapshot() != nil {
+			if proposals.IntentCount(cmd) > 0 || len(proposals.TechnicalUpdates(cmd)) > 0 || cmd.GetCallerSnapshot() != nil {
 				if attributionErr := attribution.Validate(cmd.GetCallerSnapshot()); attributionErr != nil {
 					invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](attributionErr)
 					if !ok {
@@ -676,7 +699,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			continue
 		}
 
-		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {
+		if proposals.IntentCount(cmd) == 0 && len(proposals.TechnicalUpdates(cmd)) == 0 {
 			if fsm.sentinelMode && fsm.logger.Enabled(logging.TraceLevel) {
 				fsm.logger.WithFields(map[string]any{
 					"raftIndex":  entryIndex,
@@ -690,7 +713,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		}
 
 		if fsm.sentinelMode {
-			fsm.sentinelTracer.StartEntry(entryIndex, cmd.GetId(), len(cmd.GetOrders()))
+			fsm.sentinelTracer.StartEntry(entryIndex, cmd.GetId(), proposals.IntentCount(cmd))
 		}
 
 		result, err := fsm.applyProposal(ctx, entryIndex, batch, cmd)
@@ -798,6 +821,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		bloomReplacementEpoch: bloomReplacementEpoch,
 		entryCount:            len(decoded),
 	}
+	if fsm.State.ClusterPolicy != nil {
+		pb.capabilityPolicy = fsm.State.ClusterPolicy.CloneVT()
+	}
 
 	// Capture sentinel data before releasing the lock.
 	if fsm.sentinelMode {
@@ -834,6 +860,9 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	pb.batch = nil // committed, prevent double-close
 	if pb.bloomReplacement {
 		fsm.BloomFilters.ConfirmPersistedReplacement(pb.bloomReplacementEpoch)
+	}
+	if fsm.capabilityPolicyCommitHandler != nil && pb.capabilityPolicy != nil {
+		fsm.capabilityPolicyCommitHandler(pb.capabilityPolicy)
 	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Seconds())
@@ -1162,25 +1191,27 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 }
 
 func drainMarkerOnly(proposal *raftcmdpb.Proposal) bool {
-	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+	updates := proposals.TechnicalUpdates(proposal)
+	if proposals.IntentCount(proposal) != 0 || len(updates) != 1 {
 		return false
 	}
-	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker)
+	_, ok := updates[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker)
 
 	return ok
 }
 
 func drainReleaseOnly(proposal *raftcmdpb.Proposal) bool {
-	if len(proposal.GetOrders()) != 0 || len(proposal.GetTechnicalUpdates()) != 1 {
+	updates := proposals.TechnicalUpdates(proposal)
+	if proposals.IntentCount(proposal) != 0 || len(updates) != 1 {
 		return false
 	}
-	_, ok := proposal.GetTechnicalUpdates()[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease)
+	_, ok := updates[0].GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease)
 
 	return ok
 }
 
 func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
-	for _, update := range proposal.GetTechnicalUpdates() {
+	for _, update := range proposals.TechnicalUpdates(proposal) {
 		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainMarker); ok {
 			return true
 		}
@@ -1190,7 +1221,7 @@ func containsDrainMarker(proposal *raftcmdpb.Proposal) bool {
 }
 
 func containsDrainRelease(proposal *raftcmdpb.Proposal) bool {
-	for _, update := range proposal.GetTechnicalUpdates() {
+	for _, update := range proposals.TechnicalUpdates(proposal) {
 		if _, ok := update.GetKind().(*raftcmdpb.TechnicalUpdate_DrainRelease); ok {
 			return true
 		}
@@ -1202,7 +1233,7 @@ func containsDrainRelease(proposal *raftcmdpb.Proposal) bool {
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
-func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.SerializableError {
+func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.Describable {
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
 		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1266,11 +1297,11 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 //
 // Admission ships bits that don't match the AttributeCoverage slice →
 // *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both are
-// SerializableErrors with KindInternal. Surfacing
+// UncommittedFailures with KindInternal. Surfacing
 // them via ApplyResult.Error rejects the proposal as a business error instead
 // of wedging the FSM apply loop; the proposal is malformed, but the FSM state
 // is not (no cache mutation lands before Merge).
-func planInvariantFailure(err error) domain.SerializableError {
+func planInvariantFailure(err error) domain.Describable {
 	if miss, ok := errors.AsType[*ErrCoverageMiss](err); ok {
 		return miss
 	}
@@ -1290,11 +1321,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// and race the pipelined committer. Any violation here means the
 	// admission path was bypassed (replay of a pre-fix proposal, or a future
 	// bug); refuse to apply rather than corrupt state.
-	if ClassifyCheckpointOrderPosition(proposal.GetOrders()) == CheckpointOrderInvalid {
+	if ClassifyCheckpointOrderPosition(proposals.BatchOrders(proposal)) == CheckpointOrderInvalid {
 		assert.Unreachable("checkpoint trigger order not last in proposal", map[string]any{
 			"raftIndex":  raftIndex,
 			"proposalID": proposal.GetId(),
-			"orderCount": len(proposal.GetOrders()),
+			"orderCount": proposals.IntentCount(proposal),
 		})
 
 		return nil, fmt.Errorf("checkpoint trigger order not last in proposal id=%d at raft index %d", proposal.GetId(), raftIndex)
@@ -1308,7 +1339,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// are deliberately kept beyond this no-mutation guard. MaxUint64 itself is
 	// not allocatable because persisting it would make the next sequence wrap to
 	// zero (EN-1860).
-	if len(proposal.GetOrders()) > 0 {
+	if len(proposals.BatchOrders(proposal)) > 0 {
 		if fsm.State.AuditKey == "" {
 			return nil, errors.New("invariant: audit key is not committed before orders")
 		}
@@ -1329,7 +1360,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 	if drain := fsm.State.DrainState; drain != nil && drain.GetReleasedIndex() == 0 && raftIndex > drain.GetIndex() &&
-		(len(proposal.GetOrders()) > 0 || len(proposal.GetTechnicalUpdates()) > 0) && !drainMarkerOnly(proposal) && !drainReleaseOnly(proposal) {
+		(proposals.IntentCount(proposal) > 0 || len(proposals.TechnicalUpdates(proposal)) > 0) && !drainMarkerOnly(proposal) && !drainReleaseOnly(proposal) {
 		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
 
 		return result, nil
@@ -1377,6 +1408,31 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// proposal coverage — since the validation is cross-order by nature.
 	scopeFactory := NewScopeFactory(buffer, proposal.GetExecutionPlan(), fsm.logger, fsm.preloadMissCounter, raftIndex)
 
+	// Native policy controls are operational consensus state: no business log,
+	// audit sequence, idempotency outcome or HLC advancement.
+	var controlErr domain.Describable
+	isControl := true
+	switch control := proposal.GetPayload().(type) {
+	case *raftcmdpb.Proposal_SetClusterPolicy:
+		controlErr = fsm.processor.ProcessClusterPolicy(control.SetClusterPolicy, scopeFactory)
+	case *raftcmdpb.Proposal_CapabilityActivation:
+		controlErr = fsm.processor.ProcessCapabilityTransition(control.CapabilityActivation, scopeFactory)
+	default:
+		isControl = false
+	}
+	if isControl {
+		if controlErr != nil {
+			result.Error = &domain.BusinessError{Err: controlErr}
+
+			return result, nil
+		}
+		if err := buffer.Merge(batch, nil); err != nil {
+			return nil, fmt.Errorf("merging cluster policy: %w", err)
+		}
+
+		return result, nil
+	}
+
 	if err := fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal); err != nil {
 		if invariant := planInvariantFailure(err); invariant != nil {
 			// Coverage miss or malformed execution plan in a TU handler
@@ -1413,7 +1469,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
-	if len(proposal.GetOrders()) == 0 {
+	if proposals.IntentCount(proposal) == 0 {
 		// Technical-only proposal: still drain the overlay through Merge so
 		// any tech-update writes (PutLedger, PutAccountMetadata, …) reach
 		// the cache + Pebble. With no orders there is no log to append; the
@@ -1428,13 +1484,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// FSM-level maintenance mode check: reject proposals containing non-maintenance
 	// orders that were admitted before maintenance mode was enabled but batched into
 	// a Raft entry applied after the maintenance mode flag was set.
-	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposal.GetOrders()) {
+	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposals.BatchOrders(proposal)) {
 		// Proves the admitted-before/applied-after race is actually exercised:
 		// this branch only fires when a write passed admission before the
 		// maintenance flag flipped on but applies after.
 		assert.Reachable("write rejected by FSM maintenance gate after flag flip", map[string]any{
 			"proposalID": proposal.GetId(),
-			"orderCount": len(proposal.GetOrders()),
+			"orderCount": proposals.IntentCount(proposal),
 			"raftIndex":  raftIndex,
 		})
 
@@ -1445,8 +1501,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Compute the effective date using the HLC to guarantee monotonicity.
 	// Keep the previous value: a proposal that returns without an audit entry
-	// must not advance the durable clock, because incremental restore rebuilds
-	// post-checkpoint HLC progress from audited timestamps alone.
+	// must not advance the durable clock, so an uncommitted rejection cannot
+	// change the effective date of a later accepted proposal.
 	previousTimestamp := fsm.State.LastAppliedTimestamp
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
@@ -1462,7 +1518,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// effective date (used by idempotency TTL checks and CreatedAt stamping).
 	buffer.SetDate(effectiveDate)
 
-	orders := proposal.GetOrders()
+	orders := proposals.BatchOrders(proposal)
 
 	// The maintenance gate above is the only barrier between an
 	// admitted-before/applied-after write and the ledger state. Re-check the
@@ -1488,7 +1544,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	var (
 		proposalHash []byte
 		logs         []*raftcmdpb.CreatedLogOrReference
-		err          domain.SerializableError
+		err          domain.Describable
 		replayed     bool
 	)
 
@@ -1550,22 +1606,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
-	// Admission forwards a keyed proposal with an unavailable preload only so
-	// the dedup gate above can replay an earlier committed outcome. Without one,
-	// preparation never completed: no order was executed and there is no
-	// business verdict to commit to the audit chain or idempotency registry.
-	// Check the entire batch before processing any order.
-	if err == nil {
-		for _, order := range orders {
-			if order.GetTechnical().GetPreloadUnavailable() {
-				fsm.State.LastAppliedTimestamp = previousTimestamp
-				result.Error = &domain.BusinessError{Err: domain.ErrPreloadUnavailable}
-
-				return result, nil
-			}
-		}
-	}
-
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
 	// cross-order signals (schedule, sink config, cleanup, ...) are derived
@@ -1583,7 +1623,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// A rejected internal proposal has no committed business verdict. Discard
 	// the staged WriteSet and let the caller retry after its producer is fixed.
 	// The error type owns this disposition; successes still take the normal
-	// audited path, including successful cluster-policy updates.
+	// audited path, including historical cluster-policy orders.
 	if _, uncommitted := errors.AsType[domain.UncommittedFailure](err); uncommitted {
 		fsm.State.LastAppliedTimestamp = previousTimestamp
 		result.Error = &domain.BusinessError{Err: err}
@@ -1605,18 +1645,30 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	if err != nil {
-		// FAILURE: write audit entry and return business error. `err` is
-		// produced by processor.ProcessOrders which now returns Describable
-		// directly — no boundary cast, no fallback path.
+		// FAILURE: write audit entry and return business error. Uncommitted
+		// failures returned above; every remaining failure is an audited
+		// business rejection by contract.
+		audited, ok := errors.AsType[domain.SerializableError](err)
+		if !ok {
+			assert.Unreachable("non-auditable order failure reached the audit path", map[string]any{
+				"raftIndex":  raftIndex,
+				"proposalID": proposal.GetId(),
+				"reason":     err.Reason(),
+			})
+
+			return nil, fmt.Errorf("invariant: order failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
+				err.Reason(), raftIndex, proposal.GetId(), err)
+		}
+
 		failureEntry := auditpb.AuditEntryFromVTPool()
-		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
 		appendErr := writeAuditEntry(failureEntry, nil, "failure")
 		failureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, audited, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 
@@ -1663,15 +1715,27 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 			return result, nil
 		}
+		audited, ok := errors.AsType[domain.SerializableError](err)
+		if !ok {
+			assert.Unreachable("non-auditable transient validation failure reached the audit path", map[string]any{
+				"raftIndex":  raftIndex,
+				"proposalID": proposal.GetId(),
+				"reason":     err.Reason(),
+			})
+
+			return nil, fmt.Errorf("invariant: transient validation failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
+				err.Reason(), raftIndex, proposal.GetId(), err)
+		}
+
 		transientFailureEntry := auditpb.AuditEntryFromVTPool()
-		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
 		transientFailureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, audited, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 
@@ -1732,7 +1796,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// The check must run after batch.Commit() — reading from the sentinel reader
 	// before commit sees stale committed state that excludes the current batch,
 	// which produces false positives when batch boundaries differ across nodes.
-	ledgerNames := collectLedgerNames(proposal.GetOrders())
+	ledgerNames := collectLedgerNames(proposals.BatchOrders(proposal))
 
 	// SUCCESS: emit batch-level side effects. The min/max sequence range
 	// was accumulated during ProcessOrders — no second walk over `logs`.
@@ -1790,7 +1854,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Detect query checkpoint create/delete for gating.
 	// The processor that created / deleted the checkpoint also emits the id;
 	// previously this was reconstructed by walking pendingQueryCheckpointSaves
-	// and proposal.GetOrders().
+	// and proposals.BatchOrders(proposal).
 	queryCheckpointCreated := buffer.QueryCheckpointCreated()
 	queryCheckpointDeleted := buffer.QueryCheckpointDeleted()
 
@@ -1823,7 +1887,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 // audit state may already have advanced and recovery must replay the entry.
 // EN-1330 tracks a transactional stage/commit rework for this failure window.
 func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, effectiveDate *commonpb.Timestamp, idempotencyExpiresAt uint64, serializedOrders [][]byte, entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
-	orders := proposal.GetOrders()
+	orders := proposals.BatchOrders(proposal)
 	// Sequence must be set BEFORE the header payload is built —
 	// BuildHashedHeaderPayload binds entry.Sequence, and the
 	// verifier rebuilds the payload from the persisted (non-zero)
@@ -1834,7 +1898,7 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 	entry.Sequence = fsm.State.NextAuditSequenceID
 	entry.Timestamp = effectiveDate
 	entry.ProposalId = proposal.GetId()
-	entry.OrderCount = uint32(len(orders))
+	entry.OrderCount = uint32(len(proposals.BatchOrders(proposal)))
 	entry.Ledgers = extractLedgers(orders)
 	entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
 	entry.CallerSnapshot = proposal.GetCallerSnapshot()
@@ -1847,6 +1911,7 @@ func (fsm *Machine) writeProposalAuditEntry(batch *dal.WriteSession, proposal *r
 		entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
 	}
 	entry.Signature = proposal.GetSignature()
+	entry.RequiredCapabilities = slices.Clone(proposal.GetRequiredCapabilities())
 
 	items := buildAuditItems(serializedOrders, logs)
 
@@ -2062,6 +2127,7 @@ type PreparedBatch struct {
 	sentinelLedgerNames        []string
 	sentinelDeletedLedgerNames map[string]struct{}
 	sentinelTracer             *SentinelTracer
+	capabilityPolicy           *commonpb.ClusterPolicy
 
 	entryCount int
 }

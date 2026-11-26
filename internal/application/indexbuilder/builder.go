@@ -1063,7 +1063,9 @@ func (b *Builder) failHistoryReplay(err error) {
 // returns the recovered cursor and pebbleLast, or an error when a required
 // snapshot, cursor, history, config or read-handle operation fails. The caller
 // (loop) retries transient failures with backoff without advancing the cursor
-// against an incomplete config. History-replay invariants are terminal: loop
+// against an incomplete config. A main store still behind the read-store cursor
+// after a crash is one of them: the loop waits for WAL replay or follower sync
+// to restore the missing logs. History-replay invariants are terminal: loop
 // calls failHistoryReplay to mark the read projection failed and stops the
 // builder. ReadAppliedProposalProgress and query.ReadLastSequence remain
 // best-effort.
@@ -1088,7 +1090,7 @@ func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint6
 		return 0, 0, closeSnapshot(historyReplayInvariantf("ledger history state exists while indexbuilder cursor is zero"))
 	}
 
-	if err := b.initIndexConfigAfterHistory(ctx, snapshot); err != nil {
+	if err := b.initIndexConfigAfterHistory(ctx, snapshot, cursor); err != nil {
 		return 0, 0, closeSnapshot(fmt.Errorf("initializing index config: %w", err))
 	}
 	if err := closeSnapshot(nil); err != nil {

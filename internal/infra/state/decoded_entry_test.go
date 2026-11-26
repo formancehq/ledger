@@ -168,6 +168,40 @@ func TestReleaseDecodedEntries(t *testing.T) {
 	})
 }
 
+func TestReleaseDecodedEntriesClearsNativeBatch(t *testing.T) {
+	t.Parallel()
+
+	marshal := func(proposal *raftcmdpb.Proposal) []byte {
+		t.Helper()
+		data, err := proposal.MarshalVT()
+		require.NoError(t, err)
+
+		return data
+	}
+	large := marshal(&raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
+		Orders:           []*raftcmdpb.Order{{}, {}, {}},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{}},
+	}}})
+	small := marshal(&raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
+		Orders: []*raftcmdpb.Order{{}},
+	}}})
+	for _, tc := range []struct {
+		data    []byte
+		orders  int
+		updates int
+	}{
+		{data: large, orders: 3, updates: 1},
+		{data: small, orders: 1, updates: 0},
+	} {
+		decoded, err := DecodeEntries([]*raftpb.Entry{entWith(1, 1, raftpb.EntryNormal, tc.data)})
+		require.NoError(t, err)
+		require.Len(t, decoded[0].Proposal.GetBatch().GetOrders(), tc.orders)
+		require.Len(t, decoded[0].Proposal.GetBatch().GetTechnicalUpdates(), tc.updates)
+		ReleaseDecodedEntries(decoded)
+		require.Nil(t, decoded[0].Proposal)
+	}
+}
+
 func TestDecodedEntryRequiresCheckpoint(t *testing.T) {
 	t.Parallel()
 

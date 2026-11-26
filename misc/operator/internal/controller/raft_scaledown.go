@@ -298,10 +298,10 @@ func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes
 	return false, nil
 }
 
-// ledgerctlCommand builds a shell command that runs ledgerctl with the cluster
-// secret for authentication. The command is wrapped in sh -c so that env vars
-// like $CLUSTER_SECRET, $TLS_CA_CERT_FILE, $POD_NAME and $POD_NAMESPACE are
-// expanded at runtime inside the pod.
+// ledgerctlCommand builds a shell command that runs ledgerctl with a short-lived
+// JWT signed by the operator Credentials seed. During the rc.4 to rc.5 stopped
+// upgrade, old rc.4 Pods instead supply LEDGERCTL_AUTH_TOKEN. The command is
+// wrapped in sh -c so that the environment is expanded inside the pod.
 //
 // serverAddr is the host:port the client should dial. For in-pod execs the
 // caller must pass a DNS name that the server certificate is issued for (the
@@ -332,7 +332,9 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 		head, tail = args[:i], args[i:]
 	}
 
-	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
+	// TODO(rc.6): remove the LEDGERCTL_AUTH_TOKEN fallback after every supported
+	// cluster has crossed the rc.4 to rc.5 stopped boundary.
+	cmd := otelExecPrologue + fmt.Sprintf(`if [ -n "${OPERATOR_SIGNING_KEY:-}" ]; then OPERATOR_AUTH_TOKEN="$(./ledgerctl auth generate-token --signing-key "$OPERATOR_SIGNING_KEY" --key-id "$OPERATOR_SIGNING_KEY_ID" --subject ledger-operator --scopes %s --expiration 5m)"; fi; `, strings.Join(operatorCredentialScopes, ",")) + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "${OPERATOR_AUTH_TOKEN:-${LEDGERCTL_AUTH_TOKEN:-}}"`,
 		shellQuoteJoin(head), serverAddr, ledgerctlTLSFlag(tlsMode))
 	if len(tail) > 0 {
 		cmd += " " + shellQuoteJoin(tail)
@@ -470,39 +472,4 @@ func isAlreadyLeader(stderr string) bool {
 
 	return strings.Contains(lower, "already the leader") ||
 		strings.Contains(lower, "already leader")
-}
-
-// deleteScaledDownPVCs deletes PVCs for pod ordinals that no longer exist after
-// a scale-down. Only PVC-backed volumes are considered; hostPath volumes have
-// no PVC to clean up. This must be called after the StatefulSet replica update
-// requests termination of the removed pods; that write does not wait for Pod
-// termination to complete.
-func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
-	namespace, stsName string, previousReplicas, currentReplicas int32,
-	volumeNames []string,
-) error {
-	logger := log.FromContext(ctx)
-	pvcs := clientset.CoreV1().PersistentVolumeClaims(namespace)
-
-	for ordinal := previousReplicas - 1; ordinal >= currentReplicas; ordinal-- {
-		for _, vol := range volumeNames {
-			pvcName := fmt.Sprintf("%s-%s-%d", vol, stsName, ordinal)
-			logger.Info("deleting PVC for removed replica",
-				"pvc", pvcName,
-				"ordinal", ordinal,
-			)
-			if err := pvcs.Delete(ctx, pvcName, metav1.DeleteOptions{}); err != nil {
-				// Already gone — idempotent.
-				if kerrors.IsNotFound(err) {
-					logger.Info("PVC already deleted, skipping", "pvc", pvcName)
-
-					continue
-				}
-
-				return fmt.Errorf("deleting PVC %s: %w", pvcName, err)
-			}
-		}
-	}
-
-	return nil
 }

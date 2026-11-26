@@ -5,20 +5,16 @@
 Local validation is fast engineering feedback and targeted evidence. GitHub CI
 is the authoritative broad, clean validation boundary before merge.
 
-Local agents are cooperative. The workflow protects against accidental stale
-cache entries, cross-worktree mistakes, the wrong toolchain, a stale target,
-the wrong candidate, flaky focused tests, generated drift, and process crashes.
-It does not isolate caches against deliberate same-user poisoning of Go or lint
-cache internals, intercept Git commands, or defend against mutate-and-restore
-behavior in the primary checkout.
+Local agents are cooperative. The validation scripts protect against accidental
+stale cache entries, the wrong toolchain, flaky focused tests, and generated
+drift. `agent-check-pr` checks that the supplied base is a local commit and
+checks the worktree and HEAD only when all `EXPECTED_*` binding variables are
+provided. It does not fetch the target branch, check that the base is current,
+review the candidate, or publish it.
 
-The cooperative cache policy does not relax publication identity:
-
-- candidate and trusted-root worktrees remain distinct and mechanically bound;
-- the exact candidate SHA and complete worktree state remain review inputs;
-- the target is fetched and revalidated at publication boundaries;
-- pushes retain the exact remote-head lease; and
-- required GitHub checks and human review remain merge gates.
+Before publishing a PR update, establish the current target and remote head
+separately, review the exact candidate, and use a push that cannot overwrite a
+newer remote head. Required GitHub checks and human review remain merge gates.
 
 ## Shared external caches
 
@@ -44,11 +40,9 @@ path reused the trimmed entries, recompiled nothing, and linted in 3.4s. Under
 `-trimpath`, `runtime.Caller` returns module-relative file names, so tests
 locate fixtures from their working directory (the package directory) instead.
 
-The cache root must be absolute and outside the candidate worktree, trusted
-root, and disposable validation directory. Run cleanup never removes it.
-`HOME` is inherited for validation; it is not synthesized per run. Reviewer
-adapters may still isolate `HOME`/`CODEX_HOME` to exclude personal reviewer
-configuration, while their Go and lint caches use the shared root.
+The cache root must be absolute and outside the worktree and disposable
+validation directory. Run cleanup never removes it. `HOME` is inherited for
+validation; it is not synthesized per run.
 
 ### Inherited TMPDIR
 
@@ -95,7 +89,10 @@ after none of its lease processes exists. A lease counts as live when
 `kill -0` fails with `EPERM`: the process exists but the caller may not signal
 it. That happens for another user's process, or when a sandboxed validator
 probes a run started outside its sandbox. Only `ESRCH` proves a lease process
-is gone.
+is gone: a probe that fails without reporting it, for example because the
+probe itself crashed, also leaves the lease live. The probe runs as
+`env LC_ALL=C kill -0`, so the shell never switches its own locale; Nix bash on
+macOS can crash in `setlocale` inside a forked subshell.
 
 Lease checks read the PID and process identity from one published owner snapshot.
 If an owner file disappears during lock handoff, the waiting initializer defers
@@ -186,9 +183,9 @@ Apple workstation. They are comparative evidence, not performance budgets:
 | Fast baseline | 22.44s | Build/`Dirty` overlap | Compile, invariants, diff hygiene | `KEEP_LOCAL` |
 | Focused race tests | 2.7-28.4s in representative packages | `Tests` overlap | Regression and affected behavior | `KEEP_LOCAL` when affected |
 | Full root race fallback | 7m32s warm end to end | `Tests` and coverage overlap | Useful only for unknown/high-risk changes | `MOVE_TO_CI` by default |
-| Exact review | Provider-dependent | Human review is independent | Candidate intent and exact bytes | `KEEP_LOCAL` |
-| Repeated review/validation | Provider-dependent | No | None in the linear workflow | `REMOVE` |
-| Target/head revalidation and leased push | Seconds | Merge protection is additive | Fresh base and exact publication identity | `KEEP_LOCAL` |
+
+This table covers validation cost. Review, target freshness, and publication
+are separate steps; `agent-check-pr` does not perform them.
 
 The earlier 35.97s concurrent-worktree measurement used the unsafe original
 v2.12.2 value format and is no longer correctness evidence. The cache
@@ -226,9 +223,23 @@ It classifies the exact base-to-worktree diff, runs the straightforward
 pre-commit recipe only when Go/generated/tooling inputs are involved, runs the
 baseline, and adds focused race or affected subsystem tests.
 
+Agents use `AI_REVIEW_BASE_SHA=<sha> bash scripts/agent-push origin <branch>`
+for an ordinary PR push. This runs `agent-check-pr` with the pinned Nix tools
+and checks that normalization left the committed worktree clean before it
+pushes. The fast `agent-check` baseline and `golangci-lint fmt` do not replace
+this gate: the `Dirty` job also runs `golangci-lint run --fix`, which can apply
+lint fixes that formatters do not.
+
+Before a PR exists, supply `AI_REVIEW_BASE_REF=<base-branch>` as well. The
+script requires the target branch to be absent on the remote and compares
+`AI_REVIEW_BASE_SHA` with the remote base branch before running the same gate.
+For an existing PR, it compares the SHA with the PR base. After validation and
+before publication, it checks the selected base again. It refuses to push if
+the remote base advanced or the PR base branch or SHA changed.
+
 `bash scripts/agent-check-full` is the explicit broad fallback. It runs full
 normalization, the baseline, and the complete root-module race suite. It is not
-the default publication path.
+the default validation path.
 
 The selector intentionally stays small. Unknown inputs, dependency/toolchain
 changes, protobuf/generated surfaces, shared public types, and production Go
@@ -259,65 +270,6 @@ all internal packages and `cmd/ledgerctl/store` respectively with `all_tags`
 and the race detector. The internal suite requires Docker. They produce the
 required `internal.out` and `store.out` profiles. Full-tag E2E coverage and
 full-tag linting do not execute these assertions.
-
-## Linear workflow DAG
-
-One normalization pass is followed by at most one replay on the resulting
-state. A clean replay proves the fixpoint. The committed candidate then receives
-one proportional validation followed by one exact final review. The publication
-path does not add another identical last-mile validation when HEAD and worktree
-state are unchanged.
-
-```mermaid
-flowchart LR
-    A[Fetch and bind target/head] --> B[Focused reproduction or regression]
-    B --> C[Applicable normalization]
-    C --> D[Exact candidate commit]
-    D --> E[Targeted agent-check-pr]
-    E --> F[Collect unresolved GitHub findings]
-    F --> G[Exact final review]
-    G --> H[Revalidate target and remote head]
-    H --> I[Leased push]
-    I --> J[Clean CI in parallel with human review]
-    J --> K[Required checks and approval]
-    K --> L[Merge]
-```
-
-An existing PR's CI starts from its first push while local review proceeds.
-Subsequent fixes are not delayed by local replays of broad jobs that CI runs
-independently.
-
-Representative warm local compute is therefore about 23 seconds for a docs-only
-change, 1.5-2 minutes for a focused test-only change, 2-5 minutes plus its
-reproduction/review evidence for an ordinary bugfix, and about 7.5 minutes for
-the explicit high-risk fallback. Tooling changes that exercise all script
-launchers are typically 3-4 minutes. Provider review time is intentionally not
-hidden inside these command measurements.
-
-### Cooperative-boundary baseline
-
-The 2026-09-04 PR-tooling measurement used a primary checkout containing
-219,330 ignored entries and 14.28 GiB of ignored logical content. The previous
-integrity guard took more than 65.662 seconds for one snapshot, took seven
-snapshots per straight run, and launched 63 Git processes. Its measured lower
-bound exceeded 7 minutes 40 seconds. The cooperative guard does not enumerate
-ignored entries: a warm six-process benchmark of the same checkout took 235
-ms, while the final complete boundary measured 175 ms before and 153 ms after
-(328 ms of snapshot compute and 0.49 seconds wall time). The two snapshots
-launch 12 Git processes. The Git interceptor was removed.
-
-The proportional validation for that tooling change completed in about 90
-seconds on a warm cache, including the single affected race suite. The guard
-was therefore below 1% of measured local compute. Use the following warm local
-objectives to identify future measured optimization work; they are diagnostic
-objectives, not validation gates:
-
-| Change class | Local compute objective | Excluded time |
-| --- | ---: | --- |
-| Documentation or small tooling | <3m | Reviewer-provider latency |
-| Focused test-only | <5m | Reviewer-provider latency |
-| Focused Go change | <5m | Intrinsically slow affected tests and reviewer-provider latency |
-| Ordinary bugfix | <10m | Reviewer-provider latency |
 
 ## CI boundary
 

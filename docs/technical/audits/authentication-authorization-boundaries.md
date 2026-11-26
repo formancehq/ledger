@@ -96,9 +96,9 @@ are not an inventory of the current executable surface.
 | --- | --- | --- |
 | A — Installed coverage | `api/auth.md` Authorization enforcement; `internal/adapter/http/handler.go` registration and middleware; `internal/adapter/grpc/auth_interceptor.go`; generated RPC policy registry and service descriptors; `internal/bootstrap/module.go` service registration. Walk both unary and streaming methods, including dynamic Apply and index scopes. | Public gRPC policy enforcement is installed globally before handlers. The protobuf generator and startup descriptor validation require the registered BucketService and ClusterService methods to match the declared policies exactly. |
 | B — Credential states | `api/auth.md` Wire shape, Error mapping, Anonymous access and Dev-mode bypass; `grpc_auth.go:EvaluateGRPCCredentials/AuthorizeGRPC`, `http_middleware.go:HTTPAuthMiddleware/RequireScope`, `scopes.go`. | Configured anonymous writes and auth disabled are deliberate modes. Non-Bearer headers currently count as absent. HTTP public bypasses include `/health`, `/livez`, `/readyz`, `/_info`; `/clusterz` and pprof need their own route/handler inspection. gRPC Discovery, health and reflection bypass credential evaluation through exact policy/allowlist entries. |
-| C — JWT trust | `grpc_auth.go:validateToken`, `composite_keyset.go`, `ed25519_keys.go` and their tests; `api/auth.md` Token validation and OIDC discovery. Signature/expiration, issuer on the applicable OIDC path and configured static-key scope/superuser restrictions precede privilege grants. | EN-1926 supplies an approved audience decision but its PR is not on this base. Do not assume the existing algorithm-based source selection is the intended final contract or require an audience for deployment-dedicated static keys. |
+| C — JWT trust | `grpc_auth.go:validateToken`, `composite_keyset.go`, `issuer_keyset.go`, `ed25519_keys.go` and their tests; `api/auth.md` Token validation and OIDC discovery. Signature/expiration, issuer on the applicable OIDC path (verified with the named trusted issuer's own key set) and configured static-key scope/superuser restrictions precede privilege grants. | EN-1926 supplies an approved audience decision but its PR is not on this base. Do not assume the existing algorithm-based source selection is the intended final contract or require an audience for deployment-dedicated static keys. |
 | D — Batch scopes | `request_scope.go:RequiredScopeForRequest`, `request_scope_exhaustiveness_test.go`, `http/handlers_bulk.go:serveBulk` and `grpc/auth_interceptor.go`; `admission/signing.md` distinguishes JWT auth from batch signatures. | Check every known Request and nested LedgerRequest variant. The unknown/malformed fallback requires OpsWrite and still reaches ordinary validation; it is not an unconditional reject. An unparsable signed payload defers to authoritative signature verification, so a failed peek alone does not prove bypass. |
-| E — Client/internal boundary | `grpc_auth.go:EvaluateGRPCCredentials` nonempty cluster-secret fast path; `grpc/server_bucket.go:adoptForwardedSnapshotIfTrusted`; `grpc/raft_auth.go` and `bootstrap/module.go`; `bootstrap/module_restore.go` and `api/grpc-api.md` restore lifetime. | A supplied snapshot is rejected unless the context is cluster-internal, including when auth is disabled. HTTP has no cluster-secret fast path. Raft is separately secret-protected with its documented empty-secret mode; when the secret is configured, its health RPCs are protected too (`raft_auth_test.go`). Service health/protocol exemptions do not bypass Raft authentication. Restore has a separate service set, is intentionally not JWT-authenticated, and defaults to loopback; do not assert it can never be configured otherwise. |
+| E — Client/internal boundary | `grpc/auth_interceptor.go` peer transport credential and public cluster-secret rejection; `grpc/server_bucket.go:adoptForwardedSnapshotIfTrusted`; `grpc/raft_auth.go` and `bootstrap/module.go`; `bootstrap/module_restore.go` and `api/grpc-api.md` restore lifetime. | A supplied snapshot is rejected unless the context is cluster-internal, including when auth is disabled. The peer transport credential is separate from the user `authorization` token; user credentials are evaluated at the terminal node. HTTP has no peer transport path. Raft TLS connections are separately secret-protected with a documented empty-secret mode; optional-mode plaintext peers are admitted without the secret during migration and do not gain forwarding trust. With a configured secret, TLS Raft health RPCs are protected too (`raft_auth_test.go`). Service health/protocol exemptions do not bypass TLS Raft authentication. Restore has a separate service set, is intentionally not JWT-authenticated, and defaults to loopback; do not assert it can never be configured otherwise. |
 | F — Caller capture | `api/auth.md` Caller identity; `grpc/client_bucket.go:Apply` captures the follower snapshot, `server_bucket.go` adopts it, `auth/caller_snapshot.go:ResolveCallerSnapshot` selects system actor, forwarded snapshot, then local auth state, and `application/admission/admission.go` attaches it to the proposal. `commands/system_caller.go` names system principals. | Resolution produces exactly one authenticated, anonymous, system, or auth-disabled principal for every valid request context. Authenticated and anonymous variants freeze effective authorization. EN-2035 separately owns rejecting missing or malformed principals at admission and restore validation boundaries. Attribute according to verified current source rules; documentation prose alone does not prove which variant code selects. |
 | G — Frozen attribution | `auth/caller_snapshot.go:buildCallerSnapshot` forbids re-deriving permissions from the snapshot; `api/auth.md` says it is not re-evaluated downstream; `checker/audit-chain.md` binds caller data; `fsm/deterministic-fsm.md` section 3.4 forbids node-local auth decisions in committed apply. | Trace the proposal and hash-binding seam only. Generic hash/checker completeness, persisted encoding and cross-cluster restore parity have other owners. Token expiry after admission is not a requirement to invalidate committed work. |
 
@@ -117,6 +117,20 @@ actual server registration and pinned dependency versions.
 
 Tests under `tests/e2e/cluster/` are supporting authentication/forwarding evidence,
 not authorization for a repository-wide E2E or lifecycle campaign.
+
+### Verified caller source evidence
+
+Contract F requires the source oneof to follow successful credential validation:
+OIDC records its verified issuer even with a JWT `kid`, while static Ed25519
+records its key ID even with an issuer claim. Signing-key rotation must preserve
+the OIDC issuer/subject identity. Exercise real signed tokens through HTTP and
+the public gRPC interceptor chain into admission, and carry the captured caller
+through a trusted follower hop. Assert the source oneof, subject and frozen
+scopes at capture; a successful authentication assertion alone misses this
+failure. Pair authorized writes with insufficient-scope rejection before backend
+entry. `TestHTTPAuthenticatedCallerUsesVerifiedCredentialSource` covers all
+three supported OIDC algorithms and static Ed25519. Existing committed
+snapshots are not rewritten or reclassified by this capture correction.
 
 ## Ownership and exclusions
 
@@ -208,4 +222,50 @@ Initial metadata on normal or mirror creation is authorized by ledger:WriteLedge
 
 Can a caller with LedgerWrite create a ledger with initial metadata without MetadataWrite, while the same caller cannot use the later metadata-save operation without its required scope?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+
+## HTTP signed transactions and existing authorization
+
+Signed transaction create/revert/metadata and nonempty atomic bulk keep their
+existing JWT/anonymous route and element-scope requirements. The Ed25519 signing
+key does not replace the JWT caller or grant cluster/system trust. Both transports
+must reach the existing `resolveBatch` verifier with `ApplyRequest.signed` and
+the unchanged `SignedApplyBatch`; HTTP adds no independent signing authority.
+HTTP assembles it from body `payload` and exactly one nonempty
+`Formance-Signing-Key-Id` / `Formance-Signature` header each. Missing, duplicate,
+malformed or wrong-length signature headers reject 400. Either signing header
+with a non-JSON or missing content type or on an unsupported route rejects 415,
+preventing a signed attempt from silently executing unsigned. Signed requests use
+application/json (including MIME parameters); either header's presence, even if
+empty, selects the wrapper. With neither header present, ordinary unsigned decoding applies.
+Trace the installed route guards and caller capture with authorized and denied controls,
+not merely a well-formed signed envelope. A mismatch between the complete signed
+batch and the HTTP-derived batch must prevent backend dispatch. Every atomic
+bulk element remains subject to its own scope, and continueOnFailure must not
+suppress 401/403 from signature verification or authorization.
+
+The API boundary domain owns wrapper decoding, proto.Equal coverage, exact-byte
+forwarding and response representation. This domain follows dedicated
+`ledger.signing` ErrorInfo reconstruction under `internal/adapter/grpcerr/**` only
+to establish that existing signing failures remain distinguishable from bare or
+foreign gRPC auth failures and cannot change trust/scopes/attribution. Correct
+pairs are MISSING_SIGNATURE/Unauthenticated and INVALID_SIGNATURE or
+UNKNOWN_KEY_ID/PermissionDenied. Compare exact local and forwarded decisions,
+including absent/foreign/wrong-status controls. Public HTTP codes remain generic
+UNAUTHENTICATED/PERMISSION_DENIED; bare/foreign auth errors retain 500. Key lifecycle
+and cryptographic primitive analysis remain excluded. See
+[HTTP signing](../architecture/subsystems/api/http-api.md#signed-transaction-requests).
+
+## Atomic HTTP Apply
+
+Atomic HTTP Apply checks RequiredScopeForRequest for every decoded command before its single service dispatch, with no incidental /_ read-ops scope or universal write scope. A later unauthorized command rejects the whole batch. Signed intent does not grant JWT scopes or caller/system trust; transport-only caller fields are not HTTP input.
+
+Can POST /v3/_/apply admit a mixed batch because only its first element is authorized, require an unrelated ops scope for ledger-only work, lose a checkpoint cluster-write requirement, or replace the authenticated caller with signing identity?
+
+Probe the registered atomic Apply route with each operation scope, mixed allowed/denied commands in multiple positions, anonymous and disabled-auth controls, valid signed batches and forged caller fields. Assert no service dispatch on denial and preserved caller attribution on authorized dispatch; reconcile the route inventory with its dynamic per-command policy.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

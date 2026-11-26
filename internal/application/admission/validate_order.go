@@ -5,16 +5,17 @@ import (
 	"maps"
 	"net/url"
 	"slices"
-	"strings"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -57,6 +58,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 	}
 
 	if err := validateOrderMirrorSource(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	if err := validateOrderSinkConfig(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -253,6 +258,8 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	switch d := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		return domain.ValidateAccountMetadataAddresses(d.ExecuteNumscript.GetAccountMetadata())
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		return domain.ValidateAccountMetadataAddresses(d.CreateTransaction.GetAccountMetadata())
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
@@ -287,12 +294,17 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	ct, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
-	if !ok {
+	var o *raftcmdpb.CreateTransactionOrder
+	var execute bool
+	switch data := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+		o = data.CreateTransaction
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		execute = true
+		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
+	default:
 		return nil
 	}
-
-	o := ct.CreateTransaction
 	if len(o.GetReference()) > domain.MaxTransactionReferenceLength {
 		return domain.ErrTransactionReferenceTooLong
 	}
@@ -307,6 +319,9 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	//     so an order with only `scriptReference: {}` is empty.
 	refPresent := o.GetNumscriptReference() != nil
 	refValid := refPresent && o.GetNumscriptReference().GetName() != ""
+	if execute && !hasInlineScript && !refValid {
+		return domain.ErrScriptRequired
+	}
 
 	switch {
 	case hasPostings && (hasInlineScript || refPresent):
@@ -395,8 +410,17 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return err
 		}
 
-		// The update carries no target, so the per-target gate runs in the FSM
-		// against the stored query; the target-independent shape gate runs here.
+		// New requests have an explicit target. Keep the nil path for historical
+		// targetless orders, whose stored target the FSM validates during replay.
+		if p.UpdatePreparedQuery.Target != nil {
+			if !domain.IsPreparedQueryExecutableTarget(p.UpdatePreparedQuery.GetTarget()) {
+				return domain.ErrPreparedQueryTargetUnsupported
+			}
+			if err := domain.ValidateFilterForTarget(p.UpdatePreparedQuery.GetFilter(), p.UpdatePreparedQuery.GetTarget()); err != nil {
+				return err
+			}
+		}
+
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
@@ -405,13 +429,9 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	}
 }
 
-// validateOrderMirrorSource enforces structural well-formedness on the
-// optional MirrorSource carried by a CreateLedger order. Mirror ledgers go
-// through the standard create path, so a missing/blank field reaches the
-// FSM and is only surfaced when the mirror worker actually tries to open a
-// connection -- well after the ledger has been persisted via Raft. This
-// gate fails fast at admission so a malformed mirror config is rejected
-// before it lands in the audit chain.
+// validateOrderMirrorSource requires a source for MIRROR creation and checks
+// its configuration before the order is proposed. Otherwise an unusable
+// source can reach the audit chain before the mirror worker sees it.
 func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// System-scoped orders carry no mirror source. The proto-generated
 	// GetLedgerScoped/GetPayload getters are nil-safe by themselves, but
@@ -427,8 +447,16 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	src := create.CreateLedger.GetMirrorSource()
+	isMirror := create.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR
 	if src == nil {
+		if isMirror {
+			return ErrMirrorModeRequiresSource
+		}
+
 		return nil
+	}
+	if !isMirror {
+		return ErrMirrorSourceRequiresMirrorMode
 	}
 
 	// Compile the CEL rewrite rules before the order reaches the audit chain, so
@@ -438,6 +466,12 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// guarantees the worker can build the rewriter.
 	if _, err := celrewrite.NewRewriter(src.GetRewriteRules()); err != nil {
 		return ErrMirrorRewriteRuleInvalid
+	}
+
+	// Same contract for asset mappings: NewAssetMapper is what the worker
+	// builds, so a nil error here guarantees the mapper compiles there.
+	if _, err := v2.NewAssetMapper(src.GetAssetMappings()); err != nil {
+		return &mirrorAssetMappingError{cause: err}
 	}
 
 	if http := src.GetHttp(); http != nil {
@@ -452,6 +486,12 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
+	// Admission only: older committed configurations retain their runtime and
+	// replay semantics during mixed-version upgrades.
+	if _, ok := connectionurl.ParseShape(pg.GetDsn(), true); !ok {
+		return ErrMirrorPostgresURLInvalid
+	}
+
 	iam := pg.GetAwsIamAuth()
 	if iam == nil {
 		return nil
@@ -461,53 +501,9 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return ErrMirrorIAMRegionRequired
 	}
 
-	// The SigV4 token written to ConnConfig.Password is a short-lived bearer
-	// credential; admitting a mirror with a non-TLS sslmode would let it
-	// travel in cleartext. Use pgx's own parser to avoid string-level
-	// bypasses (e.g. quoted keyword=value DSN fragments). The same guard
-	// runs at the runtime layer for direct gRPC callers; this admission
-	// gate fails earlier, before the order touches the audit chain.
-	if !dsnEnforcesTLS(pg.GetDsn()) {
-		return ErrMirrorIAMRequiresTLS
-	}
-
+	// Driver option and IAM TLS validation belong to source construction. The
+	// worker refuses unsafe TLS settings before installing IAM credentials.
 	return nil
-}
-
-// dsnEnforcesTLS reports whether the DSN meets the admission gate for IAM
-// auth: URI form, explicit sslmode in the raw string, and TLS on every
-// pgx connect attempt. Mirrors the runtime gate in internal/adapter/v2 —
-// see the comment on buildPgxPoolConfig for the full rationale.
-//
-// Duplicated in-file to keep admission independent of the v2 adapter
-// package. On parse error, returns false; the runtime gate surfaces a more
-// precise error when the mirror worker actually starts.
-func dsnEnforcesTLS(dsn string) bool {
-	if !strings.HasPrefix(dsn, "postgres://") && !strings.HasPrefix(dsn, "postgresql://") {
-		return false
-	}
-
-	u, err := url.Parse(dsn)
-	if err != nil || !u.Query().Has("sslmode") {
-		return false
-	}
-
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return false
-	}
-
-	if cfg.ConnConfig.TLSConfig == nil {
-		return false
-	}
-
-	for _, fb := range cfg.ConnConfig.Fallbacks {
-		if fb == nil || fb.TLSConfig == nil {
-			return false
-		}
-	}
-
-	return true
 }
 
 // validateOrderSigningKey rejects a signing-key registration whose public key is
@@ -523,16 +519,6 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 
 	if len(reg.RegisterSigningKey.GetPublicKey()) != ed25519.PublicKeySize {
 		return ErrSigningKeyInvalidLength
-	}
-
-	return nil
-}
-
-// validateCommandMetadata applies the shared admission and mirror metadata
-// contract using the committed policy, preserving the application error wrapper.
-func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLimits) error {
-	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
-		return &domain.BusinessError{Err: err}
 	}
 
 	return nil

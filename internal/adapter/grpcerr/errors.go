@@ -12,10 +12,13 @@
 // back into an *apierr.Remote so those consumers keep working across a network
 // hop.
 //
-// FromStatusError reconstructs exactly two shapes and returns everything else
+// FromStatusError reconstructs the following shapes and returns everything else
 // unchanged; read the rule as that complement rather than as a list of
 // excluded codes.
 //
+//   - A client signing rejection carrying a validated ledger.signing ErrorInfo
+//     retains its coarse authentication class and original status. Bare peer
+//     authentication errors remain transport failures.
 //   - A status carrying a ledger-domain ErrorInfo becomes an *apierr.Remote —
 //     whatever its code. A KindUnavailable or KindInternal Describable arrives
 //     as codes.Unavailable or codes.Internal *with* an ErrorInfo, and is
@@ -63,7 +66,8 @@
 // it from the kind keeps every code-reading caller correct.
 //
 // It is deliberately a leaf: it imports only gRPC, errdetails,
-// internal/adapter/apierr, internal/domain and internal/proto/commonpb.
+// internal/adapter/apierr, internal/domain (including crypto/signing), and
+// protobuf packages.
 // internal/adapter/grpc, the intuitive home, transitively pulls in the Pebble
 // DAL, the readstore, the usage store, backup and the Raft node, which
 // cmd/ledgerctl must not link — so the shared table lives here and that
@@ -176,6 +180,10 @@ func FromStatusError(err error) error {
 
 	if st.Code() == codes.OK {
 		return err
+	}
+
+	if signing := decodeSigningStatus(st); signing != nil {
+		return &reconstructedError{st: st, inner: signing}
 	}
 
 	decoded := Decode(err)

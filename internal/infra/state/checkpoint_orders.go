@@ -5,6 +5,7 @@ import (
 
 	"go.etcd.io/raft/v3/raftpb"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -67,7 +68,7 @@ func ClassifyCheckpointOrderPosition(orders []*raftcmdpb.Order) CheckpointOrderP
 // to enter maintenance after the batch commit. Assumes the proposal has already
 // been validated (the trigger order, if any, is the last one).
 func ProposalRequiresCheckpoint(p *raftcmdpb.Proposal) bool {
-	orders := p.GetOrders()
+	orders := proposals.BatchOrders(p)
 	if len(orders) == 0 {
 		return false
 	}
@@ -101,7 +102,7 @@ func ValidateCheckpointEntryPositions(entries []*raftpb.Entry) error {
 
 		cmd := raftcmdpb.ProposalFromVTPool()
 		err := cmd.UnmarshalVT(entry.GetData())
-		triggers := err == nil && ClassifyCheckpointOrderPosition(cmd.GetOrders()) != CheckpointOrderAbsent
+		triggers := err == nil && ClassifyCheckpointOrderPosition(proposals.BatchOrders(cmd)) != CheckpointOrderAbsent
 		cmd.ReturnToVTPool()
 
 		if triggers {
@@ -132,7 +133,7 @@ func ValidateCheckpointEntryPositionsDecoded(decoded []DecodedEntry) error {
 			continue
 		}
 
-		if ClassifyCheckpointOrderPosition(decoded[i].Proposal.GetOrders()) == CheckpointOrderAbsent {
+		if ClassifyCheckpointOrderPosition(proposals.BatchOrders(decoded[i].Proposal)) == CheckpointOrderAbsent {
 			continue
 		}
 

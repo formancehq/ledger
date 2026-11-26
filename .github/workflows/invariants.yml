@@ -23,7 +23,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -37,4 +37,5 @@ jobs:
           # pull_request checks out the merge commit, so comparing with the
           # current target tip also catches a revision another PR consumed.
           PROTOCOL_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          PROTOCOL_BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
         run: nix develop .#ci --command just check-protocol-version

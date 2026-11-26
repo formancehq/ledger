@@ -5,7 +5,7 @@ pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
 check-protocol-version:
-    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA"
+    go run ./scripts/checkprotocolversion --base "$PROTOCOL_BASE_SHA" --base-ref "${PROTOCOL_BASE_REF:-}"
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output
@@ -41,7 +41,7 @@ lint:
     (cd tests/antithesis/workload && golangci-lint run --allow-parallel-runners --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 # Go modules kept tidy by `just tidy` (and checked by the Dirty CI job).
-tidy_modules := ". misc/operator tests/antithesis/workload"
+tidy_modules := ". misc/operator tests/antithesis/workload tests/perf"
 
 tidy:
     #!/usr/bin/env bash
@@ -55,8 +55,7 @@ tidy:
 # GOMODCACHE without modifying any file. CI runs this in Setup Env so every job
 # commits the full module set to the shared Namespace cache volume: the last
 # job to commit on a node decides what the next job forks, so modules only one
-# job needs would otherwise be lost. tests/perf is excluded because no CI job
-# builds it.
+# job needs would otherwise be lost.
 go-mod-download:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -108,10 +107,8 @@ all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 # `formancehq/ledger` published image.
 image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger")
 
-# Operator Docker image repository (registry + name). Override via env var
-# to push to a different GHCR location. Default targets the canonical
-# `formancehq/ledger-operator` published image.
-operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
+test-perf:
+    go -C tests/perf test -race ./...
 
 # Build the server application (light: no optional deps)
 build:
@@ -399,6 +396,7 @@ generate-proto:
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
     @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
     @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
+    @cd tools/protoc-gen-ledger-json && go build -o ../../build/protoc-gen-ledger-json .
     @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
@@ -407,6 +405,7 @@ generate-proto:
         --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Proposal \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionBatch \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.ExecutionPlan \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributeValue \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.AttributePlan \
@@ -431,6 +430,9 @@ generate-proto:
         --plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
         --ledger-log-category_out=. \
         --ledger-log-category_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-ledger-json=build/protoc-gen-ledger-json \
+        --ledger-json_out=. \
+        --ledger-json_opt=module=github.com/formancehq/ledger/v3 \
         --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
         --rpcauth_out=. \
         --rpcauth_opt=module=github.com/formancehq/ledger/v3 \
@@ -447,6 +449,7 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+    @go run ./scripts/fix-vtproto-capability-length.go
 
 test-rpcauth-generator:
     go -C tools/protoc-gen-rpcauth test ./...
@@ -493,7 +496,7 @@ operator-install-plugin:
 operator-test:
     cd misc/operator && go test ./...
 
-# Run Ledger target and trace-sampling admission regressions in the operator-tests Nix shell.
+# Run operator admission, trace-sampling, and backup recovery regressions in the operator-tests Nix shell.
 operator-test-admission:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -501,7 +504,17 @@ operator-test-admission:
     KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
     export KUBEBUILDER_ASSETS
     cd misc/operator
-    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestTraceSampling)' -count=1 -timeout 3m
+    go test -race -tags integration ./internal/controller -run '^(TestLedgerAdmission|TestClusterPolicyRevisionAdmission|TestTraceSampling|TestBackupRunAdmission|TestBackupRunParentSelectorIntegration$|TestBackupRunCommittedCreateLostResponseIntegration$|TestBackupRunManualAssociationIntegration$)' -count=1 -timeout 3m
+
+# Run all operator API-server integration regressions in the operator-tests Nix shell.
+operator-test-integration:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset GOROOT
+    KUBEBUILDER_ASSETS=$(setup-envtest use 1.32.x -p path)
+    export KUBEBUILDER_ASSETS
+    cd misc/operator
+    go test -race -tags integration ./... -count=1 -parallel 4 -timeout 20m
 
 # Run operator pre-commit checks (generate + tidy + build)
 operator-pre-commit: operator-generate
@@ -513,36 +526,6 @@ operator-pre-commit: operator-generate
     echo "==> operator: go build"
     go build ./...
 
-# Build and push operator Docker image (multi-arch). With a tag argument, also tags :latest.
-operator-docker-build tag='':
-    #!/bin/bash
-    set -euo pipefail
-    image='{{ operator_image_repository }}'
-    if [ -n "{{ tag }}" ]; then
-        docker buildx build -t "${image}:{{ tag }}" -t "${image}:latest" \
-            --build-arg "OPERATOR_VERSION={{ tag }}" \
-            --platform linux/amd64,linux/arm64 --push misc/operator
-    else
-        docker buildx build -t "${image}:latest" \
-            --platform linux/amd64,linux/arm64 --push misc/operator
-    fi
-
-# Build and push a PR operator image with GoReleaser under one explicit
-# `<repository>:pr-<num>-<sha7>` tag. It never touches :latest, a GitHub release
-# or the Helm charts. Needs GORELEASER_KEY and a Docker login to the registry.
-# Config: misc/operator/.goreleaser.pr.yml.
-operator-docker-build-pr image: (_assert-pr-image image)
-    #!/usr/bin/env bash
-    set -euo pipefail
-    image='{{ image }}'
-    export OPERATOR_IMAGE_REPOSITORY="${image%:*}"
-    export PR_IMAGE_TAG="${image##*:}"
-    cd misc/operator
-    # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
-    # releases API, even if a release step were enabled by mistake.
-    env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
-
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
     cd misc/operator && just helm-publish '{{ version }}' '{{ suffix }}'
@@ -551,37 +534,59 @@ operator-helm-publish version='' suffix='':
 docker-build *ARGS:
     docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
-# Build and push the PR docker image with GoReleaser under a single explicit
-# `<repository>:pr-<num>-<sha7>` tag. It never touches `:latest`, `:nightly`, a
-# GitHub release or the Helm charts. Needs GORELEASER_KEY and a Docker login to
-# the registry. Used by the `Build-PR-Image` workflow job.
+# Build and push the PR docker image with GoReleaser under an explicit
+# `<repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]` tag. With DEV_VERSION set
+# (RFC-0013 development version of the same commit, without the leading v), the
+# image is also tagged `v<DEV_VERSION>` and binaries report that version. It never
+# touches `:latest`, `:nightly`, a release tag, a GitHub release or the Helm
+# charts. Needs GORELEASER_KEY and a Docker login to the registry. Used by the
+# `Build-PR-Image` workflow job.
 #
-# .goreleaser.pr.yml includes the canonical .goreleaser.yml, so the PR image has
-# the same binaries and build tags as a release: kafka,nats,clickhouse,databricks,
-# s3,pyroscope. It does not include `azure`, unlike `just docker-build`.
-docker-build-pr image: (_assert-pr-image image)
+# Pass true to also publish the operator under the commit-scoped PR tag.
+# The perf workflow omits it because it only needs Ledger.
+[positional-arguments]
+docker-build-pr image with_operator='false': (_assert-pr-image image)
     #!/usr/bin/env bash
     set -euo pipefail
-    image='{{ image }}'
+    image="$1"
+    with_operator="$2"
     export IMAGE_REPOSITORY="${image%:*}"
     export PR_IMAGE_TAG="${image##*:}"
+    unset PR_OPERATOR_TAG
+    case "$with_operator" in
+        true) export PR_OPERATOR_TAG="${PR_IMAGE_TAG%-run-*}" ;;
+        false) ;;
+        *) echo 'error: with_operator must be true or false' >&2; exit 1 ;;
+    esac
+    # A development version always ends in .dev.<N>.g<sha>, so it can never be a
+    # release tag, and its commit must be the one in the PR tag.
+    if [[ -n "${DEV_VERSION:-}" ]]; then
+        sha7="${PR_IMAGE_TAG#pr-*-}"
+        sha7="${sha7:0:7}"
+        if ! [[ "$DEV_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z-]+\.)*dev\.[0-9]+\.g[0-9a-f]{7,}$ ]] ||
+            [[ "${DEV_VERSION##*.g}" != "$sha7"* ]]; then
+            echo "error: DEV_VERSION '$DEV_VERSION' is not a development version of commit $sha7" >&2
+            exit 1
+        fi
+    fi
     export IMAGE_PROVENANCE=mode=min
     # GITHUB_TOKEN is removed on purpose: a PR build must never reach the GitHub
     # releases API, even if a release step were enabled by mistake.
     env -u GITHUB_TOKEN -u GH_TOKEN \
-        goreleaser release --nightly --clean --config .goreleaser.pr.yml --skip=archive
+        goreleaser release --nightly --clean --skip=archive
 
-# Refuse any PR image reference that is not `<repository>:pr-<num>-<sha7>`, so a
+# Accept PR image tags with an optional build-attempt suffix, so a
 # PR build cannot move `latest`, `nightly` or a release tag.
 [private]
+[positional-arguments]
 _assert-pr-image image:
     #!/usr/bin/env bash
     set -euo pipefail
-    image='{{ image }}'
+    image="$1"
     last="${image##*/}"
     tag="${last#*:}"
-    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}$ ]]; then
-        echo "error: '$image' is not <repository>:pr-<num>-<sha7>" >&2
+    if [[ "$last" != *:* ]] || ! [[ "$tag" =~ ^pr-[0-9]+-[0-9a-f]{7}(-run-[1-9][0-9]*-[1-9][0-9]*)?$ ]]; then
+        echo "error: '$image' is not <repository>:pr-<num>-<sha7>[-run-<id>-<attempt>]" >&2
         exit 1
     fi
 
@@ -608,74 +613,6 @@ k8s-describe-pod:
 k8s-rollout-restart:
     kubectl rollout restart statefulsets/ledger-exp
     kubectl rollout status statefulset/ledger-exp
-
-# Available demo tapes
-demos := "demo_getting_started demo_numscript demo_transactions demo_metadata demo_operations demo_audit demo_signing"
-
-# Generate all CLI demo GIFs (starts a temporary server automatically).
-# Run inside the demo shell: nix develop .#demo --command just generate-demo
-generate-demo: (_generate-demo demos)
-
-# Generate a single CLI demo GIF
-# Usage: just generate-demo-only demo_numscript
-generate-demo-only name: (_generate-demo name)
-
-_generate-demo tapes:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for tool in vhs grpcurl; do
-        if ! command -v "$tool" >/dev/null 2>&1; then
-            echo "$tool not found: run inside the demo shell (nix develop .#demo)" >&2
-            exit 1
-        fi
-    done
-    DEMO_DIR=$(mktemp -d)
-    echo "Generating CLI demo GIFs..."
-    echo "Using temporary directory: $DEMO_DIR"
-    echo "Building client..."
-    go build -o ./build/ledgerctl ./cmd/ledgerctl
-    echo "Building server..."
-    go build -o "$DEMO_DIR/ledger-server" .
-    cleanup() {
-        echo "Stopping server (PID: $SERVER_PID)..."
-        kill "$SERVER_PID" 2>/dev/null || true
-        wait "$SERVER_PID" 2>/dev/null || true
-        rm -rf "$DEMO_DIR"
-        echo "Cleanup done."
-    }
-    trap cleanup EXIT
-    "$DEMO_DIR/ledger-server" run \
-        --node-id 1 \
-        --cluster-id demo \
-        --bootstrap \
-        --bind-addr 127.0.0.1:7777 \
-        --wal-dir "$DEMO_DIR/wal" \
-        --data-dir "$DEMO_DIR/data" \
-        --grpc-port 8888 \
-        &
-    SERVER_PID=$!
-    echo "Waiting for server to be ready (PID: $SERVER_PID)..."
-    for i in $(seq 1 30); do
-        if grpcurl -plaintext 127.0.0.1:8888 grpc.health.v1.Health/Check > /dev/null 2>&1; then
-            echo "Server is ready."
-            break
-        fi
-        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-            echo "Server process died unexpectedly."
-            exit 1
-        fi
-        sleep 1
-    done
-    if ! grpcurl -plaintext 127.0.0.1:8888 grpc.health.v1.Health/Check > /dev/null 2>&1; then
-        echo "Server failed to start within 30 seconds."
-        exit 1
-    fi
-    for tape in {{tapes}}; do
-        echo "==> Generating $tape..."
-        PATH="{{justfile_directory()}}/build:$PATH" LEDGERCTL_SERVER="127.0.0.1:8888" LEDGERCTL_INSECURE="true" vhs "misc/demo/${tape}.tape"
-        echo "==> Done: misc/demo/${tape}.gif"
-    done
-    echo "All demos generated."
 
 # Regenerate the real TypeScript SDK and exercise it against Ledger HTTP handlers.
 # Requires Speakeasy authentication; separate from default CI validation.

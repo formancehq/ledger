@@ -167,7 +167,7 @@ func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, sharedState, notifier, nil, "test-cluster", 0,
 		handler,
-	)
+		state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 
 	recovery := state.NewRecovery(fsm, pebbleStore)

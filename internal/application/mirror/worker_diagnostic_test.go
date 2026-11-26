@@ -80,7 +80,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	registry := state.NewStateRegistry(c, attrs)
 	keys := keystore.NewKeyStore()
 	shared := state.NewSharedState()
-	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
@@ -89,7 +89,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker}
 	writeGate := health.NewMockWriteGate(gomock.NewController(t))
 	writeGate.EXPECT().CheckWritesAllowed().Return(nil)
-	adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+	adm := admission.NewAdmission(store, logger, proposer, nil, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 	config := &commonpb.MirrorSourceConfig{
 		LedgerName: "source-ledger",
 		Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
@@ -117,13 +117,13 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
 	source := v2.NewHTTPSource(ledger.GetMirrorSource().GetHttp().GetBaseUrl(), config.GetLedgerName(), &http.Client{Transport: rejectingHTTPMirrorTransport{t: t}})
 	t.Cleanup(func() { require.NoError(t, source.Close()) })
-	w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
+	w := NewWorker(ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters)
 	proposed := 0
 	proposer.beforeApply = func(cmd *raftcmdpb.Proposal) {
 		proposed++
-		require.Empty(t, cmd.GetOrders())
-		require.Len(t, cmd.GetTechnicalUpdates(), 1)
-		update := cmd.GetTechnicalUpdates()[0].GetMirrorSync()
+		require.Empty(t, cmd.GetBatch().GetOrders())
+		require.Len(t, cmd.GetBatch().GetTechnicalUpdates(), 1)
+		update := cmd.GetBatch().GetTechnicalUpdates()[0].GetMirrorSync()
 		require.Equal(t, ledgerName, update.GetLedgerName())
 		require.Contains(t, update.GetError().GetMessage(), diagnostic)
 		encoded, err := cmd.MarshalVT()
@@ -238,7 +238,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					registry := state.NewStateRegistry(c, attrs)
 					keys := keystore.NewKeyStore()
 					shared := state.NewSharedState()
-					machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+					machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 					require.NoError(t, err)
 					writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 					require.NoError(t, state.NewRecovery(machine, store).RecoverState())
@@ -247,7 +247,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					proposer := &applyingMirrorProposer{t: t, machine: machine, store: store, tracker: tracker}
 					writeGate := health.NewMockWriteGate(gomock.NewController(t))
 					writeGate.EXPECT().CheckWritesAllowed().Return(nil)
-					adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
+					adm := admission.NewAdmission(store, logger, proposer, nil, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 
 					sourceUser := tc.user
 					if mode != "direct" {
@@ -274,7 +274,7 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					}
 					source := v2.NewHTTPSource(baseURL, config.GetLedgerName(), &http.Client{Transport: transport})
 					t.Cleanup(func() { require.NoError(t, source.Close()) })
-					w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
+					w := NewWorker(ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder, logger, meters)
 					assertSafe := func(diagnosticText string) {
 						t.Helper()
 						password, hasPassword := tc.user.Password()
@@ -289,9 +289,9 @@ func TestWorker_TransportErrorsDoNotDiscloseCredentials(t *testing.T) {
 					proposed := 0
 					proposer.beforeApply = func(cmd *raftcmdpb.Proposal) {
 						proposed++
-						require.Empty(t, cmd.GetOrders())
-						require.Len(t, cmd.GetTechnicalUpdates(), 1)
-						update := cmd.GetTechnicalUpdates()[0].GetMirrorSync()
+						require.Empty(t, cmd.GetBatch().GetOrders())
+						require.Len(t, cmd.GetBatch().GetTechnicalUpdates(), 1)
+						update := cmd.GetBatch().GetTechnicalUpdates()[0].GetMirrorSync()
 						require.Equal(t, ledgerName, update.GetLedgerName())
 						require.Contains(t, update.GetError().GetMessage(), diagnostic)
 						encoded, err := cmd.MarshalVT()

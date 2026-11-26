@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/server/v3/storage/wal"
+	etcdwal "go.etcd.io/etcd/server/v3/storage/wal"
+	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -129,7 +130,7 @@ func TestPurgeOldWALSegments(t *testing.T) {
 		assertOldWALSegmentsPurged(t, func(w *DefaultWAL, snapshotIndex uint64) {
 			require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
 				Metadata: snapshotMeta(snapshotIndex, 1, &raftpb.ConfState{Voters: []uint64{1}}),
-			}))
+			}, nil, nil))
 		})
 	})
 }
@@ -146,7 +147,7 @@ func assertOldWALSegmentsPurged(t *testing.T, triggerReclamation func(*DefaultWA
 	// keeps this valid when a benchmark run leaves the production size in place.
 	const numEntries = 10
 
-	entryData := make([]byte, wal.SegmentSizeBytes/2)
+	entryData := make([]byte, etcdwal.SegmentSizeBytes/2)
 	for i := uint64(1); i <= numEntries; i++ {
 		err := w.Append(
 			hs(1, 1, i),
@@ -1084,7 +1085,7 @@ func TestLastIndex_WithSnapshotOnly(t *testing.T) {
 		Metadata: snapshotMeta(10, 2, cs),
 		Data:     []byte("snapshot data"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
@@ -1177,6 +1178,45 @@ func TestSnapshot_AfterCreateSnapshot(t *testing.T) {
 	require.Equal(t, cs.GetVoters(), snap.GetMetadata().GetConfState().GetVoters())
 }
 
+func TestCreateSnapshot_DoesNotPublishBeforeWALRecord(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2}}
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+	}))
+	require.NoError(t, w.CreateSnapshot(1, cs, []byte("old")))
+
+	// The snapshot file write succeeds, but the WAL snapshot-record write fails.
+	// This leaves an orphan file on disk and must not advance the in-memory
+	// authority that maintenance uses to decide whether compaction is safe.
+	require.NoError(t, w.wal.Close())
+	require.Error(t, w.CreateSnapshot(2, cs, []byte("new")))
+
+	snap, err := w.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), snap.GetMetadata().GetIndex())
+	require.Equal(t, []byte("old"), snap.GetData())
+
+	// Reopen the WAL to model the next idle maintenance tick after the
+	// transient record-write failure. The retry must still be able to publish
+	// the same snapshot because the failed attempt did not advance memory.
+	reopened, err := etcdwal.Open(w.zapLogger, w.etcdWalDir, &walpb.Snapshot{
+		Index: new(uint64(1)),
+		Term:  new(uint64(1)),
+	})
+	require.NoError(t, err)
+	_, _, _, err = reopened.ReadAll()
+	require.NoError(t, err)
+	w.wal = reopened
+	require.NoError(t, w.CreateSnapshot(2, cs, []byte("new")))
+	snap, err = w.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), snap.GetMetadata().GetIndex())
+}
+
 func TestUpdateSnapshotConfStateSerializesSnapshotPersistence(t *testing.T) {
 	t.Parallel()
 
@@ -1217,6 +1257,68 @@ func TestUpdateSnapshotConfStateSerializesSnapshotPersistence(t *testing.T) {
 
 // --- ApplySnapshot tests ---
 
+func TestReceivedSnapshotRestartDiscardsReplacedTail(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+
+	// A former leader left entries 3..5 uncommitted. The current leader has
+	// committed a different entry at index 4 and sends its snapshot at 4/2.
+	// Raft must accept it: the follower's entry at index 4 has term 3.
+	require.NoError(t, w.Append(hs(3, 2, 2), []*raftpb.Entry{
+		ent(1, 1, nil), ent(2, 1, nil), ent(3, 3, nil),
+		ent(4, 3, nil), ent(5, 3, nil),
+	}))
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+	rawNode, err := raft.NewRawNode(&raft.Config{
+		ID: 1, ElectionTick: 10, HeartbeatTick: 1, Storage: w,
+		Applied: 2, MaxInflightMsgs: 256, AsyncStorageWrites: true,
+	})
+	require.NoError(t, err)
+	snap := &raftpb.Snapshot{
+		Metadata: snapshotMeta(4, 2, cs),
+		Data:     []byte("received"),
+	}
+	require.NoError(t, rawNode.Step(&raftpb.Message{
+		Type: new(raftpb.MsgSnap), From: new(uint64(2)), To: new(uint64(1)),
+		Term: new(uint64(4)), Snapshot: snap,
+	}))
+	require.True(t, rawNode.HasReady())
+	ready := rawNode.Ready()
+	require.Equal(t, uint64(4), ready.Snapshot.GetMetadata().GetIndex(), "Raft must accept the divergent snapshot")
+	require.Equal(t, uint64(2), ready.Snapshot.GetMetadata().GetTerm())
+	require.Equal(t, snap.GetData(), ready.Snapshot.GetData())
+	require.Equal(t, uint64(4), ready.GetTerm())
+	require.Equal(t, uint64(4), ready.GetCommit())
+	require.Empty(t, ready.Entries)
+	require.NoError(t, w.ApplySnapshot(ready.Snapshot, ready.HardState, ready.Entries))
+	last, err := w.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), last)
+	require.NoError(t, w.Close())
+	legacyReader, err := etcdwal.Open(w.zapLogger, filepath.Join(dir, etcdWalDir), &walpb.Snapshot{
+		Index: new(uint64(4)), Term: new(uint64(2)),
+	})
+	require.NoError(t, err)
+	_, legacyState, legacyEntries, err := legacyReader.ReadAll()
+	require.NoError(t, err)
+	require.Empty(t, legacyEntries, "the unchanged etcd WAL reader must not find the old tail")
+	require.Equal(t, uint64(4), legacyState.GetTerm())
+	require.NoError(t, legacyReader.Close())
+
+	restarted := newTestWALAt(t, dir)
+	last, err = restarted.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), last, "replay must not resurrect the replaced entry 5/3")
+	state, _, err := restarted.InitialState()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), state.GetTerm())
+	require.Equal(t, uint64(0), state.GetVote(), "a higher Raft term clears the previous vote")
+	require.Equal(t, uint64(4), state.GetCommit())
+}
+
 func TestApplySnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -1232,7 +1334,7 @@ func TestApplySnapshot(t *testing.T) {
 		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
 		Data:     []byte("full-snapshot"),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	// Verify snapshot is applied
 	gotSnap, err := w.Snapshot()
@@ -1259,10 +1361,13 @@ func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
 
 	err := w.ApplySnapshot(&raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
-	})
+	}, nil, nil)
 	require.ErrorContains(t, err, "saving snapshot file")
 	require.True(t, w.mu.TryLock(), "ApplySnapshot must unlock after a persistence failure")
 	w.mu.Unlock()
+	last, lastErr := w.LastIndex()
+	require.NoError(t, lastErr)
+	require.Equal(t, uint64(0), last, "a pre-switch failure must leave the old in-memory log active")
 }
 
 // --- Append edge cases ---
@@ -1446,7 +1551,7 @@ func TestCompact_EmptyEntriesAfterApplySnapshot(t *testing.T) {
 	snap := &raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
 	}
-	require.NoError(t, w.ApplySnapshot(snap))
+	require.NoError(t, w.ApplySnapshot(snap, nil, nil))
 
 	// Compact at snapshot index with no entries should succeed (no-op via empty entries path)
 	// firstIndex = snapshot.Metadata.Index + 1 = 11
@@ -1614,7 +1719,7 @@ func TestWAL_ReopenReadsEntriesAcrossSegments(t *testing.T) {
 	const numEntries = 12
 	want := make([][]byte, numEntries)
 	for i := range want {
-		want[i] = make([]byte, wal.SegmentSizeBytes/4)
+		want[i] = make([]byte, etcdwal.SegmentSizeBytes/4)
 		want[i][0] = byte(i + 1)
 		require.NoError(t, w.Append(hs(1, 1, uint64(i+1)), []*raftpb.Entry{ent(uint64(i+1), 1, want[i])}))
 	}
@@ -1631,7 +1736,7 @@ func TestWAL_EntryLargerThanASegmentSurvivesReopen(t *testing.T) {
 
 	// etcd checks the segment threshold after the write, so an entry larger
 	// than a whole segment is written into one segment, followed by a cut.
-	oversized := make([]byte, wal.SegmentSizeBytes*5/2)
+	oversized := make([]byte, etcdwal.SegmentSizeBytes*5/2)
 	oversized[len(oversized)-1] = 0xff
 	want := [][]byte{oversized, []byte("after the oversized entry")}
 	require.NoError(t, w.Append(hs(1, 1, 1), []*raftpb.Entry{ent(1, 1, want[0])}))

@@ -22,20 +22,17 @@
     },
     "spec": {
       "additionalProperties": false,
-      "description": "BackupRunSpec defines the desired state of a BackupRun.",
+      "description": "Spec is required so removing it cannot bypass parent immutability.",
       "properties": {
         "backupRef": {
-          "description": "BackupRef is the name of the parent Backup in the same namespace.\nDestination and clusterRef are inherited from the parent.",
-          "type": "string"
-        },
-        "type": {
-          "default": "Full",
-          "description": "Type is the backup type. Defaults to Full.",
-          "enum": [
-            "Full",
-            "Incremental"
-          ],
-          "type": "string"
+          "description": "BackupRef is the name of the parent Backup in the same namespace, immutable from creation.\nDestination and clusterRef are inherited from the parent.",
+          "type": "string",
+          "x-kubernetes-validations": [
+            {
+              "message": "backupRef is immutable",
+              "rule": "self == oldSelf"
+            }
+          ]
         }
       },
       "required": [
@@ -108,22 +105,41 @@
           },
           "type": "array"
         },
-        "full": {
+        "message": {
+          "description": "Message contains human-readable status information (typically an error message).",
+          "type": "string"
+        },
+        "phase": {
+          "description": "Phase is the current lifecycle phase.",
+          "enum": [
+            "Pending",
+            "Running",
+            "Succeeded",
+            "Failed"
+          ],
+          "type": "string"
+        },
+        "result": {
           "additionalProperties": false,
-          "description": "Full holds the result of a Full backup run. Set only when spec.type is Full and the run succeeded.",
+          "description": "Result holds the result of a successful checkpoint backup run.",
           "properties": {
+            "completionUnixNano": {
+              "description": "CompletionUnixNano orders successful runs whose Kubernetes timestamps\nhave the same second. It is preserved with LastBackup after run pruning.",
+              "format": "int64",
+              "type": "integer"
+            },
             "durationMs": {
-              "description": "DurationMs is the duration of the last full backup in milliseconds.",
+              "description": "DurationMs is the duration of the last checkpoint in milliseconds.",
               "format": "int64",
               "type": "integer"
             },
             "filesDeleted": {
-              "description": "FilesDeleted is the number of stale files deleted in the last full backup\n(the diff between the previous manifest and the new checkpoint).",
+              "description": "FilesDeleted is the number of stale files deleted in the last checkpoint\n(the diff between the previous manifest and the new checkpoint).",
               "format": "int32",
               "type": "integer"
             },
             "filesUploaded": {
-              "description": "FilesUploaded is the number of files uploaded in the last full backup.",
+              "description": "FilesUploaded is the number of files uploaded in the last checkpoint.",
               "format": "int32",
               "type": "integer"
             },
@@ -143,12 +159,12 @@
               "type": "integer"
             },
             "orphansDeleted": {
-              "description": "OrphansDeleted is the number of orphan files pruned from storage in the\nlast full backup. Orphans are leftovers from previous failed runs that\ncrashed before writing a manifest.",
+              "description": "OrphansDeleted is the number of orphan files pruned from storage in the\nlast checkpoint. Orphans are leftovers from previous failed runs that\ncrashed before writing a manifest.",
               "format": "int32",
               "type": "integer"
             },
             "time": {
-              "description": "Time is when the last full backup completed.",
+              "description": "Time is when the last checkpoint completed.",
               "format": "date-time",
               "type": "string"
             },
@@ -160,67 +176,6 @@
           },
           "type": "object"
         },
-        "incremental": {
-          "additionalProperties": false,
-          "description": "Incremental holds the result of an Incremental backup run. Set only when spec.type is Incremental and the run succeeded.",
-          "properties": {
-            "auditEntriesExported": {
-              "description": "AuditEntriesExported is the number of audit entries exported.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "durationMs": {
-              "description": "DurationMs is the duration of the last incremental backup in milliseconds.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "lastAuditSequence": {
-              "description": "LastAuditSequence is the last audit sequence in the incremental backup.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "lastLogSequence": {
-              "description": "LastLogSequence is the last log sequence in the incremental backup.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "logEntriesExported": {
-              "description": "LogEntriesExported is the number of log entries exported.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "orphansDeleted": {
-              "description": "OrphansDeleted is the number of orphan export segments pruned from\nstorage in the last incremental backup.",
-              "format": "int32",
-              "type": "integer"
-            },
-            "segmentsUploaded": {
-              "description": "SegmentsUploaded is the number of segments uploaded.",
-              "format": "int32",
-              "type": "integer"
-            },
-            "time": {
-              "description": "Time is when the last incremental backup completed.",
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          "type": "object"
-        },
-        "message": {
-          "description": "Message contains human-readable status information (typically an error message).",
-          "type": "string"
-        },
-        "phase": {
-          "description": "Phase is the current lifecycle phase.",
-          "enum": [
-            "Pending",
-            "Running",
-            "Succeeded",
-            "Failed"
-          ],
-          "type": "string"
-        },
         "startTime": {
           "description": "StartTime is when the run transitioned to Running.",
           "format": "date-time",
@@ -231,6 +186,7 @@
     }
   },
   "required": [
+    "spec",
     "apiVersion",
     "kind"
   ],

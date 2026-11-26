@@ -75,12 +75,12 @@ func TestProposeSinkUpdate_DoesNotMutateEarlierProposalBytes(t *testing.T) {
 	// Cursor=secondCursor).
 	first := &raftcmdpb.Proposal{}
 	require.NoError(t, first.UnmarshalVT(prop.captured[0]))
-	require.Len(t, first.GetTechnicalUpdates(), 1)
-	require.Equal(t, firstCursor, first.GetTechnicalUpdates()[0].GetEventsSink().GetCursor(),
+	require.Len(t, first.GetBatch().GetTechnicalUpdates(), 1)
+	require.Equal(t, firstCursor, first.GetBatch().GetTechnicalUpdates()[0].GetEventsSink().GetCursor(),
 		"first proposal bytes were overwritten by the second proposeSinkUpdate (#311)")
 
 	second := &raftcmdpb.Proposal{}
 	require.NoError(t, second.UnmarshalVT(prop.captured[1]))
-	require.Len(t, second.GetTechnicalUpdates(), 1)
-	require.Equal(t, secondCursor, second.GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
+	require.Len(t, second.GetBatch().GetTechnicalUpdates(), 1)
+	require.Equal(t, secondCursor, second.GetBatch().GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
 }

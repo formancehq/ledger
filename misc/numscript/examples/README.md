@@ -5,7 +5,7 @@ This directory contains example Numscript files that can be used with the `ledge
 ## Usage
 
 ```bash
-ledgerctl transactions create --ledger <ledger-name> --script <script-file> [--var "name=value"]...
+ledgerctl numscripts execute --ledger <ledger-name> --file <script-file> [--var "name=value"]...
 ```
 
 ## Examples
@@ -44,11 +44,11 @@ Variables are passed using the `--var` flag:
 ledgerctl ledgers create demo
 
 # 2. Fund an account from world
-ledgerctl transactions create --ledger demo --script world_funding.num \
+ledgerctl numscripts execute --ledger demo --file world_funding.num \
   --var "destination=@bank" --var "amount=USD/2 100000"
 
 # 3. Transfer between accounts
-ledgerctl transactions create --ledger demo --script simple_transfer.num \
+ledgerctl numscripts execute --ledger demo --file simple_transfer.num \
   --var "source=@bank" --var "destination=@users:alice" \
   --var "amount=USD/2 1000"
 

@@ -23,7 +23,7 @@ import (
 // horizon the FSM's mutated WriteSet exposes when it reaches the order. It
 // reproduces only the skip predicates that leave a fold-relevant trace:
 //
-//   - CreateTransaction / TRANSACTION_REFERENCE_CONFLICT — the FSM rejects when
+//   - CreateTransaction or ExecuteNumscript / TRANSACTION_REFERENCE_CONFLICT — the FSM rejects when
 //     the reference already exists (processCreateTransaction's dry prologue).
 //     Admission checks the intra-batch createdReferences set first, then Pebble.
 //   - RevertTransaction / TRANSACTION_ALREADY_REVERTED — the FSM rejects when the
@@ -54,6 +54,14 @@ func (a *Admission) predictOrderSkip(order *raftcmdpb.Order, ledgerName string, 
 		}
 
 		if !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
+			return false, nil
+		}
+
+		return a.referenceExists(ledgerName, ref, effects)
+
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		ref := data.ExecuteNumscript.GetReference()
+		if ref == "" || !slices.Contains(allowed, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) {
 			return false, nil
 		}
 

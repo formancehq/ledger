@@ -1,246 +1,70 @@
-# Persistence, incremental restore, and replay evidence contract
+# Persistence, checkpoint restore, and replay evidence contract
 
-From `v3.0.0-rc.1` onward, each release must read or migrate state produced by
-the preceding released version. Reject corrupt input before activation, and
-verify that the migration preserves business and audit history. Development
-formats before the RC are outside this upgrade guarantee.
+This is the companion to
+[`persistence-restore-replay.json`](./persistence-restore-replay.json).
+The audit covers primary-store durability, backup publication, cross-cluster
+checkpoint restore, and committed-history replay. It does not turn an audit run
+into permission to modify code, tickets, or GitHub state.
 
-The [native manifest](persistence-restore-replay.json) audits whether durable
-Ledger state survives persistence, backup, checkpoint plus incremental restore,
-and committed-history replay. Its central oracle is the repository's
-[incremental restore invariant](../architecture/subsystems/backup/incremental-restore-contract.md):
+## Evidence boundary
 
-```text
-live(prefix + delta) == restore(checkpoint(prefix), delta)
-```
+A successful backup captures a flushed Pebble checkpoint. The manifest points to
+content-addressed objects for **all** files of that checkpoint, including Pebble
+WAL files if present. The manifest is published after required uploads and
+before stale-object pruning. A failed upload or manifest write must leave the
+previous published backup restorable. A failed prune may leave harmless orphans.
 
-The comparison is logical and the delta must be non-empty and contain the
-operation being tested. This domain adds scope and evidence requirements to the
-native audit workflow; it does not run an audit, add a restore guarantee, or
-authorize code changes, Jira publication, or live-store mutation.
+For restore parity, take a first checkpoint, commit a distinctive transaction
+or other persisted mutation, then take a second checkpoint. Restore the second
+checkpoint through a production entry point, compare exact business values,
+audit and boundary metadata, and run `CheckStore`. A third checkpoint before
+restore invalidates this evidence. A no-op repeated backup need not upload zero
+files because backup admission itself changes persisted job state; object reuse
+should be assessed through stable content hashes and manifest references.
 
-An `UncommittedFailure` after a checkpoint contributes no audit, item, log or
-frozen idempotency row to the delta and does not advance the last applied HLC.
-Do not require an export segment for that attempt. Pair it with a later
-definitive proposal so the delta is non-empty, then compare live and restored
-business state, HLC and the next retry outcome. This distinguishes a valid
-empty technical attempt from a missing export of an audited outcome.
+`AccountMetadataUpdated` is a committed business effect even when its Numscript
+execution creates no transaction. After a first checkpoint, apply a metadata-only
+script and take a second checkpoint. Restore that checkpoint and compare account
+metadata and transaction sets directly: the metadata must change without an
+invented transaction, reference, or next-ID advance. Run `CheckStore` and a
+subsequent admitted scripted operation. `TestBackup_NumscriptRestoreParity`
+exercises this composition.
 
-## Reachability and proof
+Both gRPC restore and offline bootstrap reject old manifests containing exports
+or a separate cluster-policy override. Staging reset, path containment, file
+size/hash validation, validation before activation, and failure residue remain
+part of the restore contract. The legacy export application code is removed;
+the Raft FSM still applies committed legacy backup orders during a rolling
+upgrade, but new backup and restore entry points do not use the export format.
+The rejection is the maintainer-approved PR #2600 RC artifact exception, not
+evidence that an old incremental backup remains recoverable after source loss.
+The audit must still prove current checkpoint restore parity and that both
+entry points fail closed on the unsupported manifest.
 
-For every candidate, establish all of the following at the audited SHA:
+## State classification
 
-1. **Production mutation:** trace an admitted order or supported persistence,
-   backup, restore, or replay entry point to the exact primary-store keys and
-   mutation order. Identify acknowledgement and durable boundaries rather than
-   assuming the intended final state is atomic.
-2. **Checkpoint and delta:** construct meaningful prefix state, identify the
-   full-checkpoint log/audit boundaries, and commit the target effect afterward.
-   Prove that a non-empty manifest export contains the needed log, audit entry,
-   audit item, and applied-proposal evidence over the correct ranges.
-3. **Lifecycle classification:** classify every affected value as preserved,
-   rebuilt, or deliberately discarded. For rebuilt state, name the live writer,
-   exported fact, deterministic fold, checkpoint seed, later deletion/reset
-   behavior, and independent verifier. “Already in the checkpoint” is not proof
-   for a value the delta can change.
-4. **Restore execution:** trace download, export validation/application,
-   `RebuildDelta`, restore preparation, validation/finalization and bootstrap.
-   Enumerate the durable staging prefix at any interruption and the fresh-process
-   path that retries, rejects, or activates it.
-5. **Observable parity:** compare complete logical keys and values against the
-   uninterrupted source, run `CheckStore` without findings or errors, and test a
-   subsequent admission/apply/read that consumes the rebuilt state when
-   practical. Counts or row presence alone do not establish parity.
-6. **Falsification:** cite existing guards and tests, then give a trigger,
-   failure point, expected residual state and assertion that uniquely separates
-   the alleged restore defect from corruption, setup failure, read-index lag, or
-   another domain's failure.
+Business and audit state that survives cross-cluster restore must reside in the
+checkpoint at its capture point. Cluster-local identity and caches may be
+discarded by `PrepareForBackup` and re-seeded at the destination. The audit
+secret remains with the chain. Source Raft applied indexes in persisted records
+are provenance, not certificates in the new cluster. The checker independently
+verifies primary-store projections, subject to documented exemptions.
 
-A missing replay case or test is not by itself a defect. P0/P1/P2 findings need
-a reachable committed effect and a material state or behavior mismatch. When
-retention, discard, or post-restore semantics are not established by current
-code and authoritative documentation, emit an audit question instead of
-inventing a stronger guarantee.
+A change to an audited order, persistence path, projection, or deletion cascade
+must show which persisted values it writes and how a second checkpoint carries
+them. Compare source and restored values after non-empty post-first-checkpoint
+work, including later update/delete/recreate paths as relevant. Check future
+admission or query behavior when a wrong restored value could remain latent.
 
-## State classification and source map
+## Dynamic checks and ownership
 
-Test the physical lifetime boundary: a future unknown
-`ZoneClusterPersistent` row must disappear with source identity, peers, removed
-members and Bloom blocks, while a retained `ZoneGlobal` row remains. The applied
-index is the narrow exception: capture it before deletion and write the restored
-genesis boundary after the zone tombstone. A non-empty audit delta must also
-advance the checkpoint HLC to the greatest exported effective timestamp,
-including failed business proposals, before the next destination proposal.
+The manifest lists required adversarial questions and dynamic checks. Prefer
+fault injection at upload, manifest write, prune, download, validation, and
+activation boundaries. Inspect the published manifest and residual staging state
+after each failure. Mutate isolated manifests and files, never a live store.
 
-The audit must refresh this inventory from current writers and variants; the
-table is a discovery map, not a frozen exhaustive schema.
-
-| Boundary | Sources and required evidence |
-| --- | --- |
-| Live primary mutations | `internal/domain/processing/`, `internal/infra/state/`, `internal/infra/attributes/`: enumerate every audited apply mutation, including deletion/range-deletion and proposal-local effects. Record persisted class and exact keys. |
-| Durable storage | `internal/storage/dal/`, `wal/`, `spool/`, `pebblecfg/`: establish write-session commit, checkpoint, cursor and recovery semantics. A cache or snapshot read is not proof that the primary write is durable. |
-| Backup publication | `internal/application/backup/`, `internal/infra/backup/manager.go`, `manifest.go`, `segment.go`, and `cmd/ledgerctl/store/incremental_backup.go`: trace sequence capture, segment contents, object upload, manifest swap and orphan pruning. The current published manifest must always remain fully restorable. |
-| Raw delta application | `internal/infra/backup/restore.go`: verify manifest/type/range/key-shape/stream validation, batch commits, partial-prefix behavior and retry. Per-object stream checks cannot detect a whole omitted segment reference; `validateExportCoverage` must reject cross-object gaps, overlaps and reordering of dense streams from the checkpoint boundary before download, while applied-proposal segments stay sparse. Permanent history residency must equal the source logically. |
-| Derived-state rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/`: compare every replay branch and fold with its live writer. Essential facts may live in `LedgerLog`, chain-bound serialized `AuditItem`, or `AppliedProposal`; absence must not silently become a default. |
-| Restore preparation and bootstrap | `internal/infra/attributes/prepare.go`, `internal/bootstrap/`, restore gRPC and `ledgerctl` commands: distinguish retained genesis boundary and business provenance from cleared source identity, peers, transient jobs, cache/bloom state, and restored query-checkpoint provenance. |
-| Controlled drain state | `internal/infra/state/`, `internal/storage/dal/store.go`, and `internal/infra/backup/`: trace the Raft-applied marker/release, Pebble batch and applied index, qualifying status fsync, local reopen, in-cluster snapshot sync and cross-cluster restore preparation. Active drain is local operational state; it survives restart with the same volume but is discarded with `ZoneClusterTransient` on cross-cluster restore. |
-| Projection and cascade inventory | Balances/volumes, transactions/references, LedgerInfo/account types/default enforcement, the monotonic ledger-ID allocator, boundaries/mirror progress, ledger metadata, indexes/registry, numscripts, reversions, idempotency outcomes, signing, policy, maintenance mode, sink config, query checkpoints and their schedule. Test create/update/delete/reset variants actually present at the SHA. |
-| Integrity oracle | `internal/application/check/` and `CheckStore`: identify the independent audit-bound witness and actual checked fields. A clean checker result corroborates direct parity; it cannot launder an omitted projection or shared replay mistake. |
-| Cross-lifecycle evidence | `internal/infra/backup/*_test.go`, `tests/e2e/cluster/restore*_test.go`, restore-enabled model tests: record the exact post-checkpoint mutation, non-empty delta assertion, restore composition, logical comparison, checker result and next consuming operation actually reached. |
-
-Use the three classifications precisely:
-
-- **Preserved:** the checkpoint value remains correct because no supported
-  post-checkpoint effect can change it. Cite that closed mutation surface.
-- **Rebuilt:** the delta can change it. Identify exported authority, seed and
-  fold for creation, update, deletion, purge, revoke, promotion and retry as
-  applicable.
-- **Discarded:** source-cluster-local, cache-like or otherwise invalid state is
-  removed during restore preparation. Identify the destination-cluster reseed
-  path and prove it does not overwrite newer rebuilt primary values.
-
-The current contract deliberately preserves permanent log, audit, audit-item
-and applied-proposal history. It clears source identity, peers, cluster-transient
-jobs, cache and persisted bloom state, and marks query-checkpoint rows with
-restore provenance. Those facts are starting counterevidence, not permission to
-skip inspecting their current implementations and callers.
-
-For controlled drain, compare the source and destination explicitly: a member
-restart or in-cluster snapshot sync must reload an active cutoff before write
-admission resumes, while a cross-cluster restore must not import that cutoff or
-released-epoch history into the new cluster. A release is durable only after
-its batch and qualifying status fsync. A non-empty post-checkpoint business
-delta still needs its own parity oracle; clearing the transient drain zone is
-not evidence that business history was exported or rebuilt correctly.
-
-`TestDrainCheckpointIncrementalRestoreDiscardsSourceState` exercises a real
-checkpoint containing an active marker and prior released epoch, a nonempty
-post-checkpoint business export, restore preparation, checker validation and
-subsequent admission. `TestFinalizeRestorePublishesRebuiltPostCheckpointDelta`
-also checks that the published restore checkpoint has no source drain state.
-
-## Delete and reset parity
-
-Incremental parity includes absence. For a checkpoint-era ledger deleted in the
-delta, compare the full ledger-scoped keyset after uninterrupted apply and
-restore. Cover attributes, metadata, transaction/reference state, indexes and
-registry entries, numscripts, reversions, boundaries/mirror state and every
-other current child owned by `DeleteLedger`. Include a live neighboring ledger
-so an over-wide range deletion cannot pass.
-
-Apply the same rule to row-absence semantics such as signing-key revocation,
-index drop, metadata/numscript deletion, query-checkpoint or schedule deletion, ephemeral or
-transient volume purge, and any reset or replacement. A creation-only replay
-matrix is insufficient. When live apply derives a cascade from state not present
-at restore time, prove the exported record carries the resolved set or another
-authoritative deterministic reconstruction exists.
-
-## Ownership and deduplication
-
-Choose the owner by the missing protection and required correction. Shared
-files, crashes, snapshots or a corrupt restored store do not justify duplicates.
-
-| Owner | Boundary |
-| --- | --- |
-| `persistence-restore-replay` | Primary durability, backup publication, exported-history completeness, checkpoint/delta reconstruction, restore preparation/finalization and logical parity. It owns corruption introduced by those paths. |
-| `process-boundary-recovery` | Real OS death/re-exec, reopen and durable residual state independent of backup/restore. A process restart is only an injection mechanism here when it exposes a concrete restore staging/parity defect. |
-| `raft-membership-leadership` | Quorum, membership, leadership, transport and Raft snapshot transfer/install ordering. A backup checkpoint or restored genesis boundary belongs here only when the missing protection is restore reconstruction. |
-| `integrity-verifier-soundness` | Missing/unsound checker passes and lost checker-specific signals. Here `CheckStore` is an oracle; a restore loss remains persistence-owned even if checker detects it. |
-| `read-consistency-projections` and `query-semantic-equivalence` | Peer index/checkpoint publication, temporal convergence and fixed-state query-plan equivalence. This domain owns restoration of the primary facts and complete history from which local projections rebuild. |
-| `idempotency-retries-partial-failures` | General logical/transport retry identity and outcome retention. This domain owns duplicate or missing effects caused specifically by export application, replay or restore retry. |
-| `configuration-startup-contracts`, `filesystem-confinement-contracts`, `operator-reconciliation-durability` | Persisted configuration validation, path confinement and Kubernetes orchestration respectively. Inspect handoffs for reachability, but keep the finding with the missing root protection. |
-
-The challenge pass must actively search these neighboring domains, existing
-qualified results, tickets and PRs for the same mechanism. If external novelty
-evidence is unavailable, leave novelty unresolved rather than inventing an ID.
-Pure apply determinism, declared coverage, gated cache access and accepted-order
-immutability remain outside this restore domain; until a dedicated checked-in
-manifest owns them, treat an ambiguous ownership boundary as an audit question
-rather than routing a finding to a domain that does not exist at the audited SHA.
-
-## Falsifiable diagnostics and rejection criteria
-
-Start with a healthy production-path fixture. Take a full checkpoint, commit the
-target operation afterward, and prove its export range is non-empty. Restore via
-`ApplyExportsAndRebuild` or the real service, compare exact logical values and
-keysets with uninterrupted execution, run `CheckStore`, then exercise the next
-consumer. Use an independent oracle: shared live/rebuild helpers may be valid
-implementation, but agreement through the same mistake is not proof.
-
-For interruption hypotheses, enumerate state after every durable prefix:
-checkpoint files, uploaded objects, published manifest, applied raw segment
-batches, rebuilt projection batch, restore marker and activated directory.
-Inject failure immediately before and after the disputed boundary, retry using
-the supported lifecycle, and assert final state, attempt count and temporary
-cleanup. A permanently unavailable dependency, setup crash, unrelated mismatch,
-or partial state that is never activated and remains safely retryable rejects
-the claimed correctness impact.
-
-Offline bootstrap must reset prior `restore-staging` before every checkpoint
-download or export-only replay. Inspect `downloadBootstrapCheckpoint` together
-with `ApplyExportsAndRebuild`: test completed rebuild followed by retry and a
-committed rebuild prefix followed by failure then retry, with a non-empty
-checkpoint/delta and exact balance/volume comparisons plus clean `CheckStore`.
-Raw-history overwrite alone does not prove additive projection retry safety.
-Reset failure stops before replay/publication and may leave old staging partly
-removed or absent; later failure or confirmation EOF may leave new partial or
-committed staging, which the next invocation discards. Preserve marker/fresh-target
-admission and exclusive offline ownership. Helper composition does not establish
-full CLI confirmation/finalization coverage. Rooted deletion and namespace safety
-belong to `filesystem-confinement-contracts`; no persisted format migration or
-repair of a finalized corrupt restore is introduced by this reset.
-
-Follower-sync staging follows the same rule per session, not only per donor.
-`grpcSnapshotFetcher.FetchSnapshot` empties staging and resets progress before
-every session retry, and `fallbackSnapshotFetcher` does the same before every
-donor change. A donor restart between two sessions changes the checkpoint file
-set, and a leftover `MANIFEST`, WAL or `marker.manifest.000001.*` from the
-failed session can make Pebble open a stale manifest over the new WAL. The
-result is a restored applied index that covers entries whose effects are
-missing. `TestGRPCSnapshotFetcher_SessionRetryDiscardsEarlierSessionFiles` is
-the evidence oracle: inspect the final staging listing, not only the bytes of
-the manifest files. `verifyStagingMatchesManifest` then enforces the same
-property before success, and `TestGRPCSnapshotFetcher_RejectsStagingEntryOutsideManifest`
-proves a stray entry fails the fetch as a local fault rather than a donor
-fallback.
-
-Reject or downgrade a candidate when current evidence shows that the state is
-explicitly discarded and safely reseeded, the delta cannot change a preserved
-value, the alleged export state is unreachable, validation fails before
-activation, retry deterministically converges, the comparison confuses
-source-cluster provenance with destination progress, or the root cause and fix
-belong wholly to a neighboring domain. Treat undocumented desired semantics as
-a question. Existing test names or green suites neither prove nor disprove the
-invariant without the precise branch and assertions above.
-
-Providers may run existing focused tests and permitted temporary diagnostics in
-the native read-only sandbox. They must not edit tracked files, implement a new
-reproducer, mutate live stores, start nested audit/challenge workflows, or
-publish Jira issues. Use repository-pinned tools, isolated storage, deterministic
-synchronization and no `time.Sleep`.
-
-For this manifest-only PR, validate the JSON with the predicate in
-`scripts/ai-audit`, verify every scope glob and related-document path, run
-`bash scripts/agent-check`, and run `agent-check-pr` with the exact base SHA.
-These checks validate the contract artifact; they do not execute or establish
-the product audit.
-
-## EN-2479 preserved audit root
-
-`SubGlobAuditKey` is checkpoint-preserved state. It is not rebuilt from the
-exported delta, because no post-initialization operation may rotate it. A full
-checkpoint is refused before the key is committed; otherwise a later audit
-delta could have no key in its base. A valid parity probe uses real checkpoint
-files, a nonempty post-checkpoint audit/item export, `PrepareForBackup`, a
-different destination cluster ID, new destination writes, checker validation,
-and a subsequent destination backup and restore. Compare historical audit and
-item bytes as well as logical projections. The integrity audit owns checker
-verdict quality; this domain owns lifecycle preservation and next-write parity.
-
-## Atomic creation metadata (EN-2686)
-
-CreatedLedgerLog carries initial metadata so post-checkpoint creation reconstructs canonical metadata during ApplyExportsAndRebuild. Persisted LedgerInfo does not duplicate the canonical metadata projection.
-
-Does a restore with nonempty checkpoint files and a nonempty post-checkpoint creation delta reproduce typed initial metadata for normal and mirror ledgers, including explicit protobuf null and a schema type mismatch?
-
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+This domain owns failures in durable persistence, checkpoint publication, and
+checkpoint restore. The checker domain owns whether its verification algorithm
+correctly detects an inconsistent row. General idempotency and transport retry
+semantics belong to their own domains; a retry that corrupts a backup or restore
+belongs here.

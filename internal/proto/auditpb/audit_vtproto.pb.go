@@ -56,6 +56,11 @@ func (m *AuditEntry) CloneVT() *AuditEntry {
 		copy(tmpBytes, rhs)
 		r.Hash = tmpBytes
 	}
+	if rhs := m.RequiredCapabilities; rhs != nil {
+		tmpContainer := make([]uint32, len(rhs))
+		copy(tmpContainer, rhs)
+		r.RequiredCapabilities = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -213,6 +218,15 @@ func (this *AuditEntry) EqualVT(that *AuditEntry) bool {
 	}
 	if !this.Signature.EqualVT(that.Signature) {
 		return false
+	}
+	if len(this.RequiredCapabilities) != len(that.RequiredCapabilities) {
+		return false
+	}
+	for i, vx := range this.RequiredCapabilities {
+		vy := that.RequiredCapabilities[i]
+		if vx != vy {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -378,6 +392,15 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
+	}
+	if len(m.RequiredCapabilities) > 0 {
+		for iNdEx := len(m.RequiredCapabilities) - 1; iNdEx >= 0; iNdEx-- {
+			i -= 4
+			binary.LittleEndian.PutUint32(dAtA[i:], uint32(m.RequiredCapabilities[iNdEx]))
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RequiredCapabilities)*4))
+		i--
+		dAtA[i] = 0x72
 	}
 	if m.Signature != nil {
 		size, err := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
@@ -663,10 +686,12 @@ func (m *AuditEntry) ResetVT() {
 		f0 := m.Items[:0]
 		f1 := m.Ledgers[:0]
 		f2 := m.Hash[:0]
+		f3 := m.RequiredCapabilities[:0]
 		m.Reset()
 		m.Items = f0
 		m.Ledgers = f1
 		m.Hash = f2
+		m.RequiredCapabilities = f3
 	}
 }
 func (m *AuditEntry) ReturnToVTPool() {
@@ -730,6 +755,9 @@ func (m *AuditEntry) SizeVT() (n int) {
 	if m.Signature != nil {
 		l = m.Signature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.RequiredCapabilities) > 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.RequiredCapabilities)*4)) + len(m.RequiredCapabilities)*4
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1229,6 +1257,58 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 14:
+			if wireType == 5 {
+				var v uint32
+				if (iNdEx + 4) > l {
+					return io.ErrUnexpectedEOF
+				}
+				v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+				iNdEx += 4
+				m.RequiredCapabilities = append(m.RequiredCapabilities, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 || packedLen%4 != 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				elementCount = packedLen / 4
+				if elementCount != 0 && len(m.RequiredCapabilities) == 0 && cap(m.RequiredCapabilities) < elementCount {
+					m.RequiredCapabilities = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					if (iNdEx + 4) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					v = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+					iNdEx += 4
+					m.RequiredCapabilities = append(m.RequiredCapabilities, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field RequiredCapabilities", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

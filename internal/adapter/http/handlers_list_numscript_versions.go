@@ -9,8 +9,9 @@ import (
 // numscriptVersionEntryDTO renders one stored version for the REST API.
 // createdAt reuses the proto Timestamp, whose MarshalJSON emits RFC3339.
 type numscriptVersionEntryDTO struct {
-	Version   string              `json:"version"`
-	CreatedAt *commonpb.Timestamp `json:"createdAt,omitempty"`
+	Version     string              `json:"version"`
+	CreatedAt   *commonpb.Timestamp `json:"createdAt,omitempty"`
+	Description string              `json:"description,omitempty"`
 }
 
 // numscriptVersionsDTO is the numscript history response: the current latest
@@ -42,7 +43,7 @@ func (s *Server) handleListNumscriptVersions(w http.ResponseWriter, r *http.Requ
 
 	dto := numscriptVersionsDTO{LatestVersion: latest, Versions: make([]numscriptVersionEntryDTO, len(versions))}
 	for i, v := range versions {
-		dto.Versions[i] = numscriptVersionEntryDTO{Version: v.GetVersion(), CreatedAt: v.GetCreatedAt()}
+		dto.Versions[i] = numscriptVersionEntryDTO{Version: v.GetVersion(), CreatedAt: v.GetCreatedAt(), Description: v.GetDescription()}
 	}
 
 	writeOK(w, r, dto)

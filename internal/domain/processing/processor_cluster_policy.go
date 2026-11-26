@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"fmt"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -14,8 +16,11 @@ import (
 //   - same revision, identical payload: idempotent no-op (no log);
 //   - same revision, different payload: contract violation, rejected;
 //   - lower revision: stale, rejected (a newer policy already won).
-func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
-	newPolicy := order.GetPolicy()
+func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	return applyClusterPolicy(order.GetPolicy(), ctx.Scope)
+}
+
+func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*commonpb.LogPayload, domain.Describable) {
 	if newPolicy == nil {
 		return nil, &domain.ErrClusterPolicyInvalid{Detail: "missing policy"}
 	}
@@ -37,14 +42,43 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 	if err := validateClusterPolicyMetadataLimits(newPolicy); err != nil {
 		return nil, err
 	}
+	seenCapabilities := make(map[uint32]struct{}, len(newPolicy.GetCapabilityActivations()))
+	for _, activation := range newPolicy.GetCapabilityActivations() {
+		if activation == nil || activation.GetId() == 0 {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: "capability activation id must be non-zero"}
+		}
+		if _, exists := seenCapabilities[activation.GetId()]; exists {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("duplicate capability activation %d", activation.GetId())}
+		}
+		seenCapabilities[activation.GetId()] = struct{}{}
+	}
 
-	current := ctx.Scope.GetClusterPolicy()
+	current := scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
 	newRev := newPolicy.GetRevision()
+	active := make(map[uint32]struct{})
+	for _, activation := range current.GetCapabilityActivations() {
+		if activation != nil && activation.GetActive() {
+			active[activation.GetId()] = struct{}{}
+		}
+	}
+	for id := range active {
+		found := false
+		for _, activation := range newPolicy.GetCapabilityActivations() {
+			if activation != nil && activation.GetId() == id && activation.GetActive() {
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			return nil, &domain.ErrClusterPolicyInvalid{Detail: fmt.Sprintf("capability %d cannot be deactivated", id)}
+		}
+	}
 
 	switch {
 	case newRev > appliedRev:
-		ctx.Scope.SetClusterPolicy(newPolicy)
+		scope.SetClusterPolicy(newPolicy)
 
 		return &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_SetClusterPolicy{
@@ -69,10 +103,60 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 // raising it would observe no effect. Both checks are pure functions of the
 // proposed policy, so every node reaches the same verdict for one committed
 // entry.
-func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.SerializableError {
+func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.Describable {
 	if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
 		return &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
 	}
+
+	return nil
+}
+
+// ProcessClusterPolicy applies operational state without allocating business logs.
+// The released order handler above retains its original audited replay behavior.
+func (p *RequestProcessor) ProcessClusterPolicy(proposal *raftcmdpb.SetClusterPolicyProposal, factory ScopeFactory) domain.Describable {
+	policy := proposal.GetPolicy()
+	if proposal.GetConfigurationOnly() && (policy == nil || len(policy.GetCapabilityActivations()) != 0) {
+		return &domain.ErrClusterPolicyInvalid{Detail: "cluster policy cannot contain capabilities"}
+	}
+	scope, err := factory.NewScope(nil)
+	if err != nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	if proposal.GetConfigurationOnly() {
+		policy = policy.CloneVT()
+		policy.CapabilityActivations = scope.GetClusterPolicy().CloneVT().GetCapabilityActivations()
+	}
+	_, processErr := applyClusterPolicy(policy, scope)
+
+	return processErr
+}
+
+func (p *RequestProcessor) ProcessCapabilityTransition(transition *commonpb.CapabilityActivation, factory ScopeFactory) domain.Describable {
+	if transition == nil || transition.GetId() == 0 {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition requires a non-zero id"}
+	}
+	if !transition.GetActive() {
+		return &domain.ErrClusterPolicyInvalid{Detail: "capability transition must activate"}
+	}
+	scope, err := factory.NewScope(nil)
+	if err != nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: err.Error()}
+	}
+	desired := scope.GetClusterPolicy().CloneVT()
+	for _, current := range desired.GetCapabilityActivations() {
+		if current.GetId() != transition.GetId() {
+			continue
+		}
+		if current.GetActive() {
+			return nil
+		}
+		current.Active = true
+		scope.SetClusterPolicy(desired)
+
+		return nil
+	}
+	desired.CapabilityActivations = append(desired.CapabilityActivations, &commonpb.CapabilityActivation{Id: transition.GetId(), Active: true})
+	scope.SetClusterPolicy(desired)
 
 	return nil
 }

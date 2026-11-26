@@ -3,10 +3,13 @@ package http
 import (
 	"context"
 
+	"google.golang.org/protobuf/proto"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -31,10 +34,31 @@ func NewServer(logger logging.Logger, backend Backend, authCfg internalauth.Auth
 }
 
 // applyUnsigned wraps Requests into unsigned Envelopes and forwards to the
-// backend. The HTTP API never signs requests itself — signing flows through
-// gRPC where the caller controls the envelope construction.
+// backend. Signed transaction routes use applyRequests instead; signing always
+// remains client-side.
 func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
 	result, err := s.backend.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey, reqs...))
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Logs, nil
+}
+
+// applyRequests never signs or reserializes a client's payload. PeekBatch is
+// non-authoritative inspection: matching the full batch prevents route/scope
+// tunneling, and backend.Apply still verifies the original signature and policy.
+func (s *Server) applyRequests(ctx context.Context, key string, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	envelope := signedBatchFromContext(ctx)
+	if envelope == nil {
+		return s.applyUnsigned(ctx, key, requests...)
+	}
+	apply := servicepb.SignedApplyRequest(envelope)
+	batch, err := servicepb.PeekBatch(apply)
+	if err != nil || !proto.Equal(batch, &servicepb.ApplyBatch{IdempotencyKey: key, Requests: requests}) {
+		return nil, signing.ErrInvalidSignature
+	}
+	result, err := s.backend.Apply(ctx, apply)
 	if err != nil {
 		return nil, err
 	}

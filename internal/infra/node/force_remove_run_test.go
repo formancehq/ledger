@@ -34,7 +34,7 @@ func TestForceRemoveNodeDurabilityFailureStopsRun(t *testing.T) {
 			started:      make(chan struct{}),
 		}
 		m := newTestMembership(t)
-		require.NoError(t, m.Register(2, "node-2:7000", "node-2:8000", []byte("0000000000000002")))
+		require.NoError(t, m.Register(2, "node-2:7000", "node-2:8000", []byte("0000000000000002"), nil))
 		n, err := NewNode(
 			NodeConfig{
 				NodeID:                 1,

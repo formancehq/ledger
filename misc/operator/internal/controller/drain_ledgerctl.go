@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"k8s.io/client-go/kubernetes"
@@ -25,34 +24,34 @@ type ledgerctlDrainCluster struct {
 }
 
 type ledgerctlDrainState struct {
-	State      string `json:"state"`
-	LocalNode  string `json:"localNode"`
-	DrainEpoch string `json:"drainEpoch"`
-	DrainIndex string `json:"drainIndex"`
+	State      string          `json:"state"`
+	LocalNode  protoJSONUint64 `json:"localNode"`
+	DrainEpoch string          `json:"drainEpoch"`
+	DrainIndex protoJSONUint64 `json:"drainIndex"`
 	Nodes      []struct {
-		ID string `json:"id"`
+		ID protoJSONUint64 `json:"id"`
 	} `json:"nodes"`
 }
 
 type ledgerctlBeginDrainResponse struct {
-	CutoffIndex string   `json:"cutoffIndex"`
-	Members     []string `json:"members"`
+	CutoffIndex protoJSONUint64   `json:"cutoffIndex"`
+	Members     []protoJSONUint64 `json:"members"`
 }
 
 type ledgerctlEndDrainResponse struct {
-	ReleaseIndex string   `json:"releaseIndex"`
-	Members      []string `json:"members"`
+	ReleaseIndex protoJSONUint64   `json:"releaseIndex"`
+	Members      []protoJSONUint64 `json:"members"`
 }
 
 type ledgerctlLocalDrainStatus struct {
-	LocalNode          string `json:"localNode"`
-	SupportsDrain      bool   `json:"supportsDrain"`
-	DrainEpoch         string `json:"drainEpoch"`
-	DrainIndex         string `json:"drainIndex"`
-	ReleaseIndex       string `json:"releaseIndex"`
-	SupportsRelease    bool   `json:"supportsRelease"`
-	LastPersistedIndex string `json:"lastPersistedIndex"`
-	SyncStatus         string `json:"syncStatus"`
+	LocalNode          protoJSONUint64 `json:"localNode"`
+	SupportsDrain      bool            `json:"supportsDrain"`
+	DrainEpoch         string          `json:"drainEpoch"`
+	DrainIndex         protoJSONUint64 `json:"drainIndex"`
+	ReleaseIndex       protoJSONUint64 `json:"releaseIndex"`
+	SupportsRelease    bool            `json:"supportsRelease"`
+	LastPersistedIndex protoJSONUint64 `json:"lastPersistedIndex"`
+	SyncStatus         string          `json:"syncStatus"`
 }
 
 func (c *ledgerctlDrainCluster) run(ctx context.Context, ordinal int, args ...string) (string, error) {
@@ -79,10 +78,7 @@ func (c *ledgerctlDrainCluster) BeginDrain(ctx context.Context, epoch string) (d
 	if err := json.Unmarshal([]byte(output), &response); err != nil {
 		return drainDecision{}, fmt.Errorf("decoding begin-drain response: %w", err)
 	}
-	index, err := strconv.ParseUint(response.CutoffIndex, 10, 64)
-	if err != nil {
-		return drainDecision{}, fmt.Errorf("decoding drain cutoff: %w", err)
-	}
+	index := uint64(response.CutoffIndex)
 	members, err := parseDrainMembers(response.Members)
 	if err != nil {
 		return drainDecision{}, err
@@ -100,10 +96,7 @@ func (c *ledgerctlDrainCluster) EndDrain(ctx context.Context, epoch string) (dra
 	if err := json.Unmarshal([]byte(output), &response); err != nil {
 		return drainReleaseDecision{}, fmt.Errorf("decoding end-drain response: %w", err)
 	}
-	index, err := strconv.ParseUint(response.ReleaseIndex, 10, 64)
-	if err != nil {
-		return drainReleaseDecision{}, fmt.Errorf("decoding drain release index: %w", err)
-	}
+	index := uint64(response.ReleaseIndex)
 	members, err := parseDrainMembers(response.Members)
 	if err != nil {
 		return drainReleaseDecision{}, err
@@ -143,11 +136,8 @@ func (c *ledgerctlDrainCluster) CurrentDrain(ctx context.Context) (drainDecision
 
 		return drainDecision{}, fmt.Errorf("no leader status available: %w", lastErr)
 	}
-	index, err := parseOptionalUint64(state.DrainIndex)
-	if err != nil {
-		return drainDecision{}, fmt.Errorf("decoding current drain index: %w", err)
-	}
-	ids := make([]string, 0, len(state.Nodes))
+	index := uint64(state.DrainIndex)
+	ids := make([]protoJSONUint64, 0, len(state.Nodes))
 	for _, member := range state.Nodes {
 		ids = append(ids, member.ID)
 	}
@@ -172,47 +162,26 @@ func (c *ledgerctlDrainCluster) NodeStatus(ctx context.Context, id uint64) (drai
 	if err := json.Unmarshal([]byte(output), &state); err != nil {
 		return drainNodeStatus{}, fmt.Errorf("decoding node %d status: %w", id, err)
 	}
-	localID, err := strconv.ParseUint(state.LocalNode, 10, 64)
-	if err != nil || localID != id {
-		return drainNodeStatus{}, fmt.Errorf("pod %d reported invalid node %q", ordinal, state.LocalNode)
+	localID := uint64(state.LocalNode)
+	if localID != id {
+		return drainNodeStatus{}, fmt.Errorf("pod %d reported invalid node %d", ordinal, localID)
 	}
 	if !state.SupportsDrain {
 		return drainNodeStatus{}, fmt.Errorf("node %d has not confirmed drain support", id)
 	}
-	index, err := parseOptionalUint64(state.DrainIndex)
-	if err != nil {
-		return drainNodeStatus{}, fmt.Errorf("decoding node %d drain index: %w", id, err)
-	}
-	persisted, err := strconv.ParseUint(state.LastPersistedIndex, 10, 64)
-	if err != nil {
-		return drainNodeStatus{}, fmt.Errorf("decoding node %d persisted index: %w", id, err)
-	}
-	releaseIndex, err := parseOptionalUint64(state.ReleaseIndex)
-	if err != nil {
-		return drainNodeStatus{}, fmt.Errorf("decoding node %d release index: %w", id, err)
-	}
+	index := uint64(state.DrainIndex)
+	persisted := uint64(state.LastPersistedIndex)
+	releaseIndex := uint64(state.ReleaseIndex)
 
 	return drainNodeStatus{NodeID: id, DrainEpoch: state.DrainEpoch, DrainIndex: index,
 		ReleaseIndex: releaseIndex, SupportsRelease: state.SupportsRelease, LastPersistedIndex: persisted, SyncStatus: state.SyncStatus}, nil
 }
 
-func parseDrainMembers(raw []string) ([]uint64, error) {
+func parseDrainMembers(raw []protoJSONUint64) ([]uint64, error) {
 	members := make([]uint64, 0, len(raw))
 	for _, value := range raw {
-		id, err := strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("decoding member node ID %q: %w", value, err)
-		}
-		members = append(members, id)
+		members = append(members, uint64(value))
 	}
 
 	return members, nil
-}
-
-func parseOptionalUint64(value string) (uint64, error) {
-	if value == "" {
-		return 0, nil
-	}
-
-	return strconv.ParseUint(value, 10, 64)
 }

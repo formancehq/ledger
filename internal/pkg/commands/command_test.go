@@ -27,7 +27,7 @@ func TestNewCommand(t *testing.T) {
 	cmd := NewCommand(order)
 
 	require.NotZero(t, cmd.GetId())
-	require.Len(t, cmd.GetOrders(), 1)
+	require.Len(t, cmd.GetBatch().GetOrders(), 1)
 	require.NotNil(t, cmd.GetDate())
 	require.NotNil(t, cmd.GetExecutionPlan())
 }
@@ -38,7 +38,7 @@ func TestNewCommandMultipleOrders(t *testing.T) {
 	orders := []*raftcmdpb.Order{{}, {}, {}}
 	cmd := NewCommand(orders...)
 
-	require.Len(t, cmd.GetOrders(), 3)
+	require.Len(t, cmd.GetBatch().GetOrders(), 3)
 }
 
 func TestNewCommandNoOrders(t *testing.T) {
@@ -47,7 +47,7 @@ func TestNewCommandNoOrders(t *testing.T) {
 	cmd := NewCommand()
 
 	require.NotZero(t, cmd.GetId())
-	require.Empty(t, cmd.GetOrders())
+	require.Empty(t, cmd.GetBatch().GetOrders())
 	require.NotNil(t, cmd.GetDate())
 	require.NotNil(t, cmd.GetExecutionPlan())
 }

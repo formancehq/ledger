@@ -34,6 +34,15 @@ type ClusterList struct {
 }
 
 // ClusterSpec defines the desired state of Cluster.
+//
+// The leader proposes the replicated cluster policy (idempotencyTTL and the
+// metadata limits) only when clusterPolicyRevision exceeds the applied
+// revision. Without these rules an edit that forgets the bump is accepted,
+// rolled out, and then never applied, which only shows up as a leader log
+// line. Presence counts as a change: setting a field to its default value
+// still needs a bump.
+// +kubebuilder:validation:XValidation:rule="(has(self.idempotencyTTL) == has(oldSelf.idempotencyTTL) && (!has(self.idempotencyTTL) || self.idempotencyTTL == oldSelf.idempotencyTTL) && has(self.metadataMaxEntries) == has(oldSelf.metadataMaxEntries) && (!has(self.metadataMaxEntries) || self.metadataMaxEntries == oldSelf.metadataMaxEntries) && has(self.metadataMaxKeyBytes) == has(oldSelf.metadataMaxKeyBytes) && (!has(self.metadataMaxKeyBytes) || self.metadataMaxKeyBytes == oldSelf.metadataMaxKeyBytes) && has(self.metadataMaxValueBytes) == has(oldSelf.metadataMaxValueBytes) && (!has(self.metadataMaxValueBytes) || self.metadataMaxValueBytes == oldSelf.metadataMaxValueBytes) && has(self.metadataMaxEntityBytes) == has(oldSelf.metadataMaxEntityBytes) && (!has(self.metadataMaxEntityBytes) || self.metadataMaxEntityBytes == oldSelf.metadataMaxEntityBytes) && has(self.metadataMaxCommandBytes) == has(oldSelf.metadataMaxCommandBytes) && (!has(self.metadataMaxCommandBytes) || self.metadataMaxCommandBytes == oldSelf.metadataMaxCommandBytes)) || (has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) > (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)",message="changing idempotencyTTL or a metadata limit requires increasing clusterPolicyRevision"
+// +kubebuilder:validation:XValidation:rule="(has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) >= (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)",message="clusterPolicyRevision must not decrease"
 type ClusterSpec struct {
 	// Image configuration for the ledger container.
 	// +optional
@@ -77,6 +86,11 @@ type ClusterSpec struct {
 	// +kubebuilder:default=8888
 	// +optional
 	GrpcPort int32 `json:"grpcPort,omitempty"`
+
+	// GrpcPeerPort is the dedicated gRPC port used for authenticated
+	// inter-node service forwarding.
+	// +optional
+	GrpcPeerPort int32 `json:"grpcPeerPort,omitempty"`
 
 	// HttpPort is the HTTP service port.
 	// +kubebuilder:default=9000
@@ -166,7 +180,8 @@ type ClusterSpec struct {
 	MaxExecutionPlanSize *int32 `json:"maxExecutionPlanSize,omitempty"`
 
 	// IdempotencyTTL is the time-to-live for idempotency keys (0 = never expire).
-	// Default: 24h.
+	// Replicated in the cluster policy; changing it requires bumping
+	// clusterPolicyRevision. Default: 24h.
 	// +optional
 	IdempotencyTTL string `json:"idempotencyTTL,omitempty"`
 
@@ -188,10 +203,10 @@ type ClusterSpec struct {
 
 	// ClusterPolicyRevision is the monotonic revision number the leader must
 	// propose to replace the committed cluster policy. Bump this whenever you
-	// change any metadata-limit field, idempotencyTTL, hashAlgorithm, or
-	// queryCheckpointLimit. The leader proposes the policy only when this
-	// exceeds the applied revision; setting a new value without bumping the
-	// revision logs a divergence error and changes nothing.
+	// change idempotencyTTL or any metadata-limit field; the API server
+	// rejects such a change without a bump, and rejects a decrease. The leader
+	// proposes the policy only when this exceeds the applied revision.
+	// Default: 1.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	ClusterPolicyRevision *int64 `json:"clusterPolicyRevision,omitempty"`
@@ -338,7 +353,9 @@ type ClusterSpec struct {
 	// +optional
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
 
-	// NetworkPolicy configuration for egress restrictions.
+	// NetworkPolicy configuration for ingress and egress restrictions. When
+	// enabled, public HTTP/gRPC ingress is limited to the declared service
+	// ports, while Raft and peer gRPC ingress is limited to Ledger Pods.
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 
@@ -1149,9 +1166,10 @@ type VolumeSpec struct {
 	// +optional
 	AccessMode string `json:"accessMode,omitempty"`
 
-	// Size is the initial and minimum requested capacity of the volume. Automatic
-	// expansion updates the live PVCs only and never rewrites this field or the
-	// StatefulSet VolumeClaimTemplates.
+	// Size is the initial and minimum requested capacity of the volume. Increases
+	// reconcile existing PVCs and claim templates; decreases never shrink them.
+	// Automatic expansion updates live PVCs only and never rewrites this field
+	// or the StatefulSet VolumeClaimTemplates.
 	// +optional
 	Size resource.Quantity `json:"size,omitempty"`
 
@@ -1160,7 +1178,9 @@ type VolumeSpec struct {
 	// +optional
 	AutoExpansion *VolumeAutoExpansionSpec `json:"autoExpansion,omitempty"`
 
-	// VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.
+	// VolumeAttributesClassName selects the CSI performance profile for new and
+	// existing PVCs. Changes are applied in place; clearing a non-empty class is
+	// unsupported. Completion is reported separately from accepting the request.
 	// Requires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).
 	// Mutually exclusive with hostPath.
 	// +optional
@@ -1275,9 +1295,11 @@ type PodAntiAffinitySpec struct {
 	TopologyKey string `json:"topologyKey,omitempty"`
 }
 
-// NetworkPolicySpec defines egress NetworkPolicy configuration.
+// NetworkPolicySpec defines ingress and egress NetworkPolicy configuration.
 type NetworkPolicySpec struct {
-	// Enabled enables the egress NetworkPolicy.
+	// Enabled enables the NetworkPolicy. It restricts both egress and ingress:
+	// public HTTP/gRPC ports remain reachable according to the generated rules,
+	// while Raft and peer gRPC ports are reachable only between Ledger Pods.
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
@@ -1364,6 +1386,10 @@ type TLSRolloutStatus struct {
 
 // ClusterStatus defines the observed state of Cluster.
 type ClusterStatus struct {
+	// ClaimTemplateRecovery identifies the durable journal for a claim-template
+	// replacement. The operator restores that workload before newer spec edits.
+	// +optional
+	ClaimTemplateRecovery *ClaimTemplateRecoveryStatus `json:"claimTemplateRecovery,omitempty"`
 	// Drain records the operator-owned epoch and transition across restarts.
 	// It is cleared after all members durably apply the release.
 	// +optional
@@ -1405,6 +1431,23 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
+}
+
+// ClaimTemplateRecoveryStatus authorizes exact journal bytes before creation.
+// An empty ConfigMapUID is Preparing; a bound UID is Active. Completed retains
+// the binding until cleanup succeeds, including after a lost delete response.
+type ClaimTemplateRecoveryStatus struct {
+	// ConfigMapName includes a prefix of the complete authorized digest.
+	ConfigMapName string `json:"configMapName"`
+	// SourceUID identifies the original StatefulSet saved in the payload.
+	SourceUID string `json:"sourceUID"`
+	// PayloadSHA256 covers the complete JSON payload and its Cluster identity.
+	PayloadSHA256 string `json:"payloadSHA256"`
+	// ConfigMapUID is bound only after the immutable journal is authenticated.
+	// +optional
+	ConfigMapUID string `json:"configMapUID,omitempty"`
+	// +optional
+	Completed bool `json:"completed,omitempty"`
 }
 
 // DrainStatus tracks an annotation-triggered drain lifecycle.

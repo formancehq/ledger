@@ -76,7 +76,7 @@ func newWorkerForTest(t *testing.T, ledgerName string, source v2.Source, store *
 	ctx := logging.TestingContext()
 
 	return NewWorker(
-		ledgerName, 100, source, nil, store, nil, builder,
+		ledgerName, 100, source, v2.TranslateOptions{}, store, nil, builder,
 		logging.FromContext(ctx), noop.NewMeterProvider(),
 	)
 }
@@ -127,7 +127,7 @@ func (s *stubProposer) Propose(_ context.Context, proposal *node.Proposal) (*fut
 	cmd := &raftcmdpb.Proposal{}
 	if err := cmd.UnmarshalVT(proposal.Data()); err == nil {
 		rec := recordedProposal{cmd: cmd}
-		for _, tu := range cmd.GetTechnicalUpdates() {
+		for _, tu := range cmd.GetBatch().GetTechnicalUpdates() {
 			if sync := tu.GetMirrorSync(); sync != nil {
 				rec.update = sync
 			}
@@ -196,7 +196,7 @@ func newWorkerWithProposer(
 	ctx := logging.TestingContext()
 
 	return NewWorker(
-		ledgerName, 100, source, nil, store, proposer, builder,
+		ledgerName, 100, source, v2.TranslateOptions{}, store, proposer, builder,
 		logging.FromContext(ctx), noop.NewMeterProvider(),
 	)
 }

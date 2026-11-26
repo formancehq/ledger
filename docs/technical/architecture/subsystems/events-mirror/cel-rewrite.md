@@ -119,3 +119,10 @@ Actions never call CEL. Each carries plain parameters:
 - **HTTP** — `mirrorSource.rewriteRules` on the create-ledger body (`openapi.yml`, `internal/adapter/http/handlers_create_ledger.go`). Each rule is decoded via `protojson` so proto oneofs dispatch correctly.
 - **CLI** — `ledgerctl ledgers create --mirror-rewrite-file <path>` (YAML/JSON list) for humans; repeatable `--mirror-rewrite-rule '<json>'` for programmatic use. Both routes bridge YAML→JSON→protojson.
 - **Operator** — `spec.mirrorSource.rewriteRules` on the `Ledger` CRD. The controller passes each rule to ledgerctl as a `--mirror-rewrite-rule` JSON argument.
+
+Rewrite rules run before the mirror's [asset mappings](mirror.md#asset-mappings).
+`match` predicates and actions therefore see v2 asset names such as
+`USDT_ETHEREUM/6`, not the mapped v3 `(asset, color)`. A transaction whose
+asset has no v3 representation and no mapping stalls the mirror. A `drop` rule
+that matches it is the escape hatch: the transaction becomes a fill-gap before
+mapping inspects its postings.

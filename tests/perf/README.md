@@ -139,6 +139,13 @@ Tests are configured via environment variables (see `scripts/shared/config.js`):
 - 95th percentile HTTP request duration < 500ms
 - 95th percentile bulk latency < 500ms
 
+## Asynchronous CI runs
+
+See [performance benchmarks](../../docs/technical/contributing/performance-benchmarks.md)
+for PR labels, duration profiles, local Pulumi backend submission, access setup
+and operator-owned cleanup. These runs use `nix develop .#perf`; GitHub confirms
+submission only, while snapshots remain in Grafana.
+
 ## Benchmark Operator
 
 Benchmark reporting is handled by the operator in `misc/benchmark-operator`, which watches `TestRun` objects, creates Grafana snapshots, and emits a JSON report:

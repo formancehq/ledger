@@ -76,7 +76,7 @@ func TestBuildPgxPoolConfig_IAMRejectsDSNWithoutExplicitSSLMode(t *testing.T) {
 	// the exact bypass NumaryBot reported (env-var-driven TLS with no
 	// sslmode= in the persisted DSN). With PGSSLMODE=require, pgx's parsed
 	// config reports TLS on every attempt — the raw-DSN check is the only
-	// thing that keeps admission independent of pod env.
+	// thing that keeps the TLS requirement independent of pod env.
 	t.Setenv("PGSSLMODE", "require")
 
 	dsn := "postgres://iam-user@host:5432/db" // no sslmode= in the URI

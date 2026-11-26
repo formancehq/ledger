@@ -20,6 +20,30 @@ the branch is reached. Evidence must distinguish those cases and show that a
 same-key retry after repair can establish one definitive outcome, while a
 same-key retry of an earlier committed outcome does not execute it again.
 
+## Forwarded preload gaps inside a keyed batch
+
+Admission forwards a keyed order whose dependency discovery failed, marked
+`OrderTechnical.preload_unavailable`, so the FSM dedup gate can replay a frozen
+outcome. Without one, the batch executes in sequence and the forwarded order
+fails at its own position with the uncommitted `PRELOAD_UNAVAILABLE`. An earlier
+order's definitive rejection (`INSUFFICIENT_FUNDS`, `VOLUME_OVERFLOW`, ...) is
+therefore audited and frozen under the key and replays on retry. Admission's
+overlay folds earlier effects without checking funds, so this ordering is what
+keeps a retry-forever client from looping on a gap that masks a real verdict.
+Evidence must show both directions: the earlier rejection wins and replays, and
+a gap after successful orders discards their effects, leaves no audit or
+idempotency row and lets a re-admitted retry under the same key execute.
+
+## Prepared-query ID target changes (EN-2601)
+
+New prepared-query updates carry their target explicitly. A retry of the same
+request therefore hashes the same order even if the stored query was deleted
+and recreated with another target. The FSM's ordinary key lookup returns the
+frozen outcome without a second mutation. A changed target or filter conflicts
+while the key remains live; an expired or evicted key is a fresh operation.
+The prepared-query E2E regression changes the target, deletes and recreates the
+query, retries the keyed update, and verifies the replacement query is intact.
+
 ## Peer closure followed by maintenance (EN-2212)
 
 The Antithesis `NewGRPCConn` factory retries in interceptors after EN-1627; a
@@ -59,7 +83,7 @@ Initial metadata shares the CreateLedger operation identity and proposal atomici
 
 After a keyed creation carrying metadata, does replay preserve the original metadata and audit sequence? Does an invalid metadata map leave neither a ledger nor metadata rows or a consumed ledger ID?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Technical-update submission boundary
 
@@ -72,3 +96,51 @@ replay-time semantic change. Pair MirrorSync with real ingestion and a concurren
 ledger promotion: rejected ingestion must preserve the prior source head and
 applied position through recovery; successful ingestion advances both.
 See [the composition contract](../architecture/subsystems/fsm/technical-update-atomicity.md).
+
+## Metadata policy tightening and retained recovery
+
+Public admission preserves authentication, shape and safe preload construction,
+then submits ordinary business proposals. Existing FSM handlers evaluate mutable
+metadata policy after idempotency lookup. A matching retained success or failure
+replays without new audit or business effects. A fresh definitive refusal and a
+live content conflict are audited; missing, expired or evicted keys are new
+attempts under the policy at apply. A retained refusal must survive later policy
+loosening. Earlier preparation and readiness failures retain their precedence;
+there is no general admission-error replay bypass.
+
+Prove the original success/failure replay triggers, each metadata dimension,
+fresh keyed and unkeyed failure audit items, no durable business effects,
+conflict preservation of the original outcome, expiry/eviction, cancellation,
+log-read failures, and maintenance/drain/audit-capacity refusal. A failure can
+follow speculative handler writes, but the discarded WriteSet must leave no
+business projection or log. Runtime gates remain shared with
+`runtime-health-admission-contracts`; deduplicate by root cause.
+
+Queue policy tightening and an original prepared under the older policy. Apply
+only the policy, submit the retry, then hold both applies separately. Neither
+proposal acceptance nor the original's apply completes the retry; after ordered
+durable apply it returns the original frozen outcome without another audit.
+Also consider a retry submitted before the original: it is then the first
+attempt and must evaluate policy at that apply index.
+
+The ordinary proposal replicates request bytes and preloads declared keys. Fresh
+policy failures persist attempted orders in audit, while replay adds no audit
+rows. Cost scales with request bytes/keys and script dependencies, without a new
+historical scan or consensus-spanning lifecycle lock. Preserve cost-shape tests
+and local benchmark evidence; do not claim network/saturation measurements.
+No persisted projection, format, FSM interpreter or restore reconstruction changes.
+See [the admission contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten).
+
+## Atomic HTTP Apply
+
+Atomic HTTP Apply submits one ordered service batch across ledgers/configuration with one header identity. An unskipped business failure discards all staged business effects; allowed explicit skip reasons retain successful skipped-order semantics. Retained same-key outcomes replay and changed content conflicts. A post-commit readiness/signing/encoding/transport failure does not prove rollback or justify a fresh key.
+
+Can the atomic HTTP adapter split a batch, accept conflicting identity sources, lose a retained outcome after response failure, or leak a successful first ledger mutation after a later unskipped rejection? Does checkpoint replay retain service readiness/provenance behavior?
+
+Use routed real admission/FSM tests for nonempty cross-ledger success and later-order failure, inspect both ledgers and committed logs, then replay identical content and conflict changed content under one header key. Inject or observe response loss after commit and recover with the original key. Compare the unchanged legacy bulk modes separately; do not infer durable atomicity from a mocked service call.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

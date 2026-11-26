@@ -17,6 +17,7 @@ on:
         options:
           - rc2-to-rc3
           - rc3-to-rc4
+          - rc4-to-rc5
   workflow_call:
     inputs:
       release_branch:
@@ -49,7 +50,7 @@ jobs:
       RELEASE_BRANCH: ${{ inputs.release_branch }}
       UPGRADE_TRANSITION: ${{ inputs.transition }}
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
+      - uses: namespacelabs/nscloud-checkout-action@c79409f8642d7fca9c1169a97f84d7ada5de1f9e # v9
         with:
           ref: main
           fetch-depth: 0
@@ -57,7 +58,7 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: NumaryBot

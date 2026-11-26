@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -9,11 +10,15 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
+var developmentImageSuffix = regexp.MustCompile(`\.dev\.[0-9]+\.g[0-9a-f]+$`)
+
 // validateLedgerVersion compares declared release tags before the operator
 // publishes a server image. Development builds may use opaque image tags;
 // release operators require a comparable tag.
 func validateLedgerVersion(ledger *ledgerv1alpha1.Cluster, operatorVersion string) (reason string, err error) {
-	ledgerVersion := normalizeReleaseVersion(ledger.Spec.Image.Tag)
+	// CI development images build on the preceding release tag. Compare that
+	// release baseline while leaving the full image tag intact for upgrade checks.
+	ledgerVersion := normalizeReleaseVersion(developmentImageSuffix.ReplaceAllString(ledger.Spec.Image.Tag, ""))
 	operatorRelease := normalizeReleaseVersion(operatorVersion)
 	if !semver.IsValid(ledgerVersion) {
 		if !semver.IsValid(operatorRelease) {

@@ -20,8 +20,9 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Content string `json:"content"`
-		Version string `json:"version"`
+		Content     string `json:"content"`
+		Version     string `json:"version"`
+		Description string `json:"description"`
 	}
 	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
@@ -32,10 +33,11 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_SaveNumscript{
 			SaveNumscript: &servicepb.SaveNumscriptRequest{
-				Ledger:  ledgerName,
-				Name:    name,
-				Content: body.Content,
-				Version: body.Version,
+				Ledger:      ledgerName,
+				Name:        name,
+				Content:     body.Content,
+				Version:     body.Version,
+				Description: body.Description,
 			},
 		},
 	})
@@ -58,5 +60,5 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		panic(emptyLogPayload("save-numscript", logEntry, details))
 	}
 
-	writeCreated(w, r, saved.GetInfo())
+	writeMutationCreated(w, r, logEntry, saved.GetInfo())
 }

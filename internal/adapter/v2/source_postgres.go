@@ -282,7 +282,7 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 	//      raw DSN. pgxpool.ParseConfig folds ambient libpq env vars
 	//      (PGSSLMODE, ...) into its effective config, so a persisted
 	//      mirror without sslmode would inherit PGSSLMODE from the pod env
-	//      at admission time and later fail (or downgrade to cleartext) on
+	//      during source construction and later fail (or downgrade to cleartext) on
 	//      any pod that lacks that env var. Anchoring the check in the raw
 	//      DSN makes the TLS guarantee a property of the stored config
 	//      alone, independent of pod environment.
@@ -359,7 +359,7 @@ func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) 
 // Reason for looking at the raw DSN rather than the parsed pgxpool config:
 // pgxpool.ParseConfig folds ambient libpq env vars (PGSSLMODE, ...) into
 // its effective config. A persisted mirror without sslmode= would inherit
-// e.g. PGSSLMODE=require from the pod env at admission time, then fail
+// e.g. PGSSLMODE=require from the pod env during source construction, then fail
 // (or downgrade to cleartext) on any pod that lacks the env var. Anchoring
 // the TLS gate in the raw DSN makes it a property of the stored config
 // alone, independent of pod environment.

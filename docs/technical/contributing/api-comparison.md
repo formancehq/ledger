@@ -44,6 +44,93 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+## REST and gRPC input compatibility
+
+REST path parameters decode ledger names once before validation. On REST
+transaction and log lists, RFC3339 range bounds preserve the documented
+inclusive/exclusive semantics against stored microseconds. Textual metadata
+filters preserve quoted strings on every route that accepts them.
+
+Prepared-query mutation and execution routes reject trailing JSON before
+calling the controller. Execution preserves exact integral REST parameters
+and rejects null. New sink creation requires a name and sink type through
+either transport. `MIRROR` creation requires a source and `NORMAL` creation
+must omit it. Resubmit formerly accepted invalid shapes with valid inputs.
+This does not change
+existing persisted entries or the gRPC wire contract.
+
+## Atomic HTTP Apply
+
+`POST /v3/_/apply` is an additive v3 operation for ordered cross-ledger and
+configuration batches. In v2.4.16, `internal/api/v2/routes.go` registers
+`POST /v2/{ledger}/_bulk`, `controllers_bulk.go` chooses a ledger from the route
+and parses `atomic`, `continueOnFailure`, `parallel` and `schemaVersion`, and
+`controllers_bulk_test.go:TestBulk` covers atomic and atomic/parallel conflict
+cases. `openapi/v2.yaml` describes the `V2Bulk` array and `V2BulkResponse`.
+There is no bucket-wide Apply equivalent in that verified route/spec surface.
+
+The new route intentionally uses the existing v3 protobuf command union inside
+`{requests:[...]}`, one header key and `{data:{logs:[...]}}` instead of v2's
+ledger-local bulk action/data array and per-element outcomes. This represents
+all existing v3 service operations and preserves typed metadata and signed
+whole-batch identity without inventing lossy conversions for configuration
+commands. Requests are always atomic, accept no query parameters, and check
+every operation's granular scope. Explicit allowed business skip reasons retain
+the gRPC semantics. Existing v3 bulk remains the closest v2-facing operation;
+its modes, defaults, fields and envelopes are unchanged.
+
+The new endpoint reuses v2-compatible decimal posting amounts, RFC3339 times,
+ordinary JSON error envelopes and bigint response negotiation wherever their
+semantics match. It has no pagination or filtering. HTTP 200 returns ordered
+system logs, including configured response signatures except for redacted
+`addEventsSink` and mirror-ledger creation logs. Their original signed payloads
+contain credentials, so the HTTP response omits those signatures. Post-commit response
+failure does not imply rollback. The existing v2-to-v3 endpoint map stays
+unchanged because no mapped route is renamed, removed or replaced. Upgrade
+receiving HTTP nodes before using the additive route; protobuf and persisted
+formats and service revision 40 are unchanged. See
+[the complete contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+
+## HTTP transaction request signatures
+
+V3 adds opt-in signing headers with `application/json` for the
+existing transaction create/revert/metadata POST, transaction metadata DELETE,
+and nonempty `atomic=true` bulk operations. The wrapper carries the ordinary
+REST body in `request` (null for DELETE) and the standard-base64 `payload` of the
+complete protobuf batch derived from the URL, body and `Idempotency-Key`.
+`Formance-Signing-Key-Id` and `Formance-Signature` headers carry its key ID and
+standard-base64 Ed25519 signature; the adapter assembles the existing
+`SignedApplyBatch`. Each header is required exactly once with a nonempty value;
+the signature must decode to 64 bytes. Either header activates signed handling,
+even if empty; neither header preserves the ordinary unsigned REST body. JSON
+MIME parameters are accepted. The complete decoded protobuf values must match before the original signed bytes
+reach admission. Atomic bulk preserves its header key, ignored per-entry `ik`,
+request order and skippable reasons. Signed non-atomic bulk returns 400.
+
+V2's transaction and bulk methods/routes, ordinary JSON field names, envelopes,
+defaults and header identity remain the comparison baseline. Their ordinary v3
+JSON counterparts keep those established contracts; the opt-in signing headers
+and wrapper are an intentional additive divergence because v2 provides no equivalent opaque
+`ApplyBatch` signature proof. No route is renamed, so the endpoint map is
+unchanged. Response envelopes and bigint negotiation are unchanged. Request
+signing does not provide HTTP response authenticity.
+
+Malformed signed wrappers, missing/empty/repeated signing headers, invalid
+base64 and invalid signature length return 400; HTTP-to-signed-batch mismatch
+and invalid, unknown or revoked signing keys return 403 `PERMISSION_DENIED`. Mandatory missing
+signatures on ordinary unsigned requests return 401 `UNAUTHENTICATED`.
+Unsupported routes return 415 for either signing header; either signing header
+with a non-JSON or missing content type also returns 415. Bulk 401/403
+cannot be suppressed by `continueOnFailure`, and all processing outcomes remain available. JWT authentication/scopes remain separate.
+Forwarded signing failures use dedicated validated `ledger.signing` ErrorInfo
+details; bare/foreign gRPC auth failures retain the existing 500 contract.
+
+The 4 MiB body budget includes the whole wrapper and base64, reducing usable
+signed capacity. Upgrade receiving HTTP nodes before clients opt in. No protobuf,
+protocol revision (40), proposal or persisted format changes, or migration are
+needed. Existing retained-key replay, unkeyed re-execution and expired-key rules
+are unchanged. See [HTTP request signing](../../ops/signing.md#http-request-signing).
+
 ## Transaction metadata address validation
 
 Transaction creation (including bulk) rejects malformed `accountMetadata`
@@ -57,6 +144,30 @@ processor validation. In v2.4.16, `TransactionRequest.ToCore` in
 stricter v3 address constraint already existed in its processor; this change
 makes the rejection earlier and deterministic to protect replicated audit
 history. See the [rollout restriction](../../ops/upgrades.md#account-metadata-address-validation).
+
+## Idempotency after metadata policy tightening
+
+A v3 write whose original metadata no longer fits the committed policy can
+recover its retained keyed success or definitive failure. After normal
+conversion, readiness and preload checks, the ordinary proposal reaches the
+FSM. Same key/content replays; live different content creates an audited
+conflict; missing/expired keys execute under the policy at apply and a definitive
+`METADATA_LIMIT_EXCEEDED` is audited with no committed business effects. A keyed
+refusal remains frozen even if policy is later loosened. This covers unitary
+and bulk writes converging on admission; transport caps and earlier structural
+or preparation failures still apply.
+Routes, fields, envelopes, failure types and protocol revision 40 are unchanged.
+This is a v3 replicated-policy recovery correction; it does not introduce a v2
+metadata ceiling or change the existing v2-to-v3 endpoint mapping. In the v2
+reference at revision `d47ba1746cec2173d84eab8ec575be196eae0837`, `internal/controller/ledger/log_process.go`
+checks idempotency in `forgeLog` (line 148) before `runLog`, and
+`fetchLogWithIK` (line 221) verifies the retained content hash. The v3 recovery
+preserves that lookup-before-execution behavior while keeping its replicated
+metadata ceilings. Existing conflict presentation intentionally differs: v3
+returns HTTP 409 `IDEMPOTENCY_KEY_CONFLICT`; v2 returns HTTP 400 `VALIDATION`.
+This correction changes neither contract. See
+[the replay contract](../architecture/subsystems/admission/idempotency.md#replay-after-metadata-limits-tighten)
+and [client upgrade behavior](../../ops/upgrades.md#metadata-limit-replay-recovery).
 
 ## Ledger integrity checking
 
@@ -83,10 +194,29 @@ The v2 API has no equivalent Raft cluster-command lifecycle.
 
 Get/list use camelCase LedgerInfo properties and typed metadata; mode, enforcement
 and account persistence use explicit short enum defaults. Mirror progress includes
-zero values and decimal-string counters (`string/bigint` in OpenAPI), preserving
-uint64 precision in TypeScript SDKs. v2 stats/log IDs use numeric JSON with
-`integer/int64` or `integer/bigint`; v2 has no equivalent mirror progress. The
-v3-specific counter representation intentionally differs for lossless decoding.
+zero values and unsigned numeric counters (`integer/uint64` in OpenAPI), covering
+the full `0..18446744073709551615` range; clients must use lossless integer
+parsing above JavaScript's safe-integer range. v2 stats/log IDs
+use numeric JSON with `integer/int64` or `integer/bigint`; v2 has no equivalent
+mirror progress.
+Connection redaction selects formats by declared protobuf field identity.
+Supported PostgreSQL, NATS, ClickHouse and HTTP(S) values retain safe connection
+information; unsupported cross-format values and unregistered annotated fields
+are fully masked. New PostgreSQL mirror configurations require a generic
+hierarchical URL with an explicit scheme; the worker validates PostgreSQL
+schemes/options and IAM TLS before installing credentials. Admission only checks
+shape and required IAM region; invalid driver settings can be committed and
+then fail source construction. There is no equivalent mirror-creation API in v2;
+new NATS sinks require an explicit scheme per server; PostgreSQL and NATS retain
+empty/default hosts and port-only authorities. Explicit ports on named hosts,
+IPv6 hosts and port-only authorities must be in the 0–65535 range, including
+each host in a comma-separated ClickHouse authority. ClickHouse
+sinks require `clickhouse://`, `http://` or `https://`. Invalid forms fail before Raft with safe
+`VALIDATION` errors (HTTP 400 / gRPC InvalidArgument). Existing committed values
+remain usable and legacy keyword DSNs are fully masked on reads. Endpoints and
+envelopes are unchanged. The v2 API has no equivalent typed mirror/sink
+configuration endpoints, so this v3-specific input policy has no v2 request to
+preserve; see [sensitive projection](../architecture/subsystems/api/sensitive-projection.md).
 Nested read mirror configuration masks passwordless HTTP(S) URL userinfo as
 well as passwords and uses a distinct schema
 from unchanged flat creation input. Read rewrite actions model protojson
@@ -109,6 +239,16 @@ explicitly allow `superuser` in their key configuration. The CLI exposes
 `--superuser`, operator Credentials expose `spec.superuser`, and audit callers
 report `superuser`. Service protocol revision 19 accompanies this rename;
 all granular-scope authorization behavior is unchanged.
+
+### Authenticated caller attribution
+
+Newly admitted OIDC writes record the verified issuer as the caller source,
+including tokens with a JWT `kid`; rotating that signing key preserves the
+issuer/subject identity. Static Ed25519 writes retain their signing key ID,
+including tokens that carry an issuer claim. This corrects attribution capture
+on HTTP and gRPC without changing token acceptance, authorization, endpoint
+shapes, or service protocol revision 40. Previously committed snapshots remain
+unchanged. See [caller identity](../architecture/subsystems/api/auth.md#caller-identity-in-the-audit-chain).
 
 ### Service protocol compatibility (EN-1851)
 
@@ -180,7 +320,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, `id`, metadata) |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination (including exclusive key `"0"` for mirrored transaction ID zero), `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, exact/range `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -213,10 +353,10 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
-| Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
+| Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed). Exact totals, including above 2^256 (`BigUint` on gRPC since `v3.0.0-rc.5`) |
 | Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
-| List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
+| List logs | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/logs` accepts text or structured JSON `id` filters (exact/range); the gRPC stream accepts the equivalent `QueryFilter` protobuf. `ledger == "foo"` selects one ledger when its opt-in index is ready. |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
@@ -242,7 +382,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Dynamic key management | ✅ | ❌ | Register/revoke/list keys via gRPC API (bootstrap: first key unsigned) |
 | Require signatures | ✅ | ❌ | Optional enforcement via `signing require` API call |
 | **Maintenance** |
-| Maintenance mode | ✅ | ❌ | Block all writes, Raft-replicated flag, dual check (admission + FSM) |
+| Maintenance mode | ✅ | ❌ | Block client business writes; leader-internal policy reconciliation remains available unless drained. Raft-replicated flag, dual check (admission + FSM) |
 | **Store Operations** |
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
@@ -297,7 +437,7 @@ arbitrary-precision bounds and signedness. V3 selects response encoding by
 nested and future nonmonetary fields, rather than by endpoint or monetary field
 name. This generalization preserves v2 monetary behavior; v2 has no equivalent
 contract for these v3 message types. Ordinary integer IDs/counts, typed metadata
-and explicitly string-encoded counters retain their existing contract. Shared
+and other explicit string projections retain their existing contract. Shared
 HTTP writers negotiate the response, while custom nested projections forward
 options. Request decoding is unchanged.
 
@@ -368,11 +508,16 @@ for the full discriminator list and the information retained in the projection.
 - ✅ Numscript variables support
 - ✅ Balance verification (insufficient funds)
 - ✅ `force` option (bypass balance checks)
+- ✅ Numscript transaction creation when the script emits postings; otherwise `EMPTY_TRANSACTION`
 - ✅ Transaction metadata
 - ✅ Account metadata in the same request
 - ✅ Transaction reference
 - ✅ Custom timestamp
 - ✅ Idempotency key
+
+`POST /v3/{ledgerName}/numscripts/execute` runs a Numscript independently of
+transaction creation. It returns a transaction when the script emits postings,
+or HTTP 204 when it updates account metadata without postings.
 
 **Numscript Experimental Features (available, require `#![feature(...)]` opt-in):**
 - ✅ Account interpolation (dynamic addresses like `@escrow:$order_id`)
@@ -558,6 +703,7 @@ to 8.
 
 **Supported actions:**
 - ✅ `CREATE_TRANSACTION`
+- ✅ `EXECUTE_NUMSCRIPT` (creates a transaction for postings or updates account metadata without postings)
 - ✅ `ADD_METADATA` (account and transaction)
 - ✅ `REVERT_TRANSACTION`
 - ✅ `DELETE_METADATA` (account and transaction)
@@ -575,8 +721,8 @@ error status without allowing partial application of the batch.
 
 **SDK error contract:** Processing failures retain the `data` array,
 including committed successes, the failed element and aborted later elements.
-Business statuses 400/401/403/404/409 are suppressed to 200 only when
-`continueOnFailure=true`. Processing 429/500/503 surface unconditionally;
+Business statuses 400/404/409 are suppressed to 200 only when
+`continueOnFailure=true`. Processing 401/403/429/500/503 surface unconditionally;
 503 retains `Retry-After: 1`. OpenAPI declares `BulkErrorResponse` as an `anyOf`
 union of the bulk envelope and ordinary ErrorResponse where both are accepted,
 and includes the optional batch idempotency header. Empty successful batches
@@ -629,6 +775,23 @@ The v2 schemaVersion/parallel options are not added to v3 by this correction.
 
 ### 6. Transaction Read
 
+Exact transaction address filters use retained historical mappings for any,
+source and destination roles, independently of current account existence. An
+EPHEMERAL volume purge must therefore preserve funding and draining transaction
+matches. Address prefixes continue enumerating current accounts; historical
+prefix expansion is not supported. Indexed transaction metadata and reference
+searches retain their existing behavior. Account-target exact lookup still
+requires current account existence.
+
+This restores the historical-search principle of v2: `release/v2.4` at
+`21d1e51378b4dbb6b9858313cafc2d8bab62f329`,
+`internal/storage/ledger/transactions.go`, records posting sources/destinations
+on transactions and filters those arrays without probing current accounts.
+V3 retains its existing routes, envelopes, filter syntax, index requirements,
+errors and pagination. No v2 EPHEMERAL lifecycle equivalence is implied. Existing
+omitted v3 mappings need the explicit repair described in
+[Upgrades](../../ops/upgrades.md); restarting alone does not reconstruct them.
+
 **Endpoint:** `GET /v3/{ledgerName}/transactions/{transactionId}`
 
 **Features:**
@@ -657,6 +820,9 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 
 Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration. `mode` accepts only `"NORMAL"` (the default when omitted) or `"MIRROR"`, case-sensitive; any other value is rejected with HTTP 400 (`INVALID_REQUEST`) and no ledger is created.
 
+Omitting `mirrorSource` in `MIRROR` mode, or supplying it in `NORMAL` mode, is
+rejected before any ledger is created: HTTP 400 / gRPC `InvalidArgument`.
+
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
 - **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`. AWS RDS IAM authentication is provisioned via the operator `Ledger` CRD (`mirrorSource.postgres.awsIamAuth.region` + optional `assumeRoleArn` for cross-account / multi-tenant mirrors) — see `misc/operator/api/v1alpha1/ledger_crd_types.go`. The mirror pod mints SigV4 tokens per connection from the ambient AWS credential chain (IRSA on EKS).
@@ -668,6 +834,19 @@ HTTP(S) URL with a nonempty hostname. Invalid input returns HTTP 400 / gRPC
 `InvalidArgument` (`VALIDATION`), identifying `mirrorSource.http.baseUrl` without
 echoing credentials. Rejection occurs before Raft, audit/ledger persistence and
 worker startup, and does not probe the remote source.
+
+**Asset mappings:** `mirrorSource.assetMappings` is an optional list of
+`{sourceAsset, asset, color}` entries. Each entry maps one v2 asset, matched
+exactly, to a v3 asset and color, so v2 assets that v3 cannot represent
+(`USDT_ETHEREUM/6`, `USD/0`) can be mirrored. Mappings apply after
+`rewriteRules`. Creation rejects an invalid list with HTTP 400 / gRPC
+`InvalidArgument` (reason `VALIDATION`), whose message names the
+first offending entry. A valid list has at most 256 entries, each
+with a unique non-empty `sourceAsset` of at most 64 bytes, a valid v3 `asset`,
+a `color` matching `^[A-Z]{0,32}$`, and a unique `(asset, color)` target. The
+list is fixed at creation and is returned in `mirrorSource.assetMappings` by
+`GET /v3/{ledgerName}`. See
+[asset mappings](../architecture/subsystems/events-mirror/mirror.md#asset-mappings).
 
 **Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
 
@@ -684,6 +863,17 @@ worker startup, and does not probe the remote source.
 - `REVERTED_TRANSACTION` — Replays a revert
 - `DELETE_METADATA` — Deletes a metadata key
 - Unknown log types are recorded as fill-gap entries (no-op for data, preserves log ID sequence)
+
+**Sync errors stall the mirror:** a v2 log that cannot be translated stops
+ingestion at that log. The cursor does not advance, the worker retries with
+backoff, and `mirrorSyncProgress.error` is set. Its `message` is returned as
+`[redacted]`; the reason is in the server's `Mirror sync error` log line. A
+posting asset that is not a valid v3 asset and has no `assetMappings` entry is
+such an error, as is an unmapped asset equal to an uncolored mapping target. A
+mirror that already stores invalid assets refuses to ingest and logs
+`ledger contains assets ingested before asset-mapping support`. Mirror source
+configuration cannot be changed, so recovery is to delete the mirror ledger and
+recreate it with the needed `assetMappings` or `drop` rewrite rules.
 
 **Promote a mirror ledger:** `POST /v3/{ledgerName}/promote`
 
@@ -715,6 +905,10 @@ Numscripts use **semantic versioning** (semver) with the format `major.minor.pat
 When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
 - `version` (required): An explicit full semver (e.g. `"2.0.0"`) creating a new immutable version. Fails with 409 if the version already exists, and with 400 (`NUMSCRIPT_INVALID_VERSION`) for an empty, partial, or `"latest"` value.
+- `description` (optional): Free text stored with this version, replacing the v2 template `description`. It is limited to 1024 bytes of UTF-8 and must not contain control characters other than newline and tab; a violating value fails with 400 (`VALIDATION`). Changing a description requires saving a new version.
+
+Saving a numscript requires an existing ledger. A missing ledger returns HTTP
+404 (`LEDGER_NOT_FOUND`).
 
 When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
 
@@ -725,6 +919,9 @@ When referencing a numscript from a transaction (`scriptReference` on `POST /v3/
 - `content` (string): Numscript source code
 - `version` (string): Semver version (e.g. `"1.0.0"`)
 - `createdAt` (string, date-time): Timestamp
+- `description` (string): Description stored with this version, omitted when empty
+
+Each entry of `GET /v3/{ledgerName}/numscripts/{name}/versions` carries `version`, `createdAt` and `description` (omitted when empty).
 
 **Usage tracking (`GET /v3/{ledgerName}/numscripts/{name}/usage`):**
 
@@ -751,8 +948,11 @@ classification, the field parity table and operator asymmetries, date coercion
 
 Prepared queries are reusable, named queries stored per-ledger. A nil filter is
 a match-all definition for the selected target. HTTP create accepts omitted or
-null `filter`; HTTP update treats omission as no change and null as filter
-removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal.
+null `filter`; HTTP update requires a filter and uses null for filter
+removal. `Apply(UpdatePreparedQuery)` uses a nil protobuf filter for removal
+and requires an explicit target. HTTP update requires `target` and `filter`
+together and changes both atomically; use `null` to clear the filter.
+The new CLI requires `--target` and decodes public `id` against it before Apply.
 Empty objects and empty textual expressions are invalid. Queries can be
 executed in two modes: `LIST` (returns matching entity IDs with cursor
 pagination, ascending by default and descending with `reverse`) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for
@@ -1269,7 +1469,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/` | ✅ | ✅ | List ledgers, paged by name ([pagination](#pagination)) |
 | `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get declared metadata field types |
 | `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
-| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
+| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns; `temporal.firstSeen`/`lastSeen` are RFC3339 with the same microseconds as gRPC `TemporalStats` |
 | `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
 | `POST /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |
@@ -1282,7 +1482,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
 | `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
-| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:WriteLedger` on both the dedicated route and gRPC `Apply(SaveNumscript)` |
+| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:WriteLedger` on both the dedicated route and gRPC `Apply(SaveNumscript)`; missing ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
 | `GET /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type. Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
@@ -1305,6 +1505,14 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
+
+HTTP prepared-query parameters accept strings, booleans and exact JSON integral
+numbers. Negative values map to gRPC `int64_value`; zero and positive values
+map to `uint64_value`. Integral decimal and exponent spellings are accepted;
+values outside those ranges, fractions and null are rejected with `400
+INVALID_PARAMETERS` before execution.
+Clients sending integers above 2^53 must use a lossless JSON serializer. This
+matches the typed gRPC parameter values without changing the service protocol.
 
 **Read consistency selector.** Every `/v3` read accepts `X-Consistency:
 stale` over HTTP, matching the gRPC `x-consistency: stale` metadata. The
@@ -1442,7 +1650,7 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, idempotency_key, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. `idempotency_key` supports equality and prefix matching and may return several historical entries after key reuse. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
-| `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
+| `GetAuditEntry` | Get a single audit entry by sequence number; `requiredCapabilities` exposes the committed proposal declaration when present | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:ReadLedger`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
 | `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:ReadOps`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream registered signing keys, paged by key id | ✅ |
@@ -1470,6 +1678,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
 - `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
 - One of:
   - `create_transaction`: Create a new transaction
+  - `execute_numscript`: Execute a script, creating a transaction for postings or updating account metadata without postings. A referenced execution that creates a transaction may opt into `TRANSACTION_REFERENCE_CONFLICT` in `skippable_reasons` so a replay skips the duplicate and later orders in the Apply batch commit; a metadata-only result rejects a new reference.
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction
@@ -1488,6 +1697,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | Request variant | Scope | Matches |
 |---|---|---|
 | `apply` (`create_transaction`, `revert_transaction`) | `ledger:WriteTransaction` | `POST /v3/{ledgerName}/transactions` |
+| `apply` (`execute_numscript`) | `ledger:ExecuteNumscript` | `POST /v3/{ledgerName}/numscripts/execute` |
 | `apply` (`add_metadata`, `delete_metadata`) | `ledger:WriteMetadata` | metadata routes |
 | `apply` (`add_account_type`, `remove_account_type`, `set_default_enforcement_mode`) | `ledger:WriteMetadata` | `/v3/{ledgerName}/account-types*` |
 | `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:WriteLedger` | the `requireLedgersWrite` route group |
@@ -1507,7 +1717,7 @@ Two properties are enforced by tests rather than convention:
 
 > **Breaking change (EN-1954).** `BucketService.CreatePreparedQuery`, `UpdatePreparedQuery`, `DeletePreparedQuery` and `ClusterService.CreateQueryCheckpoint`, `DeleteQueryCheckpoint` are removed. Every one of these operations is a `ledger.Request` variant submitted through `BucketService.Apply`, so it is now batchable, idempotent under a batch key, signable as part of the batch, scope-checked once, and forwarded to the leader through the single Apply path. Required scopes and error semantics are unchanged. A newly executed checkpoint creation waits for local read-index readiness (leader only with `skip_response`), unless concurrent deletion supersedes it. An idempotent replay returns the historical logs immediately, including after deletion or while the original creation still materializes; it does not guarantee current existence or readiness. Server-produced response provenance preserves this distinction across follower forwarding. The HTTP prepared-query routes are unchanged — they already delegated to the same Apply backend.
 
-Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the four `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk.
+Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the five `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `EXECUTE_NUMSCRIPT`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk. `EXECUTE_NUMSCRIPT` produces a transaction log when the script emits postings or an account metadata update log when it emits only account metadata.
 
 ### gRPC Error Mapping
 
@@ -1528,7 +1738,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`domain`**: Always `"ledger"`
 - **`metadata`**: Error-specific key-value pairs with context
 
-**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, also implement `domain.SerializableError`. A definitive business rejection supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure`, returns no audited details, and exits before both writers. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`). If the FSM can emit it, classify it: a definitive business rejection also implements `domain.SerializableError` and supplies typed `FailureDetails()` for audit and idempotency; a technical failure implements `UncommittedFailure` instead, which the apply path tests first so it exits before both writers without implementing `SerializableError`. Keep diagnostic text in `Error()`; public presentation must not expose it. The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. Keep this table in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|
@@ -1703,3 +1913,39 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+### RC.4 operational policy
+
+Native cluster-policy controls introduced at the RC.3 to RC.4 cutover no longer
+appear in business audit listings.
+Historical policy audit entries remain readable. Audit response fields and
+service revision 40 are unchanged. Discovery still returns the committed policy.
+
+### Optional compact HTTP write acknowledgements
+
+V3 offers `skipResponse=true` on transaction create/revert, bulk, ledger
+create/promote, numscript save, event-sink creation and index creation. It changes
+only successful HTTP presentation; omitted/false retains the current v3
+contract. Values must be exactly one lowercase `true` or `false`, otherwise the
+adapter returns `400 INVALID_REQUEST` before execution. Single writes retain
+201 with `{"data":{"sequence":123}}`; this global uint64 JSON number is distinct
+from ledger-local `logID` and carries no signed receipt. Bulk preserves
+`responseType`, `logID`, complete skip/error detail, statuses and processing-error
+envelopes; compact successful entries add `sequence` and omit ordinary data.
+Empty bulk stays `{}`. Large-integer response negotiation does not stringify
+sequence; SDK decoders must preserve the full uint64 range. The pinned
+TypeScript generator emits a number and rounds values above 2^53: those clients
+need a lossless JSON decoder or the raw sequence token for full-range use.
+
+This opt-in v3 capability has no v2 equivalent. The comparison baseline
+`d47ba1746cec2173d84eab8ec575be196eae0837` implements unconditional transaction
+responses in `internal/api/v2/controllers_transactions_create.go` and
+`controllers_transactions_revert.go`, and no suppression option in
+`controllers_bulk.go`, `internal/api/bulking/handler_json.go` or
+`openapi/v2.yaml`. Existing v3 route and status differences remain unchanged
+(including create's 201 and `/bulk`). Existing no-content mutations stay empty.
+No pagination, filtering, authorization or request envelope changes accompany
+this addition. Upgrade every HTTP-serving node before clients opt in: older
+nodes reject the new query name. The service protocol stays unchanged. See the
+[HTTP contract](../architecture/subsystems/api/http-api.md#compact-write-acknowledgements)
+for retained internal work and rollout limits.

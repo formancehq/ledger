@@ -26,7 +26,32 @@ they do not provide a focused inventory of transport presence, codecs, limits,
 schemas and stream framing. This domain adds that inventory to the native audit
 workflow without adding a runner or changing product guarantees.
 
+## REST and gRPC parity regressions
+
+Use the `REST and gRPC business parity` specs in
+`tests/e2e/business/api_parity_test.go`. The fixture exercises both
+transports and checks ledger identity after URL decoding, exact aggregate
+totals and typed filter results, and list results at fractional date bounds.
+It rereads public state after malformed prepared-query writes and shared
+admission refusals, including `MIRROR` creation without a source. Adapter
+tests cover lexical round-tripping, complete-body
+validation and the size boundary. The common admission rules affect new
+requests only; do not replay historical records under the new validators.
+
 ## Evidence contract
+
+For a Numscript execution containing account metadata changes but no postings,
+trace the `/numscripts/execute` HTTP route, service Apply response and `ledgerctl
+numscripts execute` separately. The execution route returns 204 with no transaction
+body; a posting-producing execution returns 201 with its transaction. The
+create-transaction route requires postings and rejects a script without them
+with `EMPTY_TRANSACTION`.
+The CLI must present either result from the same execute command. In public
+LedgerLog JSON, the `ACCOUNT_METADATA_UPDATED` data object is directly an
+account-address-to-metadata map, without an `accountMetadata` wrapper. A
+metadata-only execution cannot claim a transaction ID or accept a transaction reference.
+Check the response discriminator rather than inferring a transaction from the
+request's ExecuteNumscript action name.
 
 For each hypothesis, identify a registered entry point, its middleware or
 interceptors, the original input, the exact conversion chain, the downstream
@@ -124,6 +149,12 @@ and its `testdata/` inventory guard the schema and actual JSON codec. Exercise
 actual prepared-query create/update serializers
 with structured, nested, textual, null and omitted filters. A standalone helper
 or OpenAPI lint result alone cannot establish request corruption or preservation.
+For update, include an explicit `target` with an `id` filter for both LOGS and
+TRANSACTIONS, an explicit ACCOUNTS zero enum, a targetless request rejected at
+admission, and the HTTP target-only and filter-only errors. Check that the
+adapter preserves target presence through the service request and order, and
+that target plus filter update in
+one FSM action rather than a delete/recreate pair.
 The OpenAPI 3.0 filter union uses a QueryFilter reference and an inline nullable
 string, without a dummy null-only object or ignored nullable `$ref` sibling.
 Check `TestOpenAPISpec_NoBareObjects` for inline and component schema coverage:
@@ -165,8 +196,8 @@ writers from the request through option-aware nested codecs; dedicated protojson
 projections must contain none of these types, including in nested descriptors.
 Preserve null/zero/omission shapes, escaping, streaming newlines and checked
 failure buffering. Concurrent mixed-header requests must remain isolated.
-Ordinary integer IDs/counts, metadata and explicitly string-encoded counters
-retain their current representation. CLI, protobuf, event and storage codecs
+Ordinary integer IDs/counts, metadata and mirror counters retain their current
+numeric JSON representation. CLI, protobuf, event and storage codecs
 also keep their existing representations; response negotiation does not expand
 request decoding. Posting input still accepts canonical unsigned decimal strings
 or integer tokens within uint256; volumes retain arbitrary precision and signed
@@ -225,8 +256,8 @@ membership with its documented source revision; never expand that baseline to
 silence a diagnostic. Layout lint must not force renumbering a published type.
 Verify its registration independently through the scripts and buf configuration.
 A passing lint result establishes initial layout only: the service wire-freeze
-gate and persisted/mixed-version compatibility have independent evidence and
-owners. No source proto, baseline or generated production file is changed by
+gate, its listed wire exceptions with their mandatory stopped upgrades, and
+persisted/mixed-version compatibility have independent evidence and owners. No source proto, baseline or generated production file is changed by
 this contract preparation.
 
 ## Boundaries
@@ -358,11 +389,11 @@ no live user services or cleanup of another task's artifacts.
 
 ## Atomic creation metadata (EN-2686)
 
-Initial creation metadata is one CreateLedger operation, returned in the HTTP 201 ledger envelope; supported scalar values retain exact integer precision, HTTP null entries are omitted, and schema declarations govern query indexing rather than write acceptance.
+Initial creation metadata is one CreateLedger operation, returned by default in the HTTP 201 ledger envelope; supported scalar values retain exact integer precision, HTTP null entries are omitted, and schema declarations govern query indexing rather than write acceptance.
 
 Does initial metadata survive HTTP decoding, the service request and order unchanged, including integers beyond JSON float precision, omitted/null inputs and a schema type mismatch? Do malformed keys/scalars reject before any ledger is created?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## HTTP event sink mutations
 
@@ -370,7 +401,8 @@ Trace POST and DELETE under `/v3/_/events-sinks` through the registered
 `ledger:WriteOps` route guards and unsigned Apply requests. POST accepts a
 direct protobuf JSON configuration with a name and one sink variant; verify
 full-body limits, strict JSON decoding and field preservation for all five
-variants. Its acknowledgement includes only the committed name. GET retains
+variants. Its default acknowledgement includes only the committed name; compact mode
+returns only the global sequence. GET retains
 its existing envelope and config/status shape. DELETE decodes the path segment
 once and forwards optional `controllerId` exactly as a gRPC removal
 precondition. An omitted identity remains unconditional removal. Check
@@ -385,9 +417,9 @@ inventing a new retry identity or an external-delivery guarantee.
 
 Require camelCase keys, short explicit enum defaults, typed metadata/schema, REST
 segment discriminators and unconstrained null, RFC3339 timestamps, and populated
-mirror state/counters at zero. Counter wire values are decimal strings with
-OpenAPI string/bigint; a generated TypeScript number for integer/bigint can round
-large counters despite successful decoding. Exercise actual generated list/get
+mirror state/counters at zero. Counter wire values are unsigned JSON numbers
+with OpenAPI integer/uint64, covering `0..18446744073709551615`; clients must
+use lossless integer parsing above 2^53. Exercise actual generated list/get
 operations with >2^53 and uint64 maximum, alongside schema validation and the
 codec/routed HTTP fixtures. Read mirror schemas are nested, while flat create
 fixtures must still be accepted. Rewrite-rule read models must expose CEL
@@ -445,3 +477,97 @@ have different meanings. Fixed-state windows and link traversal belong to
 `query-semantic-equivalence`; temporal consistency belongs to
 `read-consistency-projections`. Do not invent a token authenticity or retained
 snapshot guarantee.
+
+## HTTP signed transaction boundary
+
+Trace the five signed operations through their actual route registrations,
+wrapper middleware, ordinary HTTP conversion and backend Apply. The media type
+is `application/json`, including MIME parameters; either signing header's
+presence (even empty) activates the wrapper with required fields `request` and
+standard-base64 `payload`. Without either header, retain ordinary unsigned REST
+decoding. OpenAPI uses anyOf for overlapping ordinary and signed schemas; runtime
+headers choose the representation. DELETE transaction metadata uses request:null.
+The adapter assembles the existing `SignedApplyBatch` from that payload and the
+`Formance-Signing-Key-Id` / `Formance-Signature` headers. Require both headers
+exactly once, nonempty, with a standard-base64 signature of 64 decoded bytes.
+Unsupported business routes reject either signing header with 415; either header
+with a non-JSON or missing content type also rejects with 415. No signing
+attempt may silently become unsigned. Compare the complete decoded protobuf batch with the
+URL/body/header-derived batch, including order/count, oneofs, typed values,
+skippable reasons and batch identity, before forwarding the original bytes.
+Noncanonical but equivalent protobuf encodings must not require reserialization.
+Follow the same `SignedApplyBatch` through `ApplyRequest.signed`, admission's
+`resolveBatch`, `Proposal.signature` and `AuditEntry.signature` as gRPC. Require
+no alternate HTTP proof type, admission verifier or persisted field.
+Signed bulk is nonempty and atomic-only; its header key wins over ignored `ik`.
+
+Require distinct routed controls for malformed envelopes, missing/empty/repeated
+signing headers, invalid base64 or signature length 400, mismatch 403,
+missing mandatory signatures 401, invalid/unknown/revoked keys 403 and preserved
+legacy optional unsigned JSON. Check the 4 MiB limit over the entire wrapper,
+including base64 and duplicate command data. Processing 401/403 must survive
+continueOnFailure while retaining every element result. Dedicated forwarded
+signing ErrorInfo uses domain `ledger.signing` and reason/status pairs
+MISSING_SIGNATURE/Unauthenticated or INVALID_SIGNATURE and
+UNKNOWN_KEY_ID/PermissionDenied; preserve original gRPC status/message. Only
+validated pairs gain classifiable 401/403 handling, and the public codes remain
+UNAUTHENTICATED/PERMISSION_DENIED. Bare/foreign auth errors retain 500. Probe wrong
+domains, reasons and statuses separately from a real signature rejection.
+
+This domain owns conversion, exact-byte forwarding, media/schema/error
+presentation and wrapper budget. The authentication domain owns unchanged JWT
+scopes and caller attribution; admission owns Ed25519 verification and key
+lifecycle, and persistence/replay domains retain their existing boundaries.
+Request signing adds no HTTP response authenticity. See
+[the HTTP contract](../architecture/subsystems/api/http-api.md#signed-transaction-requests)
+and [client recipe](../../ops/signing.md#http-request-signing). No audit execution
+is authorized by this contract update.
+
+## Atomic HTTP Apply
+
+POST /v3/_/apply decodes a nonempty requests object using strict canonical camelCase protobuf command fields, exact HTTP bigint/timestamp scalars and typed metadata; it rejects unknown/duplicate/null fields and body keys. All current Request and LedgerAction arms must have accurate OpenAPI input schemas. One Idempotency-Key header and signed full-batch equality preserve ordered intent. The adapter invokes the service Apply handler once, retaining checkpoint readiness and response signing, then emits checked public logs with bigint options and created-ledger identity/metadata. An addEventsSink log or a created-ledger log with a mirror source uses a detached credential-redacted configuration and omits its original signature envelope, whose payload contains credentials; the committed log remains unchanged. Existing bulk contracts remain unchanged.
+
+Can any atomic HTTP request arm or nested action lose a field/type, accept an alias/duplicate/null or body key, bypass the byte/depth/count limits, split dispatch, bypass service readiness, expose sink or mirror credentials, strip configuration logs or response signatures outside the sink and mirror-ledger creation exceptions, or silently round bigint values? Does OpenAPI enumerate the actual command graph instead of reusing incompatible public JSON projections?
+
+Exercise every Request and LedgerAction variant against the strict codec, then registered-router and real service fixtures for mixed cross-ledger/configuration commands, signed equality, header identity, exact scalar values, all bounds and checked response failures. Reconcile descriptor fields/unions with OpenAPI; compare actual full public logs including ledger creation id/metadata and nested bigint options. For addEventsSink and mirror-ledger creation, assert detached redaction, no signature payload, and unchanged original log. Distinguish helper decoding, routed dispatch and durable rollback evidence.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.
+
+
+## Compact HTTP write acknowledgements
+
+Trace `skipResponse` through the eight registered routes listed in the
+[HTTP contract](../architecture/subsystems/api/http-api.md#compact-write-acknowledgements).
+Require a single exact lowercase `true` or `false`; empty, repeated or other
+values reject with 400 before Apply. Omission/false keeps existing bodies and
+all auth, no-content and error paths. Single compact success stays 201 with
+only `data.sequence`: the global uint64 JSON number, distinct from transaction
+and ledger-local IDs, unaffected by bigint negotiation and without a signature
+or signed-log receipt. Bulk compact success retains `responseType`/`logID`, adds
+sequence and omits ordinary data; skips retain complete diagnostics. Errors and
+aborts have no success sequence. Preserve sequential/atomic status rollup,
+processing-error envelopes, `Retry-After` and empty `{}`.
+
+Use actual NewHandler/ServeHTTP responses and operation schemas for all modes,
+invalid options and auth controls. Capture unchanged downstream Apply arguments
+and verify full source logs are unmodified, including missing/wrong-kind result
+guards and local/forwarded boundaries. Preserve signed gRPC controls. Compare
+global/local IDs and exact uint64-max wire tokens with an integer-aware oracle.
+Generated SDK operation probes must preserve the compact shape and every
+skip/error field, independently compare decoded sequence with the raw token,
+and detect and disclose any consumer numeric precision limit. The pinned
+TypeScript number decoder is not lossless above 2^53; full-range consumers
+require lossless JSON decoding or the raw token.
+Bind schema, generator and dependencies. Schema/helper-only success is not SDK
+evidence. Test retained-key mode toggles at a real replay seam where available;
+mocked responses establish presentation only, not durable identity or rollback.
+Retry correctness remains owned by `idempotency-retries-partial-failures`.
+
+Older nodes reject the new name; rollout must finish on HTTP-serving nodes
+before clients opt in. Savings are limited to final HTTP bytes/serialization;
+full internal logs, forwarded gRPC signing and Raft/audit work remain. No
+persisted migration or protocol revision change follows from this projection.

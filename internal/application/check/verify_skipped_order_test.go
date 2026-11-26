@@ -28,6 +28,26 @@ func requireCollectExpectedSkippable(
 	return decoded
 }
 
+func applyLog(seq uint64, data *commonpb.LedgerLogPayload) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "L",
+				Log:        &commonpb.LedgerLog{Data: data},
+			},
+		}},
+	}
+}
+
+func mustOrder(t *testing.T, item *auditpb.AuditItem) *raftcmdpb.Order {
+	t.Helper()
+	order := &raftcmdpb.Order{}
+	require.NoError(t, order.UnmarshalVT(item.GetSerializedOrder()))
+
+	return order
+}
+
 // TestVerifySkippedOrder_AllowedReasonEmitsNothing exercises the happy path:
 // reason in the whitelist, prior reference claim present, AND the persisted
 // context fields match the chain-bound expectations.
@@ -1400,6 +1420,9 @@ func TestRecordChainBoundMutations_LiveCreateTxSeedsTxMetadataNamespace(t *testi
 	chainBound := newChainBoundState()
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expectedSkip, chainBound)
+	reconcileReplayedChainBound(items, []*raftcmdpb.Order{mustOrder(t, items[0]), mustOrder(t, items[1])}, []*commonpb.Log{
+		applyLog(50, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
+	}, chainBound)
 
 	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"],
 		"live create's tx-scoped metadata must be seeded under the tx:<id> namespace")
@@ -1420,6 +1443,180 @@ func TestRecordChainBoundMutations_LiveCreateTxSeedsTxMetadataNamespace(t *testi
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "1", "key": "txkey"})
 	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 60)
+}
+
+// TestReconcileMetadataOnlyChainBound_UsesReplayedTransactionID verifies that
+// a metadata-only order before a normal create cannot shift the transaction
+// metadata timeline onto a speculative id. The forged skip must still be
+// rejected for the replayed transaction's authoritative id.
+func TestReconcileMetadataOnlyChainBound_UsesReplayedTransactionID(t *testing.T) {
+	t.Parallel()
+
+	items := []*auditpb.AuditItem{
+		buildCreateLedgerItem(t, "L", 10),
+		buildAuditItem(t, 20, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+				}},
+			},
+		}}),
+		buildCreateTxWithTxMetadataItem(t, "L", "ref-1", "txkey", 30),
+	}
+
+	chainBound := newChainBoundState()
+	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), map[uint64]*expectedSkippableOrder{}, chainBound)
+	orders := make([]*raftcmdpb.Order, len(items))
+	for i, item := range items {
+		orders[i] = mustOrder(t, item)
+	}
+	reconcileReplayedChainBound(items, orders, []*commonpb.Log{
+		applyLog(20, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
+			"users:alice": {Values: map[string]*commonpb.MetadataValue{"role": commonpb.NewStringValue("viewer")}},
+		}}}}),
+		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: "ref-1", Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
+	}, chainBound)
+
+	require.Equal(t, uint64(2), chainBound.nextTxID["L"])
+	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"])
+	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "2")]["txkey"])
+	require.Equal(t, uint64(1), chainBound.referenceTxIDs["L"]["ref-1"])
+
+	conflictReason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+	conflictExpected := map[uint64]*expectedSkippableOrder{
+		40: {
+			reasons:   []commonpb.ErrorReason{conflictReason},
+			ledger:    "L",
+			reference: "ref-1",
+		},
+	}
+	conflictPayload := skippedPayloadWithContext(conflictReason, map[string]string{
+		"ledger":                "L",
+		"reference":             "ref-1",
+		"existingTransactionId": "1",
+	})
+	conflictPayload.GetOrderSkipped().Details = commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+		"ledger":                "L",
+		"reference":             "ref-1",
+		"existingTransactionId": "1",
+	})
+	conflictEvents := captureEventsState(t, "L", 40, conflictPayload, conflictExpected, chainBound)
+	require.Empty(t, conflictEvents, "a reference conflict after metadata-only execution must retain the replayed transaction id")
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		40: {
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "1",
+			metadataKey:        "txkey",
+			metadataTargetIsTx: true,
+		},
+	}
+	events := captureEventsState(t, "L", 40, skippedPayloadWithContext(reason, map[string]string{"target": "1", "key": "txkey"}), expected, chainBound)
+	requireInvalidSkipEvent(t, events, 40)
+}
+
+func TestReconcileMetadataOnlyChainBound_SortsReplayMutationsBySequence(t *testing.T) {
+	t.Parallel()
+
+	deleteOrder := func(logSeq uint64, reasons ...commonpb.ErrorReason) *auditpb.AuditItem {
+		return buildAuditItem(t, logSeq, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+						Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}},
+						Key:    "txkey",
+					}},
+					SkippableReasons: reasons,
+				}},
+			},
+		}})
+	}
+
+	items := []*auditpb.AuditItem{
+		buildCreateLedgerItem(t, "L", 10),
+		buildCreateTxWithTxMetadataItem(t, "L", "", "txkey", 20),
+		deleteOrder(30),
+		deleteOrder(40, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND),
+	}
+	chainBound := newChainBoundState()
+	expected := make(map[uint64]*expectedSkippableOrder)
+	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expected, chainBound)
+	reconcileReplayedChainBound(items, []*raftcmdpb.Order{
+		mustOrder(t, items[0]), mustOrder(t, items[1]), mustOrder(t, items[2]), mustOrder(t, items[3]),
+	}, []*commonpb.Log{
+		applyLog(20, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
+		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}}, Key: "txkey"}}}),
+	}, chainBound)
+
+	require.Equal(t, []chainBoundMutation{{seq: 20, exists: true}, {seq: 30, exists: false}, {seq: 40, exists: false}}, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"])
+	events := captureEventsState(t, "L", 40, skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{
+		"target": "1",
+		"key":    "txkey",
+	}), expected, chainBound)
+	require.Empty(t, events, "the second delete legitimately skips after the replayed delete")
+}
+
+func TestReconcileMetadataOnlyChainBound_UsesReplayedRevertTransactionID(t *testing.T) {
+	t.Parallel()
+
+	deleteOrder := func(logSeq uint64, reasons ...commonpb.ErrorReason) *auditpb.AuditItem {
+		return buildAuditItem(t, logSeq, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+						Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}},
+						Key:    "note",
+					}},
+					SkippableReasons: reasons,
+				}},
+			},
+		}})
+	}
+
+	items := []*auditpb.AuditItem{
+		buildCreateLedgerItem(t, "L", 10),
+		buildAuditItem(t, 20, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+			}}},
+		}}),
+		buildAuditItem(t, 30, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+					TransactionId: 1,
+					Metadata:      map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")},
+				}},
+			}}},
+		}}),
+		deleteOrder(40),
+		deleteOrder(50, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND),
+	}
+
+	chainBound := newChainBoundState()
+	expected := make(map[uint64]*expectedSkippableOrder)
+	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), expected, chainBound)
+	reconcileReplayedChainBound(items, []*raftcmdpb.Order{
+		mustOrder(t, items[0]), mustOrder(t, items[1]), mustOrder(t, items[2]), mustOrder(t, items[3]), mustOrder(t, items[4]),
+	}, []*commonpb.Log{
+		applyLog(20, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{AccountMetadata: map[string]*commonpb.MetadataMap{
+			"users:alice": {Values: map[string]*commonpb.MetadataValue{"role": commonpb.NewStringValue("viewer")}},
+		}}}}),
+		applyLog(30, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertedTransactionId: 1, RevertTransaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")}}}}}),
+		applyLog(40, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 1}}, Key: "note"}}}),
+	}, chainBound)
+
+	require.Equal(t, []chainBoundMutation{{seq: 30, exists: true}, {seq: 40, exists: false}, {seq: 50, exists: false}}, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["note"])
+	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "2")]["note"], "speculative revert ID must not receive metadata")
+	events := captureEventsState(t, "L", 50, skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{
+		"target": "1",
+		"key":    "note",
+	}), expected, chainBound)
+	require.Empty(t, events, "the second delete legitimately skips after the replayed revert metadata was deleted")
 }
 
 // TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay pins the
@@ -1455,6 +1652,9 @@ func TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay(t *testing.T) 
 		[]*auditpb.AuditItem{item, item},
 		50, 50, expectedSkip, chainBound,
 	)
+	reconcileReplayedChainBound([]*auditpb.AuditItem{item}, []*raftcmdpb.Order{mustOrder(t, item)}, []*commonpb.Log{
+		applyLog(50, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"txkey": commonpb.NewStringValue("v")}}}}}),
+	}, chainBound)
 
 	// Exactly one tx id was consumed: nextTxID advanced from 1 to 2, NOT 3.
 	// A double-fold would leave nextTxID=3 and seed a phantom tx:2 timeline.
@@ -2076,6 +2276,13 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 
 	cb := newChainBoundState()
 	requireCollectExpectedSkippable(t, items, 1, ^uint64(0), map[uint64]*expectedSkippableOrder{}, cb)
+	reconcileReplayedChainBound(items, []*raftcmdpb.Order{
+		mustOrder(t, items[0]), mustOrder(t, items[1]), mustOrder(t, items[2]), mustOrder(t, items[3]), mustOrder(t, items[4]),
+	}, []*commonpb.Log{
+		applyLog(11, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Metadata: map[string]*commonpb.MetadataValue{"foo": commonpb.NewStringValue("bar")}}}}}),
+		applyLog(12, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 2}}}}),
+		applyLog(14, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 3, Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")}}}}}),
+	}, cb)
 
 	// Tx-scoped metadata from CreateTransaction @ seq=11 → target="tx:1".
 	// The "tx:" namespace MUST match metadataTimelineTarget(isTx=true, id),
@@ -2129,6 +2336,219 @@ func buildAuditItem(t *testing.T, logSeq uint64, order *raftcmdpb.Order) *auditp
 // chain-bound order MUST be flagged. Log sequences are proposal-global,
 // so exactly one chain-bound order sits at each seq — a projection at
 // a different ledger identifies the tampering directly.
+func TestExecuteNumscriptReferenceClaimRequiresCreatedTransaction(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		created bool
+	}{{"created", true}, {"metadata_only", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			cb := newChainBoundState()
+			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{Reference: "r"}},
+				}},
+			}}}
+			item := buildAuditItem(t, 10, order)
+			var payload *commonpb.LedgerLogPayload
+			if tc.created {
+				payload = &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: "r"}}}}
+			} else {
+				payload = &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AccountMetadataUpdated{AccountMetadataUpdated: &commonpb.AccountMetadataUpdated{}}}
+			}
+			reconcileReplayedChainBound([]*auditpb.AuditItem{item}, []*raftcmdpb.Order{order}, []*commonpb.Log{applyLog(10, payload)}, cb)
+			if tc.created {
+				require.Equal(t, uint64(10), cb.references["L"]["r"])
+			} else {
+				require.Empty(t, cb.references["L"])
+			}
+		})
+	}
+}
+
+func TestExecuteNumscriptReferenceClaimPrecedesSameBatchConflict(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "ref-1"
+	accountMetadata := map[string]*commonpb.MetadataMap{
+		"account": {Values: map[string]*commonpb.MetadataValue{"cursor": commonpb.NewStringValue("42")}},
+	}
+	execution := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{Reference: reference}},
+		}},
+	}}}
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data:             &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: reference, AccountMetadata: accountMetadata}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	items := []*auditpb.AuditItem{buildAuditItem(t, 10, execution), buildAuditItem(t, 11, create)}
+	cb := newChainBoundState()
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	orders := requireCollectExpectedSkippable(t, items, 10, 11, expected, cb)
+	require.Equal(t, uint64(11), cb.references[ledger][reference], "order fold records the later create first")
+	require.Equal(t, uint64(3), cb.nextTxID[ledger], "order fold counts the later create before replay")
+	require.Equal(t, []chainBoundMutation{{seq: 11, exists: true}}, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
+	skip := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+			"ledger": ledger, "reference": reference, "existingTransactionId": "1",
+		}),
+	}}}
+	reconcileReplayedChainBound(items, orders, []*commonpb.Log{
+		applyLog(10, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1, Reference: reference}}}}),
+		applyLog(11, skip),
+	}, cb)
+	require.Equal(t, uint64(10), cb.references[ledger][reference])
+	require.Equal(t, uint64(1), cb.referenceTxIDs[ledger][reference])
+	require.Equal(t, uint64(2), cb.nextTxID[ledger], "skipped create consumes no transaction ID")
+	require.Empty(t, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
+	result := captureEventsState(t, ledger, 11, skip, expected, cb)
+	require.Empty(t, result)
+	deleteOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+				Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "account"}}},
+				Key:    "cursor",
+			}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+		}},
+	}}}
+	requireCollectExpectedSkippable(t, []*auditpb.AuditItem{buildAuditItem(t, 12, deleteOrder)}, 12, 12, expected, cb)
+	require.Empty(t, captureEventsState(t, ledger, 12, skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{
+		"target": "account", "key": "cursor",
+	}), expected, cb))
+}
+
+func TestKnownCreateConflictDoesNotLoseTransactionSlotOnReplay(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "already-claimed"
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Reference: reference,
+				AccountMetadata: map[string]*commonpb.MetadataMap{
+					"account": {Values: map[string]*commonpb.MetadataValue{"cursor": commonpb.NewStringValue("42")}},
+				},
+			}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	item := buildAuditItem(t, 11, create)
+	cb := newChainBoundState()
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	cb.nextTxID[ledger] = 2
+	cb.references[ledger] = map[string]uint64{reference: 10}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	orders := requireCollectExpectedSkippable(t, []*auditpb.AuditItem{item}, 11, 11, expected, cb)
+	require.Equal(t, uint64(2), cb.nextTxID[ledger], "the order scan already knows this create is skipped")
+	require.Empty(t, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
+	skip := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, map[string]string{
+		"ledger": ledger, "reference": reference,
+	})
+	reconcileReplayedChainBound([]*auditpb.AuditItem{item}, orders, []*commonpb.Log{applyLog(11, skip)}, cb)
+	require.Equal(t, uint64(2), cb.nextTxID[ledger], "replay must not undo an allocation the scan never made")
+	require.Empty(t, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
+}
+
+func TestUnreplayedExecutionMetadataDoesNotCauseInvalidSkip(t *testing.T) {
+	t.Parallel()
+	const ledger, account, key = "L", "account", "cursor"
+	cb := newChainBoundState()
+	appendMetadataMutation(cb.metadata, ledger, metadataTimelineTarget(false, account), key, 10, true)
+	execution := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+				Reference:       "possibly-skipped",
+				AccountMetadata: map[string]*commonpb.MetadataMap{account: {Values: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue("42")}}},
+			}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	expected := map[uint64]*expectedSkippableOrder{11: {
+		reasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+		ledger:  ledger, metadataTarget: account, metadataKey: key,
+	}}
+	skip := skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{"target": account, "key": key})
+	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11, skip, expected, cb), 11)
+	execution.GetLedgerScoped().GetApply().SkippableReasons = nil
+	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 10}}, []*raftcmdpb.Order{execution}, cb)
+	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11, skip, expected, cb), 11)
+	execution.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 10}}, []*raftcmdpb.Order{execution}, cb)
+	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb))
+	markUnreplayedExecutionMetadata([]*auditpb.AuditItem{{LogSequence: 20}}, []*raftcmdpb.Order{execution}, cb)
+	require.Equal(t, uint64(10), cb.unreplayedExecutionMetadata[metadataTimelineKey{ledger: ledger, target: metadataTimelineTarget(false, account), key: key}])
+	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb), "a later uncertainty must not hide the earlier one")
+	requireInvalidSkipEvent(t, captureEventsState(t, ledger, 11,
+		skippedPayloadWithContext(commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND, map[string]string{"target": account, "key": "other"}), expected, cb), 11)
+
+	appendMetadataMutation(cb.metadata, ledger, metadataTimelineTarget(false, account), key, 12, true)
+	expected[13] = expected[11]
+	require.Empty(t, captureEventsState(t, ledger, 13, skip, expected, cb), "incomplete replay cannot certify later order-derived mutations")
+}
+
+func TestExecuteNumscriptReferenceConflictSkipIsCheckerValid(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "replayed-script"
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: reference}},
+		}},
+	}}}
+	execution := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data:             &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{Reference: reference}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}},
+	}}}
+	items := []*auditpb.AuditItem{buildAuditItem(t, 10, create), buildAuditItem(t, 11, execution)}
+	cb := newChainBoundState()
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	requireCollectExpectedSkippable(t, items, 10, 11, expected, cb)
+	require.Equal(t, reference, expected[11].reference)
+	cb.referenceTxIDs[ledger] = map[string]uint64{reference: 1}
+	skip := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{
+			"ledger": ledger, "reference": reference, "existingTransactionId": "1",
+		}),
+	}}}
+	require.Empty(t, captureEventsState(t, ledger, 11, skip, expected, cb))
+}
+
+func TestSkippedExecuteNumscriptDoesNotSeedCheckerState(t *testing.T) {
+	t.Parallel()
+	const ledger, reference = "L", "replayed-script"
+	accountMetadata := map[string]*commonpb.MetadataMap{
+		"account": {Values: map[string]*commonpb.MetadataValue{
+			"cursor": {Type: &commonpb.MetadataValue_StringValue{StringValue: "42"}},
+		}},
+	}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+				Reference: reference, AccountMetadata: accountMetadata,
+			}},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}}}}}
+	item := buildAuditItem(t, 11, order)
+	cb := newChainBoundState()
+	cb.nextTxID[ledger] = 2
+	cb.ledgerCreationSeen[ledger] = struct{}{}
+	cb.references[ledger] = map[string]uint64{reference: 10}
+	expected := make(map[uint64]*expectedSkippableOrder)
+	orders := requireCollectExpectedSkippable(t, []*auditpb.AuditItem{item}, 11, 11, expected, cb)
+	require.Equal(t, uint64(3), cb.nextTxID[ledger])
+	skip := &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{
+		Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"ledger": ledger, "reference": reference, "existingTransactionId": "1"}),
+	}}}
+	reconcileReplayedChainBound([]*auditpb.AuditItem{item}, orders, []*commonpb.Log{applyLog(11, skip)}, cb)
+	require.Equal(t, uint64(2), cb.nextTxID[ledger])
+	require.Empty(t, cb.metadata[ledger][metadataTimelineTarget(false, "account")]["cursor"])
+}
+
 func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 	t.Parallel()
 

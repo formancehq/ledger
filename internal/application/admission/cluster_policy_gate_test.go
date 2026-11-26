@@ -144,12 +144,14 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		require.ErrorIs(t, err, sentinel)
 	})
 
-	t.Run("SetClusterPolicy is blocked by maintenance mode", func(t *testing.T) {
+	t.Run("SetClusterPolicy proceeds during maintenance mode", func(t *testing.T) {
 		t.Parallel()
 
 		store := createTestStoreWithoutPolicy(t)
 		ctrl := gomock.NewController(t)
 		proposer := NewMockProposer(ctrl)
+		sentinel := errors.New("propose reached")
+		proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil, sentinel).AnyTimes()
 		a, _ := createTestAdmissionWithReader(t, store, proposer)
 		a.sharedState.SetMaintenanceMode(true)
 
@@ -160,6 +162,42 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		defer cancel()
 
 		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+		require.ErrorIs(t, err, sentinel)
+	})
+
+	t.Run("SetClusterPolicy is blocked by drain even during maintenance", func(t *testing.T) {
+		t.Parallel()
+
+		store := createTestStoreWithoutPolicy(t)
+		ctrl := gomock.NewController(t)
+		proposer := NewMockProposer(ctrl)
+		a, _ := createTestAdmissionWithReader(t, store, proposer)
+		a.sharedState.SetMaintenanceMode(true)
+		a.sharedState.SetDrain("policy-drain", 42)
+
+		ctx, cancel := context.WithTimeout(
+			internalauth.WithSystemActor(context.Background(), commands.ComponentClusterPolicy),
+			3*stdtime.Second,
+		)
+		defer cancel()
+
+		_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
 		require.ErrorIs(t, err, ErrMaintenanceMode)
 	})
+}
+
+func TestAdmitClusterPolicyFencesMembershipWithoutActivations(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStoreWithoutPolicy(t)
+	proposer := NewMockProposer(gomock.NewController(t))
+	a, _ := createTestAdmissionWithReader(t, store, proposer)
+	a.membershipCoordinator.Lock()
+	defer a.membershipCoordinator.Unlock()
+
+	ctx, cancel := context.WithTimeout(attributedTestContext(context.Background()), 100*stdtime.Millisecond)
+	defer cancel()
+
+	_, err := a.AdmitClusterPolicy(ctx, &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 10})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

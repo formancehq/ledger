@@ -142,7 +142,7 @@ func TestNewHandler_SanitizesPanicEndToEnd(t *testing.T) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{}}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logger, backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logger, backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, APIVersionPrefix+"/test-ledger", nil)

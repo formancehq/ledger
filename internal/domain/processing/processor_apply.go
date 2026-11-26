@@ -13,7 +13,7 @@ import (
 // populates ctx.Boundaries and ctx.LedgerInfo before dispatching to apply-
 // child handlers so children receive everything through a single uniform
 // Context.
-func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
@@ -75,7 +75,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 
 	var (
 		logPayload *commonpb.LedgerLogPayload
-		err        domain.SerializableError
+		err        domain.Describable
 	)
 
 	switch applyData := apply.GetData().(type) {
@@ -85,6 +85,8 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		logPayload, err = processDeleteMetadata(ledger, applyData.DeleteMetadata, ctx)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		logPayload, err = processCreateTransaction(ledger, applyData.CreateTransaction, ctx)
+	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+		logPayload, err = processExecuteNumscript(ledger, applyData.ExecuteNumscript, ctx)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		logPayload, err = processRevertTransaction(ledger, applyData.RevertTransaction, ctx)
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:

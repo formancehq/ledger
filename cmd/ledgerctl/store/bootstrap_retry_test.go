@@ -5,7 +5,6 @@ package store
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"io"
 	"math/big"
 	"net/http"
@@ -34,6 +33,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -61,7 +61,7 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 	notifier.EXPECT().NotifyConfigChanged().AnyTimes()
 	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store,
 		dal.NewSentinelFactory(store, false), meters, keys, shared, notifier, nil,
-		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 	next := machine.State.LastAppliedIndex + 1
@@ -90,23 +90,21 @@ func newBootstrapRetryAdmission(t *testing.T, store *dal.Store) *admission.Admis
 		return future, nil
 	}).AnyTimes()
 
-	return admission.NewAdmission(store, logger, proposer,
+	return admission.NewAdmission(store, logger, proposer, &membership.Coordinator{},
 		builder, meters, gate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
 }
 
-// TestBootstrapRetryRebuild starts each attempt through the command, including
-// its real S3 downloader, with the default --validate=false. A retry must use
-// checkpoint volumes as its fold seed even when the abandoned attempt durably
-// committed some or all derived delta state.
-func TestBootstrapRetryRebuild(t *testing.T) {
+// TestBootstrapRetryCheckpoint starts both attempts through the offline command.
+// A failed download or confirmation must leave the next attempt able to restore
+// the complete second checkpoint without duplicating business state.
+func TestBootstrapRetryCheckpoint(t *testing.T) {
 	// The EOF case temporarily replaces process stdin, so these sibling cases
 	// deliberately run sequentially and this test does not call t.Parallel.
-	for _, partial := range []bool{false, true} {
-		name := "completed rebuild then confirmation EOF"
-		deltaCount := 2
-		if partial {
-			name = "later rebuild error after committed batch"
-			deltaCount = 5001
+	for _, corrupt := range []bool{false, true} {
+		name := "download then confirmation EOF"
+		const deltaCount = 2
+		if corrupt {
+			name = "corrupt checkpoint object then retry"
 		}
 		t.Run(name, func(t *testing.T) {
 			logger := logging.NopZap()
@@ -189,25 +187,21 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 			for range deltaCount {
 				apply(payment(1))
 			}
-			require.NoError(t, source.Flush())
-			inc, err := backup.RunIncrementalBackup(ctx, logger, source, storage, "retry", 0)
+			second, err := backup.RunBackup(ctx, logger, source, storage, "retry", "second")
 			require.NoError(t, err)
-			require.EqualValues(t, deltaCount, inc.LogEntriesExported)
-			require.Positive(t, inc.AuditEntriesExported)
+			require.Positive(t, second.TotalFiles)
 			manifest, err := backup.ReadManifest(ctx, storage, backup.ManifestKey("retry"))
 			require.NoError(t, err)
-			require.NotNil(t, manifest.Checkpoint)
-			require.NotEmpty(t, manifest.Exports)
+			require.NoError(t, backup.ValidateCheckpointOnlyManifest(manifest))
+			require.Empty(t, manifest.Exports)
 			requireBootstrapRetryVolumes(t, source, uint64(100+deltaCount))
 
 			var corruptKey string
-			var corruptData []byte
-			if partial {
-				for _, segment := range manifest.Exports {
-					if segment.Type == "log" && segment.EndSeq == manifest.LastExportLogSequence() {
-						corruptKey = segment.Key
-						corruptData = corruptBootstrapRetryLastLog(t, objects[segment.Key], segment.EndSeq)
-					}
+			if corrupt {
+				for _, file := range manifest.Checkpoint.Files {
+					corruptKey = file.Key
+
+					break
 				}
 				require.NotEmpty(t, corruptKey)
 			}
@@ -224,7 +218,7 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 				}
 				downloads[key]++
 				if key == corruptKey && downloads[key] == 1 {
-					data = corruptData
+					data = []byte("corrupted checkpoint object")
 				}
 				w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 				_, _ = w.Write(data) // The client may close its connection after an injected failure.
@@ -243,9 +237,9 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 
 				return cmd.ExecuteContext(t.Context())
 			}
-			if partial {
+			if corrupt {
 				err = run(true)
-				require.ErrorContains(t, err, "reading log cursor after 5000 logs")
+				require.ErrorContains(t, err, "checkpoint file")
 			} else {
 				stdin, openErr := os.Open(os.DevNull)
 				require.NoError(t, openErr)
@@ -258,14 +252,12 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 				require.ErrorContains(t, err, "reading confirmation")
 			}
 			staging := filepath.Join(dataDir, "restore-staging")
-			abandoned, err := dal.OpenReadOnly(staging, logger)
-			require.NoError(t, err)
-			committed := deltaCount
-			if partial {
-				committed = 5000
+			if !corrupt {
+				abandoned, openErr := dal.OpenReadOnly(staging, logger)
+				require.NoError(t, openErr)
+				requireBootstrapRetryVolumes(t, abandoned, uint64(100+deltaCount))
+				require.NoError(t, abandoned.Close())
 			}
-			requireBootstrapRetryVolumes(t, abandoned, uint64(100+committed))
-			require.NoError(t, abandoned.Close())
 			marker, err := node.ReadRestoredMarker(dataDir)
 			require.NoError(t, err)
 			require.Nil(t, marker)
@@ -276,7 +268,7 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 			defer func() { require.NoError(t, restored.Close()) }()
 			requireBootstrapRetryVolumes(t, restored, uint64(100+deltaCount))
 			var findings []*servicepb.CheckStoreError
-			checker := check.NewChecker(restored, attributes.New(), nil, logger)
+			checker := check.NewChecker(restored, attributes.New(), logger)
 			require.NoError(t, checker.Check(t.Context(), func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 					findings = append(findings, e.Error)
@@ -292,10 +284,11 @@ func TestBootstrapRetryRebuild(t *testing.T) {
 			defer mu.Unlock()
 			require.Equal(t, 2, downloads[backup.ManifestKey("retry")])
 			for _, file := range manifest.Checkpoint.Files {
-				require.Equal(t, 2, downloads[file.Key])
-			}
-			for _, segment := range manifest.Exports {
-				require.Equal(t, 2, downloads[segment.Key])
+				if corrupt && file.Key != corruptKey {
+					require.Positive(t, downloads[file.Key])
+				} else {
+					require.Equal(t, 2, downloads[file.Key])
+				}
 			}
 		})
 	}
@@ -318,32 +311,4 @@ func requireBootstrapRetryVolumes(t *testing.T, store *dal.Store, amount uint64)
 		require.Equal(t, commonpb.NewUint256FromUint64(output).ToBigInt(), volume.GetOutput().ToBigInt(), "%s output", account)
 		require.Equal(t, big.NewInt(int64(input)-int64(output)), new(big.Int).Sub(volume.GetInput().ToBigInt(), volume.GetOutput().ToBigInt()), "%s balance", account)
 	}
-}
-
-// Preserve the stream framing, key range and exact byte count so export import
-// succeeds and the failure occurs in RebuildDelta after its first batch commit.
-func corruptBootstrapRetryLastLog(t *testing.T, data []byte, seq uint64) []byte {
-	t.Helper()
-	raw := bytes.NewReader(data)
-	reader := backup.NewKVStreamReader(raw)
-	require.NoError(t, reader.ReadHeader())
-	var out bytes.Buffer
-	writer := backup.NewKVStreamWriter(&out)
-	require.NoError(t, writer.WriteHeader())
-	corrupted := 0
-	for raw.Len() > 4 {
-		key, value, err := reader.ReadEntry()
-		require.NoError(t, err)
-		if binary.BigEndian.Uint64(key[2:]) == seq {
-			value = bytes.Repeat([]byte{0xff}, len(value))
-			corrupted++
-		}
-		require.NoError(t, writer.WriteEntry(key, value))
-	}
-	require.Equal(t, 4, raw.Len(), "the remaining bytes are the footer sentinel")
-	require.Equal(t, 1, corrupted)
-	require.NoError(t, writer.WriteFooter())
-	require.Len(t, out.Bytes(), len(data))
-
-	return out.Bytes()
 }

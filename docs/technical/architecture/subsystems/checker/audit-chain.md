@@ -2,7 +2,9 @@
 
 ## Overview
 
-The audit hash chain is the **only cryptographically-bound dataset** in the system. Every other persisted dataset — volumes, metadata, transaction state, idempotency outcomes, applied-proposal records, the index registry, the read-side inverted index — is a *projection* of orders that already live in the audit chain, so every projection is derivable from the chain by replaying those orders. Per invariant #8 the checker must verify every such projection **it persists in the primary FSM store** on every `Check()` run (peer secondary stores are out of that scope as a rule, with one narrow exception — see the readstore note below), and it does so today for volumes, metadata, transactions, exclusion projections, reversion bitsets, idempotency outcomes, and the index **registry**. The mirror ingestion position (`LedgerBoundaries.last_mirror_v2_log_id`) is verified by `compareMirrorV2LogID` (EN-1550) — its stored value must equal the audit-derived max. The former **advanced-cursor path** (a separately persisted cursor advanced beyond the source head fetching no source logs and reporting FOLLOWING, silently under-ingesting v2→v3) is **closed**: EN-1513 removed that second durable position entirely, so the only durable ingestion position is the checker-verified boundary. The readstore inverted-index *contents* are a peer secondary store, out of main-store checker scope as a rule (in the main store only the registry presence/identity is checked); their integrity is a current open gap until per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`). The rule has one narrow exception, and it is about presence rather than contents: `compareReverseMapOrphans` (EN-1458) opens the peer readstore read-only and flags reverse-map (`0x03`) rows whose field has no stored index-registry entry. The reverse map now uses field/version/entity keying, so field removal across every version is one field-bounded `DeleteRange`; the pass remains as defense against read-store corruption or a broken index lifecycle. The audit-replayed schema only classifies a finding against the `DropIndex` or `RemovedMetadataFieldType` lifecycle rather than proving which operation caused the residue. A few main-store projections remain derivable but **not yet** re-derived by a checker pass — notably prepared queries and persisted bloom blocks reloaded on restart. Those are tracked integrity gaps rather than checker-verified state; see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for the current coverage map.
+The checker claims coverage only for projections with an implemented checker pass. Prepared queries and persisted bloom blocks are not re-derived today; a clean checker run must not be interpreted as validating those projections.
+
+The audit hash chain is the **only cryptographically-bound dataset** in the system. Every other persisted dataset — volumes, metadata, transaction state, idempotency outcomes, applied-proposal records, the index registry, the read-side inverted index — is a *projection* of orders that already live in the audit chain, so every projection is derivable from the chain by replaying those orders. Per invariant #8 the checker must verify every such projection **it persists in the primary FSM store** on every `Check()` run (peer secondary stores are out of that scope), and it does so today for volumes, metadata, transactions, exclusion projections, reversion bitsets, idempotency outcomes, and the index **registry**. The mirror ingestion position (`LedgerBoundaries.last_mirror_v2_log_id`) is verified by `compareMirrorV2LogID` (EN-1550) — its stored value must equal the audit-derived max. The former **advanced-cursor path** (a separately persisted cursor advanced beyond the source head fetching no source logs and reporting FOLLOWING, silently under-ingesting v2→v3) is **closed**: EN-1513 removed that second durable position entirely, so the only durable ingestion position is the checker-verified boundary. The readstore inverted-index *contents* are a peer secondary store, out of main-store checker scope as a rule (in the main store only the registry presence/identity is checked); their integrity is a current open gap until per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`). Reverse-map (`0x03`) row presence and values are peer-store data and are not checked by `Check()`. Field removal uses a bounded `DeleteRange`, while automated corruption detection and repair remain open index-builder work. A few main-store projections remain derivable but **not yet** re-derived by a checker pass — notably prepared queries and persisted bloom blocks reloaded on restart. Those are tracked integrity gaps rather than checker-verified state; see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for the current coverage map.
 
 The chain serves two purposes:
 
@@ -66,6 +68,11 @@ Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerIt
 | `OrderIndex` | `uint32` BE |
 | `LogSequence` | `uint64` BE |
 | `SerializedOrder` | length-prefixed (the order's canonical vtprotobuf bytes) |
+
+Native policy controls produce no audit items. Historical policy orders retain
+`serialized_order` and their exact hash preimages. The current policy row and
+operational quota checks are outside checker scope; actual business effects
+remain verified.
 
 Items are concatenated in `OrderIndex` order before being fed into the hash. A single byte changed in any order, or any reordering, invalidates the hash.
 
@@ -218,12 +225,18 @@ The FSM writes up to four datasets per proposal, all in `ZoneHistory`, but they 
 
 The order-less paths also bypass audit: a technical-only proposal drains its overlay through `Merge` and returns before the audit-entry path (`if len(proposal.GetOrders()) == 0`, `internal/infra/state/machine.go`); a TU-phase plan-invariant rejection returns before the orders phase; and a proposal with neither orders nor technical updates is skipped in the apply loop before `applyProposal` is called. An order-bearing proposal may also return `UncommittedFailure` before audit, with its staged effects discarded and prior HLC restored. Every persisted `AuditEntry` therefore has `OrderCount >= 1`, but not every order-bearing proposal has an entry.
 
-A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
+[Metadata policy refusals](../admission/idempotency.md#replay-after-metadata-limits-tighten)
+use the ordinary FSM failure path after idempotency lookup. A fresh refusal
+records the attempted orders and definitive failure, with no committed business
+writes. A retained same-content success or failure replays without another
+audit entry. No persisted format or checker rule changes.
+
+An FSM-side same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
 
 Two independent monotone counters, bridged per successful non-replayed proposal:
 
 - **`audit_sequence`** advances by 1 for each audited success or definitive failure (`AppendAuditEntry` in `internal/infra/state/fsmstate.go`). Replay, order-less paths and `UncommittedFailure` do not advance it. The allocated values themselves are **dense** (no gaps in the numbering), although multiple unaudited proposals can occur between consecutive entries.
-- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a `SetClusterPolicy` re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
+- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a historical `SetClusterPolicy` order re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
 
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 
@@ -233,11 +246,9 @@ Gaps live on the **companion streams**, not on `audit_sequence` itself:
 
 ### Implication for downstream code
 
-**Neither the `Log` count nor the `AppliedProposal` count follows from the audit count.** An incremental range consisting of only definitive business failures has one `AuditEntry` per such outcome (audit_seq advances), zero `AppliedProposal` rows and zero `Log` rows. An `UncommittedFailure` adds none of these rows or sequence advances. Anything that assumes the streams rise together — a backup exporter that indexes segments by audit range, an indexer that scans `AppliedProposal` alongside `AuditEntry`, a mirror that assumes a log per audit — must guard on each companion stream's own count.
+**Neither the `Log` count nor the `AppliedProposal` count follows from the audit count.** A range consisting of only definitive business failures has one `AuditEntry` per such outcome (audit_seq advances), zero `AppliedProposal` rows and zero `Log` rows. An `UncommittedFailure` adds none of these rows or sequence advances. Anything that assumes the streams rise together — an indexer that scans `AppliedProposal` alongside `AuditEntry`, or a mirror that assumes a log per audit — must guard on each companion stream's own count.
 
-For each audited outcome, the `AuditItem` count equals its order count regardless of success or failure. Every persisted `AuditEntry` has at least one order, so every non-empty audit range has `auditItem.count > 0`. No writer produces an `AuditEntry` without its items — not `writeAuditEntry` (`internal/infra/state/machine.go`, whose items come from `buildAuditItems`, one per serialized order unconditionally), and not the incremental restore, which replays exported rows verbatim (`backup.ApplyExports`). An empty `AuditItem` range spanning a non-empty audit range is therefore a **corruption signal** — a truncated store, or a manifest that lost its `auditItem` segments — and the chain already reports it rather than presenting a silently thinner range: the per-item payloads are part of the hash pre-image and `OrderCount` is bound into the hashed header, so the missing items surface as `HASH_MISMATCH` at that sequence. Nor does `LogSequence` identify the outcome: an item reads `0` on a failure, but also on a success whose order neither created a log nor resolved to a positive in-batch reference sequence. Only `AuditEntry.outcome` distinguishes the two.
-
-The `internal/infra/backup/manager.go` incremental export is the canonical example. Each companion stream (`audit`, `auditItem`, `appliedProposal`) is exported by its own `exportEntries` call, and `exportEntries` returns no segments when its range holds no rows, so an empty stream appends nothing to the manifest and the manifest never references a storage key that does not exist (a later `ApplyExports` would fail on `GetFile`). The guard is structural, so it holds whichever stream turns out to be empty — in practice `appliedProposal`, the one stream legitimately empty over a failure-only range. A failure-only range produces an `audit` segment with `count > 0`, an `auditItem` segment with `count > 0` (one item per order), and no `appliedProposal` segment at all.
+For each audited outcome, the `AuditItem` count equals its order count regardless of success or failure. Every persisted `AuditEntry` has at least one order, so every non-empty audit range has `auditItem.count > 0`. The writer (`writeAuditEntry` in `internal/infra/state/machine.go`) builds one item per serialized order. Missing items are a **corruption signal**: the per-item payloads are part of the hash pre-image and `OrderCount` is bound into the hashed header, so the chain reports `HASH_MISMATCH`. `LogSequence` does not identify the outcome: an item reads `0` on a failure, but also on a success whose order neither created a log nor resolved to a positive in-batch reference sequence. Only `AuditEntry.outcome` distinguishes the two.
 
 ## Tampering model — what the chain detects
 
@@ -286,3 +297,16 @@ The chain's existence is what allows every other dataset in Pebble to be a *proj
 > If a dataset is derivable from the audit chain by replay, the checker re-derives it and compares. If a dataset is *not* derivable, it **must** be hash-bound.
 
 See `internal/application/check/checker.go:37-68` and `194-227` for the in-code formulation. The corollary is the rule in [`AGENTS.md` invariant #8](../../../../../AGENTS.md): adding a new persisted dataset without a matching `compare*` / `collect*` pass in the checker is the violation. Hash-binding is the escape hatch reserved for data that cannot be derived — and the audit chain is the only thing currently in that category.
+# Proposal capability declarations
+
+`AuditEntry.required_capabilities` preserves the committed proposal's semantic
+requirements after Raft WAL compaction. The list is copied from the proposal
+for both successful and failed audited outcomes. A nonempty list is appended
+to the canonical header hash preimage as a big-endian count followed by
+big-endian capability IDs in proposal order. An absent list adds no bytes,
+preserving every historical entry's hash. Checker and replay read the stored
+entry; the list does not participate in request identity or idempotency.
+The current binary supports no active semantic capability IDs, so it cannot
+emit a nonempty declaration while mixed with an older binary. A later feature
+must activate its capability only after this audit format is available on all
+voters, preserving identical apply output during rolling upgrades.

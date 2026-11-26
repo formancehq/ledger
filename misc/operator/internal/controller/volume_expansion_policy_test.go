@@ -91,11 +91,16 @@ func TestValidateVolumeSpecAutoExpansion(t *testing.T) {
 			allowed: true,
 		},
 		{
-			name:    "maximum not above initial size",
+			name:    "manual minimum may equal automatic maximum",
 			field:   "persistence.data",
 			spec:    ledgerv1alpha1.VolumeSpec{Size: resource.MustParse("20Gi"), AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: quantity("20Gi")}},
 			allowed: true,
-			wantErr: "greater than initial size",
+		},
+		{
+			name:    "manual minimum may exceed automatic maximum",
+			field:   "persistence.data",
+			spec:    ledgerv1alpha1.VolumeSpec{Size: resource.MustParse("50Gi"), AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: quantity("20Gi")}},
+			allowed: true,
 		},
 		{
 			name:    "host path",

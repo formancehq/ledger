@@ -143,6 +143,30 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 	require.InDelta(t, 0.75, cfg.HealthConfig.DataResumeThreshold, 1e-9)
 }
 
+func TestLoadConfigPeerPortFollowsPublicPortUnlessExplicit(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		flags    []string
+		wantPeer int
+	}{
+		{name: "defaults", wantPeer: 8889},
+		{name: "custom public port", flags: []string{"--grpc-port=9190"}, wantPeer: 9191},
+		{name: "explicit peer port", flags: []string{"--grpc-port=9190", "--grpc-peer-port=9292"}, wantPeer: 9292},
+		{name: "ephemeral public port", flags: []string{"--grpc-port=0"}, wantPeer: 8889},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewRunCommand()
+			require.NoError(t, cmd.ParseFlags(append([]string{"--node-id=1"}, tt.flags...)))
+			cfg, err := LoadConfig(t.Context(), cmd)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPeer, cfg.PeerGRPCPort())
+		})
+	}
+}
+
 // TestLoadConfig_ResumeThresholdDerivedFromBlock pins the upgrade-safety fix:
 // when an operator lowered a block threshold below the old fixed 0.75 resume
 // default and did not set the new resume flag, a static 0.75 default would make
@@ -317,6 +341,37 @@ func TestLoadConfig_HashAlgorithmEnvironment(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, cfg.Validate())
 			require.Equal(t, test.want, cfg.BloomConfig.GetHashAlgorithm())
+		})
+	}
+}
+
+// The operator emits spec.auth.issuers as a comma-separated AUTH_ISSUERS.
+func TestLoadConfig_AuthIssuersEnvironment(t *testing.T) {
+	// The production binder reads process environment; these cases must be serial.
+	for _, test := range []struct {
+		name    string
+		issuer  string
+		issuers string
+		want    []string
+	}{
+		{name: "plural only", issuers: "https://a.example.com,https://b.example.com", want: []string{"https://a.example.com", "https://b.example.com"}},
+		{name: "singular and plural", issuer: "https://a.example.com", issuers: "https://b.example.com", want: []string{"https://a.example.com", "https://b.example.com"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("AUTH_ENABLED", "true")
+			t.Setenv("AUTH_ISSUER", test.issuer)
+			t.Setenv("AUTH_ISSUERS", test.issuers)
+			cmd := NewRunCommand()
+			require.NoError(t, cmd.ParseFlags([]string{
+				"--node-id=1", "--cluster-id=auth-test",
+				"--tls-mode=required", "--tls-cert-file=server.crt", "--tls-key-file=server.key",
+				"--cluster-secret=cluster-secret",
+			}))
+			require.NoError(t, service.BindEnvToCommandWithError(cmd))
+			cfg, err := LoadConfig(context.Background(), cmd)
+			require.NoError(t, err)
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, test.want, cfg.AuthConfig.TrustedIssuers())
 		})
 	}
 }

@@ -14,6 +14,12 @@ import (
 // Each route declares its own names beside its registration in handler.go.
 func knownQuery(next http.HandlerFunc, allowed ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if isSignedRequest(r) && signedBatchFromContext(r.Context()) == nil {
+			writeErrorResponse(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", errors.New("signed requests are not supported on this route"))
+
+			return
+		}
+
 		query, err := url.ParseQuery(r.URL.RawQuery)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid query string: %w", err))

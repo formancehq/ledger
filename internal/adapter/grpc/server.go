@@ -23,6 +23,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding"
 	_ "google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/keepalive"
@@ -36,8 +37,6 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -229,7 +228,7 @@ func (s *baseServer) Serve() error {
 	case s.tlsServer != nil && s.plaintextServer != nil:
 		return s.serveDual(lis)
 	case s.tlsServer != nil:
-		return s.serveSingle(s.tlsServer, tls.NewListener(lis, s.tlsConfig))
+		return s.serveSingle(s.tlsServer, lis)
 	default:
 		return s.serveSingle(s.plaintextServer, lis)
 	}
@@ -244,9 +243,9 @@ func (s *baseServer) serveSingle(server *ggrpc.Server, lis net.Listener) error {
 }
 
 // serveDual multiplexes TLS and plaintext connections on the same listener
-// via cmux. TLS connections are routed to s.tlsServer (wrapped via
-// tls.NewListener), plaintext HTTP/2 connections (gRPC's plaintext mode is
-// HTTP/2 with the cleartext preface) are routed to s.plaintextServer.
+// via cmux. TLS connections are routed to s.tlsServer, which performs the
+// handshake through gRPC transport credentials. Plaintext HTTP/2 connections
+// are routed to s.plaintextServer.
 func (s *baseServer) serveDual(lis net.Listener) error {
 	m := cmux.New(lis)
 	tlsListener := m.Match(cmux.TLS())
@@ -255,7 +254,7 @@ func (s *baseServer) serveDual(lis net.Listener) error {
 	errCh := make(chan error, 3)
 
 	go func() {
-		errCh <- s.tlsServer.Serve(tls.NewListener(tlsListener, s.tlsConfig))
+		errCh <- s.tlsServer.Serve(tlsListener)
 	}()
 
 	go func() {
@@ -270,7 +269,7 @@ func (s *baseServer) serveDual(lis net.Listener) error {
 	// expected shutdown errors is surfaced.
 	for range 3 {
 		err := <-errCh
-		if err != nil && !errors.Is(err, ggrpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, ggrpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, cmux.ErrServerClosed) {
 			// cmux returns ErrServerClosed-like errors when the listener
 			// is closed; tolerate them.
 			if err.Error() == "mux: listener closed" {
@@ -541,17 +540,9 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return err
 	}
 
-	// Convert signature errors to proper gRPC codes
-	if errors.Is(err, signing.ErrMissingSignature) {
-		return status.Error(codes.Unauthenticated, err.Error())
-	}
-
-	if errors.Is(err, signing.ErrInvalidSignature) {
-		return status.Error(codes.PermissionDenied, err.Error())
-	}
-
-	if errors.Is(err, signing.ErrUnknownKeyID) {
-		return status.Error(codes.PermissionDenied, err.Error())
+	// Preserve signing rejection identity across a follower forwarding hop.
+	if st := grpcerr.SigningStatus(err); st != nil {
+		return st.Err()
 	}
 
 	// A RemoveNode response can outlive the Raft mutation it initiated: the
@@ -637,14 +628,6 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// both surface here through state's typed sentinels.
 	if errors.Is(err, state.ErrBackupInProgress) ||
 		errors.Is(err, state.ErrBackupJobIDCollision) {
-		return status.Error(codes.FailedPrecondition, err.Error())
-	}
-
-	// Incremental backup attempted against a destination with no full checkpoint
-	// (EN-888): a precondition failure, not an opaque server error. FailedPrecondition
-	// tells the operator (and the Antithesis oracle) that a full backup must run first,
-	// and keeps this off the "unexpected error" path.
-	if errors.Is(err, backup.ErrNoFullCheckpoint) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
@@ -837,7 +820,7 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 	}
 
 	if tlsCfg != nil {
-		bs.tlsServer = ggrpc.NewServer(opts...)
+		bs.tlsServer = ggrpc.NewServer(append(slices.Clone(opts), ggrpc.Creds(credentials.NewTLS(tlsCfg)))...)
 	}
 
 	if acceptPlaintext {
@@ -856,11 +839,14 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 //   - (cfg, false): TLS only
 //   - (cfg, true):  dual listener (cmux), used as a transitional state
 //
-// clusterSecret guards every RPC on this server (transport stream + snapshot
+// clusterSecret guards TLS RPCs on this server (transport stream + snapshot
 // service). When empty, the server runs unauthenticated — historical default,
 // matches single-node setups that never set --cluster-secret. When set, the
-// caller MUST present `authorization: Bearer <clusterSecret>` on every call
-// or the RPC is rejected with codes.Unauthenticated (#310).
+// caller MUST present `authorization: Bearer <clusterSecret>` on every TLS call
+// or the RPC is rejected with codes.Unauthenticated (#310). Optional-mode
+// plaintext calls are admitted only for legacy peers during migration. The service peer
+// listener uses a separate x-ledger-peer-auth metadata value; this server is
+// the Raft-plane listener and keeps the standard authorization header.
 func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string, opts ...Option) (*RaftServer, error) {
 	serverOpts := []ggrpc.ServerOption{
 		ggrpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
@@ -917,6 +903,7 @@ type ServiceAuthPolicy uint8
 
 const (
 	ServiceAuthPolicyPublic ServiceAuthPolicy = iota + 1
+	ServiceAuthPolicyPeer
 	ServiceAuthPolicyRestore
 )
 
@@ -927,7 +914,7 @@ const (
 // interceptors and is outside the BucketService and ClusterService inventory.
 // See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
 func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthConfig, host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
-	if authPolicy != ServiceAuthPolicyPublic && authPolicy != ServiceAuthPolicyRestore {
+	if authPolicy != ServiceAuthPolicyPublic && authPolicy != ServiceAuthPolicyPeer && authPolicy != ServiceAuthPolicyRestore {
 		return nil, fmt.Errorf("unknown service authentication policy %d", authPolicy)
 	}
 
@@ -951,11 +938,12 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 		errorConversionStreamInterceptor(logger),
 		protocolVersionStreamInterceptor(),
 	}
-	if authPolicy == ServiceAuthPolicyPublic {
+	if authPolicy == ServiceAuthPolicyPublic || authPolicy == ServiceAuthPolicyPeer {
+		peerOnly := authPolicy == ServiceAuthPolicyPeer
 		// Stamp the query-profile clock before authentication so profiled reads
 		// measure the same preparation span as their HTTP counterparts.
-		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(logger, slowThreshold), authUnaryInterceptor(authCfg))
-		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(logger, slowThreshold), authStreamInterceptor(authCfg))
+		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(logger, slowThreshold), authUnaryInterceptor(authCfg, peerOnly))
+		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(logger, slowThreshold), authStreamInterceptor(authCfg, peerOnly))
 	}
 
 	serverOpts := []ggrpc.ServerOption{
@@ -979,7 +967,7 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 	for _, opt := range opts {
 		opt(bs)
 	}
-	bs.validatePublicRPCPolicies = authPolicy == ServiceAuthPolicyPublic
+	bs.validatePublicRPCPolicies = authPolicy == ServiceAuthPolicyPublic || authPolicy == ServiceAuthPolicyPeer
 
 	srv := &ServiceServer{baseServer: bs}
 	srv.registerReflection()

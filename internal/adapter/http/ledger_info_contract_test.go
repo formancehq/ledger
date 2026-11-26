@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
@@ -57,7 +58,7 @@ func TestLedgerInfoReadResponsesRedactCredentials(t *testing.T) {
 				} else {
 					backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 				}
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 				response := httptest.NewRecorder()
 				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 				require.Equal(t, http.StatusOK, response.Code)
@@ -90,7 +91,7 @@ func TestLedgerInfoReadMarshalFailureReturnsInternalError(t *testing.T) {
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 			}
 			response := httptest.NewRecorder()
-			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 			require.Equal(t, http.StatusInternalServerError, response.Code)
 			require.NotContains(t, response.Body.String(), "999")
 			require.Contains(t, response.Body.String(), "INTERNAL_ERROR")
@@ -130,6 +131,9 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 			require.NoError(t, protojson.Unmarshal(input.MirrorSource, source))
 			_, rewriteErr := celrewrite.NewRewriter(source.GetRewriteRules())
 			require.NoError(t, rewriteErr, "read fixture must contain admission-valid rules")
+			require.NotEmpty(t, source.GetAssetMappings(), "read fixture must cover assetMappings")
+			_, mappingErr := v2.NewAssetMapper(source.GetAssetMappings())
+			require.NoError(t, mappingErr, "read fixture must contain admission-valid asset mappings")
 			ledger := &commonpb.LedgerInfo{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: source}
 			backend := NewMockBackend(gomock.NewController(t))
 			if tc.path == "/v3/" {
@@ -138,12 +142,28 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 				backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(ledger, nil)
 			}
 			response := httptest.NewRecorder()
-			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
 			require.Equal(t, http.StatusOK, response.Code)
-			require.JSONEq(t, string(fixture), response.Body.String())
-			var data any
-			require.NoError(t, json.Unmarshal(envelope.Data, &data))
-			require.NoError(t, doc.Components.Schemas["LedgerInfo"].Value.VisitJSON(data))
+			// The generated protobuf projection follows EmitUnpopulated semantics:
+			// scalar defaults and empty collection defaults are present in the
+			// response even when the source fixture omits them.
+			require.Contains(t, response.Body.String(), `"batchSize":0`)
+			require.Contains(t, response.Body.String(), `"stop":false`)
+			require.Contains(t, response.Body.String(), `"match":""`)
+			var expected, actualEnvelope struct {
+				Data json.RawMessage `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(fixture, &expected))
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &actualEnvelope))
+			var expectedData, actualData any
+			require.NoError(t, json.Unmarshal(expected.Data, &expectedData))
+			require.NoError(t, json.Unmarshal(actualEnvelope.Data, &actualData))
+			requireJSONSubset(t, expectedData, actualData)
+			validationData := actualData
+			if tc.path == "/v3/" {
+				validationData = actualData.([]any)[0]
+			}
+			require.NoError(t, doc.Components.Schemas["LedgerInfo"].Value.VisitJSON(validationData))
 		})
 	}
 	for _, scope := range []string{"createdTransaction", "revertedTransaction", "savedMetadata"} {
@@ -161,4 +181,27 @@ func TestLedgerInfoReadRewriteRules(t *testing.T) {
 	require.Contains(t, creation.Properties, "value_expr")
 	require.NotContains(t, creation.Properties, "valueExpr")
 	require.Contains(t, doc.Components.Schemas["SetAccountMetadataFromAddressReplacement"].Value.Required, "replacement")
+}
+
+func requireJSONSubset(t *testing.T, expected, actual any) {
+	t.Helper()
+	switch expected := expected.(type) {
+	case map[string]any:
+		actualMap, ok := actual.(map[string]any)
+		require.True(t, ok, "expected object, got %T", actual)
+		for key, value := range expected {
+			actualValue, ok := actualMap[key]
+			require.True(t, ok, "missing JSON property %q", key)
+			requireJSONSubset(t, value, actualValue)
+		}
+	case []any:
+		actualSlice, ok := actual.([]any)
+		require.True(t, ok, "expected array, got %T", actual)
+		require.GreaterOrEqual(t, len(actualSlice), len(expected))
+		for i, value := range expected {
+			requireJSONSubset(t, value, actualSlice[i])
+		}
+	default:
+		require.Equal(t, expected, actual)
+	}
 }

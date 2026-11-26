@@ -15,10 +15,10 @@ import (
 )
 
 // The restore cycle periodically hands the live ledger to an external
-// orchestrator that backs it up, restores the backup into a fresh store (running
-// the RebuildDelta replay), and brings a node back up on it. The driver keeps
+// orchestrator that captures a flushed checkpoint, restores it into a fresh
+// store, and brings a node back up on it. The driver keeps
 // running against the restored node afterward, so its ordinary read/commit
-// checks validate the rebuilt state — no separate comparison. The driver owns
+// checks validate the restored state — no separate comparison. The driver owns
 // only the timing and the quiescence; the environment-specific work lives
 // behind the file rendezvous — run_model_test.sh locally, the
 // restore-orchestrator sidecar (driving the operator) on Antithesis k8s.

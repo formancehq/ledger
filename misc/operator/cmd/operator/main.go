@@ -97,6 +97,7 @@ func main() {
 	}
 
 	if err = (&controller.ClusterReconciler{
+		APIReader:       mgr.GetAPIReader(),
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		Config:          cfg,

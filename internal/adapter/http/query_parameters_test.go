@@ -23,7 +23,7 @@ func TestQueryParameters_RejectUnknownAtRouter(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 
 	for _, tc := range []struct {
 		method, path, message string
@@ -70,7 +70,7 @@ func TestKnownQuery_AllowsDeclaredParameters(t *testing.T) {
 func TestQueryParameters_LeaveOpsProbesUnchanged(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/livez?unexpected=1", nil))
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -90,7 +90,7 @@ func TestQueryParameters_MatchOpenAPI(t *testing.T) {
 	// The handler may reach the backend for valid parameters. A nil embedded
 	// backend panics there and the router's recoverer converts that into a 500;
 	// the assertion below only concerns rejection at the query boundary.
-	handler := NewHandler(logging.Testing(), &struct{ Backend }{}, internalauth.AuthConfig{}, version.Info{})
+	handler := NewHandler(logging.Testing(), &struct{ Backend }{}, internalauth.AuthConfig{}, version.Info{}, nil)
 	pathParam := regexp.MustCompile(`\{[^}]+\}`)
 	for path, raw := range spec["paths"].(map[string]any) {
 		if !strings.HasPrefix(path, "/v3/") {

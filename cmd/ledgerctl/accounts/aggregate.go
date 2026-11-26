@@ -127,8 +127,10 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		var volumes []jsonVolume
 
 		for _, vol := range result.GetVolumes() {
-			input := vol.GetInput().ToBigInt()
-			output := vol.GetOutput().ToBigInt()
+			input, output, err := vol.Totals()
+			if err != nil {
+				return err
+			}
 			balance := new(big.Int).Sub(input, output)
 			volumes = append(volumes, jsonVolume{
 				Asset:   vol.GetAsset(),
@@ -173,8 +175,10 @@ func aggregateVolumesTable(vols []*commonpb.AggregatedVolume, rescale *uint8) (p
 				return nil, err
 			}
 
-			input := vol.GetInput().ToBigInt()
-			output := vol.GetOutput().ToBigInt()
+			input, output, err := vol.Totals()
+			if err != nil {
+				return nil, err
+			}
 			balance := new(big.Int).Sub(input, output)
 
 			tableData = append(tableData, []string{
@@ -187,8 +191,10 @@ func aggregateVolumesTable(vols []*commonpb.AggregatedVolume, rescale *uint8) (p
 		}
 	} else {
 		for _, vol := range vols {
-			input := vol.GetInput().ToBigInt()
-			output := vol.GetOutput().ToBigInt()
+			input, output, err := vol.Totals()
+			if err != nil {
+				return nil, err
+			}
 			balance := new(big.Int).Sub(input, output)
 
 			tableData = append(tableData, []string{

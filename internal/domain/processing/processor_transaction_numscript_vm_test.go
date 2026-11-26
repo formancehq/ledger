@@ -40,7 +40,7 @@ func vmTestScope(t *testing.T) *MockScope {
 	return mockStore
 }
 
-func produceTextScript(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string) (*produceResult, domain.SerializableError) {
+func produceTextScript(t *testing.T, cache *numscript.NumscriptCache, vars map[string]string) (*produceResult, domain.Describable) {
 	t.Helper()
 	producer := &numscriptPostingProducer{
 		cache:      cache,
@@ -48,7 +48,7 @@ func produceTextScript(t *testing.T, cache *numscript.NumscriptCache, vars map[s
 		assetCache: map[string]cachedAssetPrecision{},
 	}
 
-	return producer.produce(vmTestScope(t), "test", &raftcmdpb.CreateTransactionOrder{}, &commonpb.Script{Plain: vmScript, Vars: vars})
+	return producer.produceExecution(vmTestScope(t), "test", false, &commonpb.Script{Plain: vmScript, Vars: vars})
 }
 
 func TestProduce_TextScriptColdAndWarmAgree(t *testing.T) {
@@ -107,8 +107,8 @@ send $all (
 		assetCache: map[string]cachedAssetPrecision{},
 	}
 
-	_, err := producer.produce(vmTestScope(t), "test",
-		&raftcmdpb.CreateTransactionOrder{Force: true},
+	_, err := producer.produceExecution(vmTestScope(t), "test",
+		true,
 		&commonpb.Script{Plain: script})
 	require.NotNil(t, err)
 

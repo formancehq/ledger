@@ -99,7 +99,7 @@ func CanonicalDestinationKey(dst *raftcmdpb.BackupDestination) []byte {
 	writePart("bucket_id", dst.GetBucketId())
 
 	// base_path is *not* hashed: it is documented as "reserved for future
-	// use" and the inner backup runners (RunBackup / RunIncrementalBackup)
+	// use" and the checkpoint backup runner (RunBackup)
 	// ignore it. Including it in the destination key would let two callers
 	// race the same actual manifest under different base_path values —
 	// each would land on a distinct map slot and the FSM mutual exclusion

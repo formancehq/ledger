@@ -71,7 +71,7 @@ func TestNodeConfigValidate_NumericFlags(t *testing.T) {
 		{
 			name:    "negative tick interval",
 			mutate:  func(c *NodeConfig) { c.TickInterval = -time.Millisecond },
-			wantErr: "--tick-interval",
+			wantErr: "--raft-tick-interval",
 		},
 	}
 

@@ -32,12 +32,12 @@ func sequenceKey(zone, sub byte, sequence uint64) []byte {
 // run to a [zone][sub] prefix produced a bound byte-identical to the key at
 // math.MaxUint64 and dropped exactly that row. Every reader below was blind to
 // it: the checker could not report it, recovery could not see it, the index
-// builder and event emitter skipped it, and an incremental export left it out.
+// builder and event emitter skipped it.
 // The bound is now the prefix successor, which has no such hole.
 //
 // The FSM cannot allocate this sequence — the counters are seeded at 1 and
-// advanced by one — so the row can only arrive through a tampered restore
-// stream or storage corruption. That is precisely why the readers must see it.
+// advanced by one — so the row can only arrive through a tampered checkpoint
+// or storage corruption. That is precisely why the readers must see it.
 func TestReadersIncludeMaxUint64Sequence(t *testing.T) {
 	t.Parallel()
 

@@ -34,14 +34,28 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 		{
-			// Values are non-numeric strings on purpose: the textual grammar
-			// coerces a bare/quoted numeric metadata value to an IntCondition, while
-			// the JSON $match value stays a StringCondition, so the two forms only
-			// decode byte-for-byte identically for genuinely string-typed values.
 			name:   "and of two conditions",
 			text:   `metadata[a] == "x" and metadata[b] == "y"`,
 			json:   `{"$and":[{"$match":{"metadata[a]":"x"}},{"$match":{"metadata[b]":"y"}}]}`,
 			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
+		{
+			name:   "quoted boolean in equality is a string",
+			text:   `metadata[code] == "true"`,
+			json:   `{"$match":{"metadata[code]":"true"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		},
+		{
+			name:   "quoted integer in inequality is a string",
+			text:   `metadata[code] != '42'`,
+			json:   `{"$not":{"$match":{"metadata[code]":"42"}}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
+		{
+			name:   "quoted boolean and integer in membership are strings",
+			text:   `metadata[code] in ("42", 'false')`,
+			json:   `{"$or":[{"$match":{"metadata[code]":"42"}},{"$match":{"metadata[code]":"false"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		},
 		{
 			name:   "or of two conditions",
@@ -53,6 +67,30 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			name:   "ledger condition on logs",
 			text:   `ledger == "main"`,
 			json:   `{"$match":{"ledger":"main"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "exact transaction id under or",
+			text:   `id == 0 or id == 18446744073709551615`,
+			json:   `{"$or":[{"$match":{"id":"0"}},{"$match":{"id":"18446744073709551615"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
+		{
+			name:   "exact log id under or",
+			text:   `id == 0 or id == 18446744073709551615`,
+			json:   `{"$or":[{"$match":{"id":"0"}},{"$match":{"id":"18446744073709551615"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "log id closed range",
+			text:   `id between 1 and 9`,
+			json:   `{"$and":[{"$gte":{"id":"1"}},{"$lte":{"id":"9"}}]}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "parameterized log id",
+			text:   `id == $wanted`,
+			json:   `{"$match":{"id":{"$param":"wanted"}}}`,
 			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
 		{
@@ -89,6 +127,26 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 				"text and JSON forms must decode to the same QueryFilter\n text: %v\n json: %v",
 				fromText, fromJSON)
 		})
+	}
+}
+
+func TestDecodeDualFormat_IDRejectsAccounts(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{`id == 7`, `{"$match":{"id":"7"}}`, `id >= 7`, `{"$gte":{"id":"7"}}`} {
+		_, err := DecodeDualFormat([]byte(raw), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		require.ErrorContains(t, err, "not valid on accounts queries", raw)
+	}
+}
+
+func TestDecodeDualFormat_MetadataEqualityRejectsOutOfRangeBareInteger(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{
+		`metadata[code] == 9223372036854775808`,
+		`metadata[code] == -9223372036854775809`,
+	} {
+		_, err := DecodeDualFormat([]byte(input), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		require.ErrorContains(t, err, "requires a signed 64-bit integer", input)
 	}
 }
 

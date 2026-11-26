@@ -20,6 +20,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
 func claimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
@@ -87,13 +89,26 @@ func ctxWithBearer(token string) context.Context {
 	return metadata.NewIncomingContext(context.Background(), md)
 }
 
+func TestEvaluateGRPCCredentialsMarksOnlyEnabledAnonymousCallsForForwarding(t *testing.T) {
+	t.Parallel()
+
+	ctx, err := EvaluateGRPCCredentials(context.Background(), AuthConfig{Enabled: true})
+	require.NoError(t, err)
+	require.True(t, transport.ForwardedAnonymousCaller(ctx))
+	require.Empty(t, transport.ForwardedBearerToken(ctx))
+
+	ctx, err = EvaluateGRPCCredentials(context.Background(), AuthConfig{Enabled: false})
+	require.NoError(t, err)
+	require.False(t, transport.ForwardedAnonymousCaller(ctx))
+}
+
 func testAuthConfig(t *testing.T, keySet oidc.KeySet) AuthConfig {
 	t.Helper()
 
 	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -436,12 +451,12 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled: true,
 		KeySet:  edKeySet,
-		Issuer:  "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
+		Issuers: []string{"https://oidc-issuer.example.com"}, // OIDC issuer configured but should be ignored for EdDSA
 		Service: "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
-	claims.Issuer = "some-other-issuer" // Different from cfg.Issuer — should still pass
+	claims.Issuer = "some-other-issuer" // Not in cfg.Issuers — should still pass
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
@@ -565,7 +580,7 @@ func writesOnlyGRPCConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
 	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testIssuer,
+		Issuers:      []string{testIssuer},
 		Service:      "ledger",
 		ScopeMapping: mapping,
 	}, privKey
@@ -636,7 +651,7 @@ func TestAuthenticate_WritesOnly_NoArgs_NoToken_Passes(t *testing.T) {
 	assert.True(t, HasScope(ExpandedScopesFromContext(newCtx), ScopeLedgersRead))
 }
 
-func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
+func TestAuthenticate_ClusterSecretIsNotAUserCredential(t *testing.T) {
 	t.Parallel()
 
 	secret := "test-cluster-secret-12345"
@@ -648,25 +663,12 @@ func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
 
 	ctx := ctxWithBearer(secret)
 
-	newCtx, err := authenticate(ctx, cfg)
-	require.NoError(t, err)
-
-	// Cluster-internal requests must have all granular scopes
-	// so that per-request scope checks in Apply succeed.
-	effective := ExpandedScopesFromContext(newCtx)
-	require.NotNil(t, effective)
-
-	for scope := range AllGranularScopes {
-		assert.True(t, HasScope(effective, scope), "missing scope %s", scope)
-	}
+	_, err := authenticate(ctx, cfg)
+	require.Error(t, err)
 }
 
-// TestAuthenticate_ClusterSecret_RejectsWrongValue pins the
-// constant-time comparison from #339 / Review-2 M-25. A token whose
-// length matches but whose bytes differ must be rejected. A regression
-// to plain == would still reject this case (so the test alone does not
-// prove constant-timeness), but the test guards against the comparison
-// being accidentally inverted or short-circuited.
+// Cluster credentials are transport-only and must never be accepted as user
+// credentials, regardless of their length or value.
 func TestAuthenticate_ClusterSecret_RejectsWrongValue(t *testing.T) {
 	t.Parallel()
 
@@ -684,13 +686,10 @@ func TestAuthenticate_ClusterSecret_RejectsWrongValue(t *testing.T) {
 	ctx := ctxWithBearer(wrong)
 
 	_, err := authenticate(ctx, cfg)
-	require.Error(t, err,
-		"cluster-secret comparison must reject a same-length token whose bytes differ (#339)")
+	require.Error(t, err)
 }
 
-// TestAuthenticate_ClusterSecret_RejectsWrongLength documents that the
-// length pre-check correctly short-circuits without leaking secret bytes
-// via subtle.ConstantTimeCompare's length-equality input requirement.
+// A cluster credential with a different length is also not a user token.
 func TestAuthenticate_ClusterSecret_RejectsWrongLength(t *testing.T) {
 	t.Parallel()
 
@@ -705,23 +704,16 @@ func TestAuthenticate_ClusterSecret_RejectsWrongLength(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestAuthenticate_ClusterSecret_MarksClusterInternal ensures the fast path
-// tags the context so downstream handlers can decide whether to trust the
-// forwarded_caller field on the request (regression for #362).
-func TestAuthenticate_ClusterSecret_MarksClusterInternal(t *testing.T) {
+func TestWithPeerSystemAuthenticationMarksClusterInternal(t *testing.T) {
 	t.Parallel()
 
-	secret := "another-cluster-secret"
-	cfg := AuthConfig{
-		Enabled:       true,
-		ClusterSecret: secret,
-	}
-
-	newCtx, err := authenticate(ctxWithBearer(secret), cfg)
-	require.NoError(t, err)
+	newCtx := WithPeerSystemAuthentication(context.Background())
 
 	require.True(t, IsClusterInternal(newCtx),
-		"cluster-secret fast path must mark the context as cluster-internal")
+		"peer system authentication must mark the context as cluster-internal")
+	for scope := range AllGranularScopes {
+		assert.True(t, HasScope(ExpandedScopesFromContext(newCtx), scope), "missing scope %s", scope)
+	}
 }
 
 // TestAuthenticate_UserToken_NotClusterInternal verifies that a regular
@@ -735,7 +727,7 @@ func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
 	cfg := AuthConfig{
 		Enabled:       true,
 		KeySet:        keySet,
-		Issuer:        testIssuer,
+		Issuers:       []string{testIssuer},
 		ScopeMapping:  DefaultMapping("ledger"),
 		ClusterSecret: "shared-cluster-secret",
 	}

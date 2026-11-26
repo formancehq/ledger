@@ -26,7 +26,7 @@ import (
 // goroutine on a reused (HTTP/1 keep-alive) connection.
 //
 // The labeled callback context is threaded into serveBulk via r.WithContext so
-// downstream work reached through r.Context() (runBulk → applyUnsigned → the
+// downstream work reached through r.Context() (runBulk → applyRequests → the
 // admission/apply path, and any goroutines it spawns) inherits the same pprof
 // label rather than only the synchronous handler goroutine carrying it.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +110,11 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 		atomic:            queryParamBool(r, "atomic"),
 		idempotencyKey:    r.Header.Get("Idempotency-Key"),
 	}
+	if signedBatchFromContext(r.Context()) != nil && (!opts.atomic || len(elements) == 0) {
+		writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION", errors.New("signed bulk requires atomic=true and at least one element"))
+
+		return
+	}
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
@@ -128,8 +133,9 @@ type bulkOptions struct {
 
 // bulkResult represents the result of a single bulk element.
 type bulkResult struct {
-	log *commonpb.LedgerLog
-	err error
+	log      *commonpb.LedgerLog
+	sequence uint64 // Global log sequence, distinct from the ledger-local log ID.
+	err      error
 }
 
 // convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request.
@@ -177,7 +183,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*servicepb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
-	logs, err := s.applyUnsigned(ctx, idempotencyKey, requests...)
+	logs, err := s.applyRequests(ctx, idempotencyKey, requests...)
 	if err != nil {
 		// In atomic mode, if any action fails, all fail with the same error
 		for i := range results {
@@ -188,7 +194,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, reque
 	}
 
 	for i, log := range logs {
-		results[i] = bulkResult{log: log.GetPayload().GetApply().GetLog()}
+		results[i] = bulkResult{log: log.GetPayload().GetApply().GetLog(), sequence: log.GetSequence()}
 	}
 
 	return results
@@ -207,7 +213,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 			continue
 		}
 
-		logs, err := s.applyUnsigned(ctx, keys[i], request)
+		logs, err := s.applyRequests(ctx, keys[i], request)
 		if err != nil {
 			hasError = true
 			results[i] = bulkResult{err: err}
@@ -222,7 +228,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 			continue
 		}
 
-		results[i] = bulkResult{log: logs[0].GetPayload().GetApply().GetLog()}
+		results[i] = bulkResult{log: logs[0].GetPayload().GetApply().GetLog(), sequence: logs[0].GetSequence()}
 	}
 
 	return results
@@ -236,7 +242,8 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 //   - **Aborted** (`context.Canceled` sentinel emitted by runBulkSequential
 //     when `continueOnFailure=false` and a prior element failed): bulkElementError
 //     returns 0 and the element contributes nothing to the rollup.
-//   - **Per-element business** (any other 4xx): rolled up per
+//   - **Authentication / authorization** (401/403): always surfaces.
+//   - **Per-element business** (remaining 4xx): rolled up per
 //     `continueOnFailure` — suppressed to 200 when opt-in, surfaced as its
 //     own status (typically 400/404/409) otherwise.
 //
@@ -246,6 +253,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 	worstBusiness := 0 // highest 4xx from a per-element business failure
 	worstInfra := 0    // highest ≥429 from a retryable/infra/rate-limit error
 	apiResults := make([]bulkAPIResult, len(results))
+	skipResponse := queryParamBool(r, "skipResponse")
 
 	for i, result := range results {
 		responseType := servicepb.GetLedgerActionType(elements[i].Action)
@@ -254,6 +262,10 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 
 		if result.err != nil {
 			st, code, description := bulkElementError(r, result.err)
+			// Keep every result but never suppress authentication failures.
+			if st == http.StatusUnauthorized || st == http.StatusForbidden {
+				continueOnFailure = false
+			}
 			switch {
 			case st == 0:
 				// Aborted sentinel — no top-level status contribution.
@@ -283,6 +295,14 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			continue
 		}
 
+		if result.log == nil || result.log.GetData() == nil || result.log.GetData().GetPayload() == nil {
+			panic(emptyLogPayload("bulk", &commonpb.Log{Sequence: result.sequence}, nil))
+		}
+		if skipResponse {
+			requireAcknowledgementSequence(result.sequence)
+			apiResults[i].Sequence = result.sequence
+		}
+
 		// Extract data from log. Bulk entries that opted into
 		// `skippableReasons` (per-entry, not on the payload) may surface as
 		// an OrderSkipped payload here when the FSM matched a whitelisted
@@ -296,7 +316,13 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			if payload := log.GetData(); payload != nil {
 				switch p := payload.GetPayload().(type) {
 				case *commonpb.LedgerLogPayload_CreatedTransaction:
-					data = p.CreatedTransaction.GetTransaction()
+					if !skipResponse {
+						data = p.CreatedTransaction.GetTransaction()
+					}
+				case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+					if !skipResponse {
+						data = commonpb.AccountMetadataToAnyMap(p.AccountMetadataUpdated.GetAccountMetadata())
+					}
 				case *commonpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,
@@ -312,6 +338,7 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			ResponseType: responseType,
 			Data:         data,
 			LogID:        apiResults[i].LogID,
+			Sequence:     apiResults[i].Sequence,
 		}
 	}
 
@@ -375,6 +402,7 @@ type bulkAPIResult struct {
 	Data             any    `json:"data,omitempty"`
 	ResponseType     string `json:"responseType"`
 	LogID            uint64 `json:"logID"`
+	Sequence         uint64 `json:"sequence,omitempty"`
 }
 
 // OrderSkippedResponse is the bulk-entry response body returned when an entry

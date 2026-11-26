@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -37,6 +38,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
+	"github.com/formancehq/ledger/v3/internal/application/logintegrity"
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/application/mirror"
 	"github.com/formancehq/ledger/v3/internal/application/usagebuilder"
@@ -46,6 +48,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -57,6 +60,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/network"
+	"github.com/formancehq/ledger/v3/internal/pkg/reconciler"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -64,6 +68,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -77,6 +82,10 @@ import (
 // walFreshStart indicates whether the WAL was empty before the node was created.
 // It is used to decide whether a joining node needs to register as a learner.
 type walFreshStart bool
+
+func publishCapabilityGate(membership *raftmembership.Membership, policy *commonpb.ClusterPolicy) error {
+	return membership.SetCapabilityGate(capabilities.MembershipRequiredIDs(policy))
+}
 
 // nodeProvideResult groups the outputs of the Node provider so we can also
 // expose the WAL-fresh-start indicator through the fx dependency graph.
@@ -99,6 +108,47 @@ func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric
 	return wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
 }
 
+// newClusterPolicyReconciler wires the leader-only policy maintenance into the
+// generic periodic reconciler. Keeping this assembly in a named provider keeps
+// the Fx graph readable while leaving the policy logic in dedicated helpers.
+func newClusterPolicyReconciler(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *reconciler.Reconciler {
+	return reconciler.New(func(ctx context.Context) {
+		if !raftNode.IsLeader() {
+			return
+		}
+		if policy, err := query.ReadClusterPolicy(store); err == nil {
+			if err := raftNode.SetCapabilityGate(capabilities.MembershipRequiredIDs(policy)); err != nil {
+				logger.WithFields(map[string]any{"error": err}).Errorf("Invalid capability gate in committed cluster policy")
+
+				return
+			}
+		}
+		if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
+
+			return
+		}
+		reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
+	}, clusterPolicyReconcileInterval)
+}
+
+func newCapabilityActivationReconciler(admission *admission.Admission, store *dal.Store, raftNode *node.Node, logger logging.Logger) *capabilityActivationReconciler {
+	return &capabilityActivationReconciler{reconciler.New(func(ctx context.Context) {
+		ctx = internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
+		if !raftNode.IsLeader() {
+			return
+		}
+		if err := raftNode.RefreshSelfMembership(ctx, capabilities.IDsAsUint32(capabilities.SupportedIDs())); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability evidence refresh failed; activation will retry")
+
+			return
+		}
+		if err := activateReadyCapabilities(ctx, admission.AdmitCapabilityTransition, store, raftNode.IsLeader, raftNode.CapabilityMembers, capabilities.SupportedIDs()); err != nil {
+			logger.WithFields(map[string]any{"error": err}).Errorf("Capability activation failed; will retry from committed policy")
+		}
+	}, clusterPolicyReconcileInterval)}
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
@@ -119,7 +169,7 @@ func Module() fx.Option {
 					cfg.ClusterID,
 					cfg.RaftConfig.TransportBufferSize,
 					cfg.RaftConfig.AdvertiseAddr,
-					cfg.ServiceAdvertiseAddr(),
+					cfg.PeerServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
@@ -166,6 +216,7 @@ func Module() fx.Option {
 				return ctrl.GRPCSnapshotFetcherProvider(
 					transport,
 					logger,
+					cfg.RaftConfig.NodeID,
 					cfg.SnapshotSyncConfig.Parallelism,
 					cfg.SnapshotSyncConfig.RetryCount,
 					cfg.SnapshotSyncConfig.FileRetryCount,
@@ -210,8 +261,14 @@ func Module() fx.Option {
 			// — applier, node, background workers — observes the FSM at its
 			// recovered state. NewMachine deliberately skips this step so it does
 			// not perform any Pebble read itself.
-			func(machine *state.Machine, store *dal.Store) (*state.Recovery, error) {
-				recovery := state.NewRecovery(machine, store)
+			func(machine *state.Machine, store *dal.Store, membership *raftmembership.Membership) (*state.Recovery, error) {
+				recovery := state.NewRecovery(machine, store, state.WithStateRecovered(func(recovered *state.FSMState) error {
+					if err := capabilities.ValidateSupportedActive(recovered.ClusterPolicy, capabilities.SupportedIDs()); err != nil {
+						return err
+					}
+
+					return publishCapabilityGate(membership, recovered.ClusterPolicy)
+				}))
 				if err := recovery.RecoverState(); err != nil {
 					return nil, fmt.Errorf("recovering FSM state at boot: %w", err)
 				}
@@ -230,14 +287,20 @@ func Module() fx.Option {
 			// constructors.
 			raftmembership.NewPeerStore,
 			fx.Annotate(func(
-				store *raftmembership.PeerStore,
+				peerStore *raftmembership.PeerStore,
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
+				durableStore *dal.Store,
+				appCfg Config,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+				policyProvider := func() (*commonpb.ClusterPolicy, error) {
+					return query.ReadClusterPolicy(durableStore)
+				}
+
+				return raftmembership.NewMembershipWithServicePort(peerStore, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, appCfg.PeerServiceAdvertiseAddr(), appCfg.PeerGRPCPort(), cfg.InstanceID, logger, policyProvider)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -284,6 +347,7 @@ func Module() fx.Option {
 				registry := state.NewStateRegistry(c, attrs)
 				snapshotter := state.NewCacheSnapshotter(logger, registry, bloomFilters)
 
+				var machine *state.Machine
 				m, err := state.NewMachine(
 					logger,
 					registry,
@@ -297,11 +361,24 @@ func Module() fx.Option {
 					bloomFilters,
 					"", // Audit key is loaded from replicated state during recovery.
 					cfg.NumscriptCacheSize,
-					membership.WriteConfChange,
+					func(entry *raftpb.Entry, session *dal.WriteSession) error {
+						var policy *commonpb.ClusterPolicy
+						if machine != nil {
+							policy = machine.ClusterPolicy()
+						}
+
+						return membership.WriteConfChange(entry, session, policy)
+					},
+					func(policy *commonpb.ClusterPolicy) {
+						if err := publishCapabilityGate(membership, policy); err != nil {
+							logger.WithFields(map[string]any{"error": err}).Errorf("Publishing committed capability policy failed")
+						}
+					},
 				)
 				if err != nil {
 					return nil, err
 				}
+				machine = m
 
 				logger.WithFields(map[string]any{
 					"duration": time.Since(machineStart).String(),
@@ -323,6 +400,7 @@ func Module() fx.Option {
 					Recovery       *state.Recovery
 					Synchronizer   *state.Synchronizer
 					Membership     *raftmembership.Membership
+					Store          *dal.Store
 					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
@@ -341,6 +419,23 @@ func Module() fx.Option {
 					"snapshotTerm":  snapshot.GetMetadata().GetTerm(),
 				}).Infof("WAL fresh start detection")
 
+				var raftNode *node.Node
+				proposalAdmission := func(_ context.Context, proposal *node.Proposal) error {
+					policy, err := query.ReadClusterPolicy(params.Store)
+					if err != nil {
+						return fmt.Errorf("reading cluster capability policy before Raft proposal: %w", err)
+					}
+					if raftNode == nil {
+						return errors.New("raft proposal gate is not initialized")
+					}
+					// Take one immutable membership snapshot for both policy checks.  The
+					// gate runs under the serialized proposal/index boundary; taking two
+					// snapshots here needlessly doubles lock, map-copy and allocation cost.
+					members := raftNode.CapabilityMembers()
+
+					return validateProposalCapabilityAdmission(policy, proposal, members)
+				}
+
 				n, err := node.NewNode(
 					params.NodeConfig,
 					params.Transport,
@@ -353,10 +448,12 @@ func Module() fx.Option {
 					params.Synchronizer,
 					params.Membership,
 					params.LocalResponses,
+					node.WithProposalAdmission(proposalAdmission),
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
 				}
+				raftNode = n
 
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
@@ -420,6 +517,23 @@ func Module() fx.Option {
 				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPublic, authCfg, "", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
 					listenerOptions(bindings.Service)...)
 			},
+			fx.Annotate(func(cfg Config, lc fx.Lifecycle, logger logging.Logger, authCfg internalauth.AuthConfig, bindings network.Bindings) (*grpcadp.ServiceServer, error) {
+				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
+				if err != nil {
+					return nil, fmt.Errorf("loading TLS config for peer service server: %w", err)
+				}
+
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
+
+				peerPort := cfg.PeerGRPCPort()
+				// Tests that inject the public listener without a peer binding use
+				// an ephemeral peer port to avoid sharing the production default.
+				if bindings.Service != nil && bindings.Peer == nil {
+					peerPort = 0
+				}
+
+				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPeer, authCfg, "", peerPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), listenerOptions(bindings.Peer)...)
+			}, fx.ResultTags(`name:"peer"`)),
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
@@ -427,6 +541,12 @@ func Module() fx.Option {
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, applier *node.Applier) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, applier)
+			},
+			func(s *dal.Store, applier *node.Applier) rafttransportpb.LogIntegrityServiceServer {
+				return grpcadp.NewLogIntegrityServiceServer(s, applier.WaitForCheckpointable)
+			},
+			func(s *dal.Store, n *node.Node, transport *node.DefaultTransport, local rafttransportpb.LogIntegrityServiceServer, logger logging.Logger, provider metric.MeterProvider) *logintegrity.Observer {
+				return logintegrity.NewObserver(s, n, transport, local, logger, provider.Meter("ledger.log_integrity"))
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(
@@ -440,11 +560,11 @@ func Module() fx.Option {
 				return membership.NewService(
 					n, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
-					cfg.ServiceAdvertiseAddr(),
+					cfg.PeerServiceAdvertiseAddr(),
 				)
 			},
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
-				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry())
 			},
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
@@ -534,8 +654,8 @@ func Module() fx.Option {
 				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
 			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
-			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
-				return httpcompat.NewHandler(logger, backend, authCfg, info)
+			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
+				return httpcompat.NewHandler(logger, backend, authCfg, info, applyService)
 			},
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)
@@ -553,7 +673,7 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
-			) ctrl.Admission {
+			) *admission.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
@@ -565,6 +685,7 @@ func Module() fx.Option {
 					store,
 					logger,
 					node,
+					node.MembershipCoordinator(),
 					builder,
 					meterProvider,
 					hc,
@@ -630,19 +751,9 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
-			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
-				return NewClusterPolicyReconciler(func(ctx context.Context) {
-					if !raftNode.IsLeader() {
-						return
-					}
-					if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
-						logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
-
-						return
-					}
-					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
-				})
-			},
+			func(service *admission.Admission) ctrl.Admission { return service },
+			newClusterPolicyReconciler,
+			newCapabilityActivationReconciler,
 		),
 		fx.Decorate(func(
 			params struct {
@@ -794,6 +905,9 @@ func Module() fx.Option {
 
 				return nil
 			},
+			func(raftServer *grpcadp.RaftServer, service rafttransportpb.LogIntegrityServiceServer) {
+				rafttransportpb.RegisterLogIntegrityServiceServer(raftServer.GetServer(), service)
+			},
 			// Register business services on ServiceServer (external)
 			func(raftServer *grpcadp.RaftServer) error {
 				hs := health.NewServer()
@@ -812,6 +926,16 @@ func Module() fx.Option {
 
 				return nil
 			},
+			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
+				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
+
+				return nil
+			}, fx.ParamTags(`name:"peer"`, ``)),
+			fx.Annotate(func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
+				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
+
+				return nil
+			}, fx.ParamTags(`name:"peer"`, ``)),
 			// Backup cleanup loop: leader-only, fails stale jobs so a
 			// crashed executor doesn't permanently lock the destination.
 			// Run is leader-aware itself so this just needs lifecycle.
@@ -867,9 +991,7 @@ func Module() fx.Option {
 				}))
 			},
 			// Wire Observer: handle LeadershipChange and LeaderReady events.
-			// ConfChange events are no longer dispatched here — Membership
-			// owns the transport / service-pool wiring and reacts directly
-			// to peer mutations (EN-1413).
+			// Membership owns transport / service-pool wiring.
 			func(
 				n *node.Node,
 				store *dal.Store,
@@ -880,6 +1002,7 @@ func Module() fx.Option {
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
 				healthChecker *clusterhealth.HealthChecker,
+				reconciler *reconciler.Reconciler,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
@@ -916,10 +1039,43 @@ func Module() fx.Option {
 					}
 				}))
 			},
-			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, membership *raftmembership.Membership, cfg Config, logger logging.Logger) (*node.Node, error) {
 				lc.Append(nodeHook(node, logger))
 
+				// A WAL that already joined the cluster must not take the learner
+				// bootstrap path again. It does, however, need to publish the
+				// capabilities of the restarted binary and any changed endpoints.
+				// This hook runs after the Raft server, transport and node are live;
+				// an UpdateNode for an existing voter may need that node to contribute
+				// to the commit quorum.
+				if shouldRunMembershipRefresh(cfg, logger) {
+					lc.Append(membershipRefreshHook(cfg, membership, logger))
+				}
+
 				return node, nil
+			},
+			func(lc fx.Lifecycle, observer *logintegrity.Observer) {
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan struct{})
+				lc.Append(fx.Hook{
+					OnStart: func(context.Context) error {
+						go func() {
+							defer close(done)
+							observer.Run(ctx)
+						}()
+
+						return nil
+					},
+					OnStop: func(stopCtx context.Context) error {
+						cancel()
+						select {
+						case <-done:
+						case <-stopCtx.Done():
+						}
+
+						return nil
+					},
+				})
 			},
 			// Start Service server (external).
 			// Registered AFTER the Raft node so that fx stops it BEFORE the node
@@ -940,6 +1096,19 @@ func Module() fx.Option {
 					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
+			fx.Annotate(func(
+				lc fx.Lifecycle,
+				serviceServer *grpcadp.ServiceServer,
+				logger logging.Logger,
+				shutdowner fx.Shutdowner,
+			) {
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:          serviceServer,
+					Name:            "Peer service gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
+				}))
+			}, fx.ParamTags(``, `name:"peer"`, ``, ``)),
 			// Join mode preflight is registered EARLIER (before the Raft
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
@@ -962,8 +1131,11 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, manager *mirror.Manager) {
 				lc.Append(worker.FxHook(manager))
 			},
-			func(lc fx.Lifecycle, reconciler *ClusterPolicyReconciler) {
+			func(lc fx.Lifecycle, reconciler *reconciler.Reconciler) {
 				lc.Append(worker.FxHook(reconciler))
+			},
+			func(lc fx.Lifecycle, activation *capabilityActivationReconciler) {
+				lc.Append(worker.FxHook(activation))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
 				if cfg.IdempotencyEvictionInterval > 0 {
@@ -971,9 +1143,9 @@ func Module() fx.Option {
 						logger,
 						raftNode.IsLeader,
 						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
-							proposal := commands.NewCommand()
+							proposal := commands.NewTechnicalCommand()
 							proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentIdempotencyEvict)
-							proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+							proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 								Kind: &raftcmdpb.TechnicalUpdate_IdempotencyEviction{
 									IdempotencyEviction: &raftcmdpb.IdempotencyEviction{
 										CutoffMicros:            cutoffMicros,
@@ -997,7 +1169,7 @@ func Module() fx.Option {
 							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
-								Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
+								Target: &proposal.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 							}}
 
 							if err := proposeTechnical(ctx, builder, raftNode, proposal, operations); err != nil {
@@ -1065,6 +1237,50 @@ func Module() fx.Option {
 			},
 		),
 	)
+}
+
+// validateProposalCapabilityAdmission is the production proposal gate shared
+// by every Node.Propose caller. The proposal carries typed declarations derived
+// from the final command, while policy and membership are the committed
+// snapshots captured at the serialized admission boundary.
+func validateProposalCapabilityAdmission(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member) error {
+	return validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, capabilities.SupportedIDs())
+}
+
+func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPolicy, proposal *node.Proposal, members []capabilities.Member, supported []capabilities.CapabilityID) error {
+	if proposal == nil {
+		return errors.New("raft proposal gate received a nil proposal")
+	}
+
+	if err := capabilities.ValidateActive(
+		supported,
+		proposal.ActivePolicyCapabilities(),
+		members,
+	); err != nil {
+		return err
+	}
+
+	state := capabilities.FromPolicy(policy)
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	if proposal.HasBusinessOrders() {
+		ready, err := capabilities.Ready(supported, members)
+		if err != nil {
+			return err
+		}
+		for _, id := range ready {
+			if !state.Activations[id] {
+				return fmt.Errorf("%w: ready capability %d has not committed", capabilities.ErrActivationPending, id)
+			}
+		}
+	}
+	decision := capabilities.Evaluate(state, proposal.RequiredCapabilities(), false, members)
+	if !decision.Allowed {
+		return fmt.Errorf("%w: %s", capabilities.ErrCapabilityUnsupported, decision.Reason)
+	}
+
+	return nil
 }
 
 // JoinAuthError is returned when a joining node is rejected by the target
@@ -1164,6 +1380,19 @@ func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
 	return true
 }
 
+// shouldRunMembershipRefresh selects the normal-restart path. A fresh WAL is
+// handled by joinPreflightHook. Restart peers come from recovered membership,
+// so neither --join nor --bootstrap is required on subsequent boots.
+func shouldRunMembershipRefresh(cfg Config, logger logging.Logger) bool {
+	if !wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+		return false
+	}
+
+	logger.Infof("CLUSTER_JOINED marker present, refreshing membership evidence")
+
+	return true
+}
+
 func registerSnapshotServiceLifecycle(lc fx.Lifecycle, server snapshotpb.SnapshotServiceServer) {
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
@@ -1237,12 +1466,128 @@ func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
 			logger.WithFields(map[string]any{
 				"nodeID":         cfg.RaftConfig.NodeID,
 				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+				"serviceAddress": cfg.PeerServiceAdvertiseAddr(),
 			}).Infof("Join mode: requesting peer to add this node as learner (preflight, before Raft traffic)")
 
 			return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
 		},
 	}
+}
+
+// newMembershipPeerDialer builds the common outbound gRPC dialer used by the
+// learner bootstrap and membership-refresh paths. Keeping credential and
+// option construction in one place prevents those two startup paths from
+// drifting while still allowing each call site to control connection lifetime.
+func newMembershipPeerDialer(cfg Config, tlsCfg TLSConfig) (func(string) (*ggrpc.ClientConn, error), error) {
+	creds, _, err := ClientTransportCredentials(tlsCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
+	// Per-RPC credentials require transport security. Do not attach the
+	// cluster secret to a plaintext membership call.
+	if cfg.ClusterSecret != "" && tlsCfg.Mode != TLSModeDisabled {
+		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
+	}
+
+	return func(address string) (*ggrpc.ClientConn, error) {
+		return ggrpc.NewClient(address, dialOpts...)
+	}, nil
+}
+
+func membershipRefreshHook(cfg Config, membership *raftmembership.Membership, logger logging.Logger) fx.Hook {
+	var cancel context.CancelFunc
+
+	return fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			cfg.RaftConfig.Peers = recoveredRefreshPeers(cfg.RaftConfig.NodeID, membership.PeerAddresses())
+			if len(cfg.RaftConfig.Peers) == 0 {
+				return nil // A single-member cluster has no remote membership to refresh.
+			}
+			logger.WithFields(map[string]any{
+				"nodeID":         cfg.RaftConfig.NodeID,
+				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+				"serviceAddress": cfg.PeerServiceAdvertiseAddr(),
+			}).Infof("Restart mode: refreshing membership capabilities")
+
+			// Perform one bounded synchronous attempt before the node starts serving. A
+			// permanent rejection (for example a removed incarnation or invalid
+			// identity) must abort startup rather than letting stale WAL membership
+			// evidence escape into the cluster. Transient connectivity failures
+			// (including Unavailable) and rolling-upgrade compatibility responses
+			// are handed to the background retry loop; permanent rejections remain
+			// startup failures.
+			err := tryRefreshMembershipForStartup(ctx, cfg, cfg.TLSConfig, logger)
+			if err == nil {
+				return nil
+			}
+			if !errors.Is(err, errMembershipRefreshTransient) {
+				return err
+			}
+
+			refreshCtx, refreshCancel := context.WithCancel(context.Background())
+			cancel = refreshCancel
+			go func() {
+				if err := tryRefreshMembership(refreshCtx, cfg, cfg.TLSConfig, logger); err != nil {
+					// TODO(rc.3): remove this compatibility fallback once every
+					// supported peer implements RefreshMembership. The leader-side
+					// reconciler keeps retrying transient evidence until convergence.
+					logger.WithFields(map[string]any{"error": err}).Errorf("Membership capability refresh failed; continuing with conservative evidence")
+				}
+			}()
+
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			if cancel != nil {
+				cancel()
+			}
+
+			return nil
+		},
+	}
+}
+
+func recoveredRefreshPeers(selfID uint64, addresses map[uint64]raftmembership.ConfChangeContext) []node.Peer {
+	peers := make([]node.Peer, 0, len(addresses))
+	for id, address := range addresses {
+		if id != selfID && address.RaftAddress != "" {
+			peers = append(peers, node.Peer{ID: id, Address: address.RaftAddress})
+		}
+	}
+
+	return peers
+}
+
+const membershipRefreshStartupTimeout = 5 * time.Second
+
+// tryRefreshMembershipForStartup gives the synchronous startup attempt a
+// bounded context. A leader can accept a RefreshMembership RPC while a Raft
+// proposal is waiting for a quorum; that proposal must not hold the lifecycle
+// start hook until the process-wide startup deadline. Once this attempt times
+// out, the caller can continue with conservative evidence and the lifecycle-
+// owned retry loop can converge when quorum returns.
+func tryRefreshMembershipForStartup(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	return tryRefreshMembershipForStartupWithTimeout(ctx, cfg, tlsCfg, logger, membershipRefreshStartupTimeout)
+}
+
+func tryRefreshMembershipForStartupWithTimeout(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger, timeout time.Duration) error {
+	attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	err := tryRefreshMembershipOnce(attemptCtx, cfg, tlsCfg, logger)
+	if err == nil {
+		return nil
+	}
+
+	// Preserve lifecycle cancellation as a hard error. The bounded attempt's
+	// expiry and a remote RPC deadline are transient while the lifecycle is live.
+	if ctx.Err() == nil && (errors.Is(attemptCtx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded) {
+		return fmt.Errorf("%w: synchronous refresh attempt exceeded %s: %w", errMembershipRefreshTransient, timeout, err)
+	}
+
+	return err
 }
 
 // tryAddLearner attempts to register this node as a learner on an existing
@@ -1270,20 +1615,15 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	req := &clusterbootstrappb.JoinAsLearnerRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
+		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 	}
 
-	creds, _, err := ClientTransportCredentials(tlsCfg)
+	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
 	}
-
-	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
-	if cfg.ClusterSecret != "" {
-		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
-	}
-
 	backoff := 500 * time.Millisecond
 	maxBackoff := 5 * time.Second
 
@@ -1294,7 +1634,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	for {
 		// Try each peer in order until one succeeds.
 		for _, peer := range peers {
-			conn, err := ggrpc.NewClient(peer.Address, dialOpts...)
+			conn, err := dialPeer(peer.Address)
 			if err != nil {
 				logger.WithFields(map[string]any{
 					"peer":    peer.ID,
@@ -1427,6 +1767,106 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 	}
 }
 
+// tryRefreshMembership publishes this incarnation's current endpoints and
+// capabilities through the leader. It is deliberately separate from
+// tryAddLearner: a node with a populated WAL already owns Raft progress and
+// must never be admitted through the empty-WAL learner path.
+func tryRefreshMembership(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	backoff := 500 * time.Millisecond
+	for {
+		err := tryRefreshMembershipOnce(ctx, cfg, tlsCfg, logger)
+		if err == nil || !errors.Is(err, errMembershipRefreshTransient) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, 5*time.Second)
+	}
+}
+
+var errMembershipRefreshTransient = errors.New("membership refresh temporarily unavailable")
+
+func tryRefreshMembershipOnce(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return fmt.Errorf("ensuring instance id for membership refresh: %w", err)
+	}
+
+	req := &clusterbootstrappb.RefreshMembershipRequest{
+		NodeId:         cfg.RaftConfig.NodeID,
+		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
+		ServiceAddress: cfg.PeerServiceAdvertiseAddr(),
+		InstanceId:     instanceID,
+		Capabilities:   capabilities.IDsAsUint32(capabilities.SupportedIDs()),
+	}
+
+	dialPeer, err := newMembershipPeerDialer(cfg, tlsCfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS credentials for membership refresh: %w", err)
+	}
+	if cfg.ClusterID != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
+	}
+
+	var lastTransient error
+	for _, peer := range cfg.RaftConfig.Peers {
+		conn, dialErr := dialPeer(peer.Address)
+		if dialErr != nil {
+			logger.WithFields(map[string]any{"peer": peer.ID, "address": peer.Address, "error": dialErr}).Infof("Failed to dial peer for membership refresh")
+			lastTransient = dialErr
+
+			continue
+		}
+
+		_, callErr := clusterbootstrappb.NewClusterBootstrapServiceClient(conn).RefreshMembership(ctx, req)
+		_ = conn.Close()
+		if callErr == nil {
+			logger.WithFields(map[string]any{"peer": peer.ID}).Infof("Successfully refreshed membership capabilities")
+
+			return nil
+		}
+
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		if !isRetryableMembershipRefreshError(callErr) {
+			return fmt.Errorf("failed to refresh membership via peer %d (%s): %w", peer.ID, peer.Address, callErr)
+		}
+		lastTransient = callErr
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if lastTransient != nil {
+		return fmt.Errorf("%w: %w", errMembershipRefreshTransient, lastTransient)
+	}
+
+	return errMembershipRefreshTransient
+}
+
+func isRetryableMembershipRefreshError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
+		return true
+	}
+
+	// TODO(rc.3): remove this compatibility retry once every supported peer
+	// implements RefreshMembership. During the rc.1/rc.2 rolling upgrade, an
+	// older peer returns Unimplemented rather than Unavailable for this newly
+	// introduced RPC; treating it as transient lets the node keep trying newer
+	// peers without making the startup hook fail immediately.
+	return st.Code() == codes.Unimplemented
+}
+
 // isStaleRaftProgress reports whether a FailedPrecondition status carries the
 // EN-1436 STALE_RAFT_PROGRESS ErrorInfo reason, distinguishing a stale-raft-
 // progress join rejection (remediation: `remove-node --force`) from the
@@ -1458,12 +1898,12 @@ func proposeAuditKeyIfNeeded(ctx context.Context, n *node.Node, builder *plan.Bu
 	if err != nil {
 		return err
 	}
-	proposal := commands.NewCommand()
+	proposal := commands.NewTechnicalCommand()
 	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
-	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_AuditKey{AuditKey: key},
 	}}
-	if err := proposeTechnical(ctx, builder, n, proposal, []plan.WriteOperation{{Target: &proposal.TechnicalUpdates[0].CoverageBits}}); err != nil {
+	if err := proposeTechnical(ctx, builder, n, proposal, []plan.WriteOperation{{Target: &proposal.GetBatch().TechnicalUpdates[0].CoverageBits}}); err != nil {
 		return fmt.Errorf("proposing audit key: %w", err)
 	}
 	committed, err := query.ReadAuditKey(store)
@@ -1516,9 +1956,9 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 
 	logger.Infof("Proposing cluster config update on leadership acquisition")
 
-	proposal := commands.NewCommand()
+	proposal := commands.NewTechnicalCommand()
 	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
-	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+	proposal.GetBatch().TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: desiredCfg},
 	}}
 
@@ -1531,7 +1971,7 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
 	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
 	operations := []plan.WriteOperation{{
-		Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
+		Target: &proposal.GetBatch().GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	if err := proposeTechnical(ctx, builder, n, proposal, operations); err != nil {
@@ -1541,13 +1981,17 @@ func proposeClusterConfigIfNeeded(parent context.Context, n plan.Proposer, build
 	}
 }
 
+// clusterPolicyReconcileInterval is how often the leader re-checks the applied
+// cluster policy against the desired one. Short so a fresh leader commits the
+// policy — and thereby opens write readiness — promptly.
+const clusterPolicyReconcileInterval = time.Second
+
 // reconcileClusterPolicy drives the replicated cluster policy toward the desired
 // revision. It gates on leadership itself and is safe to call repeatedly: the
-// ClusterPolicyReconciler invokes it on a ticker so a transient proposal failure
-// self-heals on the next tick. Unlike the cluster config, the policy flows
-// through AdmitClusterPolicy as an internal audited SetClusterPolicy order so
-// the checker can re-derive it; the write-readiness gate exempts this
-// non-business proposal so it is never blocked by its own cluster-policy gate.
+// generic reconciler invokes it on a ticker so a transient proposal failure
+// self-heals on the next tick. AdmitClusterPolicy emits a configuration-only
+// control; capability transitions have an independent durable lifecycle.
+// The write-readiness gate exempts this non-business proposal.
 func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
 	if !isLeader() {
 		return
@@ -1570,8 +2014,25 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 	}
+	if applied != nil {
+		desired.CapabilityActivations = make([]*commonpb.CapabilityActivation, 0, len(applied.GetCapabilityActivations()))
+		for _, activation := range applied.GetCapabilityActivations() {
+			if activation != nil {
+				desired.CapabilityActivations = append(desired.CapabilityActivations, activation.CloneVT())
+			}
+		}
+	}
 
+	// A stale leader must never overwrite newer configuration with local flags.
 	appliedRev := applied.GetRevision()
+	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
+		return
+	}
+	if applied != nil && appliedRev == cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {
+		logger.Errorf("cluster policy revision %d conflicts with the configured policy; refusing to overwrite it", appliedRev)
+
+		return
+	}
 
 	switch {
 	case appliedRev > desired.GetRevision():
@@ -1598,6 +2059,24 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		// the next tick retries while this node stays leader.
 		logger.WithFields(map[string]any{"error": err}).Errorf("Cluster policy proposal failed; will retry")
 	}
+}
+
+// sameClusterPolicyConfiguration compares the operator-controlled fields while
+// deliberately ignoring capability activations and their independent lifecycle.
+// Configuration fields remain protected by the configured revision.
+func sameClusterPolicyConfiguration(a, b *commonpb.ClusterPolicy) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	left := a.CloneVT()
+	right := b.CloneVT()
+	left.Revision = 0
+	right.Revision = 0
+	left.CapabilityActivations = nil
+	right.CapabilityActivations = nil
+
+	return left.EqualVT(right)
 }
 
 // buildResponseSigner returns the Ed25519 response signer for the gRPC
@@ -1655,35 +2134,40 @@ func TimeoutHTTPClient(timeout time.Duration) *http.Client {
 
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
 // If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
-// When auth is enabled with an issuer and no external KeySet is injected, it discovers the OIDC
-// configuration and creates a remote KeySet automatically.
+// When auth is enabled with issuers and no external KeySet is injected, it discovers each issuer's
+// OIDC configuration and verifies every token with the remote KeySet of the issuer it names.
 // Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
 func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
+	issuers := cfg.AuthConfig.TrustedIssuers()
 	authCfg := internalauth.AuthConfig{
 		Enabled: cfg.AuthConfig.Enabled,
-		Issuer:  cfg.AuthConfig.Issuer,
+		Issuers: issuers,
 		Service: cfg.AuthConfig.Service,
 	}
 
-	// When auth is enabled and an issuer is configured but no external KeySet was injected,
-	// discover the OIDC configuration and create a remote KeySet. Both the discovery
-	// call and the keyset's JWKS reads are bounded by OIDCDiscoveryTimeout so a slow or
-	// blackholed issuer cannot hang the process: the context deadline bounds
-	// oidc.Discover, and the keyset's http.Client.Timeout bounds JWKS fetches.
-	if oidcKeySet == nil && cfg.AuthConfig.Enabled && cfg.AuthConfig.Issuer != "" {
-		ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
-		discovery, err := oidc.Discover(ctx, cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
-		cancel()
-		if err != nil {
-			return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", cfg.AuthConfig.Issuer, err)
+	// Each discovery call and the keysets' JWKS reads are bounded by
+	// OIDCDiscoveryTimeout so a slow or blackholed issuer cannot hang the process:
+	// the context deadline bounds oidc.Discover, and the keyset's
+	// http.Client.Timeout bounds JWKS fetches.
+	if oidcKeySet == nil && cfg.AuthConfig.Enabled && len(issuers) > 0 {
+		keySets := make(map[string]oidc.KeySet, len(issuers))
+		for _, issuer := range issuers {
+			ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
+			discovery, err := oidc.Discover(ctx, issuer, oidc.DiscoveryEndpoint)
+			cancel()
+			if err != nil {
+				return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", issuer, err)
+			}
+
+			keySets[issuer] = oidcclient.NewRemoteKeySet(TimeoutHTTPClient(cfg.AuthConfig.OIDCDiscoveryTimeout), discovery.JwksURI)
+
+			logger.WithFields(map[string]any{
+				"issuer":   issuer,
+				"jwks_uri": discovery.JwksURI,
+			}).Infof("OIDC remote keyset configured via discovery")
 		}
 
-		oidcKeySet = oidcclient.NewRemoteKeySet(TimeoutHTTPClient(cfg.AuthConfig.OIDCDiscoveryTimeout), discovery.JwksURI)
-
-		logger.WithFields(map[string]any{
-			"issuer":   cfg.AuthConfig.Issuer,
-			"jwks_uri": discovery.JwksURI,
-		}).Infof("OIDC remote keyset configured via discovery")
+		oidcKeySet = internalauth.NewIssuerKeySet(keySets)
 	}
 
 	if cfg.AuthConfig.Ed25519KeysFile != "" {
@@ -1846,7 +2330,9 @@ func handleLeaderReadyEvent(
 
 func buildNodeConfig(cfg Config) (node.NodeConfig, error) {
 	cfg.RaftConfig.DataDir = cfg.DataDir
-	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
+	// Membership service addresses are used for inter-node forwarding and must
+	// point at the authenticated peer listener, never the public API listener.
+	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.PeerServiceAdvertiseAddr()
 	cfg.RaftConfig.SetDefaults()
 
 	// EN-1045: establish this peer's identity UUID before any

@@ -47,3 +47,17 @@ Key rotation, cross-node discovery consistency and unsigned operations are
 questions until the current product contract establishes their guarantees.
 Missing test coverage alone is not a defect. Every audit finding still requires
 the independent challenge described in `ai-audit-challenge.md`.
+
+## Atomic HTTP Apply
+
+Atomic HTTP Apply reaches the existing service response signer and preserves returned responseSignature envelopes through its option-aware public log projection, except for addEventsSink and mirror-ledger creation. Those logs use detached redacted configurations and omit their signatures because the signed protobuf payload contains reusable credentials. The committed log and service signature remain unchanged. Visible JSON is not a lossless protobuf codec: for remaining logs, authenticate exact SignedLog payload bytes, decode them, and compare their public projection rather than reconstructing a Log from ambiguous JSON types. Post-commit signing/encoding failures do not roll back business effects.
+
+Can atomic HTTP Apply bypass the service signer, strip or alter an envelope outside the addEventsSink or mirror-ledger creation exceptions, expose credentials through a sink or mirror-ledger log or signed payload, or render other visible log fields different from the authenticated payload projection, including creation id/metadata and bigint number/string selection?
+
+Use the registered atomic HTTP route with an enabled real service ResponseSigner and nonempty ledger/configuration logs. Verify the original envelope bytes against its trusted key and compare the authenticated public projection with logs other than addEventsSink and mirror-ledger creation in both bigint modes. For addEventsSink and mirror-ledger creation, assert redaction in the visible log and absence of the signature payload, while checking that the original service log is unchanged. Include missing/invalid signing controls and checked-encoding failure without assuming rollback.
+
+See [the HTTP contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
+API boundary owns conversion/output fidelity; authentication owns scopes and
+caller capture; idempotency owns durable atomicity and retry identity; signed
+response integrity owns the returned cryptographic proof. Deduplicate by the
+mechanism that must change, not by the number of affected operations.

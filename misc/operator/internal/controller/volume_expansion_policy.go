@@ -135,13 +135,8 @@ func validateAndResolveVolumeSpec(
 	if err != nil {
 		return nil, fmt.Errorf("%s.autoExpansion: %w", field, err)
 	}
-	initialSize := spec.Size
-	if initialSize.IsZero() {
-		initialSize = resource.MustParse(defaultSize)
-	}
-	if policy.MaximumSize.Cmp(initialSize) <= 0 {
-		return nil, fmt.Errorf("%s.autoExpansion.maximumSize must be greater than initial size %s", field, initialSize.String())
-	}
+	// maximumSize bounds automatic decisions only. A manually configured
+	// minimum may meet or exceed that cap without invalidating the policy.
 
 	return &policy, nil
 }

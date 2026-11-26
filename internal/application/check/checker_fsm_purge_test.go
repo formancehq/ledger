@@ -70,6 +70,7 @@ func newFSMPurgeMachine(t *testing.T) (*state.Machine, *dal.Store, *attributes.A
 		fsmPurgeAuditKey,
 		0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
+		state.NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(t, err)
 
@@ -292,7 +293,7 @@ func runFSMPurgeCheck(t *testing.T, store *dal.Store, attrs *attributes.Attribut
 
 	var findings []*servicepb.CheckStoreError
 
-	checker := NewChecker(store, attrs, nil, logging.Testing())
+	checker := NewChecker(store, attrs, logging.Testing())
 	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

@@ -789,7 +789,8 @@ type txRecord struct {
 	// posting-side account, which role rows (AddrIndexedSource /
 	// AddrIndexedDestination bits) the index builder writes for this
 	// transaction. Stamped at end of bulk (recordIndexedAddrs) — a posting side
-	// whose cell lands in the exclusion projection gets no row. The any-role
+	// whose cell is steady-state TRANSIENT gets no row. Purged EPHEMERAL
+	// and grandfathered TRANSIENT cells retain mappings. The any-role
 	// index is the union of the two bits.
 	indexedAddrs map[string]uint8
 }
@@ -1920,11 +1921,22 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 	}
 }
 
+// historicalCellExcluded models the transient partition rather than the wider
+// current-state exclusion set. A persisted pre-bulk row is grandfathered and
+// follows the EPHEMERAL lifecycle, so its mappings survive a later drain.
+func (s *LedgerState) historicalCellExcluded(base *LedgerState, key VolumeKey, compiled []accounttype.CompiledType) bool {
+	t := s.match(key.Address, compiled)
+
+	return t != nil && t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT && !base.volumes.Has(key)
+}
+
 // recordIndexedAddrs stamps every transaction this bulk appended (ids in
 // (firstNew-1, len(txs)]) with its account→tx index membership: for each
 // posting side, the (account, role) pair is indexed unless the posting's cell
-// is in the end-of-bulk exclusion projection — mirroring the index builder's
-// per-posting sourceExcluded/destinationExcluded skip. The any-role index is
+// is steady-state TRANSIENT at end of bulk — mirroring the builder's
+// AppliedProposal transient set. EPHEMERAL purges and grandfathered TRANSIENT
+// drains retain mappings. Exact transaction queries read those mappings without
+// requiring current account existence. The any-role index is
 // the union of the two sides, so only source/destination bits are stored.
 // Replacing the records is safe: they were allocated by this Apply, so no
 // older clone aliases them. Must run before purgeZeroBalance, like
@@ -1937,11 +1949,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 		rec.indexedAddrs = map[string]uint8{}
 
 		for _, p := range rec.postings {
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.historicalCellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
 			}
 
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.historicalCellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
 			}
 		}
@@ -2149,7 +2161,16 @@ func preparedQueryAdmissionReason(req *servicepb.Request) string {
 			return err.Reason()
 		}
 	case *servicepb.Request_UpdatePreparedQuery:
+		if r.UpdatePreparedQuery == nil || r.UpdatePreparedQuery.Target == nil {
+			return domain.ErrPreparedQueryTargetRequired.Reason()
+		}
 		if err := domain.ValidatePreparedQueryName(r.UpdatePreparedQuery.GetName()); err != nil {
+			return err.Reason()
+		}
+		if !domain.IsPreparedQueryExecutableTarget(r.UpdatePreparedQuery.GetTarget()) {
+			return domain.ErrPreparedQueryTargetUnsupported.Reason()
+		}
+		if err := domain.ValidateFilterForTarget(r.UpdatePreparedQuery.GetFilter(), r.UpdatePreparedQuery.GetTarget()); err != nil {
 			return err.Reason()
 		}
 
@@ -2198,11 +2219,8 @@ func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQuer
 	}}
 }
 
-// applyUpdatePreparedQuery replaces a stored query's filter, mirroring
-// processUpdatePreparedQuery's order: name validation, existence, then the
-// filter gates. The target is fixed at creation — an update carries no target
-// field and the FSM validates the new filter against the STORED target — so the
-// model keeps it and swaps only the filter.
+// applyUpdatePreparedQuery replaces a stored query's target and filter,
+// mirroring processUpdatePreparedQuery's name, existence, and filter gates.
 func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQueryRequest) OrderResult {
 	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
 		return OrderResult{Reason: err.Reason()}
@@ -2213,16 +2231,17 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
 	}
 
-	if !domain.IsPreparedQueryExecutableTarget(existing.GetTarget()) {
+	if !domain.IsPreparedQueryExecutableTarget(req.GetTarget()) {
 		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
 	}
 
-	if err := domain.ValidateFilterForTarget(req.GetFilter(), existing.GetTarget()); err != nil {
+	if err := domain.ValidateFilterForTarget(req.GetFilter(), req.GetTarget()); err != nil {
 		return OrderResult{Reason: err.Reason()}
 	}
 
 	updated := existing.CloneVT()
 	updated.Filter = req.GetFilter().CloneVT()
+	updated.Target = req.GetTarget()
 	s.preparedQueries = s.preparedQueries.Set(req.GetName(), updated)
 
 	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
@@ -2231,6 +2250,8 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 			Name:           req.GetName(),
 			PreviousFilter: existing.GetFilter().CloneVT(),
 			NewFilter:      req.GetFilter().CloneVT(),
+			PreviousTarget: existing.GetTarget().Enum(),
+			NewTarget:      req.GetTarget().Enum(),
 		}},
 	}}
 }
@@ -2539,11 +2560,23 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		}
 		ls := NewLedgerState()
 		ls.defaultEnforcementMode = r.CreateLedger.GetDefaultEnforcementMode()
-		for _, key := range slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes())) {
+		names := slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes()))
+		parsedTypes := make(map[string][]accounttype.PatternSegment, len(names))
+		for i, key := range names {
 			at := r.CreateLedger.GetAccountTypes()[key]
-			if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+			segments, err := accounttype.ParsePattern(at.GetPattern())
+			if err != nil {
 				return OrderResult{Reason: domain.ErrReasonInvalidPattern}, true
 			}
+			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
+				return OrderResult{Reason: domain.ErrReasonInvalidPattern}, true
+			}
+			for _, existingKey := range names[:i] {
+				if accounttype.PatternsConflict(segments, parsedTypes[existingKey]) {
+					return OrderResult{Reason: domain.ErrReasonAccountTypeConflict}, true
+				}
+			}
+			parsedTypes[key] = segments
 			ls.types = ls.types.Set(key, TypeState{Name: key, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
 		}
 		for _, field := range r.CreateLedger.GetInitialSchema() {

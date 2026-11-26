@@ -15,34 +15,20 @@ const (
 	BackupRunPhaseFailed    BackupRunPhase = "Failed"
 )
 
-// BackupRunType is the type of backup to execute.
-// +kubebuilder:validation:Enum=Full;Incremental
-type BackupRunType string
-
-const (
-	BackupRunTypeFull        BackupRunType = "Full"
-	BackupRunTypeIncremental BackupRunType = "Incremental"
-)
-
-// Labels and annotations used to associate BackupRun resources with their parent.
+// Informational labels for BackupRun resources. Parent association is defined
+// by spec.backupRef; manual runs do not need these labels.
 const (
 	// LabelBackup carries the name of the parent Backup.
 	LabelBackup = "ledger.formance.com/backup"
-	// LabelBackupRunType carries the BackupRunType of the run.
-	LabelBackupRunType = "ledger.formance.com/backup-type"
 )
 
 // BackupRunSpec defines the desired state of a BackupRun.
 type BackupRunSpec struct {
-	// BackupRef is the name of the parent Backup in the same namespace.
+	// BackupRef is the name of the parent Backup in the same namespace, immutable from creation.
 	// Destination and clusterRef are inherited from the parent.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="backupRef is immutable"
 	BackupRef string `json:"backupRef"`
-
-	// Type is the backup type. Defaults to Full.
-	// +kubebuilder:default=Full
-	// +optional
-	Type BackupRunType `json:"type,omitempty"`
 }
 
 // BackupRunStatus defines the observed state of a BackupRun.
@@ -63,13 +49,9 @@ type BackupRunStatus struct {
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 
-	// Full holds the result of a Full backup run. Set only when spec.type is Full and the run succeeded.
+	// Result holds the result of a successful checkpoint backup run.
 	// +optional
-	Full *FullBackupStatus `json:"full,omitempty"`
-
-	// Incremental holds the result of an Incremental backup run. Set only when spec.type is Incremental and the run succeeded.
-	// +optional
-	Incremental *IncrementalBackupStatus `json:"incremental,omitempty"`
+	Result *BackupResult `json:"result,omitempty"`
 
 	// Conditions represent the latest available observations.
 	// +optional
@@ -79,8 +61,8 @@ type BackupRunStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=bkr
+// +kubebuilder:selectablefield:JSONPath=".spec.backupRef"
 // +kubebuilder:printcolumn:name="Backup",type=string,JSONPath=`.spec.backupRef`
-// +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Started",type=date,JSONPath=`.status.startTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
@@ -91,7 +73,9 @@ type BackupRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BackupRunSpec   `json:"spec,omitempty"`
+	// Spec is required so removing it cannot bypass parent immutability.
+	// +kubebuilder:validation:Required
+	Spec   BackupRunSpec   `json:"spec"`
 	Status BackupRunStatus `json:"status,omitempty"`
 }
 

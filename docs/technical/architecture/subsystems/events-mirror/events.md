@@ -23,6 +23,7 @@ Events map directly to the global log payload types:
 | `COMMITTED_TRANSACTION` | Transaction created | `CreatedTransaction` |
 | `REVERTED_TRANSACTION` | Transaction reverted | `RevertedTransaction` |
 | `SAVED_METADATA` | Metadata saved on account or transaction | `SavedMetadata` |
+| `ACCOUNT_METADATA_UPDATED` | Numscript updates account metadata without creating a transaction | `AccountMetadataUpdated` |
 | `DELETED_METADATA` | Metadata key deleted | `DeletedMetadata` |
 | `CREATED_LEDGER` | Ledger created | `CreatedLedgerLog` |
 | `DELETED_LEDGER` | Ledger deleted | `DeletedLedgerLog` |
@@ -36,6 +37,7 @@ The event types align with `github.com/formancehq/ledger` where applicable:
 |---|---|---|
 | `COMMITTED_TRANSACTIONS` | `COMMITTED_TRANSACTION` | Singular (one event per log) |
 | `SAVED_METADATA` | `SAVED_METADATA` | Identical semantics |
+| _(none)_ | `ACCOUNT_METADATA_UPDATED` | New event for metadata-only Numscript execution; it has no single target |
 | `REVERTED_TRANSACTION` | `REVERTED_TRANSACTION` | Identical semantics |
 | `DELETED_METADATA` | `DELETED_METADATA` | Identical semantics |
 | `INSERTED_SCHEMA` | `CREATED_LEDGER` | Renamed (no schema concept in v3) |
@@ -53,13 +55,22 @@ message Event {
   string ledger = 2;                 // Ledger name (empty for system events like CREATED_LEDGER)
   common.Timestamp date = 3;         // Event timestamp (HLC)
   fixed64 log_sequence = 4;          // Global log sequence (monotonic, unique)
-  common.Log log = 5;                // Full log entry with payload
+  common.Log log = 5;                // Public projection of log entry with payload
   string app = 6;                    // Stable producer identifier: "ledger"
   string version = 7;                // Event envelope generation: "v3"
 }
 ```
 
-The event carries the full `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. This avoids duplicating payload definitions and ensures events always carry the complete log data.
+The event carries the `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. Created-ledger events use a detached public projection: annotated mirror credentials are masked and unknown protobuf fields are removed. The committed log remains unchanged. Consumers retain the event type, sequence, and non-sensitive payload fields, but must not use a created-ledger event as an exact copy of the audit log.
+
+For mirror-ledger creation, PostgreSQL DSN passwords, HTTP source URL credentials, OAuth client secrets, and token-endpoint credentials are redacted in both JSON and protobuf events. Sink-configuration logs have no event type and are not published. This changes observable created-ledger event payload values while retaining existing protobuf field numbers and types; no service protocol revision or persisted-state migration is needed. Deployments that previously published created-ledger events should assess already delivered credentials in downstream retention and rotate affected secrets as appropriate.
+
+`SAVED_METADATA` retains its target-scoped payload. A metadata-only Numscript
+execution emits `ACCOUNT_METADATA_UPDATED` instead: its log payload contains an
+account-address-to-metadata map and no single target or transaction ID. Its
+analytical projection has no `targetType` or `targetId`. Event-type allow-lists
+must include `ACCOUNT_METADATA_UPDATED` to receive these events; selecting only
+`SAVED_METADATA` does not include them.
 
 `app` and `version` are routing and decoding metadata for broker consumers. Ledger v2's `publish.EventMessage` constructors emitted `app="ledger"` and `version="v2"`; the v3 envelope preserves the producer identity and reports its distinct contract as `version="v3"`. The emitter sets both fields before any sink-specific serialization, so NATS and Kafka publish the same values in JSON and Protobuf formats.
 
@@ -458,7 +469,7 @@ fallback is provided. The configured topic remains the operator's subject prefix
 Publication still waits for each JetStream acknowledgement. On failure, the
 emitter retains the pending batch's cursor, reports the error and retries;
 other named sinks advance independently. This change does not alter persisted
-state, audit payloads, FSM application or incremental restore behavior.
+state, audit payloads, FSM application or checkpoint restore behavior.
 
 ## Configuration
 
@@ -850,6 +861,26 @@ This matches the shared analytical projection; encoding each account's map as
 a JSON string would lose its queryable structure. Ordinary transaction metadata
 and metadata-update events retain their separate `Map(String, String)` fields.
 
+Live native inserts quote only `transaction.postings[].amount` and
+`revertTransaction.postings[].amount` as decimal strings. On ClickHouse
+24.10.2.80 with simdjson enabled, unquoted amounts above UInt64 are rejected
+while parsing the JSON document, before the UInt256 hint is applied. Quoting
+preserves the full supported amount range in numeric UInt256 subcolumns; the
+shared analytical projection and Databricks amounts remain JSON numbers.
+Both sinks build the same typed projection. ClickHouse serializes it once with
+a call-scoped `encoding/json/v2` marshaler for `*big.Int`, which occurs only in
+posting amounts; v1 compatibility options preserve the other JSON fields.
+Databricks keeps its ordinary numeric encoding. This preserves unrelated
+numeric values, metadata and the source event, with work proportional to event
+size and no cross-event state or additional network calls.
+
+A rejected `Send` returns before cursor advancement. After repairing delivery,
+keep the same sink name and retained cursor so pending events can resume;
+successful publication clears the error with the cursor update. No Ledger data
+migration, protocol revision change or customer table alteration is required
+for this transport fix. The destination must already declare UInt256 amount
+hints. This does not repair previously stored external rows.
+
 Existing tables are unchanged by `CREATE TABLE IF NOT EXISTS`. Tables created
 with the former flat account-metadata hint require the explicit, non-destructive
 [ClickHouse table migration](../../../../ops/clickhouse-account-metadata.md)
@@ -867,3 +898,13 @@ implicit-scheme handling. ClickHouse diagnostics also register decoded
 `http_proxy` URLs, including malformed proxies whose parse errors are embedded
 as plain text by the driver. These adaptations happen before constructor errors
 can reach the manager.
+
+## Sink connection URL admission
+
+New NATS configurations require a scheme on every comma-separated server:
+`nats://`, `tls://`, `ws://` or `wss://`. New ClickHouse configurations require
+`clickhouse://`, `http://` or `https://`; multi-host authorities and HTTP proxy
+query options retain their driver interpretation. Invalid syntax fails before
+Raft, regardless of connector build tags. Existing persisted configurations are
+not revalidated by workers or replay. See the
+[connector admission contract](../admission/validation.md#connector-url-admission).

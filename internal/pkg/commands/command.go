@@ -26,10 +26,22 @@ func GenerateRandomID() uint64 {
 
 // NewCommand creates a new Proposal with the given orders.
 func NewCommand(orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
-	return &raftcmdpb.Proposal{
+	cmd := &raftcmdpb.Proposal{
 		Id:            GenerateRandomID(),
-		Orders:        orders,
 		Date:          commonpb.NewTimestamp(time.Now()),
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}
+	if len(orders) > 0 {
+		cmd.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: orders}}
+	}
+
+	return cmd
+}
+
+// NewTechnicalCommand creates an execution batch for technical updates.
+func NewTechnicalCommand(updates ...*raftcmdpb.TechnicalUpdate) *raftcmdpb.Proposal {
+	cmd := NewCommand()
+	cmd.Payload = &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{TechnicalUpdates: updates}}
+
+	return cmd
 }

@@ -88,7 +88,7 @@ func (e *ErrVolumeNotMaterialized) PublicFailureFacts() FailureFacts {
 }
 
 func (e *ErrDependencyDiscoveryFailed) PublicDetails() (string, map[string]string, bool) {
-	if cause, ok := errors.AsType[SerializableError](e.Cause); ok {
+	if cause, ok := ProcessingFailureOf(e.Cause); ok {
 		return PublicErrorDetails(cause)
 	}
 	if cause, ok := errors.AsType[Describable](e.Cause); ok {

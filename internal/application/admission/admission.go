@@ -25,13 +25,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -51,16 +52,17 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	store           *dal.Store
-	logger          logging.Logger
-	proposer        Proposer
-	writeGate       health.WriteGate
-	keyStore        *keystore.KeyStore
-	sharedState     *state.SharedState
-	builder         *plan.Builder
-	attrs           *attributes.Attributes
-	numscriptCache  *numscript.NumscriptCache
-	waitLeaderReady func(context.Context) error
+	store                 *dal.Store
+	logger                logging.Logger
+	proposer              Proposer
+	membershipCoordinator *membership.Coordinator
+	writeGate             health.WriteGate
+	keyStore              *keystore.KeyStore
+	sharedState           *state.SharedState
+	builder               *plan.Builder
+	attrs                 *attributes.Attributes
+	numscriptCache        *numscript.NumscriptCache
+	waitLeaderReady       func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
 	auditProjectionState func() (disabled, rebuilding bool)
@@ -139,6 +141,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
+	membershipCoordinator *membership.Coordinator,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	writeGate health.WriteGate,
@@ -150,16 +153,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
+		store:                 store,
+		logger:                logger,
+		proposer:              proposer,
+		membershipCoordinator: membershipCoordinator,
+		builder:               builder,
+		writeGate:             writeGate,
+		keyStore:              keyStore,
+		sharedState:           sharedState,
+		attrs:                 attrs,
+		numscriptCache:        numscriptCache,
+		waitLeaderReady:       waitLeaderReady,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -486,9 +490,9 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Float64Hi
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-	return a.admit(ctx, func(ctx context.Context) (*admissionPlan, error) {
-		return a.buildApplyAdmissionPlan(ctx, req)
-	})
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		return a.prepareExecutionBatch(ctx, caller, req)
+	}, a.proposeAdmission)
 }
 
 // AdmitClusterPolicy admits the leader's internal cluster-policy reconciliation
@@ -498,61 +502,80 @@ func (a *Admission) AdmitClusterPolicy(ctx context.Context, policy *commonpb.Clu
 		return nil, errors.New("cluster policy must not be nil")
 	}
 
-	return a.admit(ctx, func(ctx context.Context) (*admissionPlan, error) {
-		return a.buildClusterPolicyAdmissionPlan(policy), nil
-	})
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		return a.prepareClusterPolicy(ctx, caller, policy)
+	}, a.proposeClusterPolicy)
 }
 
-type admissionPlan struct {
-	key                   string
-	sig                   *signaturepb.SignedApplyBatch
-	allowInMaintenance    bool
-	businessBatch         bool
-	checkAfterMaintenance func() error
-	buildOrders           func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error)
+func (a *Admission) AdmitCapabilityTransition(ctx context.Context, transition *commonpb.CapabilityActivation) (*domain.ApplyResult, error) {
+	if transition == nil || transition.GetId() == 0 {
+		return nil, errors.New("capability transition requires a non-zero id")
+	}
+	if !transition.GetActive() {
+		return nil, errors.New("capability transition must activate")
+	}
+
+	return a.admit(ctx, func(ctx context.Context, caller *commonpb.CallerSnapshot) (*preparedAdmission, error) {
+		command := commands.NewCommand()
+		command.Payload = &raftcmdpb.Proposal_CapabilityActivation{CapabilityActivation: transition.CloneVT()}
+
+		return a.prepareControl(ctx, caller, command)
+	}, a.proposeClusterPolicy)
 }
 
-func (a *Admission) buildApplyAdmissionPlan(ctx context.Context, req *servicepb.ApplyRequest) (*admissionPlan, error) {
-	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
-	defer sigSpan.End()
+type preparedAdmission struct {
+	command *raftcmdpb.Proposal
+	build   *plan.BuildResult
+	orders  []*raftcmdpb.Order
+}
 
-	resolveBatchStart := time.Now()
-	batch, err := a.resolveBatch(ctx, req)
-	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Seconds())
+func (a *Admission) prepareExecutionBatch(ctx context.Context, caller *commonpb.CallerSnapshot, req *servicepb.ApplyRequest) (*preparedAdmission, error) {
+	batch, err := a.prepareExecutionBatchAdmission(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return &admissionPlan{
-		key:                batch.key,
-		sig:                batch.sig,
-		allowInMaintenance: allRequestsAreMaintenanceMode(batch.requests),
-		businessBatch:      true,
-		checkAfterMaintenance: func() error {
-			return a.checkQueryCheckpointProjectionReady(batch.requests)
-		},
-		buildOrders: func(ctx context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
-			return a.requestsToOrders(ctx, batch.requests, batch.sig)
-		},
-	}, nil
-}
-
-func (a *Admission) buildClusterPolicyAdmissionPlan(policy *commonpb.ClusterPolicy) *admissionPlan {
-	return &admissionPlan{
-		buildOrders: func(context.Context) ([]*raftcmdpb.Order, *bulkOverlay, error) {
-			order := &raftcmdpb.Order{}
-			wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-				Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
-					SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: policy},
-				},
-			})
-
-			return []*raftcmdpb.Order{order}, newBulkOverlay(), nil
-		},
+	orders, needs, perOrder, err := a.prepareBatchOrders(ctx, batch)
+	prepared := &preparedAdmission{orders: orders}
+	if err != nil {
+		return prepared, err
 	}
+
+	prepared.command, prepared.build, err = a.buildExecutionBatchPreload(ctx, caller, batch, orders, needs, perOrder)
+
+	return prepared, err
 }
 
-func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (response *domain.ApplyResult, err error) {
+func (a *Admission) prepareClusterPolicy(ctx context.Context, caller *commonpb.CallerSnapshot, policy *commonpb.ClusterPolicy) (*preparedAdmission, error) {
+	command := commands.NewCommand()
+	configuration := policy.CloneVT()
+	configuration.CapabilityActivations = nil
+	command.Payload = &raftcmdpb.Proposal_SetClusterPolicy{
+		SetClusterPolicy: &raftcmdpb.SetClusterPolicyProposal{Policy: configuration, ConfigurationOnly: true},
+	}
+
+	return a.prepareControl(ctx, caller, command)
+}
+
+func (a *Admission) prepareControl(ctx context.Context, caller *commonpb.CallerSnapshot, command *raftcmdpb.Proposal) (*preparedAdmission, error) {
+	if err := a.checkAdmissionMaintenance(true); err != nil {
+		return nil, err
+	}
+	command.CallerSnapshot = caller
+
+	// A policy control has no orders or FSM cache reads. It still receives an
+	// empty execution plan so the shared guarded proposer can stamp its index.
+	build, err := a.buildPreload(ctx, command, plan.NewCoverage(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &preparedAdmission{command: command, build: build}, nil
+}
+
+type admissionPropose func(context.Context, *raftcmdpb.Proposal, *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error)
+
+func (a *Admission) admit(ctx context.Context, prepare func(context.Context, *commonpb.CallerSnapshot) (*preparedAdmission, error), propose admissionPropose) (response *domain.ApplyResult, err error) {
 	caller, err := auth.ResolveCallerAttribution(ctx)
 	if err != nil {
 		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
@@ -580,78 +603,116 @@ func (a *Admission) admit(ctx context.Context, buildPlan func(context.Context) (
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Seconds())
 	}()
 
-	admPlan, err := a.prepareAdmission(ctx, buildPlan)
-	if err != nil {
-		return nil, err
-	}
+	var orders []*raftcmdpb.Order
+	defer func() {
+		if orders != nil {
+			a.recordActionOutcome(ctx, orders, &err)
+		}
+	}()
+	for {
+		prepared, prepareErr := prepare(ctx, caller.Snapshot())
+		if prepared != nil {
+			orders = prepared.orders
+		}
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		fsmFuture, cleanup, proposeErr := propose(ctx, prepared.command, prepared.build)
+		if proposeErr != nil {
+			if !errors.Is(proposeErr, capabilities.ErrActivationPending) {
+				return nil, proposeErr
+			}
+			timer := time.NewTimer(clusterPolicyReadyPollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
 
-	orders, needs, perOrder, err := a.prepareOrders(ctx, admPlan)
-	if orders != nil {
-		// Every built order shares the atomic batch outcome, including preparation failures.
-		defer a.recordActionOutcome(ctx, orders, &err)
-	}
-	if err != nil {
-		return nil, err
-	}
+				return nil, fmt.Errorf("waiting for capability activation: %w", ctx.Err())
+			case <-timer.C:
+			}
+			if err := a.writeGate.CheckWritesAllowed(); err != nil {
+				return nil, err
+			}
+			if err := a.waitLeaderReady(ctx); err != nil {
+				return nil, err
+			}
 
-	cmd, build, err := a.buildAdmissionPreload(ctx, caller.Snapshot(), admPlan, orders, needs, perOrder)
-	if err != nil {
-		return nil, err
-	}
+			continue
+		}
+		defer cleanup()
 
-	fsmFuture, cleanup, err := a.proposeAdmission(ctx, cmd, build)
-	if err != nil {
-		return nil, err
+		return a.resolveAdmissionResult(ctx, prepared.command, fsmFuture)
 	}
-	defer cleanup()
-
-	return a.resolveAdmissionResult(ctx, cmd, fsmFuture)
 }
 
-func (a *Admission) prepareAdmission(ctx context.Context, buildPlan func(context.Context) (*admissionPlan, error)) (*admissionPlan, error) {
-	admPlan, err := buildPlan(ctx)
+func (a *Admission) proposeClusterPolicy(ctx context.Context, command *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
+	// Fence membership before the proposal guard locks the index tracker.
+	if a.membershipCoordinator == nil {
+		return nil, nil, errors.New("cluster policy admission has no membership coordinator")
+	}
+	release, err := a.membershipCoordinator.AcquireClusterPolicy(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("fencing membership for cluster policy: %w", err)
 	}
-	if _, index := a.sharedState.Drain(); index != 0 {
-		return nil, ErrMaintenanceMode
+	future, cleanup, err := a.proposeAdmission(ctx, command, build)
+	release(future)
+
+	return future, cleanup, err
+}
+
+func (a *Admission) prepareExecutionBatchAdmission(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
+	batch, err := a.resolveExecutionBatch(ctx, req)
+	if err != nil {
+		return verifiedBatch{}, err
+	}
+	if err := a.checkAdmissionMaintenance(allRequestsAreMaintenanceMode(batch.requests)); err != nil {
+		return verifiedBatch{}, err
 	}
 
-	// Check maintenance mode: block all requests except SetMaintenanceMode.
-	if a.sharedState.MaintenanceMode() && !admPlan.allowInMaintenance {
-		return nil, ErrMaintenanceMode
+	if err := a.checkQueryCheckpointProjectionReady(batch.requests); err != nil {
+		return verifiedBatch{}, err
 	}
 
-	if admPlan.checkAfterMaintenance != nil {
-		if err := admPlan.checkAfterMaintenance(); err != nil {
-			return nil, err
-		}
-	}
-
-	// Every audited request, including an internal cluster-policy proposal, requires the one-time
-	// replicated key. Waiting here prevents an early client request from
-	// committing an unhashable order while the leader initializes the key.
+	// Only audited execution batches need the replicated audit key and policy.
 	if err := a.waitAuditKeyReady(ctx); err != nil {
-		return nil, err
+		return verifiedBatch{}, err
+	}
+	if err := a.waitClusterPolicyReady(ctx); err != nil {
+		return verifiedBatch{}, err
 	}
 
-	// Hold business writes until the replicated cluster policy is committed. The
-	// policy is the cluster-wide configuration a business write applies against —
-	// it carries the query-checkpoint limit and idempotency TTL — so a write
-	// admitted before the first revision would apply against an empty policy. A
-	// fresh leader's reconciler commits the policy within a reconcile interval, so
-	// this blocks only during the startup window. Internal cluster-policy
-	// proposals are exempt so the reconciler can establish the policy.
-	if admPlan.businessBatch {
-		if err := a.waitClusterPolicyReady(ctx); err != nil {
-			return nil, err
-		}
-	}
-
-	return admPlan, nil
+	return batch, nil
 }
 
-func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) ([]*raftcmdpb.Order, *plan.Coverage, []*plan.Coverage, error) {
+func (a *Admission) resolveExecutionBatch(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
+	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
+	defer sigSpan.End()
+
+	resolveBatchStart := time.Now()
+	batch, err := a.resolveBatch(ctx, req)
+	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Seconds())
+	if err != nil {
+		return verifiedBatch{}, err
+	}
+
+	return batch, nil
+}
+
+func (a *Admission) checkAdmissionMaintenance(allowInMaintenance bool) error {
+	if _, index := a.sharedState.Drain(); index != 0 {
+		return ErrMaintenanceMode
+	}
+
+	// Maintenance blocks business requests; SetMaintenanceMode batches and
+	// internal policy reconciliation are allowed by their callers.
+	if a.sharedState.MaintenanceMode() && !allowInMaintenance {
+		return ErrMaintenanceMode
+	}
+
+	return nil
+}
+
+func (a *Admission) prepareBatchOrders(ctx context.Context, batch verifiedBatch) ([]*raftcmdpb.Order, *plan.Coverage, []*plan.Coverage, error) {
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
 	//
@@ -662,29 +723,9 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	stopOrdersPrep := a.recordPhaseOnExit(ctx, a.ordersPreparationDurationHistogram)
 	defer stopOrdersPrep()
 
-	orders, overlay, err := admPlan.buildOrders(ctx)
+	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("converting requests to orders: %w", err)
-	}
-
-	// Enforce the metadata size contract over the whole command. It runs here,
-	// after the orders exist, because the per-command ceiling spans every order
-	// in the batch — the atomic, signed unit — not one request at a time.
-	//
-	// The ceilings live in the committed cluster policy, so this reads the same
-	// numbers the FSM will read for Numscript-produced metadata. A
-	// non-business internal cluster-policy proposal is exempt: it carries no
-	// business metadata and must be able to commit the very policy these
-	// ceilings come from.
-	if admPlan.businessBatch {
-		policy, policyErr := query.ReadClusterPolicy(a.store)
-		if policyErr != nil {
-			return nil, nil, nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
-		}
-
-		if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
-			return nil, nil, nil, err
-		}
 	}
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
@@ -697,9 +738,9 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	// rides on the first order's needs — idempotency keys are not coverage-gated
 	// (machine.Preload installs them unconditionally), so any order carries it
 	// and the FSM's per-proposal dedup check finds it. Empty key = no idempotency.
-	if admPlan.key != "" && len(orders) > 0 {
-		needs.AddIdempotencyKey(admPlan.key)
-		perOrder[0].AddIdempotencyKey(admPlan.key)
+	if batch.key != "" && len(orders) > 0 {
+		needs.AddIdempotencyKey(batch.key)
+		perOrder[0].AddIdempotencyKey(batch.key)
 	}
 
 	// Orders-preparation phase ends here on the success path; record now so the
@@ -716,7 +757,7 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
 	defer stopScripts()
 
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, admPlan.key != ""); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return orders, nil, nil, err
 	}
 	stopScripts()
@@ -724,20 +765,14 @@ func (a *Admission) prepareOrders(ctx context.Context, admPlan *admissionPlan) (
 	return orders, needs, perOrder, nil
 }
 
-func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.CallerSnapshot, admPlan *admissionPlan, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
+func (a *Admission) buildExecutionBatchPreload(ctx context.Context, caller *commonpb.CallerSnapshot, batch verifiedBatch, orders []*raftcmdpb.Order, needs *plan.Coverage, perOrder []*plan.Coverage) (*raftcmdpb.Proposal, *plan.BuildResult, error) {
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 	cmd.CallerSnapshot = caller
-	if admPlan.key != "" {
-		cmd.Idempotency = &commonpb.Idempotency{Key: admPlan.key}
+	if batch.key != "" {
+		cmd.Idempotency = &commonpb.Idempotency{Key: batch.key}
 	}
-	cmd.Signature = admPlan.sig
-
-	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
-		trace.WithAttributes(
-			attribute.Int("preload.attributes_total", needs.AttributeKeysCount()),
-			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
-		))
+	cmd.Signature = batch.sig
 
 	// Build the per-order WriteOperation slice. Each operation carries
 	// its Coverage (for preload aggregation) and a Target pointer that
@@ -745,7 +780,7 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 	// pointer over closure avoids one heap alloc per order (the
 	// captured index).
 	operations := make([]plan.WriteOperation, len(orders))
-	cmdOrders := cmd.GetOrders()
+	cmdOrders := cmd.GetBatch().GetOrders()
 	for i := range orders {
 		// coverage_bits lives on OrderTechnical, which may already exist from the
 		// inputs-resolution-hash pass above; orderTechnical is nil-safe either
@@ -755,18 +790,28 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 			Target:   &orderTechnical(cmdOrders[i]).CoverageBits,
 		}
 	}
+	build, err := a.buildPreload(ctx, cmd, needs, operations)
+
+	return cmd, build, err
+}
+
+func (a *Admission) buildPreload(ctx context.Context, cmd *raftcmdpb.Proposal, needs *plan.Coverage, operations []plan.WriteOperation) (*plan.BuildResult, error) {
+	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
+		trace.WithAttributes(
+			attribute.Int("preload.attributes_total", needs.AttributeKeysCount()),
+			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
+		))
 
 	preloadStart := time.Now()
-	// extractPreloadNeeds already built the aggregate while iterating
-	// orders; hand it to Build directly instead of paying a second
-	// Merge pass over per-order Coverages.
+	// The producer supplies the aggregate coverage and per-operation targets.
+	// A policy control supplies empty coverage and no operations.
 	build, err := a.builder.Build(needs, operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Seconds())
 	if err != nil {
 		preloadSpan.End()
 		build.ReleaseLoaders()
 
-		return nil, nil, fmt.Errorf("building preloads: %w", err)
+		return nil, fmt.Errorf("building preloads: %w", err)
 	}
 
 	totalKeys := int64(needs.TotalKeys())
@@ -788,7 +833,7 @@ func (a *Admission) buildAdmissionPreload(ctx context.Context, caller *commonpb.
 
 	preloadSpan.End()
 
-	return cmd, build, nil
+	return build, nil
 }
 
 func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposal, build *plan.BuildResult) (*futures.Future[state.ApplyResult], func(), error) {
@@ -800,18 +845,21 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 	// Per-order coverage bits depend on the final AttributeCoverage slice
 	// (positions in cmd.ExecutionPlan.Attributes), and AcquireProposalGuard may
 	// swap cmd.ExecutionPlan for a rebuilt ExecutionPlan on a generation shift.
-	// Compute the bits inside marshalFn so every (re-)marshal sees the
-	// current Preload — the runner calls marshalFn again after the
+	// Compute the bits before final proposal construction so every rebuild sees the
+	// current Preload — the runner calls finalizeFn again after the
 	// rebuild, keeping bits and plans in sync.
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 
 	runResult, err := a.builder.Run(
 		ctx, cmd, build,
-		func(c *raftcmdpb.Proposal) ([]byte, error) {
+		func(c *raftcmdpb.Proposal) error {
 			// Coverage and productions are already assigned by the
-			// runner before this callback runs. We just marshal + emit
-			// admission metrics.
-			return a.marshalCommand(ctx, c)
+			// runner before this callback runs. The node proposal factory
+			// performs the canonical serialization; this callback only
+			// records the final command size.
+			a.commandSizeHistogram.Record(ctx, int64(c.SizeVT()))
+
+			return nil
 		},
 		a.proposer,
 	)
@@ -830,6 +878,9 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		if runResult != nil {
 			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Seconds())
 			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Seconds())
+		}
+		if errors.Is(err, capabilities.ErrActivationPending) {
+			return nil, nil, err
 		}
 
 		// Distinguish proposer error (queue full / shutdown) from
@@ -880,7 +931,9 @@ func (a *Admission) proposeAdmission(ctx context.Context, cmd *raftcmdpb.Proposa
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
 
-		return nil, nil, err
+		// The proposal was already enqueued. Keep its completion handle so
+		// capability activation retains the membership fence after cancellation.
+		return fsmFuture, nil, err
 	}
 
 	recordProposeDuration()
@@ -969,6 +1022,9 @@ func (a *Admission) resolveAdmissionResult(ctx context.Context, cmd *raftcmdpb.P
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 		}
+		if log == nil {
+			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: references missing log", refSeq)
+		}
 
 		logs[i] = log
 	}
@@ -1013,12 +1069,13 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	cmd := commands.NewCommand() // no orders = no-op
-	proposalData, err := a.marshalCommand(ctx, cmd)
+	// The proposal factory stamps the semantic capability declaration and
+	// serializes this final command atomically.
+	a.commandSizeHistogram.Record(ctx, int64(cmd.SizeVT()))
+	proposal, err := node.NewProposal(cmd.GetId(), cmd)
 	if err != nil {
 		return 0, fmt.Errorf("marshaling barrier command: %w", err)
 	}
-
-	proposal := node.NewProposal(cmd.GetId(), proposalData)
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
@@ -1050,23 +1107,6 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 	}
 
 	return result.AppliedIndex, nil
-}
-
-// marshalCommand marshals a proposal command into a newly allocated byte slice
-// using a pooled buffer. The returned slice is safe for Raft retention.
-func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal) ([]byte, error) {
-	_, marshalSpan := tracer.Start(ctx, "admission.marshal")
-	defer marshalSpan.End()
-
-	proposalData, err := vtmarshal.MarshalCopy(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling command: %w", err)
-	}
-
-	a.commandSizeHistogram.Record(ctx, int64(len(proposalData)))
-	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
-
-	return proposalData, nil
 }
 
 // verifiedBatch is the trusted content of an ApplyRequest after signature
@@ -1405,11 +1445,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			postings = rt.GetReversePostings()
 		}
 
-		// Mirror ingestion only handles v2 logs, which have no color
-		// dimension — every mirrored posting lands in the uncolored bucket.
 		for _, posting := range postings {
-			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), "")
-			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), "")
+			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
+			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 		}
 
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
@@ -1496,6 +1534,17 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 
 		switch applyData := payload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			if ref := applyData.ExecuteNumscript.GetReference(); ref != "" {
+				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: ref}.Bytes())
+			}
+			for account, mm := range applyData.ExecuteNumscript.GetAccountMetadata() {
+				for key := range mm.GetValues() {
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account}, Key: key,
+					}.Bytes())
+				}
+			}
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			if applyData.CreateTransaction.GetReference() != "" {
 				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{
@@ -1936,6 +1985,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// resolve — fold their effects and move on. A predecessor that would be
 		// skipped folds nothing (skip parity above).
 		switch applyData := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			if skip {
+				continue
+			}
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			// Handled below (script resolution + effect folding). A predicted
 			// skip short-circuits the whole resolution: the FSM will drop this
@@ -2024,7 +2077,18 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
-		createTx := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
+		var createTx *raftcmdpb.LedgerApplyOrder_CreateTransaction
+		switch data := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+			createTx = data
+		case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
+			execution := data.ExecuteNumscript
+			createTx = &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Script: execution.GetScript(), NumscriptReference: execution.GetNumscriptReference(),
+				Timestamp: execution.GetTimestamp(), Metadata: execution.GetMetadata(),
+				AccountMetadata: execution.GetAccountMetadata(), Reference: execution.GetReference(),
+			}}
+		}
 
 		// Script-discovered keys belong to this order's coverage. perOrder
 		// is initialized by extractPreloadNeeds with one entry per input
@@ -2175,6 +2239,16 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
 			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
+
+			// A script with discovered volume effects will create a transaction
+			// and persist its reference. A script with metadata effects only must
+			// not claim the reference: the metadata-only FSM path deliberately
+			// rejects references and does not write a reference row.
+			if len(discovered.NetBalanceDeltas) > 0 {
+				if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+					effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+				}
+			}
 		}
 
 		// Caller-supplied account metadata is folded AFTER the script's writes
@@ -2184,14 +2258,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// not the script value, for the same key.
 		foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
 
-		// Record this create's transaction reference (if any) so a later
-		// same-batch create carrying the same reference is predicted to skip
-		// (TRANSACTION_REFERENCE_CONFLICT). We reach here only for a create that
-		// was NOT predicted to skip, so it registers the reference exactly as the
-		// FSM will (processCreateTransaction stores it in TransactionReferences).
-		if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
-			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
-		}
+		// Do not claim transaction references for script-backed candidates here.
+		// A zero-posting script is metadata-only and cannot persist a reference;
+		// a script that emits postings is resolved only by the FSM. Deferring this
+		// claim keeps admission from predicting a duplicate skip that the
+		// metadata-only apply path cannot materialize.
 
 		// For references: preload the content for the version admission observed
 		// (the discovered greatest for "latest", or the exact semver). The FSM
@@ -2225,6 +2296,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 // Validation remains after conversion so every family uses the same storage rules.
 func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
+	if update, ok := req.GetType().(*servicepb.Request_UpdatePreparedQuery); ok {
+		if update.UpdatePreparedQuery == nil || update.UpdatePreparedQuery.Target == nil {
+			return nil, domain.ErrPreparedQueryTargetRequired
+		}
+	}
 
 	if apply, ok := req.GetType().(*servicepb.Request_Apply); ok {
 		if err := a.applyRequestToOrder(ctx, order, apply.Apply, overlay); err != nil {
@@ -2233,7 +2309,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	} else if !a.ledgerRequestToOrder(order, req, overlay) && !a.systemRequestToOrder(order, req, batchSig, overlay) {
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
-
 	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
 	if err := validateOrder(order); err != nil {
 		return nil, err
@@ -2328,6 +2403,7 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
 					Name:   reqType.UpdatePreparedQuery.GetName(),
 					Filter: reqType.UpdatePreparedQuery.GetFilter(),
+					Target: reqType.UpdatePreparedQuery.GetTarget().Enum(),
 				},
 			},
 		})
@@ -2396,9 +2472,10 @@ func (a *Admission) ledgerRequestToOrder(order *raftcmdpb.Order, req *servicepb.
 			Ledger: reqType.SaveNumscript.GetLedger(),
 			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
 				SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
-					Name:    reqType.SaveNumscript.GetName(),
-					Content: reqType.SaveNumscript.GetContent(),
-					Version: reqType.SaveNumscript.GetVersion(),
+					Name:        reqType.SaveNumscript.GetName(),
+					Content:     reqType.SaveNumscript.GetContent(),
+					Version:     reqType.SaveNumscript.GetVersion(),
+					Description: reqType.SaveNumscript.GetDescription(),
 				},
 			},
 		})
@@ -2619,6 +2696,20 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				NumscriptReference: numscriptRef,
 			},
 		}
+	case *servicepb.LedgerAction_ExecuteNumscript:
+		execution := data.ExecuteNumscript
+		if execution.GetScript() != nil && execution.GetScriptReference() != nil {
+			return nil, &domain.BusinessError{Err: domain.ErrScriptAndReferenceConflict}
+		}
+		var ref *raftcmdpb.NumscriptReference
+		if source := execution.GetScriptReference(); source != nil {
+			ref = &raftcmdpb.NumscriptReference{Name: source.GetName(), Version: source.GetVersion(), Vars: source.GetVars()}
+		}
+		order.Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{
+			Script: execution.GetScript(), NumscriptReference: ref, Timestamp: execution.GetTimestamp(),
+			Metadata: execution.GetMetadata(), AccountMetadata: execution.GetAccountMetadata(),
+			Reference: execution.GetReference(),
+		}}
 	case *servicepb.LedgerAction_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{

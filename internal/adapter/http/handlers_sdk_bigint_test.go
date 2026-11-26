@@ -77,19 +77,19 @@ func TestBigintOperations(t *testing.T) {
 			return sdkAccount(address, amount), nil
 		}).Times(2)
 	backend.EXPECT().ListTransactions(gomock.Any(), "ledger1", uint32(2), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, after uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+		func(_ context.Context, _ string, _ uint32, after *uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 			first, second := sdkTransaction(exact), sdkTransaction(exact)
 			first.Id, second.Id = 3, 2
-			if after == 0 && !reverse {
+			if after == nil && !reverse {
 				return cursor.NewSliceCursor([]*commonpb.Transaction{first, second}), nil
 			}
-			if after == 3 && !reverse {
+			if after != nil && *after == 3 && !reverse {
 				return cursor.NewSliceCursor([]*commonpb.Transaction{second}), nil
 			}
-			if after == 2 && reverse {
+			if after != nil && *after == 2 && reverse {
 				return cursor.NewSliceCursor([]*commonpb.Transaction{first}), nil
 			}
-			return nil, fmt.Errorf("unexpected SDK transaction page after=%d reverse=%v", after, reverse)
+			return nil, fmt.Errorf("unexpected SDK transaction page after=%v reverse=%v", after, reverse)
 		}).Times(3)
 	backend.EXPECT().ListLogs(gomock.Any(), "ledger1", gomock.Any(), uint32(2), gomock.Any(), false).DoAndReturn(
 		func(_ context.Context, _ string, after uint64, _ uint32, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Log], error) {
@@ -149,7 +149,7 @@ func TestBigintOperations(t *testing.T) {
 				}},
 			}, nil
 		}).Times(2)
-	server := httptest.NewServer(NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}))
+	server := httptest.NewServer(NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil))
 	defer server.Close()
 	command := exec.CommandContext(t.Context(), "node", script, server.URL)
 	output, err := command.CombinedOutput()
@@ -183,6 +183,6 @@ func sdkAccount(address, amount string) *commonpb.Account {
 
 func sdkAggregate(amount string) *commonpb.AggregateResult {
 	return &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{{Asset: "USD",
-		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256(uint256.MustFromDecimal(amount)),
+		Input: commonpb.NewBigUintFromUint64(0), Output: commonpb.MustBigUintFromDecimal(amount),
 	}}}
 }

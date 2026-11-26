@@ -16,7 +16,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 type numscriptPostingProducer struct {
@@ -29,7 +28,7 @@ type numscriptPostingProducer struct {
 	inputsResolutionHash []byte
 }
 
-func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError) {
+func (p *numscriptPostingProducer) produceExecution(s Scope, ledgerName string, force bool, script *commonpb.Script) (*produceResult, domain.Describable) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -55,7 +54,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		maps.Copy(vars, script.GetVars())
 
 		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
-		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()), order.GetForce())
+		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, force), force)
 
 		// SafeResolveDependencies recovers panics from the numscript library so a
 		// crafted input can never escape onto the deterministic Raft apply loop
@@ -73,7 +72,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// resolution derived a key admission never declared, so the gated
 			// Scope refused the read (*state.ErrCoverageMiss) or the plan was
 			// structurally inconsistent (*domain.ErrInvalidExecutionPlan). Both
-			// arrive here as a domain.SerializableError whose typed error survives the
+			// arrive here as a domain.Describable whose typed error survives the
 			// numscript library's error path (the library's QueryBalanceError /
 			// QueryMetadataError implement Unwrap, and convertNumscriptError
 			// returns the Describable as-is). Softening this to retryable stale
@@ -119,7 +118,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	// Execute the script on the VM, the only execution engine. When Force is
 	// true, the store returns unlimited balances to bypass balance checks.
-	vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
+	vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, force)
 
 	result, execErr := numscript.SafeExecFromText(p.cache, script.GetPlain(), script.GetVars(), vmStore)
 	if execErr != nil {

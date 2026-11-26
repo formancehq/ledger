@@ -1,0 +1,16 @@
+{
+  "exceptions": [
+    {
+      "declaration": "common.AggregatedVolume",
+      "rule": "FIELD_WIRE_COMPATIBLE_TYPE",
+      "message": "Field \"2\" with name \"input\" on message \"AggregatedVolume\" changed type from \"common.Uint256\" to \"common.BigUint\".",
+      "stop": "v3.0.0-rc.5"
+    },
+    {
+      "declaration": "common.AggregatedVolume",
+      "rule": "FIELD_WIRE_COMPATIBLE_TYPE",
+      "message": "Field \"3\" with name \"output\" on message \"AggregatedVolume\" changed type from \"common.Uint256\" to \"common.BigUint\".",
+      "stop": "v3.0.0-rc.5"
+    }
+  ]
+}

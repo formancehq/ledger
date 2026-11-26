@@ -11,6 +11,7 @@ Each numscript is identified by a **name** (e.g. `payment-with-fees`) scoped to 
 - **Every version is an explicit full semver** (`major.minor.patch`). Saving with an empty, `"latest"`, or partial version is rejected with `NUMSCRIPT_INVALID_VERSION`.
 - **Content entries are immutable.** Once `payment-with-fees` `1.0.0` is stored it can never be overwritten or removed. Re-saving the same `(name, version)` returns `NUMSCRIPT_VERSION_ALREADY_EXISTS`.
 - **There is no delete and no restore.** Nothing tombstones or clears a version; the only mutation is appending a new one.
+- **A version can carry a description.** The optional free-text `description` (at most 1024 bytes) is stored with that version and is part of its immutable entry, so changing it means saving a new version. It is part of the audited `SaveNumscriptOrder` and `SavedNumscriptLog`, and the checker compares it with the stored entry. Newline and tab are allowed; any other C0, DEL or C1 control character is rejected so stored text cannot carry terminal escape sequences. Both rejections return reason `VALIDATION`; the audit log records the failure code `NUMSCRIPT_DESCRIPTION_TOO_LONG` or `NUMSCRIPT_DESCRIPTION_INVALID_CHAR`. ledgerctl escapes control characters, including newline and tab, when it prints a description. Servers before `v3.0.0-rc.5` ignore the field and still save the version, so a client that depends on the description checks that the save response echoes it.
 - **Each name has a `latest` pointer equal to the greatest stored semver.** Saving advances the pointer to `max(current, saved)`. Versions may be saved out of order — saving `1.0.0` after `2.0.0` leaves the pointer at `2.0.0`.
 
 Because there is no soft-delete state, a stored version has no derived status: it simply exists, and exactly one of them (the greatest) is what the latest pointer resolves to.
@@ -87,9 +88,12 @@ Content-Type: application/json
 
 {
   "content": "vars { monetary $amount } send $amount ( source = @treasury destination = @merchant )",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "description": "Charge a merchant fee"
 }
 ```
+
+`description` is optional.
 
 Response: `201 Created` with a log entry containing the `NumscriptInfo`. Returns `409` if the version already exists, `400` if the version is not a full semver or the content fails to parse.
 
@@ -99,7 +103,7 @@ Response: `201 Created` with a log entry containing the `NumscriptInfo`. Returns
 GET /numscripts/payment-with-fees?version=1.0.0
 ```
 
-Response: `200 OK` with `NumscriptInfo` (name, content, version, createdAt). Returns `404` if the numscript or version does not exist.
+Response: `200 OK` with `NumscriptInfo` (name, content, version, createdAt, and description when set). Returns `404` if the numscript or version does not exist.
 
 #### List Numscript Versions
 
@@ -107,7 +111,7 @@ Response: `200 OK` with `NumscriptInfo` (name, content, version, createdAt). Ret
 GET /numscripts/payment-with-fees/versions
 ```
 
-Response: `200 OK` with the current latest version and every stored version (highest semver first).
+Response: `200 OK` with the current latest version and every stored version (highest semver first), each with its createdAt and description when set.
 
 #### List Numscripts
 
@@ -130,6 +134,9 @@ The `BucketService` exposes:
 ```bash
 # Save a version (explicit full semver, required)
 ledgerctl numscripts save payment-with-fees --file script.num --version 1.0.0 --ledger my-ledger
+
+# Save a version with a description
+ledgerctl numscripts save payment-with-fees --file script.num --version 1.1.0 --description "Charge a merchant fee" --ledger my-ledger
 
 # Save from stdin
 cat script.num | ledgerctl numscripts save payment-with-fees --version 1.0.0 --ledger my-ledger
@@ -155,6 +162,8 @@ ledgerctl numscripts versions payment-with-fees --ledger my-ledger
 | Content required | — | 400 | INVALID_ARGUMENT | Empty content |
 | Parse error | `NUMSCRIPT_PARSE_ERROR` | 400 | INVALID_ARGUMENT | Invalid Numscript syntax |
 | Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
+| Description too long | `VALIDATION` (audit failure code `NUMSCRIPT_DESCRIPTION_TOO_LONG`) | 400 | INVALID_ARGUMENT | Save description exceeds 1024 bytes of UTF-8 |
+| Description control character | `VALIDATION` (audit failure code `NUMSCRIPT_DESCRIPTION_INVALID_CHAR`) | 400 | INVALID_ARGUMENT | Save description contains a C0, DEL or C1 control character other than newline and tab |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
 | Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A typed compiler rejection has structured facts and can be audited. An unclassified compiler diagnostic keeps this public reason but exits without an audited verdict or frozen idempotency key. |
@@ -175,9 +184,26 @@ message ScriptReference {
 
 message CreateTransactionPayload {
   // ...
-  ScriptReference script_reference = 9;
+  ScriptReference script_reference = 8;
 }
 ```
+
+### Metadata-only execution
+
+When an `ExecuteNumscript` action emits no postings but the merged result
+contains account metadata (from the script or from the caller's
+`accountMetadata` field), Ledger automatically treats it as a metadata-only
+execution. A successful execution writes all account metadata atomically,
+emits an auditable
+`account_metadata_updated` ledger log, and does not allocate a transaction ID,
+create `TransactionState`, or emit a `created_transaction` log. Replaying the
+audit log applies the same account metadata writes.
+
+The transaction-creation action requires postings from its Numscript and
+returns `EMPTY_TRANSACTION` without them. An `ExecuteNumscript` action that
+emits neither postings nor real account metadata also fails with
+`EMPTY_TRANSACTION`.
+Transaction metadata and transaction references are not valid in this mode.
 
 ### Resolution Flow — admission plans, the FSM resolves
 
@@ -404,7 +430,6 @@ Controller → query.ReadNumscript(versionAttr, contentAttr, reader, ledger, nam
 | Admission | `internal/application/admission/admission.go` | `plan.Coverage` declaration + script reference planning |
 | Admission overlay | `internal/application/admission/overlay.go` | Intra-bulk greatest-wins overlay |
 | Checker | `internal/application/check/checker.go` | `compareNumscripts` projection verification |
-| Rebuild | `internal/infra/backup/rebuild.go` | Projection rebuild from the audit chain |
 | Semver | `internal/pkg/semver/semver.go` | `Version`, `Parse`, `ParsePartial`, `Compare` |
 | DAL keys | `internal/domain/keys.go` | `NumscriptVersionKey`, `NumscriptEntryKey` |
 | DAL codes | `internal/storage/dal/store.go` | `SubAttrNumscriptVersion`, `SubAttrNumscriptContent` |

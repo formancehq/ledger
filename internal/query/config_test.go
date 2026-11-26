@@ -8,7 +8,51 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestReadClusterPolicyControlStateIntegrity(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name         string
+		schema       uint32
+		policy       *commonpb.ClusterPolicy
+		capabilities *commonpb.CapabilityState
+		wantError    string
+	}{
+		{name: "legacy", schema: 2, policy: &commonpb.ClusterPolicy{Revision: 7, CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}},
+		{name: "extracted", schema: 3, policy: &commonpb.ClusterPolicy{Revision: 7}, capabilities: &commonpb.CapabilityState{Activations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}},
+		{name: "missing capabilities", schema: 3, policy: &commonpb.ClusterPolicy{Revision: 7}, wantError: "missing capability state"},
+		{name: "missing policy", schema: 3, capabilities: &commonpb.CapabilityState{}, wantError: "invalid split control state"},
+		{name: "duplicated ownership", schema: 3, policy: &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}}}, capabilities: &commonpb.CapabilityState{}, wantError: "invalid split control state"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			store := newTestStore(t)
+			batch := store.OpenWriteSession()
+			require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, &commonpb.PersistedConfig{StorageSchemaVersion: testCase.schema}))
+			if testCase.policy != nil {
+				require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, testCase.policy))
+			}
+			if testCase.capabilities != nil {
+				require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobCapabilityState}, testCase.capabilities))
+			}
+			require.NoError(t, batch.Commit())
+			policy, err := query.ReadClusterPolicy(store)
+			if testCase.wantError != "" {
+				require.ErrorContains(t, err, testCase.wantError)
+
+				return
+			}
+			require.NoError(t, err)
+			expected := testCase.policy.CloneVT()
+			if testCase.capabilities != nil {
+				expected.CapabilityActivations = testCase.capabilities.GetActivations()
+			}
+			require.True(t, expected.EqualVT(policy))
+		})
+	}
+}
 
 func TestReadLastAppliedIndex(t *testing.T) {
 	t.Parallel()

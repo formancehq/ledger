@@ -1,0 +1,92 @@
+# Shared hardware and workload for every CI duration profile.
+script: world_to_bank
+metadata:
+  namespace: ledger-v3
+executionGroup: acme-ledger-m8a
+spec:
+  parallelism: 1
+  separate: true
+  initializer:
+    image: grafana/k6:2.0.0@sha256:a33a0cfdc4d2483d6b7a3a22e726a499ff2831a671a49239104cd34a9937523c
+resources:
+  - manifest:
+      apiVersion: ledger.formance.com/v1alpha1
+      kind: Cluster
+      spec:
+        replicas: 3
+        nodeSelector:
+          formance.com/dedicated: ledger-m8a
+        tolerations:
+          - key: formance.com/dedicated
+            operator: Equal
+            value: ledger-m8a
+            effect: NoSchedule
+        additionalLabels:
+          benchmark.formance.com/isolated: 'true'
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    benchmark.formance.com/isolated: 'true'
+                topologyKey: kubernetes.io/hostname
+        monitoring:
+          serviceName: ledger
+          metrics:
+            enabled: true
+            exporter: otlp
+            endpoint: opentelemetry-collector.monitoring.svc.cluster.local.
+            port: '4317'
+            mode: grpc
+            insecure: 'true'
+            exporterPushInterval: 15s
+            runtime: true
+            runtimeMinimumReadMemStatsInterval: 5s
+          pyroscope:
+            enabled: false
+        resources:
+          requests: {cpu: '8', memory: 16Gi}
+          limits: {cpu: '8', memory: 16Gi}
+        auth:
+          enabled: false
+        pebble:
+          memTableSize: 536870912
+          memTableStopWritesThreshold: 4
+          l0StopWritesThreshold: 24
+          lBaseMaxBytes: 4294967296
+          cacheSize: 4294967296
+          bytesPerSync: 4194304
+          walBytesPerSync: 4194304
+          maxConcurrentCompactions: 4
+        raft:
+          compactionMargin: 5000
+          proposeQueueCapacity: 4096
+          maxSizePerMsg: 4194304
+        cache:
+          rotationThreshold: 1000
+        persistence:
+          retentionPolicy:
+            whenDeleted: Delete
+          data: {size: 500Gi, storageClass: io2}
+          wal: {size: 15Gi, storageClass: io2}
+    readyCondition: {fieldPath: status.phase, value: Running}
+  - manifest:
+      apiVersion: ledger.formance.com/v1alpha1
+      kind: Ledger
+      spec:
+        name: ledger0
+    readyCondition: {fieldPath: status.phase, value: Ready}
+runner:
+  image: grafana/k6:2.0.0@sha256:a33a0cfdc4d2483d6b7a3a22e726a499ff2831a671a49239104cd34a9937523c
+  resources:
+    requests: {cpu: '4', memory: 8Gi}
+    limits: {cpu: '4', memory: 8Gi}
+  env:
+    LEDGER_NAME: ledger0
+    BULK_SIZE: '50'
+    BULK_ATOMIC: 'true'
+    USE_NUMSCRIPT: 'false'
+    K6_OTEL_GRPC_EXPORTER_ENDPOINT: opentelemetry-collector.monitoring.svc.cluster.local:4317
+    K6_OTEL_GRPC_EXPORTER_INSECURE: 'true'
+    K6_OTEL_METRICS_FLUSH_INTERVAL: 5s
+    K6_OTEL_SERVICE_NAME: k6-loadtest

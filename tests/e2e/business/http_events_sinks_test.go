@@ -92,8 +92,14 @@ var _ = Describe("HTTP events sinks mutations", func() {
 			Data json.RawMessage `json:"data"`
 		}
 		Expect(json.Unmarshal(raw, &envelope)).To(Succeed())
+		var public struct {
+			Sinks json.RawMessage `json:"sinks"`
+		}
+		Expect(json.Unmarshal(envelope.Data, &public)).To(Succeed())
 		data := &servicepb.GetEventsSinksResponse{}
-		Expect(protojson.Unmarshal(envelope.Data, data)).To(Succeed())
+		payload := append([]byte(`{"sinks":`), public.Sinks...)
+		payload = append(payload, '}')
+		Expect(protojson.Unmarshal(payload, data)).To(Succeed())
 		return data.GetSinks()
 	}
 	find := func(name string) *commonpb.SinkConfig {
@@ -320,6 +326,7 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 			WalDir: GinkgoT().TempDir(), DataDir: GinkgoT().TempDir(), Output: GinkgoWriter,
 		})
 		instruments = append(instruments, testserver.WithBootstrap(), testserver.WithAuthEnabled(),
+			testserver.WithClusterSecret("http-sinks-scope-cluster-secret"),
 			testserver.WithAuthEd25519Keys(configPath), testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"), testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile))
@@ -380,8 +387,14 @@ var _ = Describe("HTTP events sinks mutation scopes", func() {
 				Data json.RawMessage `json:"data"`
 			}
 			Expect(json.Unmarshal(raw, &envelope)).To(Succeed())
+			var public struct {
+				Sinks json.RawMessage `json:"sinks"`
+			}
+			Expect(json.Unmarshal(envelope.Data, &public)).To(Succeed())
 			var response servicepb.GetEventsSinksResponse
-			Expect(protojson.Unmarshal(envelope.Data, &response)).To(Succeed())
+			payload := append([]byte(`{"sinks":`), public.Sinks...)
+			payload = append(payload, '}')
+			Expect(protojson.Unmarshal(payload, &response)).To(Succeed())
 			return response.GetSinks()
 		}
 		sink := newTestSinkConfig("http-sinks-scopes", "http.events.scopes")

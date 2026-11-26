@@ -94,6 +94,14 @@
           # Mock generation must understand the root module Go version.
           buildGoModule = pkgs.buildGo127Module;
 
+          # The SDK includes language runtimes; resource plugins are installed
+          # on demand at the versions required by the Pulumi program.
+          pulumi = pkgs.pulumi-bin.overrideAttrs (old: {
+            srcs = builtins.filter (src: pkgs.lib.hasPrefix "pulumi-v" src.name) old.srcs;
+            # A single SDK archive already unpacks into the pulumi directory.
+            postUnpack = "";
+          });
+
           # Tools invoked by CI jobs. Every CI job downloads this closure on a
           # cold Nix cache, so a tool belongs here only if a workflow step,
           # or a recipe/script a workflow step runs, executes it.
@@ -124,6 +132,7 @@
           localPackages = (with pkgs; [
             acli
             ginkgo
+            gh
             grpcurl
             trufflehog
             uv
@@ -144,8 +153,9 @@
             GOTOOLCHAIN = "local";
           };
 
-          # `just generate-demo`: vhs wraps ffmpeg, ttyd and, on Linux, chromium.
-          demo = mkTaskShell (with pkgs; [ grpcurl vhs ]);
+          # Tagged releases generate SPDX files with Syft. Nightly and PR
+          # builds use the smaller CI shell and do not generate SBOMs.
+          release = mkTaskShell [ pkgs-unstable.syft ];
 
           # `just test-sdk-bigint` and tests/sdk contract probes.
           sdk = mkTaskShell [
@@ -153,8 +163,9 @@
             self.packages.${system}.speakeasy
           ];
 
-          # tests/perf k6 load tests and benchstat comparisons.
-          perf = mkTaskShell [ pkgs.k6 pkgs-unstable.goperf ];
+          # tests/perf Pulumi deployments, k6 load tests and benchstat comparisons.
+          # Node executes the workflow's github-script code in offline Go tests.
+          perf = mkTaskShell [ pkgs.k6 pulumi pkgs.kubectl pkgs.awscli2 pkgs.docker-client pkgs.nodejs_22 pkgs-unstable.goperf ];
 
           # API-server admission regressions for the operator, without Docker.
           operator-tests = mkTaskShell [ pkgs-unstable.setup-envtest ];
@@ -164,6 +175,7 @@
             packages = ciPackages ++ (with pkgs; [ kyverno-chainsaw kind kubectl docker-client gh ]);
             GOTOOLCHAIN = "local";
             LEDGER_UPGRADE_SHELL = "1";
+            LEDGER_CHAINSAW_BIN = "${pkgs.kyverno-chainsaw}/bin/chainsaw";
           };
 
           default = pkgs.mkShell {

@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -18,7 +19,7 @@ func (b *Builder) indexPayload(
 	cfg *ledgerIndexConfig,
 	ledgerName string,
 	payload any,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
@@ -27,6 +28,17 @@ func (b *Builder) indexPayload(
 		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		for account, metadata := range p.AccountMetadataUpdated.GetAccountMetadata() {
+			if err := b.indexSavedMetadata(kb, cfg, ledgerName, &commonpb.SavedMetadata{
+				Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Metadata: metadata.GetValues(),
+			}); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
@@ -124,8 +136,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 
 	// Schema logs are deliberately absent from this switch. The only caller,
 	// processBackfill, gates on the generated HISTORY category, which admits exactly
-	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
-	// / OrderSkipped and switches on the same discriminator used here — so a
+	// CreatedTransaction / RevertedTransaction / SavedMetadata /
+	// AccountMetadataUpdated / DeletedMetadata / OrderSkipped and switches on
+	// the same discriminator used here — so a
 	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive,
 	// and neither can the CreateIndex / DropIndex cases below, which the live
 	// path reaches through indexPayload.
@@ -144,6 +157,17 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		for account, metadata := range p.AccountMetadataUpdated.GetAccountMetadata() {
+			if err := b.indexSavedMetadata(b.kb, cfg, ledgerName, &commonpb.SavedMetadata{
+				Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Metadata: metadata.GetValues(),
+			}); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	}
@@ -162,7 +186,7 @@ func (b *Builder) indexCreatedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	ct *commonpb.CreatedTransaction,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
@@ -277,7 +301,7 @@ func (b *Builder) indexRevertedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	rt *commonpb.RevertedTransaction,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
@@ -369,11 +393,15 @@ func (b *Builder) indexPostingAddressMappings(
 	indexAny bool,
 	indexSource bool,
 	indexDestination bool,
-	excludedVolumes map[domain.AccountAssetKey]struct{},
+	excludedVolumes *postingExclusions,
 ) error {
 	wb := b.wb
-	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
-	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
+	var current, historical map[domain.AccountAssetKey]struct{}
+	if excludedVolumes != nil {
+		current, historical = excludedVolumes.current, excludedVolumes.historical
+	}
+	sourceExcluded := isExcluded(current, source, asset, color)
+	destinationExcluded := isExcluded(current, destination, asset, color)
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -395,6 +423,9 @@ func (b *Builder) indexPostingAddressMappings(
 		}
 	}
 
+	sourceExcluded = isExcluded(historical, source, asset, color)
+	destinationExcluded = isExcluded(historical, destination, asset, color)
+
 	if indexAny {
 		if !sourceExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, source, txID); err != nil {
@@ -409,9 +440,8 @@ func (b *Builder) indexPostingAddressMappings(
 		}
 	}
 
-	// Role-specific mappings skip transient and purged ephemeral volumes —
-	// matched per (account, asset) tuple so a multi-asset account keeps its
-	// mappings for the assets that survived this proposal.
+	// Historical role mappings skip only TRANSIENT cells. Purging an
+	// EPHEMERAL cell must not erase its source or destination relationship.
 	if indexSource && !sourceExcluded {
 		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
 			return err
@@ -427,11 +457,12 @@ func (b *Builder) indexPostingAddressMappings(
 	return nil
 }
 
-// writeAccountByAssetDedup writes an account-by-asset entry unless it already
-// exists. The entry is presence-only so the Put is idempotent; the Get is purely
-// to cut write amplification (the indexbuilder runs off the FSM hot path, so the
-// extra read is acceptable). Dedup spans the in-flight batch (seenAcctAsset) and
-// committed state (readstoreKeyExists).
+// writeAccountByAssetDedup writes the earliest known account-by-asset touch.
+// Live folds normally see an existing row with an earlier stamp and skip the
+// write. During an index backfill, however, a live write may have populated the
+// row with a later stamp before replay reaches the historical first touch. The
+// minimum-stamp comparison repairs that interleaving without adding writes to
+// the steady-state path.
 func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, assetBase string, precision uint8) error {
 	// AccountByAssetKey uses Build(), which returns a fresh copy and resets the
 	// builder — so key does not alias the builder buffer and stays valid after
@@ -453,17 +484,25 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	// idempotent Put instead; queued after the range delete (the recreated
 	// ledger's logs have higher sequence), it wins at commit.
 	if _, deleted := b.deletedThisBatch[ledger]; !deleted {
-		exists, err := b.readstoreKeyExists(key)
+		stamp, exists, err := b.readstoreAccountByAssetStamp(key)
 		if err != nil {
 			return fmt.Errorf("account-by-asset dedup get: %w", err)
 		}
 
-		if exists {
+		if exists && len(stamp) == 8 && binary.BigEndian.Uint64(stamp) <= b.wbEventSequence() {
 			return nil
 		}
 	}
 
 	return b.wb.WriteAccountByAssetIndex(kb, ledger, account, assetBase, precision)
+}
+
+// wbEventSequence returns the sequence currently declared for the fold. The
+// write helper below already enforces that sequence-stamped writes fail when it
+// is unset; this accessor is kept local to the comparison so the hot path does
+// not duplicate that validation or expose WriteBatch internals.
+func (b *Builder) wbEventSequence() uint64 {
+	return b.wb.EventSequence()
 }
 
 // markLedgerDeletedInBatch records that ledger's read indexes were
@@ -492,6 +531,22 @@ func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
 	_ = closer.Close()
 
 	return true, nil
+}
+
+// readstoreAccountByAssetStamp reads the committed first-touch stamp. A
+// malformed or legacy value is returned to the caller for repair rather than
+// treated as a valid later stamp.
+func (b *Builder) readstoreAccountByAssetStamp(key []byte) ([]byte, bool, error) {
+	value, closer, err := b.readStore.DB().Get(key)
+	if errors.Is(err, pebble.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = closer.Close() }()
+
+	return cloneBytes(value), true, nil
 }
 
 // reverseMapValue returns the encoded value the index currently holds for an

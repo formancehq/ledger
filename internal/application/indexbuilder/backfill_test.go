@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
@@ -282,31 +283,31 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	// the address mappings under test.
 	cfg := newLedgerIndexConfig()
 
-	// Multi-asset case: account "shared:account" has USD purged but EUR
-	// kept. transient:source / purged:dest are excluded on USD only;
+	// Multi-asset TRANSIENT case: shared:account has USD excluded but EUR
+	// kept. transient:source / transient:dest are excluded on USD only;
 	// shared:account on USD is excluded but shared:account on EUR must be
 	// indexed normally.
 	excludedVolumes := map[domain.AccountAssetKey]struct{}{
 		{Account: "transient:source", Asset: "USD"}: {},
-		{Account: "purged:dest", Asset: "USD"}:      {},
+		{Account: "transient:dest", Asset: "USD"}:   {},
 		{Account: "shared:account", Asset: "USD"}:   {},
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		b.kb, cfg, "test", 43, "kept:source", "transient:dest", "USD", "",
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR", "",
-		true, true, true, excludedVolumes,
+		true, true, true, &postingExclusions{current: excludedVolumes, historical: excludedVolumes},
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -329,10 +330,10 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "kept:source", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "transient:dest", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "transient:dest", 43,
 	)))
 
 	// Multi-asset: shared:account USD (tx 44) is excluded, EUR (tx 45) is not.
@@ -458,6 +459,53 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 		"accounts:alice": {},
 		"accounts:bob":   {},
 	}, got)
+}
+
+// TestAccountAssetBackfillRepairsLaterLiveFirstTouch reproduces EN-3309:
+// CreateIndex makes the account-asset index pending while live folding remains
+// active. A later live transaction can therefore write the row before the
+// backfill replays the historical first touch. Presence-only dedup used to
+// preserve the later stamp forever; the backfill must retain the minimum.
+func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+	}
+	cfg := acctAssetConfig()
+
+	// Interleaving step 1: the live fold observes a later log first.
+	live := store.NewBatch()
+	b.initBatch(live)
+	b.wb.SetEventSequence(10)
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 10, "accounts:alice", "accounts:bank", "USD/2", "",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	// Interleaving step 2: historical backfill reaches the true first touch.
+	historical := store.NewBatch()
+	b.initBatch(historical)
+	b.wb.SetEventSequence(5)
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 5, "accounts:alice", "accounts:bank", "USD/2", "",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), "test", "USD", 2, "accounts:alice")
+	value, closer, err := store.DB().Get(key)
+	require.NoError(t, err)
+	defer func() { _ = closer.Close() }()
+	require.Len(t, value, 8)
+	assert.Equal(t, uint64(5), binary.BigEndian.Uint64(value), "backfill must repair a later live first-touch stamp")
 }
 
 // TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete guards the
@@ -591,7 +639,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, excludedVolumes,
+		false, false, false, &postingExclusions{current: excludedVolumes},
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -2472,8 +2520,7 @@ func countKeysWithPrefix(t *testing.T, store *readstore.Store, prefix []byte) in
 // temporary config holding the task's index, and indexLogEntry keys writes
 // by each log's own ledger — so a foreign ledger's SavedMetadata on the same
 // key would pass the config gates and write forward+rmap rows into the
-// foreign keyspace for a field that ledger never indexed, surfacing as
-// reverse-map orphans in compareReverseMapOrphans (EN-1458). The postings
+// foreign keyspace for a field that ledger never indexed. The postings
 // driver carries the same guard, pinned by
 // TestAccountAssetBackfillDoesNotWipeUnrelatedLedger.
 func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {

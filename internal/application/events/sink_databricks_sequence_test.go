@@ -108,7 +108,8 @@ func TestDatabricksPublicationFailureDoesNotAdvanceCursor(t *testing.T) {
 		func(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 			var decoded raftcmdpb.Proposal
 			require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
-			updates := decoded.GetTechnicalUpdates()
+			require.Empty(t, decoded.GetTechnicalUpdates())
+			updates := decoded.GetBatch().GetTechnicalUpdates()
 			require.Len(t, updates, 1)
 			sinkUpdate := updates[0].GetEventsSink()
 			require.NotNil(t, sinkUpdate.GetError())

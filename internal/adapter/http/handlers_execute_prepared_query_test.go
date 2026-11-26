@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -152,6 +153,63 @@ func TestHandleExecutePreparedQuery_WithParameters(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleExecutePreparedQuery_IntegerParameters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		want  *commonpb.ParameterValue
+	}{
+		{"above float64 precision", "9007199254740993", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 9007199254740993}}},
+		{"maximum unsigned", "18446744073709551615", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 18446744073709551615}}},
+		{"minimum signed", "-9223372036854775808", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9223372036854775808}}},
+		{"negative above float64 precision", "-9007199254740993", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: -9007199254740993}}},
+		{"zero", "0", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}}},
+		{"negative zero", "-0", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 0}}},
+		{"integral decimal", "1.0", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1}}},
+		{"integral exponent", "1e3", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 1000}}},
+		{"negative integral exponent", "-1.2E+1", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: -12}}},
+		{"precise decimal", "9007199254740993.000", &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 9007199254740993}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+					require.Equal(t, tt.want, req.GetParameters()["value"])
+
+					return &servicepb.ExecutePreparedQueryResponse{}, nil
+				})
+			srv := newTestServer(t, backend)
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+				strings.NewReader(`{"parameters":{"value":`+tt.value+`}}`),
+				map[string]string{"ledgerName": "ledger1", "queryName": "my-query"})
+			srv.handleExecutePreparedQuery(w, r)
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		})
+	}
+}
+
+func TestHandleExecutePreparedQuery_RejectsInvalidParameters(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"18446744073709551616", "-9223372036854775809", "1.5", "1e-400", "null"} {
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+				strings.NewReader(`{"parameters":{"value":`+value+`}}`),
+				map[string]string{"ledgerName": "ledger1", "queryName": "my-query"})
+			srv.handleExecutePreparedQuery(w, r)
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "INVALID_PARAMETERS")
+		})
+	}
+}
+
 func TestHandleExecutePreparedQuery_ChunkedBody(t *testing.T) {
 	t.Parallel()
 
@@ -236,8 +294,8 @@ func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
 				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
 					Aggregate: &commonpb.AggregateResult{
 						Volumes: []*commonpb.AggregatedVolume{
-							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
-							{Asset: "USD", Color: "RED", Input: commonpb.NewUint256FromUint64(50), Output: commonpb.NewUint256FromUint64(0)},
+							{Asset: "USD", Color: "", Input: commonpb.NewBigUintFromUint64(100), Output: commonpb.NewBigUintFromUint64(30)},
+							{Asset: "USD", Color: "RED", Input: commonpb.NewBigUintFromUint64(50), Output: commonpb.NewBigUintFromUint64(0)},
 						},
 					},
 				},
@@ -402,4 +460,37 @@ func TestHandleExecutePreparedQuery_Reverse(t *testing.T) {
 			require.Equal(t, tc.want, captured.GetReverse())
 		})
 	}
+}
+
+func TestHandleExecutePreparedQuery_AggregateTotalsAbove2Pow256(t *testing.T) {
+	t.Parallel()
+
+	above := new(big.Int).Lsh(big.NewInt(5), 256)
+	input, err := commonpb.NewBigUint(above)
+	require.NoError(t, err)
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+			return &servicepb.ExecutePreparedQueryResponse{Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+				Aggregate: &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{{
+					Asset:  "USD/2",
+					Input:  input,
+					Output: &commonpb.BigUint{},
+				}}},
+			}}, nil
+		})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+		strings.NewReader(`{"mode":"AGGREGATE_VOLUMES"}`), map[string]string{
+			"ledgerName": "ledger1",
+			"queryName":  "my-query",
+		})
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"input":`+above.String())
+	require.Contains(t, w.Body.String(), `"balance":`+above.String())
 }

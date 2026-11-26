@@ -18,14 +18,34 @@ import (
 // it uses, and a future contributor reading machine.go won't find any read
 // primitive to pull from.
 type Recovery struct {
-	apply  *Machine
-	reader dal.RecoveryReader
+	apply            *Machine
+	reader           dal.RecoveryReader
+	onStateRecovered func(*FSMState) error
+}
+
+// RecoveryOption customizes the post-recovery hooks without coupling the
+// state package to any of its runtime consumers.
+type RecoveryOption func(*Recovery)
+
+// WithStateRecovered registers a hook invoked after the FSM and its
+// in-memory trackers have been rebuilt. Runtime consumers use this to
+// republish derived state (for example, the membership capability gate) after
+// boot or snapshot recovery.
+func WithStateRecovered(hook func(*FSMState) error) RecoveryOption {
+	return func(recovery *Recovery) {
+		recovery.onStateRecovered = hook
+	}
 }
 
 // NewRecovery wires a Recovery onto an existing Machine. The reader is held
 // only on the Recovery, never on the Machine.
-func NewRecovery(apply *Machine, reader dal.RecoveryReader) *Recovery {
-	return &Recovery{apply: apply, reader: reader}
+func NewRecovery(apply *Machine, reader dal.RecoveryReader, opts ...RecoveryOption) *Recovery {
+	recovery := &Recovery{apply: apply, reader: reader}
+	for _, opt := range opts {
+		opt(recovery)
+	}
+
+	return recovery
 }
 
 // RecoverState rebuilds the Machine from the Pebble data store, in three
@@ -180,6 +200,12 @@ func (r *Recovery) RecoverState() error {
 		"hasAuditHash":          len(newState.LastAuditHash) > 0,
 		"reversionLedgers":      len(reversions),
 	}).Infof("Recovered FSM state from store")
+
+	if r.onStateRecovered != nil {
+		if err := r.onStateRecovered(newState); err != nil {
+			return fmt.Errorf("publishing derived state after recovery: %w", err)
+		}
+	}
 
 	return nil
 }

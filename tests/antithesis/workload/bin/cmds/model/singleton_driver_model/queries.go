@@ -1745,13 +1745,9 @@ func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordV
 	return v.match, v.known
 }
 
-// matchTxAddress evaluates an address leaf on the TRANSACTIONS target: the
-// transaction matches iff some account in its account→tx index membership
-// (IndexedAddrs, role-filtered) matches the prefix/exact pattern AND is still
-// in the merged V+M account universe — the server resolves matching accounts
-// through the attributes zone (pebbleAccountExists / the account prefix
-// iterator), so a purged account with no metadata stops reaching its
-// transactions even though the index rows remain.
+// matchTxAddress evaluates a TRANSACTIONS address leaf from historical role
+// memberships. Exact matches remain reachable after an account purge; prefix
+// matches first enumerate the current merged volume/metadata account universe.
 func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txRecordView) bool {
 	var roleMask uint8
 	switch am.GetRole() {
@@ -1774,9 +1770,11 @@ func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txReco
 				continue
 			}
 		case *commonpb.AddressMatch_HardcodedExact:
-			if addr != m.HardcodedExact {
-				continue
+			if addr == m.HardcodedExact {
+				return true
 			}
+
+			continue
 		default:
 			continue // param matches are not generated
 		}

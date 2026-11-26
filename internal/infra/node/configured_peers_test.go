@@ -41,10 +41,10 @@ func newConfiguredPeersTestNode(t *testing.T) *Node {
 	}
 	require.Equal(t, raft.StateLeader, rawNode.Status().RaftState)
 	m := newTestMembership(t)
-	require.NoError(t, m.Set(1, "self:7777", "self:8888", []byte("self-instance-id")))
-	require.NoError(t, m.Set(2, "old:7777", "old:8888", []byte("peer-instance-id")))
+	require.NoError(t, m.Set(1, "self:7777", "self:8888", []byte("self-instance-id"), nil))
+	require.NoError(t, m.Set(2, "old:7777", "old:8888", []byte("peer-instance-id"), nil))
 	// A cached row alone is not evidence of a configured member.
-	require.NoError(t, m.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid")))
+	require.NoError(t, m.Set(3, "extra:7777", "extra:8888", []byte("extra-instanceid"), nil))
 
 	return &Node{
 		rawNode:          rawNode,
@@ -113,7 +113,7 @@ func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
 				n.rawNode.ApplyConfChange(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{{
 					Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: new(uint64(2)),
 				}}})
-				require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id")))
+				require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id"), nil))
 			}
 			cmd.errCh <- err
 			got := <-results
@@ -168,7 +168,7 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 	// the snapshot, never in between.
 	setDone := make(chan struct{})
 	go func() {
-		require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id")))
+		require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id"), nil))
 		close(setDone)
 	}()
 	err := cmd.fn()
@@ -211,10 +211,10 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate_Dete
 	// Persist all configured members to Pebble so Rehydrate does not drop
 	// voter 1 from the cache. Set() updates only the in-memory cache;
 	// Rehydrate replaces the whole cache from LoadAll.
-	require.NoError(t, n.membership.PeerStore().Put(1, "self:7777", "self:8888", []byte("self-instance-id")))
+	require.NoError(t, n.membership.PeerStore().Put(1, "self:7777", "self:8888", []byte("self-instance-id"), nil))
 	// Persist the new incarnation for peer 2 so Rehydrate loads it.
 	// The in-memory Membership cache still holds the old row.
-	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id")))
+	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id"), nil))
 	type result struct {
 		peers []Peer
 		err   error
@@ -276,8 +276,8 @@ func TestGetConfiguredPeers_RehydrateBeforeSnapshotIsVisibleInCapture(t *testing
 	// Persist all configured members to Pebble before Rehydrate.
 	// Set() updates only the in-memory cache; Rehydrate reloads from Pebble.
 	// Both voter-1 (self) and the updated peer-2 row must be present.
-	require.NoError(t, n.membership.PeerStore().Put(1, "self:7777", "self:8888", []byte("self-instance-id")))
-	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id")))
+	require.NoError(t, n.membership.PeerStore().Put(1, "self:7777", "self:8888", []byte("self-instance-id"), nil))
+	require.NoError(t, n.membership.PeerStore().Put(2, "new:7777", "new:8888", []byte("next-instance-id"), nil))
 	require.NoError(t, n.membership.Rehydrate())
 
 	results := make(chan []Peer, 1)

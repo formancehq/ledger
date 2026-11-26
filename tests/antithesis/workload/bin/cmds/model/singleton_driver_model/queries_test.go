@@ -502,11 +502,8 @@ func TestTxWindowMatches_OptionalRows(t *testing.T) {
 func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 	t.Parallel()
 
-	// One bulk on purpose: an ephemeral wash on e:1 (its cell is zero, and so
-	// excluded, at end of bulk) and a normal funding of a:1. tx 1 is the wash,
-	// tx 2 the funding. Splitting the wash across bulks would index e:1 on the
-	// funding leg and exercise the universe drop instead — see
-	// buildGlobalSeparateBulks.
+	// One bulk washes an EPHEMERAL cell to zero. Its historical role mappings
+	// survive, so exact queries still find both transactions after full purge.
 	gs := buildGlobal(t,
 		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 		oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
@@ -526,15 +523,19 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 		return f.GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
 
-	// The excluded ephemeral cell strips e:1 membership from both wash txs. The
-	// membership assertion is what separates this from the universe drop
-	// (TestMatchTxAddress_UniverseDrop), where the rows stay indexed and only
-	// the address match stops resolving — matchTxAddress alone would be false
-	// under either mechanism.
-	require.Zero(t, txs.Get(int(0)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
-	require.Zero(t, txs.Get(int(1)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
-	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
-	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
+	// Preserve historical memberships even though the account disappears. The
+	// predicate assertions independently protect exact lookup after full purge.
+	require.Equal(t, oracle.AddrIndexedDestination, txs.Get(int(0)).IndexedAddrs()["e:1"])
+	require.Equal(t, oracle.AddrIndexedSource, txs.Get(int(1)).IndexedAddrs()["e:1"])
+	require.False(t, ls.HasAccount("e:1"))
+	for offset := range 2 {
+		for _, role := range []commonpb.AddressRole{anyRole, src, dst} {
+			want := role == anyRole || (offset == 0 && role == dst) || (offset == 1 && role == src)
+			require.Equal(t, want, matchTxAddress(ls, addr(filterAddrExactRole("e:1", role)), txs.Get(offset)))
+			require.False(t, matchTxAddress(ls, addr(filterAddrPrefixRole("e:", role)), txs.Get(offset)))
+			require.False(t, matchAccountFilterIn(ls, filterAddrExactRole("e:1", role), "e:1", ls.HasAccount("e:1")))
+		}
+	}
 
 	// world's side of the wash is a kept NORMAL cell — still indexed.
 	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("world", src)), txs.Get(int(0))))
@@ -565,9 +566,8 @@ func TestMatchTxAddress_UniverseDrop(t *testing.T) {
 	require.True(t, matchTxAddress(ls1, exact("e:1"), ls1.Txs().Get(int(0))))
 
 	// Bulk 2 drains it to zero: the cell is purged, dropping e:1 from the V+M
-	// universe — tx 1 keeps its index membership but stops being reachable
-	// through an address match, exactly like the server's attributes-zone
-	// account resolution.
+	// universe. Historical exact transaction matches survive, while prefixes
+	// and account queries still depend on current account membership.
 	res2 := res1.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
 		oracletest.TxReqL("L", "e:1", "world", "USD", 5),
 	}})
@@ -577,7 +577,16 @@ func TestMatchTxAddress_UniverseDrop(t *testing.T) {
 	rec := ls2.Txs().Get(int(0))
 	require.NotZero(t, rec.IndexedAddrs()["e:1"], "membership itself is monotone")
 	require.False(t, ls2.HasAccount("e:1"))
-	require.False(t, matchTxAddress(ls2, exact("e:1"), rec))
+	for _, role := range []commonpb.AddressRole{commonpb.AddressRole_ADDRESS_ROLE_ANY, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION} {
+		for offset := range 2 {
+			want := role == commonpb.AddressRole_ADDRESS_ROLE_ANY ||
+				(offset == 0 && role == commonpb.AddressRole_ADDRESS_ROLE_DESTINATION) ||
+				(offset == 1 && role == commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+			require.Equal(t, want, matchTxAddress(ls2, filterAddrExactRole("e:1", role).GetAddress(), ls2.Txs().Get(offset)))
+			require.False(t, matchTxAddress(ls2, filterAddrPrefixRole("e:", role).GetAddress(), ls2.Txs().Get(offset)))
+		}
+	}
+	require.False(t, matchAccountFilterIn(ls2, filterAddrExactRole("e:1", commonpb.AddressRole_ADDRESS_ROLE_ANY), "e:1", ls2.HasAccount("e:1")))
 }
 
 func TestNeededIndexCanonicals_AddressRoles(t *testing.T) {
@@ -915,4 +924,45 @@ func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
 	})
 	require.False(t, pcvSnapshotMatches(rec.PostCommitVolumes(), snapshot),
 		"the second copy is never read, so it must not be tolerated")
+}
+
+func TestMatchTxAddress_ResidentPurgedCell(t *testing.T) {
+	t.Parallel()
+	for _, residency := range []string{"metadata", "asset", "color"} {
+		t.Run(residency, func(t *testing.T) {
+			t.Parallel()
+			setup := []*servicepb.Request{oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL)}
+			switch residency {
+			case "metadata":
+				setup = append(setup, oracletest.AddAccountMetaReq("e:1", "resident", &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}))
+			case "asset":
+				setup = append(setup, oracletest.TxReqL("L", "world", "e:1", "EUR", 7))
+			case "color":
+				setup = append(setup, oracletest.TxReqColoredL("L", "world", "e:1", "USD", "blue", 7))
+			}
+			gs := buildGlobal(t, setup...)
+			firstNew := gs.Ledger("L").Txs().Len()
+			res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+				oracletest.TxReqL("L", "world", "e:1", "USD", 5),
+				oracletest.TxReqL("L", "e:1", "world", "USD", 5),
+			}})
+			require.True(t, res.OK)
+			ls := res.State.Ledger("L")
+			require.True(t, ls.HasAccount("e:1"))
+			for _, prefix := range []bool{false, true} {
+				for _, role := range []commonpb.AddressRole{commonpb.AddressRole_ADDRESS_ROLE_ANY, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION} {
+					filter := filterAddrExactRole("e:1", role)
+					if prefix {
+						filter = filterAddrPrefixRole("e:", role)
+					}
+					for offset := range 2 {
+						want := role == commonpb.AddressRole_ADDRESS_ROLE_ANY ||
+							(offset == 0 && role == commonpb.AddressRole_ADDRESS_ROLE_DESTINATION) ||
+							(offset == 1 && role == commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+						require.Equal(t, want, matchTxAddress(ls, filter.GetAddress(), ls.Txs().Get(firstNew+offset)), "prefix=%v role=%v transaction=%d", prefix, role, firstNew+offset+1)
+					}
+				}
+			}
+		})
+	}
 }

@@ -14,6 +14,7 @@ transition="${UPGRADE_TRANSITION:-rc2-to-rc3}"
 case "$transition" in
 	rc2-to-rc3) source_tag=v3.0.0-rc.2; target_tag=v3.0.0-rc.3; rejected_tag=v3.0.0-rc.1; rollout=rolling ;;
 	rc3-to-rc4) source_tag=v3.0.0-rc.3; target_tag=v3.0.0-rc.4; rejected_tag=v3.0.0-rc.2; rollout=stopped ;;
+	rc4-to-rc5) source_tag=v3.0.0-rc.4; target_tag=v3.0.0-rc.5; rejected_tag=v3.0.0-rc.3; rollout=stopped ;;
 	*) echo "unsupported upgrade transition: $transition" >&2; exit 2 ;;
 esac
 [ -z "$(git -C "$repo" status --porcelain)" ] || {
@@ -47,7 +48,7 @@ cluster="ledger-operator-upgrade-$$"
 on_exit() {
 	local result="$?" namespace
 	if [ -s "$workdir/kubeconfig" ]; then
-		kubectl --kubeconfig "$workdir/kubeconfig" get clusters,statefulsets,pods,pvc -A -o yaml > "$workdir/kubernetes.yaml" 2>&1 || true
+		kubectl --kubeconfig "$workdir/kubeconfig" get clusters,statefulsets,pods,pvc,backups,backupruns,jobs -A -o yaml > "$workdir/kubernetes.yaml" 2>&1 || true
 		kubectl --kubeconfig "$workdir/kubeconfig" -n ledger-system logs deployment/ledger-operator > "$workdir/operator.log" 2>&1 || true
 		for namespace in $(kubectl --kubeconfig "$workdir/kubeconfig" get namespaces -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
 			case "$namespace" in chainsaw-*)
@@ -78,21 +79,60 @@ operator_image="ledger-operator:$target_tag"
 docker build -q --build-arg "OPERATOR_VERSION=$target_tag" -t "$operator_image" "$target_tree/misc/operator" | tee "$workdir/operator-build.txt"
 docker pull "$source_image" | tee "$workdir/source-pull.txt"
 docker pull "$source_operator_image" | tee "$workdir/source-operator-pull.txt"
-source_id="$(docker image inspect "$source_image" --format '{{.Id}}')"
-source_operator_id="$(docker image inspect "$source_operator_image" --format '{{.Id}}')"
-target_operator_id="$(docker image inspect "$operator_image" --format '{{.Id}}')"
+# Docker may retain a multi-platform index for a published tag. Resolve the
+# platform Kind will run before creating the image archive.
+case "$(docker info --format '{{.Architecture}}')" in
+	aarch64|arm64) image_platform=linux/arm64 ;;
+	x86_64|amd64) image_platform=linux/amd64 ;;
+	*) echo "unsupported Docker architecture for Kind image import" >&2; exit 2 ;;
+esac
+printf 'imageArchivePlatform=%s\n' "$image_platform" | tee -a "$workdir/revisions.txt"
 build_tag="ledger-upgrade:build-${target_sha:0:12}"
-docker build -q -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
-target_id="$(docker image inspect "$build_tag" --format '{{.Id}}')"
+build_args=()
+if [ "$transition" = rc4-to-rc5 ]; then build_args=(--build-arg BUILD_TAGS=s3); fi
+docker build -q "${build_args[@]}" -t "$build_tag" "$target_tree" | tee "$workdir/target-build.txt"
 target_repository=ledger-upgrade
 target_image="$target_repository:$target_tag"
 docker tag "$build_tag" "$target_image"
+# Pod imageID is the digest of the image configuration. Depending on the Docker
+# image store, inspect --platform may instead return the platform manifest ID.
+# Read the exact configurations from the archive Kind will import.
+image_archive="$workdir/kind-images.tar"
+archive_images=("$source_image" "$target_image" "$source_operator_image" "$operator_image")
+if [ "$transition" = rc4-to-rc5 ]; then
+	minio_image=ghcr.io/formancehq/minio:RELEASE.2025-10-15T17-29-55Z
+	docker pull "$minio_image" | tee "$workdir/minio-pull.txt"
+	archive_images+=("$minio_image")
+fi
+docker image save --platform "$image_platform" -o "$image_archive" "${archive_images[@]}"
+archive_image_id() {
+	local image="$1" config_path digest
+	config_path="$(tar -xOf "$image_archive" manifest.json | jq -er --arg image "$image" \
+		'[.[] | select(.RepoTags | index($image)) | .Config] |
+		 if length == 1 then .[0] else error("expected one archive configuration for " + $image) end')" || return 1
+	digest="$(tar -xOf "$image_archive" "$config_path" | sha256sum | cut -d' ' -f1)" || return 1
+	printf 'sha256:%s\n' "$digest"
+}
+source_id="$(archive_image_id "$source_image")"
+source_operator_id="$(archive_image_id "$source_operator_image")"
+target_operator_id="$(archive_image_id "$operator_image")"
+target_id="$(archive_image_id "$target_image")"
 printf 'sourceImage=%s\nsourceImageID=%s\ntargetImage=%s\ntargetImageID=%s\nsourceOperatorImage=%s\nsourceOperatorImageID=%s\ntargetOperatorImage=%s\ntargetOperatorImageID=%s\n' \
 	"$source_image" "$source_id" "$target_image" "$target_id" "$source_operator_image" "$source_operator_id" "$operator_image" "$target_operator_id" | tee -a "$workdir/revisions.txt"
 
 kind create cluster --name "$cluster"
 kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
-kind load docker-image "$source_image" "$target_image" "$source_operator_image" "$operator_image" --name "$cluster"
+# Docker may save a multi-platform index while only the host platform's blobs
+# are present after pull. Kind imports with --all-platforms, so make the archive
+# self-contained for the architecture of its Docker-backed node.
+kind load image-archive "$image_archive" --name "$cluster"
+rm -f "$image_archive"
+if [ "$transition" = rc4-to-rc5 ]; then
+	kubectl --kubeconfig "$workdir/kubeconfig" --context "kind-$cluster" \
+		apply -f "$target_tree/misc/operator/e2e/manifests/minio.yaml"
+	kubectl --kubeconfig "$workdir/kubeconfig" --context "kind-$cluster" \
+		-n minio wait --for=condition=available deployment/minio --timeout=300s
+fi
 source_chart="$source_tree/misc/operator/helm/operator"
 target_chart="$target_tree/misc/operator/helm/operator"
 helm dependency build "$source_chart"
@@ -109,6 +149,7 @@ UPGRADE_TARGET_OPERATOR_CHART="$target_chart" UPGRADE_TARGET_OPERATOR_IMAGE="$op
 UPGRADE_TARGET_OPERATOR_IMAGE_ID="$target_operator_id" \
 UPGRADE_SOURCE_OPERATOR_IMAGE="$source_operator_image" UPGRADE_SOURCE_OPERATOR_IMAGE_ID="$source_operator_id" \
 UPGRADE_SOURCE_REPOSITORY="$source_repository" UPGRADE_SOURCE_TAG="$source_tag" \
+UPGRADE_SOURCE_IMAGE_ID="$source_id" \
 UPGRADE_TARGET_REPOSITORY="$target_repository" UPGRADE_TARGET_TAG="$target_tag" \
 UPGRADE_TARGET_IMAGE_ID="$target_id" \
 	UPGRADE_ROLLOUT="$rollout" UPGRADE_REJECTED_TAG="$rejected_tag" \

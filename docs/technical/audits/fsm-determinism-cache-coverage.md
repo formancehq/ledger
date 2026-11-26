@@ -255,6 +255,15 @@ prove that its branch is contractually impossible or that it leaves a divergent
 or falsely successful result. Assertions must uniquely identify the intended
 failure branch.
 
+A forwarded order (`OrderTechnical.preload_unavailable`) is one such failure
+prefix. Order processing fails it at its own position, before scope
+construction, overlay allocation and the skip matcher, so the earlier orders'
+staged writes form the discarded prefix and no skip whitelist can convert the
+gap into a skip log. The flag is committed order bytes, so every replica fails
+at the same position. Order processing returns `Describable`; the apply path
+tests `UncommittedFailure` first and treats any remaining failure that is not
+`SerializableError` as an invariant violation rather than an audited outcome.
+
 ## Numscript VM execution state
 
 A scripted order carries inline text or a versioned library reference, plus
@@ -436,9 +445,20 @@ persistence audit owns checkpoint and cross-cluster restore parity.
 
 CreateLedger stages initial metadata in the canonical ledger-metadata keyspace in the same proposal as ledger identity, boundaries and initial schema. Committed metadata limits apply before staging; creation metadata requires no additional preload read and cannot mutate the audited order.
 
+New CreateLedger orders validate initial account-type segment constraints and
+equal-specificity pattern conflicts in sorted name order before allocating a
+ledger ID. The first error and failure audit entry must be replica-identical.
+Audit replay uses the historical creation rule for previously successful
+orders, including definitions newly rejected during apply. Successful new
+creations must reconstruct the same log under that historical replay rule.
+
 For normal and mirror creation, do rejection, proposal rollback and idempotent replay preserve initial metadata atomically without a second save, new metadata read dependency, duplicate allocation or order mutation?
 
-See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, nonempty checkpoint-plus-delta restore, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
+Do new CreateLedger orders reject invalid or conflicting initial account types
+without allocating a ledger ID, and does audit replay still reconstruct both
+those historical successful definitions and newly valid creations?
+
+See [the creation contract](../architecture/subsystems/api/atomic-ledger-creation.md) for the authorized semantics and regression evidence. Treat HTTP response/forwarding, actual FSM readback, keyed replay, second complete checkpoint after a meaningful mutation, and primary-projection tampering as separate evidence oracles; a helper-only test does not prove every boundary.
 
 ## Controlled drain apply boundary
 
@@ -456,6 +476,15 @@ on equivalent FSMs with cold and recovered state. Verify decision bytes, applied
 indexes and business/audit effects, then repeat across the supported rolling
 upgrade boundary. Preflight must reject an old member that cannot decode or
 apply these entries; the Raft audit owns that cluster admission gate.
+
+## Prepared-query target updates (EN-2601)
+
+An explicit `UpdatePreparedQueryOrder.target` changes the stored target and
+filter in one covered FSM mutation. The audit log carries both target values.
+An old order without the optional field retains its stored target and produces
+the historical filter-only log, including during audit replay. Compare the
+same committed order across voters at a supported upgrade boundary; target
+changes must not be admitted while old and new processors can coexist.
 
 ## Transaction account metadata address failures
 
@@ -536,3 +565,25 @@ rollback. The concurrency domain owns helper races and resource lifetimes.
 Do not infer linearizable shard size or snapshot semantics while writers are
 active: compare entries and counters at a controlled quiescent boundary, and
 establish the real synchronization contract before reporting a defect.
+
+## Generated reader ownership through oneofs
+
+Reader capability checks include `tools/protoc-gen-reader`, generated facades,
+and account-type consumers of cached ledger configuration. A reader must never
+return protoc's mutable oneof group wrapper, even when nested within another
+reader, map or list. Typed arm getters retain message-reader and defensive-copy
+semantics; discriminators preserve selected zero/empty, nil-message and typed-nil
+wrapper identity. `Mutate()` is the explicit deep-clone boundary. Borrowed views
+remain live: this contract does not make mutation through a retained raw owner
+safe or provide a snapshot. See [the reader contract](../contributing/protobuf.md#read-only-protobuf-views).
+
+Use the generator's descriptor-to-executable fixtures and the commonpb/raftcmdpb
+`reader_oneof_test.go` tests alongside existing immutability regressions. Exercise
+actual Order and Proposal batch/policy variants; traverse nested postings,
+metadata and configuration, mutate deep clones and compare original bytes.
+Include byte-arm copy isolation and inactive/default/nil arm access. Preserve
+the borrowed traversal allocation assertion and allocation benchmarks.
+`accounttype/validate_reader_test.go` must retain raw/reader validation parity,
+selected nil constraints, empty regex versus unset, and sorted error selection.
+These facade changes must not alter wire encoding, persisted state, raw FSM
+dispatch, coverage, or the existing proposal cutover boundary.

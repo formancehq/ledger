@@ -114,6 +114,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "admins",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: actions.StringMetadataFilter("role", "superadmin"),
 				}},
 			}))
@@ -129,6 +130,37 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			fieldCond := resp.Queries[0].Filter.GetField()
 			Expect(fieldCond).NotTo(BeNil())
 			Expect(fieldCond.GetStringCond().GetHardcoded()).To(Equal("superadmin"))
+		})
+
+		It("Should change target atomically and replay the same explicit update after recreation", func() {
+			filter, err := filterexpr.Parse("id == 7", commonpb.QueryTarget_QUERY_TARGET_LOGS)
+			Expect(err).To(Succeed())
+			target := commonpb.QueryTarget_QUERY_TARGET_LOGS
+			update := &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName, Name: "admins", Filter: filter, Target: target.Enum(),
+				},
+			}}
+			first, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("pq-target-change", update))
+			Expect(err).To(Succeed())
+			queries, err := sharedClient.ListPreparedQueries(sharedCtx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(queries.GetQueries()).To(HaveLen(1))
+			Expect(queries.GetQueries()[0].GetTarget()).To(Equal(target))
+			Expect(queries.GetQueries()[0].GetFilter().GetLogId()).NotTo(BeNil())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeletePreparedQueryAction(ledgerName, "admins")))
+			Expect(err).To(Succeed())
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreatePreparedQueryAction("admins", ledgerName, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)))
+			Expect(err).To(Succeed())
+			replayed, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("pq-target-change", update))
+			Expect(err).To(Succeed())
+			Expect(replayed.GetLogs()).To(Equal(first.GetLogs()))
+			queries, err = sharedClient.ListPreparedQueries(sharedCtx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(queries.GetQueries()).To(HaveLen(1))
+			Expect(queries.GetQueries()[0].GetTarget()).To(Equal(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+			expectStoreValid(sharedCtx, sharedClient)
 		})
 
 		It("Should delete the prepared query", func() {
@@ -927,14 +959,14 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			// alice received 100 USD (input=100, output=0)
 			usdVol, ok := volumesByAsset["USD"]
 			Expect(ok).To(BeTrue(), "expected USD volumes")
-			Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(100)))
-			Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+			Expect(usdVol.Input.DecimalString()).To(Equal("100"))
+			Expect(usdVol.Output.DecimalString()).To(Equal("0"))
 
 			// alice received 50 EUR (input=50, output=0)
 			eurVol, ok := volumesByAsset["EUR"]
 			Expect(ok).To(BeTrue(), "expected EUR volumes")
-			Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
-			Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+			Expect(eurVol.Input.DecimalString()).To(Equal("50"))
+			Expect(eurVol.Output.DecimalString()).To(Equal("0"))
 		})
 
 		It("Should create and update filterless queries with direct aggregation parity", func() {
@@ -974,6 +1006,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "admin-volumes",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: nil,
 				}},
 			}))
@@ -1133,6 +1166,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "has-asset-update",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: overflow,
 				}},
 			}))
@@ -1145,6 +1179,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Name:   "does-not-exist",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum(),
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				}},
 			}))

@@ -226,6 +226,23 @@ The boolean combinators are **direction-parameterized, not duplicated**: each is
 
 The filter compiler turns a `QueryFilter` proto into a tree of these. `Seek` is an **absolute** reposition to the first entity at or after the target *in the iterator's direction* — `AndIterator.Seek` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
+### Current accounts and historical address matches
+
+An exact address filter on TRANSACTIONS reads the selected ANY, SOURCE or
+DESTINATION mapping even when the account has no remaining primary-store
+volume or metadata attributes. These mappings describe historical postings,
+so purging an EPHEMERAL account's volume cells does not remove its funding or
+draining transactions from exact address search. Both hardcoded and
+parameterized exact matches follow this rule in either sort direction. The
+normal index readiness, projection alignment and main-store horizon gates
+still apply.
+
+Exact address filters on ACCOUNTS continue checking current primary-store
+attributes. Prefix address filters on either target enumerate current accounts
+before consulting mappings; they do not expand over historical-only addresses.
+The exact transaction path still uses the materialized address union described
+below, with the existing construction cost and pagination behavior.
+
 ### Direction is compiled, not applied afterwards
 
 The compiler has two entry points over one recursion shape: `query.Compile` builds the ascending tree, `query.CompileReverse` (`internal/query/compile_reverse.go`) builds the descending one, out of the shared combinators and the direction-specific leaves. `listDescFiltered` therefore has the same shape as `listAscending` — compile, trim to the main-store horizon, hand to `PaginateReverse` — and a descending page seeks to its cursor and stops after the lookahead.
@@ -302,6 +319,11 @@ Every paged list exchanges **page tokens** built by `pkg/pagecursor`. A token is
 | Prepared queries | decimal id for TRANSACTIONS / LOGS targets, address for ACCOUNTS |
 | Index inspection | base64url of the encoded metadata value |
 
+For transaction lists, an empty key means no position. The decimal key `"0"` is
+an exclusive position at transaction ID zero, which can exist in mirror
+ledgers. Direct HTTP and gRPC reads preserve this distinction through routing;
+prepared LIST queries apply the same rule.
+
 Both directions are exclusive of the key and always return rows in the **requested** order (`reverse` included):
 
 | Token | Page served |
@@ -355,8 +377,8 @@ and account enumeration. Accounts containing only metadata contribute no volume
 rows. Any non-nil filter retains the compiled candidate-account path followed by
 per-account volume scans through `AggregateVolumes`; empty or parameterized
 filters do not qualify for the nil-filter shortcut. Both paths sum per asset at
-request time, with the same uint256 overflow checks and no precomputed aggregate
-table. The shortcut runs after the ledger and prepared-query definition have
+request time into exact totals that may exceed 2^256, with no precomputed
+aggregate table. The shortcut runs after the ledger and prepared-query definition have
 been loaded and the mode validated through the reserved main-store handle.
 It releases the event-history reservation before scanning volumes and opens no
 read-index snapshot. The controller's read barrier and the fixed main-store

@@ -53,10 +53,11 @@ PVC/PV deletion protection additionally needs the
 [`ValidatingAdmissionPolicy` API](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/)
 (stable since 1.30); the chart skips the policy
 when that API is absent and warns that deletion protection is inactive. The
-operator has no established, tested minimum Kubernetes version. The E2E kind
-configuration does not pin a Kubernetes node version, so it cannot establish
-one either. These feature milestones are not a compatibility test of the whole
-operator.
+operator requires Kubernetes 1.32 or later for BackupRun parent field
+selection. Install updated CRDs declaring `.spec.backupRef` in
+`selectableFields` before starting the operator. The API-server regression
+suite uses Kubernetes 1.32.x; the E2E kind configuration does not pin a node
+version and does not establish compatibility with older versions.
 
 Install the operator and its CRD dependency, then start from the maintained
 [Cluster sample](../../misc/operator/config/samples/ledger_v1alpha1_cluster.yaml):
@@ -174,7 +175,7 @@ Translate the customer's recovery promise into an operating procedure:
 
 | Objective | Deployment decision | Validation |
 |-----------|---------------------|------------|
-| RPO | Run incremental backups at least as often as the maximum acceptable data-loss window. Store them outside the cluster failure domain. | Verify backup completion and retention; a configured job without a successful artifact does not meet the RPO. |
+| RPO | Run checkpoint backups at least as often as the maximum acceptable data-loss window. Store them outside the cluster failure domain. | Verify backup completion and retention; a configured job without a successful artifact does not meet the RPO. |
 | RTO | Choose online restore or offline bootstrap from the measured recovery path, dataset size, download bandwidth, and rebuild time. | Time a full restore of production-sized data and compare the result with the promised RTO. |
 | Disaster readiness | Retain the credentials, encryption keys, manifests, and versioned binary needed to restore into a fresh environment. | Run a restore exercise after material storage, version, credential, or topology changes, and at a regular customer-approved cadence. |
 

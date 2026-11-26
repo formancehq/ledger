@@ -36,6 +36,88 @@ func newPromotionHarness(t *testing.T) *realIndexHarness {
 	return &realIndexHarness{t: t, scheme: scheme, ledger: ledger}
 }
 
+func TestLedgerCreateAlreadyExistsObservesMode(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, createdMode, desiredMode, wantMode string
+		wantReady                                bool
+	}{
+		{"mirror to normal", "MIRROR", "normal", "mirror", false},
+		{"mirror to default normal", "MIRROR", "", "mirror", false},
+		{"normal to mirror", "NORMAL", "mirror", "normal", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newPromotionHarness(t)
+			h.ledger.Status = ledgerv1alpha1.LedgerCRDStatus{}
+			if tt.createdMode == "MIRROR" {
+				h.ledger.Spec.Mode = "mirror"
+				h.ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{HTTP: &ledgerv1alpha1.HTTPMirrorSource{BaseURL: "https://example.com"}}
+			}
+			c := h.client(interceptor.Funcs{})
+			reads, creates, promotions := 0, 0, 0
+			r := h.controller(c)
+			exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
+				if strings.Contains(command[2], "'ledgers' 'create'") {
+					creates++
+					if creates == 1 {
+						return nil, context.DeadlineExceeded // Creation committed; the response was lost.
+					}
+
+					return nil, errors.New("ledger already exists")
+				}
+				if strings.Contains(command[2], "'ledgers' 'promote'") {
+					promotions++
+
+					return &execResult{}, nil
+				}
+				require.Contains(t, command[2], "'ledgers' 'get'")
+				require.Contains(t, command[2], "'--consistency' 'linearizable'")
+				require.Contains(t, command[2], "'--checkpoint-id' '0'")
+				reads++
+
+				return &execResult{Stdout: `{"name":"promotion","mode":"` + tt.createdMode + `"}`}, nil
+			}
+			r.exec = exec
+			result, err := r.Reconcile(t.Context(), h.request())
+			require.NoError(t, err)
+			require.Positive(t, result.RequeueAfter)
+			stored := h.read(c)
+			require.NotEqual(t, ledgerv1alpha1.LedgerPhaseReady, stored.Status.Phase)
+			stored.Spec.Mode = tt.desiredMode
+			if tt.desiredMode == "mirror" {
+				stored.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{HTTP: &ledgerv1alpha1.HTTPMirrorSource{BaseURL: "https://example.com"}}
+			}
+			require.NoError(t, c.Update(t.Context(), stored))
+			r = h.controller(c)
+			r.exec = exec // Preserve the response sequence across controller restart.
+			result, err = r.Reconcile(t.Context(), h.request())
+			require.NoError(t, err)
+			require.Equal(t, 2, creates)
+			require.Equal(t, 1, reads)
+			stored = h.read(c)
+			require.Equal(t, tt.wantMode, stored.Status.Mode)
+			require.Empty(t, stored.Status.AppliedSpecHash)
+			require.Equal(t, tt.wantReady, stored.Status.Phase == ledgerv1alpha1.LedgerPhaseReady)
+			condition := meta.FindStatusCondition(stored.Status.Conditions, conditionLedgerSynced)
+			require.NotNil(t, condition)
+			require.Equal(t, "False", string(condition.Status))
+			require.True(t, result.Requeue || result.RequeueAfter > 0)
+			if tt.createdMode == "MIRROR" {
+				result, err = r.Reconcile(t.Context(), h.request())
+				require.NoError(t, err)
+				require.True(t, result.Requeue)
+				require.Equal(t, 1, promotions)
+				stored = h.read(c)
+				require.Equal(t, "normal", stored.Status.Mode)
+				require.Equal(t, computeLedgerSpecHash(&stored.Spec), stored.Status.AppliedSpecHash)
+			} else {
+				require.Zero(t, promotions)
+			}
+		})
+	}
+}
+
 func TestLedgerPromotionObservationFailuresRecover(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {

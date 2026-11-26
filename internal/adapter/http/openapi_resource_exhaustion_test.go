@@ -37,6 +37,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 		{http.MethodDelete, "/v3/{ledgerName}", ""},
 		{http.MethodPost, "/v3/{ledgerName}/promote", ""},
 		{http.MethodPut, "/v3/{ledgerName}/numscripts/{name}", `{"content":"send [USD 1] ( source = @world destination = @alice )","version":"1.0.0"}`},
+		{http.MethodPost, "/v3/{ledgerName}/numscripts/execute", `{"script":{"plain":"set_account_meta(@alice, \"tier\", \"gold\")"}}`},
 		{http.MethodPost, "/v3/{ledgerName}/indexes", `{"id":"metadata:TARGET_TYPE_ACCOUNT:color"}`},
 		{http.MethodDelete, "/v3/{ledgerName}/indexes/{canonicalId}", ""},
 		{http.MethodPost, "/v3/{ledgerName}/transactions", `{"postings":[{"source":"world","destination":"alice","asset":"USD","amount":1}]}`},
@@ -53,7 +54,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 		{http.MethodDelete, "/v3/{ledgerName}/account-types/{typeName}", ""},
 		{http.MethodPut, "/v3/{ledgerName}/account-types/default-enforcement-mode", `{"enforcementMode":"AUDIT"}`},
 		{http.MethodPost, "/v3/{ledgerName}/prepared-queries", `{"name":"query","target":"ACCOUNTS"}`},
-		{http.MethodPut, "/v3/{ledgerName}/prepared-queries/{queryName}", `{"filter":{"$exists":{"metadata":"approved"}}}`},
+		{http.MethodPut, "/v3/{ledgerName}/prepared-queries/{queryName}", `{"target":"ACCOUNTS","filter":{"$exists":{"metadata":"approved"}}}`},
 		{http.MethodDelete, "/v3/{ledgerName}/prepared-queries/{queryName}", ""},
 	}
 	failures := []struct {
@@ -84,7 +85,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 						}
 						backend := NewMockBackend(gomock.NewController(t))
 						backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, backendError)
-						handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+						handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
 						path := strings.NewReplacer(
 							"{ledgerName}", "ledger1", "{name}", "script", "{canonicalId}", "metadata:TARGET_TYPE_ACCOUNT:color",
 							"{transactionId}", "1", "{address}", "alice", "{key}", "approved", "{targetType}", "account",
@@ -110,7 +111,7 @@ func TestOpenAPI_WriteResourceExhaustion(t *testing.T) {
 	// processing envelope and must not share the request-level JSON component.
 	for path, item := range doc.Paths.Map() {
 		for method, operation := range item.Operations() {
-			if method == http.MethodGet || strings.HasSuffix(path, "/execute") {
+			if method == http.MethodGet || path == "/v3/{ledgerName}/prepared-queries/{queryName}/execute" {
 				require.Nil(t, operation.Responses.Status(http.StatusTooManyRequests), "%s %s has no demonstrated exhaustion branch", method, path)
 			}
 		}

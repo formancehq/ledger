@@ -27,8 +27,8 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    checkpoint log, and waits for the audit projection certificate to cover the
    same `H`. Cross-cluster restore explicitly marks every surviving
    `QueryCheckpointState` as `restored_from_backup`: `PrepareForBackup` marks
-   rows carried by the full checkpoint and `RebuildDelta` marks rows rebuilt
-   from incremental logs. The builder consumes that durable provenance instead
+   rows carried by the complete checkpoint. The builder consumes that durable
+   provenance instead
    of comparing unrelated source- and destination-cluster Raft numbers. It
    withholds an intermediate normal certificate for a restored checkpoint and
    only publishes the captured restored-store target after folding its complete

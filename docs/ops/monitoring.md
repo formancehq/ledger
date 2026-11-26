@@ -224,16 +224,18 @@ HTTP server metrics are provided by `go-libs/httpserver` instrumentation.
 
 ## Apply Path Metrics
 
-A write batch reaches the controller through the gRPC Apply handler.
+A write batch reaches the controller through the shared Apply handler. HTTP
+atomic Apply calls this handler directly, so its latency is included.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `grpc.apply.duration` | Histogram | s | Total duration of the gRPC Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Recorded on every exit, failures included; a panic recovered by the gRPC server counts as `error`. |
+| `grpc.apply.duration` | Histogram | s | Total duration of the shared Apply handler: forwarded identity, `ctrl.Apply`, checkpoint wait and response signing. Includes gRPC and HTTP atomic Apply calls, distinguished by `transport`. Recorded on every exit, failures included; a panic recovered by the gRPC server counts as `error`. |
 | `ctrl.apply.duration` | Histogram | s | Duration of a batch's admission in the controller. Recorded whenever admission returns, failures included; a panic during admission is not recorded here. |
 
 **Attributes**:
 - `batch_size`: number of requests in the batch
 - `status`: `success` or `error`; filter on `success` for latency SLOs, since fast rejections pull the error distribution down
+- `transport`: `grpc` or `http` for `grpc.apply.duration`; filter on `grpc` to preserve gRPC-only latency views
 
 ## Raft Consensus Metrics
 
@@ -249,6 +251,24 @@ A write batch reaches the controller through the gRPC Apply handler.
 
 **Attributes** (`raft.fsm.preload.coverage_misses`):
 - `kind`: attribute kind of the undeclared key
+
+### Log Integrity Metrics
+
+The leader compares bounded ranges of persisted global logs after peers reach
+the sampled durable Raft index. See [log integrity observation](../technical/architecture/subsystems/consensus/log-integrity.md)
+for its coverage and limitations.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `log_integrity.divergences` | Counter | `{range}` | Persisted log ranges that differ from a peer at the same applied horizon. **Alert if non-zero.** |
+| `log_integrity.local_data_loss` | Counter | `{range}` | Local range checks that find missing or malformed log data. **Alert if non-zero.** |
+| `log_integrity.unavailable_attempts` | Counter | `{attempt}` | Peer comparisons that could not complete because of lag, transport failure, or protocol incompatibility. Sustained growth means lost coverage. |
+| `log_integrity.checked_logs` | Counter | `{log}` | Logs successfully compared with a peer; one log compared with two peers counts twice. |
+| `log_integrity.comparison.duration` | Histogram | s | Time from local digest calculation through a successful peer comparison. |
+
+`peer_id` identifies the compared Raft member on peer metrics;
+`log_integrity.unavailable_attempts` also has a `reason` label with the gRPC
+status or local connection/response reason.
 
 ### Node Metrics
 

@@ -61,17 +61,19 @@ generated descriptors and authoritative documentation at the audited SHA.
 | C — Public projection | API docs define public error sanitization; handlers and service RPCs return ledger, sink, mirror, audit and log representations. The active projection stack is expected to centralize secret removal before wire encoding. Inventory get/list, HTTP/gRPC, unary/streaming and local/forwarded paths separately. | Authorization is owned by `authentication-authorization-boundaries`. API field presence, numbering and HTTP/gRPC parity unrelated to secrecy are owned by `api-boundary-contracts`. An authorized caller still must not receive fields the public contract redacts. |
 | D — Diagnostics and telemetry | `http-api.md` permits raw causes in correlated server diagnostics, but this is not permission to record credentials. `internal/adapter/apitrace`, HTTP recovery/error handling, gRPC encoding, sink failure state, logger adapters and `internal/infra/monitoring` are the propagation anchors. | Useful error context and correlation identifiers should remain. Generic log quality, cardinality and observability completeness are outside scope unless they create a confidentiality path. |
 | E — Authoritative versus projected data | Audit entries and ledger logs are chain-bound business truth; events and mirror configuration may derive from the authoritative form. Read projections must be detached and must not mutate signed, hashed, persisted, replayed or subsequently emitted objects. Use deterministic audit bytes/hash and later-consumer observations as controls. | Audit/checker soundness, event acknowledgement/cursor behavior and mirror source equivalence retain their existing owners unless the failure is caused by redaction or disclosure. |
-| F — Backup and export | Backup documentation defines checkpoints, exported deltas and restore metadata. Inspect whether broad configuration or wrapped errors introduce runtime credentials into artifacts, manifests or status surfaces, and distinguish this from explicitly durable business configuration. | Restore parity belongs to `persistence-restore-replay`; lexical and final-operation path containment belongs to `filesystem-confinement-contracts`. Do not turn content inspection into archive traversal testing. |
+| F — Backup and restore | Backup documentation defines complete checkpoints and restore metadata. Inspect whether broad configuration or wrapped errors introduce runtime credentials into artifacts, manifests or status surfaces, and distinguish this from explicitly durable business configuration. | Restore parity belongs to `persistence-restore-replay`; lexical and final-operation path containment belongs to `filesystem-confinement-contracts`. Do not turn content inspection into archive traversal testing. |
 | G — Operator secret surfaces | Kubernetes `Secret` objects and `kubectl ledger credentials get-key` intentionally carry secret bytes. Ordinary CR spec/status, Events, Conditions, ConfigMaps, pod metadata, controller logs and general display commands should expose only references, public material, hashes with a justified internal purpose or documented presence markers. | Whether a Kubernetes identity may read a Secret is an RBAC/auth question. Secret creation, rotation and reconciliation durability remain operator/auth/configuration concerns unless they emit the value to an unintended surface. |
 | H — Completeness and non-reversibility | The preparation base's `Config.redactedCopy`, JSON/YAML marshalers and redaction regression tests demonstrate value/pointer and absent/present requirements. The same deny-by-default principle must cover every registered variant and actual encoder. | Omission, a fixed placeholder or a presence boolean may be valid. Secret-dependent public lengths, prefixes, encodings or guessable digests are disclosures when they materially reveal the value; internal rollout hashes are not public output by default. |
 | I — Root-cause ownership | Assign the finding to the earliest component that wrongly serializes, retains in public state or passes the secret into an unsafe diagnostic. Later transports are evidence, not duplicate causes. | Auth decisions, filesystem containment, general API parity and event delivery have dedicated manifests. Cross-domain paths are valid evidence but must not multiply one defect into several findings. |
+
+Outbound event checks use credential-bearing created-ledger logs. Encode the projected event as JSON and protobuf, require raw and encoded canary absence while retaining event type, sequence, ledger name and safe mirror fields, and compare the original committed log before and after projection. Sink-configuration logs map to an unspecified event type and must be filtered before publication; they are not a redaction oracle. Trace HTTP, NATS and Kafka publication from the shared event constructor; ClickHouse and Databricks use their reduced analytical projection. Event acknowledgement and cursor movement remain owned by the event-delivery domain.
 
 ### Operator backup credential oracle (EN-2060)
 
 `BackupDestination.s3AccessKeyIdFrom` and `s3SecretAccessKeyFrom` carry only
 same-namespace Secret name/key references. `buildBackupJob` emits non-optional
-`secretKeyRef` environment entries. Exercise full and incremental reconciliation
-and JSON/YAML serialization of Backup, BackupRun, Job and Pod template with
+`secretKeyRef` environment entries. Exercise scheduled and manual checkpoint
+reconciliation and JSON/YAML serialization of Backup, BackupRun, Job and Pod template with
 separate synthetic key canaries and a retained bucket control. Require no raw
 or serialized/encoded credentials in these resources or S3 command arguments.
 Then exercise the production `ledgerctl` environment binder and storage protobuf
@@ -80,6 +82,10 @@ must preserve the server's default AWS credential chain. Fake clients prove the
 rendered Pod template, not kubelet resolution or actual Pod propagation.
 
 ### CLI sink URL credential projection
+
+The shared sink configuration gate in
+`internal/application/admission/validate_order_sink_config.go` still validates
+URLs before consensus without including raw URLs in validation diagnostics.
 
 `ledgerctl events list` and the successful local `events add-sink` summary are
 independent credential-emitting boundaries: a server-side projection does not
@@ -111,6 +117,48 @@ invalid options. Parsing must fail before source database access. These errors
 occur before worker startup; do not claim worker-status replication coverage.
 The adapter and manager diagnostic tests own this oracle; admission's mirror
 configuration test preserves the accepted non-IAM trigger.
+
+## Explicit connection-format projection oracle
+
+`internal/pkg/sensitive/strategies.go` selects PostgreSQL, NATS, ClickHouse or
+HTTP(S) policy by full protobuf field identity. Enumerate all `sensitive_url`
+declarations independently and require a safe representative output for each;
+an unregistered annotated field must be fully masked. PostgreSQL keyword syntax
+is unsupported by projection and must be fully masked for every field. New
+PostgreSQL mirror configurations must fail admission before proposal unless they
+have a generic hierarchical URL shape with an explicit scheme. Unknown and
+uppercase schemes must pass this shape gate, without invoking the PostgreSQL
+driver or reading ambient libpq settings. The worker owns driver-option and IAM
+TLS enforcement before credentials are installed. NATS/ClickHouse sink
+configurations must use their declared connector URL forms. Errors must never echo
+raw input or credential-bearing URL parser errors; exercise the real admission
+path and require the original configuration to remain unchanged. Exercise real
+`Redact` descriptors and registered public boundaries, not a replacement parser.
+
+Preserve PostgreSQL URL/socket controls, including a port-only authority with a
+query-selected socket host, and NATS default-host/port-only URLs. Require safe
+port-only NATS values to survive byte-for-byte so operator equality does not
+remove unchanged persisted sinks; retain token/password masking independently.
+Pathless empty authorities must retain the explicit URL form. Cover the
+upper boundary for named hosts, IPv6 hosts and port-only authorities: 65535
+remains accepted and safely projected, while 65536 is rejected before proposal
+with a credential-free error and fully masked on read. Repeat the boundary
+for each position in a comma-separated ClickHouse authority and reject malformed
+non-final ports while preserving valid multi-host configuration.
+Preserve full masking of legacy keyword
+DSNs, including duplicate/escaped passwords and sslpassword; NATS mixed-scheme lists and bare tokens; ClickHouse
+multi-host authorities, HTTP transport and encoded HTTP proxy credentials;
+HTTP(S) passwordless userinfo; malformed URLs/queries; unsupported cross-format
+values; and depth-exhausted proxies. Each query layer is decoded once and proxy
+nesting is bounded at eight edges. Decode the projected chain to prove the leaf
+at exactly eight edges remains a sanitized URL, while the ninth edge is replaced
+wholesale with `xxxxx`, including for deeper chains. Canary absence alone does
+not prove the traversal bound. Keep safe hosts/paths/options when supported;
+fixed markers are expected for unsupported formats and malformed components.
+Retain current/checkpoint gRPC, routed HTTP and CLI output regressions. Compare
+original protobufs and detached nested slices before/after projection. No worker,
+sink, persistence or signed/audit bytes may be mutated. Strategy regressions live
+in `internal/pkg/sensitive/strategies_test.go` and `projection_test.go`.
 
 ## Surface inventory required at execution
 
@@ -246,10 +294,14 @@ external secret storage are outside this revision.
 ## LedgerInfo read oracle (EN-1635 / EN-2780)
 
 Seed OAuth secrets, HTTP source/OAuth endpoint URL passwords and passwordless
-HTTP(S) userinfo tokens, and PostgreSQL URL/query/keyword passwords, including escaped
-quotes, duplicate passwords, sslpassword, empty and malformed inputs. Exercise
-routed HTTP get/list and actual service current/checkpoint get/list controllers
-and streams. Serialized canaries must be absent, non-secret connection/OAuth/IAM
+HTTP(S) userinfo tokens, and PostgreSQL URL/query passwords and legacy keyword
+DSNs, including escaped quotes, duplicate passwords, sslpassword, empty and
+malformed inputs. Exercise routed HTTP get/list and actual service
+current/checkpoint get/list controllers
+and streams. Serialized canaries must be absent. Non-secret connection fields
+must survive for supported URL forms; legacy PostgreSQL keyword DSNs and other
+unsupported or malformed formats must be fully replaced with `[redacted]`,
+without requiring their connection metadata to survive. Non-secret OAuth/IAM
 fields must survive, and original nested scopes/configuration must remain intact
 for internal consumers. The shared projection uses the EN-1632/#1977 annotation
 contract; check deep clones and unknown-field removal. Configuration projection

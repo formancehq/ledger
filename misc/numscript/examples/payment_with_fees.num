@@ -1,5 +1,5 @@
 // Payment with platform fee
-// Usage: ledgerctl transactions create --ledger my-ledger --script payment_with_fees.num \
+// Usage: ledgerctl numscripts execute --ledger my-ledger --file payment_with_fees.num \
 //        --var "buyer=@users:alice" --var "seller=@merchants:shop" \
 //        --var "platform=@platform:fees" --var "amount=EUR/2 100"
 

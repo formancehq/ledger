@@ -30,7 +30,7 @@ func (t sinkTime) MarshalJSON() ([]byte, error) {
 // sinkEventData is the flattened event payload stored in analytical sinks.
 // Fields are populated based on the event type; unused fields are omitted.
 type sinkEventData struct {
-	// COMMITTED_TRANSACTION
+	// COMMITTED_TRANSACTION / ACCOUNT_METADATA_UPDATED
 	Transaction     *sinkTransaction             `json:"transaction,omitempty"`
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 
@@ -89,15 +89,20 @@ type sinkPosting struct {
 // sinks (ClickHouse, Databricks). The output uses proper Go types so
 // encoding/json produces values that match the expected column types.
 func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
+	return json.Marshal(eventToSinkData(event))
+}
+
+// eventToSinkData builds the shared typed analytical projection without encoding it.
+func eventToSinkData(event *eventspb.Event) sinkEventData {
 	data := sinkEventData{}
 
 	log := event.GetLog()
 	if log == nil {
-		return json.Marshal(data)
+		return data
 	}
 
 	if log.GetPayload() == nil {
-		return json.Marshal(data)
+		return data
 	}
 
 	switch p := log.GetPayload().GetType().(type) {
@@ -130,7 +135,7 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 		data.SinkName = &p.RemovedEventsSink.Name
 	}
 
-	return json.Marshal(data)
+	return data
 }
 
 // ---------- Helpers ----------
@@ -152,6 +157,9 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.SavedMetadata.GetTarget())
 		data.Metadata = sinkConvertMetadata(lp.SavedMetadata.GetMetadata())
+
+	case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+		data.AccountMetadata = sinkConvertAccountMetadataMap(lp.AccountMetadataUpdated.GetAccountMetadata())
 
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.DeletedMetadata.GetTarget())

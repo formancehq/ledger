@@ -5,8 +5,9 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -25,6 +26,7 @@ func TestScaleDownPVCDeletionRecoversAfterReplicaPersistence(t *testing.T) {
 	ledger.UID = types.UID(namespace + "-cluster")
 	applyDefaults(ledger)
 	ledger.Spec.Persistence.DeletionProtection = new(false)
+	ledger.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenScaled: "Delete", WhenDeleted: "Retain"}
 	clientset, err := kubernetes.NewForConfig(testEnv.Config)
 	require.NoError(t, err)
 	intercept := &failFirstScaleDownPVCDelete{Interface: clientset, t: t, namespace: namespace, name: resourceName(ledger.Name)}
@@ -43,7 +45,7 @@ func TestScaleDownPVCDeletionRecoversAfterReplicaPersistence(t *testing.T) {
 		createScaleDownReconcilePod(t, clientset, owner, podName(ledger.Name, ordinal), corev1.PodRunning)
 		for _, volume := range []string{"wal", "data"} {
 			_, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, &corev1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)},
+				ObjectMeta: scaleDownReconcileClaimMetadata(t, clientset, namespace, resourceName(ledger.Name), volume, ordinal),
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 					Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}},
@@ -61,6 +63,7 @@ func TestScaleDownPVCDeletionRecoversAfterReplicaPersistence(t *testing.T) {
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resourceName(ledger.Name)}, sts))
 	require.EqualValues(t, 1, *sts.Spec.Replicas, "replica reduction must commit before the injected failure")
 	require.Equal(t, "3", sts.Annotations[annotationScaleDownPVCFrom])
+	require.NotEmpty(t, sts.Annotations[annotationScaleDownPVCPlan])
 
 	// A new reconciler has no memory of the failed attempt. It must use the
 	// persisted StatefulSet marker and delete both removed ordinals.
@@ -71,6 +74,7 @@ func TestScaleDownPVCDeletionRecoversAfterReplicaPersistence(t *testing.T) {
 	require.Equal(t, 5, intercept.attempts)
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resourceName(ledger.Name)}, sts))
 	require.NotContains(t, sts.Annotations, annotationScaleDownPVCFrom)
+	require.NotContains(t, sts.Annotations, annotationScaleDownPVCPlan)
 	_, err = reconciler.reconcileStatefulSetWithExec(ctx, ledger, "scaled", nil, fixture.exec)
 	require.NoError(t, err)
 	require.Equal(t, 5, intercept.attempts, "completed cleanup must not run again")

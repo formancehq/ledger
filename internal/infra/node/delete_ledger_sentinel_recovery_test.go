@@ -50,6 +50,9 @@ func TestDeleteLedgerSentinelRecovery(t *testing.T) {
 				// transactions, so recovery restores the same metadata limits.
 				var initial raftcmdpb.Proposal
 				require.NoError(t, initial.UnmarshalVT(createDeleted.GetData()))
+				// This fixture models historical mixed policy/business entries.
+				initial.Orders = initial.GetBatch().GetOrders()
+				initial.Payload = nil
 				initial.Orders = append([]*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
 					SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
 						SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{Policy: &commonpb.ClusterPolicy{
@@ -170,7 +173,7 @@ func newSentinelApplier(t *testing.T, dir string, sentinelMode bool) (*testAppli
 	registry := state.NewStateRegistry(c, attributes.New())
 	fsm, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil),
 		s, dal.NewSentinelFactory(s, sentinelMode), provider, nil, state.NewSharedState(), newNoopNotifier(t), nil,
-		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 	require.NoError(t, err)
 	recovery := state.NewRecovery(fsm, s)
 	require.NoError(t, recovery.RecoverState())

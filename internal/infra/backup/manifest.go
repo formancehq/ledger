@@ -9,14 +9,63 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 )
 
-// Manifest describes the current state of a backup, combining a full checkpoint
-// with incremental log/audit exports.
+// Manifest describes the published checkpoint. Exports and ClusterPolicy are
+// retained only to decode and reject legacy backup artifacts during restore.
 type Manifest struct {
 	Checkpoint *CheckpointManifest `json:"checkpoint"`
 	Exports    []ExportSegment     `json:"exports"`
+	// ClusterPolicy is a legacy out-of-band policy override. Current checkpoints
+	// include the policy directly in Pebble and do not write this field.
+	ClusterPolicy *ClusterPolicySnapshot `json:"clusterPolicy,omitempty"`
+}
+
+// ClusterPolicySnapshot is the legacy policy-only backup representation.
+type ClusterPolicySnapshot struct {
+	AppliedIndex        uint64 `json:"appliedIndex"`
+	Data                []byte `json:"data"` // deterministic ClusterPolicy protobuf bytes
+	ConfigurationAbsent bool   `json:"-"`
+}
+
+type controlStateSnapshotData struct {
+	Version             uint32 `json:"version"`
+	Policy              []byte `json:"policy"`
+	ConfigurationAbsent bool   `json:"configurationAbsent,omitempty"`
+}
+
+func (snapshot ClusterPolicySnapshot) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		AppliedIndex uint64                   `json:"appliedIndex"`
+		Data         controlStateSnapshotData `json:"data"`
+	}{AppliedIndex: snapshot.AppliedIndex, Data: controlStateSnapshotData{Version: 1, Policy: snapshot.Data, ConfigurationAbsent: snapshot.ConfigurationAbsent}})
+}
+
+func (snapshot *ClusterPolicySnapshot) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		AppliedIndex uint64          `json:"appliedIndex"`
+		Data         json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	snapshot.AppliedIndex = wire.AppliedIndex
+	if len(wire.Data) != 0 && wire.Data[0] == '{' {
+		var payload controlStateSnapshotData
+		if err := json.Unmarshal(wire.Data, &payload); err != nil {
+			return err
+		}
+		if payload.Version != 1 {
+			return fmt.Errorf("unsupported control-state snapshot version %d", payload.Version)
+		}
+		snapshot.Data = payload.Policy
+		snapshot.ConfigurationAbsent = payload.ConfigurationAbsent
+
+		return nil
+	}
+	snapshot.ConfigurationAbsent = false
+
+	return json.Unmarshal(wire.Data, &snapshot.Data)
 }
 
 // CheckpointManifest describes a full Pebble checkpoint upload.
@@ -88,7 +137,7 @@ func (cf CheckpointFile) CopyVerified(dst io.Writer, src io.Reader) (int64, erro
 	return n, nil
 }
 
-// ExportSegment describes a single incremental export segment stored on S3.
+// ExportSegment describes a legacy incremental export segment stored on S3.
 type ExportSegment struct {
 	Type     string `json:"type"` // "log", "audit", "auditItem", or "appliedProposal"
 	StartSeq uint64 `json:"startSeq"`
@@ -96,50 +145,6 @@ type ExportSegment struct {
 	Key      string `json:"key"` // S3 object key
 	Size     int64  `json:"size"`
 }
-
-// LastExportLogSequence returns the highest exported log sequence,
-// checking exports first then falling back to the checkpoint.
-func (m *Manifest) LastExportLogSequence() uint64 {
-	for _, v := range slices.Backward(m.Exports) {
-		if v.Type == "log" {
-			return v.EndSeq
-		}
-	}
-
-	if m.Checkpoint != nil {
-		return m.Checkpoint.LastLogSequence
-	}
-
-	return 0
-}
-
-// LastExportAuditSequence returns the highest exported audit sequence,
-// checking exports first then falling back to the checkpoint.
-func (m *Manifest) LastExportAuditSequence() uint64 {
-	for _, v := range slices.Backward(m.Exports) {
-		if v.Type == "audit" {
-			return v.EndSeq
-		}
-	}
-
-	if m.Checkpoint != nil {
-		return m.Checkpoint.LastAuditSequence
-	}
-
-	return 0
-}
-
-// ErrNoFullCheckpoint is returned by RunIncrementalBackup when the destination
-// manifest has no full checkpoint (Checkpoint == nil): either the destination is
-// empty/fresh, or it holds an export-only manifest. An incremental backup is
-// only meaningful on top of a full checkpoint — the checkpoint is what carries
-// the Global-zone persisted config, last-applied index, and timestamp that
-// restore needs to build a valid store. Publishing export-only segments against
-// a checkpoint-less manifest would produce an artifact restore cannot turn into
-// a store, so the incremental path fails fast and asks for a full backup first.
-var ErrNoFullCheckpoint = errors.New(
-	"backup: incremental backup requires an existing full checkpoint; " +
-		"none found at the destination — run a full backup before any incremental backup")
 
 // ReadManifest reads and decodes a manifest from storage.
 func ReadManifest(ctx context.Context, storage Storage, key string) (*Manifest, error) {
@@ -167,6 +172,20 @@ func DecodeManifest(data []byte) (*Manifest, error) {
 	}
 
 	return &manifest, nil
+}
+
+// ValidateCheckpointOnlyManifest rejects backup formats that require the
+// removed export replay path. Both restore entry points call this before
+// creating or activating staging state.
+func ValidateCheckpointOnlyManifest(manifest *Manifest) error {
+	if len(manifest.Exports) != 0 || manifest.ClusterPolicy != nil {
+		return errors.New("incremental backup manifests are no longer supported; take a new checkpoint backup")
+	}
+	if manifest.Checkpoint == nil || len(manifest.Checkpoint.Files) == 0 {
+		return errors.New("backup manifest contains no checkpoint files")
+	}
+
+	return nil
 }
 
 // WriteManifest encodes and writes a manifest to storage.

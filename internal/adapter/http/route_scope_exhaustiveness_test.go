@@ -69,8 +69,8 @@ type routeScope struct {
 }
 
 // probeMethod is the method to send for a row: anyMethod rows share one handler
-// and one middleware chain across all 9 methods, so one representative method
-// asserts everything the other 8 would.
+// and one middleware chain across all methods, so one representative method
+// asserts everything the others would.
 func (row routeScope) probeMethod() string {
 	if row.anyMethod {
 		return http.MethodGet
@@ -85,6 +85,7 @@ var anyMethodMethods = []string{
 	http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead,
 	http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut,
 	http.MethodTrace,
+	"QUERY", // Supported by chi since v5.4.0.
 }
 
 // expectedRouteScopes is the declared route-to-scope contract for the REST
@@ -121,8 +122,8 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodGet, "/debug/pprof/profile", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/debug/pprof/symbol", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/debug/pprof/trace", kindGuarded, internalauth.ScopeOpsRead, false},
-		// These six use r.Handle, so they answer all 9 methods. anyMethod
-		// declares that fan-out instead of hiding it behind 54 rows. If they
+		// These six use r.Handle, so they answer all methods. anyMethod
+		// declares that fan-out instead of repeating each method's rows. If they
 		// ever become r.Get, drop the flag and the table diff records it.
 		{"*", "/debug/pprof/allocs", kindGuarded, internalauth.ScopeOpsRead, true},
 		{"*", "/debug/pprof/block", kindGuarded, internalauth.ScopeOpsRead, true},
@@ -185,6 +186,7 @@ func expectedRouteScopes() []routeScope {
 
 		// --- Transactions write, requireTransactionsWrite (handler.go:182-185) ---
 		{http.MethodPost, "/v3/{ledgerName}/transactions", kindGuarded, internalauth.ScopeTransactionsWrite, false},
+		{http.MethodPost, "/v3/{ledgerName}/numscripts/execute", kindGuarded, internalauth.ScopeExecuteNumscript, false},
 		{http.MethodPost, "/v3/{ledgerName}/transactions/{transactionId}/revert", kindGuarded, internalauth.ScopeTransactionsWrite, false},
 
 		// --- Metadata write, requireMetadataWrite (handler.go:188-200) ---
@@ -203,6 +205,7 @@ func expectedRouteScopes() []routeScope {
 		// --- Bulk: no route-level gate; handleBulk checks each element
 		// (handler.go:203, handlers_bulk.go:64) ---
 		{http.MethodPost, "/v3/{ledgerName}/bulk", kindPerElement, "", false},
+		{http.MethodPost, "/v3/_/apply", kindPerElement, "", false},
 
 		// --- Prepared queries read, requireQueriesRead (handler.go:206-209) ---
 		{http.MethodGet, "/v3/{ledgerName}/prepared-queries", kindGuarded, internalauth.ScopeQueriesRead, false},
@@ -326,10 +329,10 @@ func newScopedHandler(t *testing.T, keySet oidc.KeySet) http.Handler {
 	return NewHandler(logging.Testing(), inertBackend(), internalauth.AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
-		Issuer:       testAuthIssuer,
+		Issuers:      []string{testAuthIssuer},
 		Service:      "ledger",
 		ScopeMapping: internalauth.DefaultMapping("ledger"),
-	}, version.Info{})
+	}, version.Info{}, nil)
 }
 
 // walkRoutes enumerates every (method, pattern) the router registers.

@@ -116,6 +116,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().String("bind-addr", "0.0.0.0:7777", "Address to bind for Raft transport (internal inter-node communication)")
 	runCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
 	runCmd.Flags().Int("grpc-port", 8888, "gRPC port for service API (external client-facing)")
+	runCmd.Flags().Int("grpc-peer-port", 0, "gRPC port for authenticated inter-node service forwarding (default: --grpc-port + 1)")
 	runCmd.Flags().String("wal-dir", "./wal", "WAL directory for Raft")
 	runCmd.Flags().String("data-dir", "./data", "Data directory for application storage")
 	runCmd.Flags().Bool("bootstrap", false, "Initialize a new single-node cluster (mutually exclusive with --join)")
@@ -125,14 +126,14 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Int("raft-heartbeat-tick", 1, "Heartbeat interval in ticks (0 = use default 1)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-max-size-per-msg", 0, "Maximum size per message (0 = use default 1Mi)")
 	runCmd.Flags().Int("raft-max-inflight-msgs", 0, "Maximum number of in-flight messages (0 = use default 256)")
-	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms)")
+	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms; at least 10ns when processing interval is 0)")
 	runCmd.Flags().Uint64("raft-compaction-margin", 1000, "Minimum log entries between snapshots (0 = use default 1000)")
 	runCmd.Flags().Duration("maintenance-interval", 30*time.Second, "Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s)")
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-transport-buffer-size", 0, "Per-peer send buffer capacity (0 = use default 10Mi)")
-	runCmd.Flags().Duration("raft-processing-tick-interval", 0, "Interval for processing committed entries (0 = tick-interval/10)")
+	runCmd.Flags().Duration("raft-processing-tick-interval", 0, "Idle Ready polling interval, including after Ready drains (0 = effective raft-tick-interval/10)")
 	runCmd.Flags().Int("raft-replay-batch-size", 0, "Number of entries per batch during spool replay (0 = use default 1000)")
 	runCmd.Flags().Bool("grpc-compression", false, "Enable gzip compression on gRPC calls")
 
@@ -153,7 +154,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
-	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "backup-max-segment-bytes", 0, "Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "backup-max-segment-bytes", 0, "Deprecated compatibility option; checkpoint backups ignore this value")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
 	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
@@ -489,6 +490,12 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		return defaultValue
 	}
 
+	getStringSlice := func(flagName string) []string {
+		val, _ := cmd.Flags().GetStringSlice(flagName)
+
+		return val
+	}
+
 	// Helper function to get int slice from flag
 	getIntSlice := func(flagName string) []int {
 		if val, _ := cmd.Flags().GetIntSlice(flagName); len(val) > 0 {
@@ -520,6 +527,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.Debug = getBool("debug", false)
 	cfg.HTTPPort = getInt("http-port", 9000)
 	cfg.GRPCPort = getInt("grpc-port", 8888)
+	cfg.GRPCPeerPort = getInt("grpc-peer-port", 0)
 	cfg.RaftConfig.NodeID = getUint64("node-id", 0)
 	cfg.RaftConfig.BindAddr = getString("bind-addr", "127.0.0.1:8888")
 	cfg.RaftConfig.AdvertiseAddr = getString("advertise-addr", "")
@@ -580,7 +588,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
 	cfg.SpoolSegmentMaxBytes = bytesize.Get(cmd, "spool-segment-max-bytes").Int64()
-	cfg.BackupMaxSegmentBytes = bytesize.Get(cmd, "backup-max-segment-bytes").Int64()
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
 	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
 	cfg.MaxExecutionPlanSize = getInt("max-execution-plan-size", 4096)
@@ -650,6 +657,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.AuthConfig = bootstrap.AuthFlagConfig{
 		Enabled:              getBool(auth.AuthEnabledFlag, false),
 		Issuer:               getString(auth.AuthIssuerFlag, ""),
+		Issuers:              getStringSlice(auth.AuthIssuersFlag),
 		Service:              getString(auth.AuthServiceFlag, "ledger"),
 		Ed25519KeysFile:      ed25519KeysFile,
 		ScopeMappingFile:     scopeMappingFile,
@@ -873,6 +881,7 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 			Address:        p.GetRaftAddress(),
 			ServiceAddress: p.GetServiceAddress(),
 			InstanceID:     p.GetInstanceId(),
+			Capabilities:   append([]uint32(nil), p.GetCapabilities()...),
 		})
 	}
 

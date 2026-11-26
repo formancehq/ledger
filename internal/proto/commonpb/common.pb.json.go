@@ -2,25 +2,25 @@ package commonpb
 
 import (
 	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
-// protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
-// preserving camelCase field names. Returns nil for nil/zero messages.
+// protoFieldJSON marshals a proto.Message field to json.RawValue using the
+// generated or hand-written MarshalJSON method. Returns nil for nil messages.
 func protoFieldJSON(msg proto.Message) json.RawValue {
 	if msg == nil {
 		return nil
 	}
 
-	b, err := protojson.Marshal(msg)
+	b, err := jsonv2.Marshal(msg)
 	if err != nil {
 		return nil
 	}
@@ -52,15 +52,22 @@ func (x *Log) MarshalJSONTo(enc *jsontext.Encoder) error {
 
 func (x *Log) jsonValue() (any, error) {
 	type Aux struct {
-		Sequence          uint64        `json:"sequence,omitempty"`
-		Payload           *LogPayload   `json:"payload,omitempty"`
-		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
+		Sequence          uint64         `json:"sequence,omitempty"`
+		Payload           *LogPayload    `json:"payload,omitempty"`
+		ResponseSignature *json.RawValue `json:"responseSignature,omitempty"`
+	}
+	var responseSignature *json.RawValue
+	if x.GetResponseSignature() != nil {
+		raw := protoFieldJSON(x.GetResponseSignature())
+		if raw != nil {
+			responseSignature = &raw
+		}
 	}
 
 	aux := Aux{
 		Sequence:          x.GetSequence(),
 		Payload:           x.GetPayload(),
-		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
+		ResponseSignature: responseSignature,
 	}
 
 	return aux, nil
@@ -100,11 +107,44 @@ func (x *LogPayload) jsonValue() (any, error) {
 		return &struct {
 			Apply *ApplyLedgerLog `json:"apply,omitempty"`
 		}{Apply: p.Apply}, nil
+	case *LogPayload_RegisterSigningKey:
+		return map[string]any{"registerSigningKey": p.RegisterSigningKey}, nil
+	case *LogPayload_RevokeSigningKey:
+		return map[string]any{"revokeSigningKey": p.RevokeSigningKey}, nil
+	case *LogPayload_SetSigningConfig:
+		return map[string]any{"setSigningConfig": p.SetSigningConfig}, nil
+	case *LogPayload_AddedEventsSink:
+		return map[string]any{"addedEventsSink": p.AddedEventsSink}, nil
+	case *LogPayload_RemovedEventsSink:
+		return map[string]any{"removedEventsSink": p.RemovedEventsSink}, nil
+	case *LogPayload_SetMaintenanceMode:
+		return map[string]any{"setMaintenanceMode": p.SetMaintenanceMode}, nil
+	case *LogPayload_PromoteLedger:
+		return map[string]any{"promoteLedger": p.PromoteLedger}, nil
+	case *LogPayload_CreatedPreparedQuery:
+		return map[string]any{"createdPreparedQuery": p.CreatedPreparedQuery}, nil
+	case *LogPayload_UpdatedPreparedQuery:
+		return map[string]any{"updatedPreparedQuery": p.UpdatedPreparedQuery}, nil
+	case *LogPayload_DeletedPreparedQuery:
+		return map[string]any{"deletedPreparedQuery": p.DeletedPreparedQuery}, nil
+	case *LogPayload_SavedNumscript:
+		return map[string]any{"savedNumscript": p.SavedNumscript}, nil
+	case *LogPayload_CreatedQueryCheckpoint:
+		return map[string]any{"createdQueryCheckpoint": p.CreatedQueryCheckpoint}, nil
+	case *LogPayload_DeletedQueryCheckpoint:
+		return map[string]any{"deletedQueryCheckpoint": p.DeletedQueryCheckpoint}, nil
+	case *LogPayload_SetQueryCheckpointSchedule:
+		return map[string]any{"setQueryCheckpointSchedule": p.SetQueryCheckpointSchedule}, nil
+	case *LogPayload_DeleteQueryCheckpointSchedule:
+		return map[string]any{"deleteQueryCheckpointSchedule": p.DeleteQueryCheckpointSchedule}, nil
+	case *LogPayload_SavedLedgerMetadata:
+		return map[string]any{"savedLedgerMetadata": p.SavedLedgerMetadata}, nil
+	case *LogPayload_DeletedLedgerMetadata:
+		return map[string]any{"deletedLedgerMetadata": p.DeletedLedgerMetadata}, nil
+	case *LogPayload_SetClusterPolicy:
+		return map[string]any{"setClusterPolicy": p.SetClusterPolicy}, nil
 	default:
-		// Other variants (signing, sinks, etc.) — use protojson for camelCase
-		raw, err := protojson.Marshal(x)
-
-		return json.RawValue(raw), err
+		return nil, errors.New("missing log payload")
 	}
 }
 
@@ -194,11 +234,11 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return custom.MarshalJSON()
 	}
 
-	return protojson.Marshal(message)
+	return jsonv2.Marshal(message)
 }
 
 // MarshalJSONTo dispatches without hiding nested postings behind an opaque
-// MarshalJSON boundary. Unrelated protobuf variants retain protojson output.
+// MarshalJSON boundary. Unrelated protobuf variants retain descriptor JSON output.
 func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	message, err := x.jsonMessage()
 	if err != nil {
@@ -207,7 +247,7 @@ func (x *LedgerLogPayload) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if _, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
 		return json.MarshalEncode(enc, message)
 	}
-	raw, err := protojson.Marshal(message)
+	raw, err := jsonv2.Marshal(message)
 	if err != nil {
 		return err
 	}
@@ -389,6 +429,18 @@ func (x *Account) jsonValue() *accountJSON {
 }
 
 // Note: Log.MarshalJSON is already implemented in log.go
+
+// MarshalJSON emits the account-address map directly as the public log data.
+// The LedgerLog type already identifies this payload, so a second
+// accountMetadata field would add an unnecessary envelope.
+func (x *AccountMetadataUpdated) MarshalJSON() ([]byte, error) {
+	return json.Marshal(AccountMetadataToAnyMap(x.GetAccountMetadata()))
+}
+
+// MarshalJSONTo preserves the same projection with the request-scoped codec.
+func (x *AccountMetadataUpdated) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return json.MarshalEncode(enc, AccountMetadataToAnyMap(x.GetAccountMetadata()))
+}
 
 // MarshalJSON implements json.Marshaler for CreatedTransaction. Post-commit
 // volumes ride on the embedded Transaction, so they surface via the
@@ -692,17 +744,19 @@ func (x *PreparedQueryCursor) jsonValue() (any, error) {
 // CreatedTransaction / RevertedTransaction / RevertTransactionPayload.
 func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Name      string     `json:"name,omitempty"`
-		Content   string     `json:"content,omitempty"`
-		Version   string     `json:"version,omitempty"`
-		CreatedAt *Timestamp `json:"createdAt,omitempty"`
-		Ledger    string     `json:"ledger,omitempty"`
+		Name        string     `json:"name,omitempty"`
+		Content     string     `json:"content,omitempty"`
+		Version     string     `json:"version,omitempty"`
+		CreatedAt   *Timestamp `json:"createdAt,omitempty"`
+		Ledger      string     `json:"ledger,omitempty"`
+		Description string     `json:"description,omitempty"`
 	}{
-		Name:      x.GetName(),
-		Content:   x.GetContent(),
-		Version:   x.GetVersion(),
-		CreatedAt: x.GetCreatedAt(),
-		Ledger:    x.GetLedger(),
+		Name:        x.GetName(),
+		Content:     x.GetContent(),
+		Version:     x.GetVersion(),
+		CreatedAt:   x.GetCreatedAt(),
+		Ledger:      x.GetLedger(),
+		Description: x.GetDescription(),
 	})
 }
 

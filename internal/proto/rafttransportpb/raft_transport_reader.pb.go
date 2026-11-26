@@ -7,6 +7,175 @@ import (
 	bytes "bytes"
 )
 
+// GetRangeDigestRequestReader provides read-only access to GetRangeDigestRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetRangeDigestRequestReader interface {
+	GetFirstLogSequence() uint64
+	GetLastLogSequence() uint64
+	GetMinAppliedIndex() uint64
+	Mutate() *GetRangeDigestRequest
+}
+
+type getRangeDigestRequestReadonly GetRangeDigestRequest
+
+func (r *getRangeDigestRequestReadonly) GetFirstLogSequence() uint64 {
+	return (*GetRangeDigestRequest)(r).GetFirstLogSequence()
+}
+
+func (r *getRangeDigestRequestReadonly) GetLastLogSequence() uint64 {
+	return (*GetRangeDigestRequest)(r).GetLastLogSequence()
+}
+
+func (r *getRangeDigestRequestReadonly) GetMinAppliedIndex() uint64 {
+	return (*GetRangeDigestRequest)(r).GetMinAppliedIndex()
+}
+
+func (r *getRangeDigestRequestReadonly) Mutate() *GetRangeDigestRequest {
+	return (*GetRangeDigestRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetRangeDigestRequest.
+func (m *GetRangeDigestRequest) AsReader() GetRangeDigestRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getRangeDigestRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetRangeDigestRequest.
+func (m *GetRangeDigestRequest) Mutate() *GetRangeDigestRequest {
+	return m.CloneVT()
+}
+
+// GetRangeDigestRequestListReader provides read-only iteration over []*GetRangeDigestRequest.
+type GetRangeDigestRequestListReader interface {
+	Len() int
+	Get(i int) GetRangeDigestRequestReader
+	Range(yield func(int, GetRangeDigestRequestReader) bool)
+}
+
+type getRangeDigestRequestListReadonly []*GetRangeDigestRequest
+
+func (l getRangeDigestRequestListReadonly) Len() int { return len(l) }
+
+func (l getRangeDigestRequestListReadonly) Get(i int) GetRangeDigestRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getRangeDigestRequestListReadonly) Range(yield func(int, GetRangeDigestRequestReader) bool) {
+	for i, v := range l {
+		var r GetRangeDigestRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetRangeDigestRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetRangeDigestRequestListReader(s []*GetRangeDigestRequest) GetRangeDigestRequestListReader {
+	return getRangeDigestRequestListReadonly(s)
+}
+
+// GetRangeDigestResponseReader provides read-only access to GetRangeDigestResponse.
+// Call Mutate() to obtain a mutable clone.
+type GetRangeDigestResponseReader interface {
+	GetFirstLogSequence() uint64
+	GetLastLogSequence() uint64
+	GetDigest() []byte
+	GetDigestVersion() uint32
+	GetAppliedIndex() uint64
+	GetLastLogSequenceOnNode() uint64
+	Mutate() *GetRangeDigestResponse
+}
+
+type getRangeDigestResponseReadonly GetRangeDigestResponse
+
+func (r *getRangeDigestResponseReadonly) GetFirstLogSequence() uint64 {
+	return (*GetRangeDigestResponse)(r).GetFirstLogSequence()
+}
+
+func (r *getRangeDigestResponseReadonly) GetLastLogSequence() uint64 {
+	return (*GetRangeDigestResponse)(r).GetLastLogSequence()
+}
+
+func (r *getRangeDigestResponseReadonly) GetDigest() []byte {
+	return bytes.Clone((*GetRangeDigestResponse)(r).GetDigest())
+}
+
+func (r *getRangeDigestResponseReadonly) GetDigestVersion() uint32 {
+	return (*GetRangeDigestResponse)(r).GetDigestVersion()
+}
+
+func (r *getRangeDigestResponseReadonly) GetAppliedIndex() uint64 {
+	return (*GetRangeDigestResponse)(r).GetAppliedIndex()
+}
+
+func (r *getRangeDigestResponseReadonly) GetLastLogSequenceOnNode() uint64 {
+	return (*GetRangeDigestResponse)(r).GetLastLogSequenceOnNode()
+}
+
+func (r *getRangeDigestResponseReadonly) Mutate() *GetRangeDigestResponse {
+	return (*GetRangeDigestResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetRangeDigestResponse.
+func (m *GetRangeDigestResponse) AsReader() GetRangeDigestResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*getRangeDigestResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetRangeDigestResponse.
+func (m *GetRangeDigestResponse) Mutate() *GetRangeDigestResponse {
+	return m.CloneVT()
+}
+
+// GetRangeDigestResponseListReader provides read-only iteration over []*GetRangeDigestResponse.
+type GetRangeDigestResponseListReader interface {
+	Len() int
+	Get(i int) GetRangeDigestResponseReader
+	Range(yield func(int, GetRangeDigestResponseReader) bool)
+}
+
+type getRangeDigestResponseListReadonly []*GetRangeDigestResponse
+
+func (l getRangeDigestResponseListReadonly) Len() int { return len(l) }
+
+func (l getRangeDigestResponseListReadonly) Get(i int) GetRangeDigestResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getRangeDigestResponseListReadonly) Range(yield func(int, GetRangeDigestResponseReader) bool) {
+	for i, v := range l {
+		var r GetRangeDigestResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetRangeDigestResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetRangeDigestResponseListReader(s []*GetRangeDigestResponse) GetRangeDigestResponseListReader {
+	return getRangeDigestResponseListReadonly(s)
+}
+
 // RaftRequestMessageReader provides read-only access to RaftRequestMessage.
 // Call Mutate() to obtain a mutable clone.
 type RaftRequestMessageReader interface {
@@ -427,14 +596,48 @@ func NewPongResponseListReader(s []*PongResponse) PongResponseListReader {
 // SendMessageRequestReader provides read-only access to SendMessageRequest.
 // Call Mutate() to obtain a mutable clone.
 type SendMessageRequestReader interface {
-	GetMessage() isSendMessageRequest_Message
+	GetRaft() RaftRequestBatchReader
+	GetPing() PingMessageReader
+	WhichMessage() SendMessageRequest_MessageReaderCase
 	Mutate() *SendMessageRequest
 }
 
 type sendMessageRequestReadonly SendMessageRequest
 
-func (r *sendMessageRequestReadonly) GetMessage() isSendMessageRequest_Message {
-	return (*SendMessageRequest)(r).GetMessage()
+func (r *sendMessageRequestReadonly) GetRaft() RaftRequestBatchReader {
+	v, ok := (*SendMessageRequest)(r).GetMessage().(*SendMessageRequest_Raft)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Raft.AsReader()
+}
+
+func (r *sendMessageRequestReadonly) GetPing() PingMessageReader {
+	v, ok := (*SendMessageRequest)(r).GetMessage().(*SendMessageRequest_Ping)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Ping.AsReader()
+}
+
+// SendMessageRequest_MessageReaderCase identifies a selected oneof arm by its protobuf field number.
+type SendMessageRequest_MessageReaderCase int32
+
+const (
+	SendMessageRequest_MessageReaderCase_Unset SendMessageRequest_MessageReaderCase = 0
+	SendMessageRequest_MessageReaderCase_Raft  SendMessageRequest_MessageReaderCase = 1
+	SendMessageRequest_MessageReaderCase_Ping  SendMessageRequest_MessageReaderCase = 2
+)
+
+func (r *sendMessageRequestReadonly) WhichMessage() SendMessageRequest_MessageReaderCase {
+	switch (*SendMessageRequest)(r).GetMessage().(type) {
+	case *SendMessageRequest_Raft:
+		return SendMessageRequest_MessageReaderCase_Raft
+	case *SendMessageRequest_Ping:
+		return SendMessageRequest_MessageReaderCase_Ping
+	default:
+		return SendMessageRequest_MessageReaderCase_Unset
+	}
 }
 
 func (r *sendMessageRequestReadonly) Mutate() *SendMessageRequest {
@@ -494,14 +697,48 @@ func NewSendMessageRequestListReader(s []*SendMessageRequest) SendMessageRequest
 // SendMessageResponseReader provides read-only access to SendMessageResponse.
 // Call Mutate() to obtain a mutable clone.
 type SendMessageResponseReader interface {
-	GetMessage() isSendMessageResponse_Message
+	GetRaft() RaftResponseBatchReader
+	GetPong() PongResponseReader
+	WhichMessage() SendMessageResponse_MessageReaderCase
 	Mutate() *SendMessageResponse
 }
 
 type sendMessageResponseReadonly SendMessageResponse
 
-func (r *sendMessageResponseReadonly) GetMessage() isSendMessageResponse_Message {
-	return (*SendMessageResponse)(r).GetMessage()
+func (r *sendMessageResponseReadonly) GetRaft() RaftResponseBatchReader {
+	v, ok := (*SendMessageResponse)(r).GetMessage().(*SendMessageResponse_Raft)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Raft.AsReader()
+}
+
+func (r *sendMessageResponseReadonly) GetPong() PongResponseReader {
+	v, ok := (*SendMessageResponse)(r).GetMessage().(*SendMessageResponse_Pong)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Pong.AsReader()
+}
+
+// SendMessageResponse_MessageReaderCase identifies a selected oneof arm by its protobuf field number.
+type SendMessageResponse_MessageReaderCase int32
+
+const (
+	SendMessageResponse_MessageReaderCase_Unset SendMessageResponse_MessageReaderCase = 0
+	SendMessageResponse_MessageReaderCase_Raft  SendMessageResponse_MessageReaderCase = 1
+	SendMessageResponse_MessageReaderCase_Pong  SendMessageResponse_MessageReaderCase = 2
+)
+
+func (r *sendMessageResponseReadonly) WhichMessage() SendMessageResponse_MessageReaderCase {
+	switch (*SendMessageResponse)(r).GetMessage().(type) {
+	case *SendMessageResponse_Raft:
+		return SendMessageResponse_MessageReaderCase_Raft
+	case *SendMessageResponse_Pong:
+		return SendMessageResponse_MessageReaderCase_Pong
+	default:
+		return SendMessageResponse_MessageReaderCase_Unset
+	}
 }
 
 func (r *sendMessageResponseReadonly) Mutate() *SendMessageResponse {

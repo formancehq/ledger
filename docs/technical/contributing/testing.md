@@ -41,6 +41,10 @@ example that reaches nearby code.
   bypassing the guarded production call and confirming that the focused test
   fails. Never keep the mutation in the worktree.
 
+Shell fixtures that wrap commands must resolve the underlying executable through
+`exec.LookPath` before adding wrappers to `PATH`. Pass that path to the wrapper
+explicitly. NixOS does not provide `/bin` or `/usr/bin` aliases for these tools.
+
 #### Nested AI-tooling fixtures
 
 Tests that launch AI workflow scripts or operate on synthetic Git repositories
@@ -143,6 +147,31 @@ func TestStoreIntegration(t *testing.T) {
     // ...
 }
 ```
+
+### Operator API-server regressions
+
+`nix develop .#operator-tests --command just operator-test-integration` runs
+the complete Operator module suite with the `integration` build tag and race
+detector against Kubernetes 1.32.x envtest. The recipe does not filter test
+names or packages, so new integration tests enter the CI gate automatically.
+It limits parallel tests to four because some tests start isolated API servers
+in addition to the shared controller environment. The suite has a 20-minute
+timeout; it does not require Docker.
+
+`nix develop .#operator-tests --command just operator-test-admission` runs
+the fast Ledger and BackupRun target admission and BackupRun recovery/association subset with
+the race detector against Kubernetes 1.32.x envtest. The selection includes
+both labeled lost-response recovery and minimally admitted, unlabeled manual
+runs through Job-result capture, parent events and accounting. These tests
+publish Job and Pod status themselves; they do not run a kubelet or prove
+garbage collection. Keep the recipe's selection aligned with these regression
+names. CI preserves this fast subset and also runs the complete integration
+suite, separately from untagged operator unit tests. Envtest does not prove
+kubelet behavior, StatefulSet adoption, garbage collection or CSI completion;
+real-cluster E2E tests remain separate.
+`TestBackupRunParentSelectorIntegration` checks the CRD field selector and real
+manager-cache index with unlabeled runs, misleading labels, other parents,
+namespace isolation and empty results.
 
 ### Schemathesis API Conformance Tests
 
@@ -660,9 +689,9 @@ call sites.
 
 #### Restore cycles (`--restore`, single node)
 
-`run_model_test.sh --restore` periodically quiesces the driver, takes an
-incremental backup, kills the node, bootstraps a fresh store from the backup
-(running the `RebuildDelta` replay), and relaunches on it — the driver then
+`run_model_test.sh --restore` periodically quiesces the driver, takes a
+checkpoint backup, kills the node, bootstraps a fresh store from that checkpoint,
+and relaunches on it — the driver then
 resumes and its ordinary checks validate the rebuilt state. The run fails if
 no cycle completed or any cycle failed. The driver-side knobs are
 `MODEL_RESTORE_INTERVAL` and `MODEL_RESTORE_TIMEOUT` (seconds; the timeout is
@@ -864,9 +893,9 @@ nix develop .#ci --command go test -race -tags s3 ./cmd/ledgerctl/store -count=1
 ```
 
 These command tests use an in-process object-store HTTP endpoint, without Docker
-or cloud credentials. The retry regression creates a real full checkpoint and
-nonempty incremental delta, interrupts after completed or partially committed
-rebuild, then checks exact volumes/balances and Checker health after retry.
+or cloud credentials. The retry regression creates a complete checkpoint,
+interrupts a restore, then checks exact volumes/balances and Checker health
+after retry.
 
 CI runs `Tests-Unit` (light unit coverage), `Tests-Internal` (all `./internal/...`
 packages with every optional feature tag), and `Tests-Store`
@@ -955,10 +984,9 @@ quorum during the mixed-version window. The test does not write during mixed
 Ledger versions or test maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are
-required. The separate `rc3-to-rc4` transition is prepared for a future
-mandatory stopped boundary; run it only after rc.3 is published and the
-format-change PR adds rc.4 to the operator's stop list. It checks drain,
-absence of all old Pods before target Pod creation, retained PVCs, target-voter
+required. The separate `rc3-to-rc4` and `rc4-to-rc5` transitions exercise the
+mandatory stopped boundaries after each source RC is published. They check
+drain, absence of all old Pods before target Pod creation, retained PVCs, target-voter
 replay and post-upgrade audit. See [Server Binary Upgrades](../../ops/upgrades.md#operator-managed-rc2-to-rc3-rolling-validation)
 for the detailed coverage and limits.
 
@@ -1026,16 +1054,17 @@ export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 
 ### Operator Integration Tests
 
-The default Nix shell provides `setup-envtest`, and its shell hook exports `KUBEBUILDER_ASSETS`. The first shell start downloads the etcd and kube-apiserver binaries. The lean `ci` shell does not include envtest. The `Tests-Operator` CI job uses the dedicated `operator-tests` shell for the focused Ledger target admission regressions, selecting Kubernetes 1.32.x assets:
+The default Nix shell provides `setup-envtest`, and its shell hook exports
+`KUBEBUILDER_ASSETS`. The lean `ci` shell does not include envtest. The
+`Tests-Operator` CI job uses the dedicated `operator-tests` shell for both the
+fast admission subset and the complete integration suite. Both recipes select
+Kubernetes 1.32.x assets explicitly, downloading the etcd and kube-apiserver
+binaries on first use. See the [suite description](#operator-api-server-regressions)
+above:
 
 ```bash
 nix develop .#operator-tests --command just operator-test-admission
-```
-
-```bash
-# Run from misc/operator/ inside the default shell
-cd misc/operator
-go test -tags=integration ./internal/controller/ -v -count=1 -timeout=120s
+nix develop .#operator-tests --command just operator-test-integration
 ```
 
 ### Specific Tests
@@ -1296,9 +1325,11 @@ To learn more:
 
 ### Operator API admission
 
-CI runs `just operator-test-admission` in `nix develop .#operator-tests`.
+CI runs `just operator-test-admission` and `just operator-test-integration`
+in `nix develop .#operator-tests`.
 The recipe selects integration-tagged `TestLedgerAdmission` and
 `TestTraceSampling` cases in the Operator module using envtest. This preserves
 Ledger target immutability coverage and exercises trace sampler schema
 validation plus typed/raw conflict correction through the real StatefulSet
-environment. Untagged `go test ./...` in that module covers unit tests only.
+environment. The complete integration recipe runs every package without a
+test-name filter. Untagged `go test ./...` in that module covers unit tests only.

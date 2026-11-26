@@ -72,8 +72,8 @@ func TestProposeClusterConfig_DefaultThreshold(t *testing.T) {
 			require.NotEmpty(t, proposer.data)
 			captured := &raftcmdpb.Proposal{}
 			require.NoError(t, captured.UnmarshalVT(proposer.data))
-			require.Len(t, captured.GetTechnicalUpdates(), 1)
-			require.Equal(t, tc.want, captured.GetTechnicalUpdates()[0].GetClusterConfig().GetRotationThreshold())
+			require.Len(t, captured.GetBatch().GetTechnicalUpdates(), 1)
+			require.Equal(t, tc.want, captured.GetBatch().GetTechnicalUpdates()[0].GetClusterConfig().GetRotationThreshold())
 			require.Equal(t, tc.raw, cfg.RaftConfig.RotationThreshold, "defaulting must stay local to the desired proposal")
 			require.Zero(t, cfg.BloomConfig.GetRotationThreshold(), "shared Bloom config must remain untouched")
 
@@ -82,7 +82,7 @@ func TestProposeClusterConfig_DefaultThreshold(t *testing.T) {
 			registry := state.NewStateRegistry(c, attrs)
 			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store,
 				dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(), signal.NewNotifications(), nil,
-				"threshold-test", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+				"threshold-test", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil }, state.NoopCapabilityPolicyCommitHandler)
 			require.NoError(t, err)
 			t.Cleanup(machine.Close)
 			result, err := machine.ApplyEntries(t.Context(), store, &raftpb.Entry{

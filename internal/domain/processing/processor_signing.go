@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Co
 	}, nil
 }
 
-func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Contex
 	}, nil
 }
 
-func processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ctx.Scope.SetRequireSignatures(order.GetRequireSignatures())
 
 	return &commonpb.LogPayload{

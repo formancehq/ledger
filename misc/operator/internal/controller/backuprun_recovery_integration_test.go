@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,6 +22,16 @@ import (
 
 func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	t.Parallel()
+	testBackupRunCommittedCreateLostResponseIntegration(t, false)
+}
+
+func TestBackupRunManualAssociationIntegration(t *testing.T) {
+	t.Parallel()
+	testBackupRunCommittedCreateLostResponseIntegration(t, true)
+}
+
+func testBackupRunCommittedCreateLostResponseIntegration(t *testing.T, manual bool) {
+	t.Helper()
 	testCtx, cancelTest := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancelTest()
 	namespace := createTestNamespace(t)
@@ -43,14 +54,34 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 		},
 	}
 	require.NoError(t, c.Create(testCtx, backup))
+	// Finish initial parent reconciliation before creating the manual run,
+	// and ensure provisioning reaches Job Create rather than a missing transport.
+	require.Eventually(t, func() bool {
+		var observed ledgerv1alpha1.Backup
+		if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil || observed.Status.Phase != ledgerv1alpha1.BackupPhaseReady {
+			return false
+		}
+		var sts appsv1.StatefulSet
+		if err := c.Get(testCtx, client.ObjectKey{Namespace: namespace, Name: resourceName(cluster.Name)}, &sts); err != nil {
+			return false
+		}
+		return metav1.IsControlledBy(&sts, cluster) && requireClusterService(testCtx, c, cluster) == nil
+	}, 10*time.Second, 50*time.Millisecond, "parent and Cluster transport must be ready before the run")
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "recovery-run", Namespace: namespace,
 			Labels: map[string]string{ledgerv1alpha1.LabelBackup: backup.Name},
 		},
-		Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: backup.Name},
+	}
+	if manual {
+		run.Labels = nil
 	}
 	require.NoError(t, c.Create(testCtx, run))
+	if manual {
+		require.Empty(t, run.Labels)
+		require.Empty(t, run.OwnerReferences)
+	}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
 	creates := 0
 	wrapped := interceptor.NewClient(c, interceptor.Funcs{
@@ -88,6 +119,17 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	require.True(t, metav1.IsControlledBy(&job, run))
 	committedUID := job.UID
 	require.NotEmpty(t, committedUID)
+	if manual {
+		// A committed Job must not transfer its reservation or result to a
+		// different Backup, even while its creation acknowledgement is lost.
+		retargeted := run.DeepCopy()
+		retargeted.Spec.BackupRef = "replacement"
+		err := c.Update(testCtx, retargeted)
+		require.True(t, apierrors.IsInvalid(err), "retargeting must fail admission: %v", err)
+		require.Contains(t, err.Error(), "backupRef is immutable")
+		require.NoError(t, c.Get(testCtx, req.NamespacedName, run))
+		require.Equal(t, backup.Name, run.Spec.BackupRef)
+	}
 
 	sibling := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{
@@ -150,14 +192,42 @@ func TestBackupRunCommittedCreateLostResponseIntegration(t *testing.T) {
 	require.Equal(t, ledgerv1alpha1.BackupRunPhaseSucceeded, run.Status.Phase)
 	require.NotNil(t, run.Status.CompletionTime)
 	require.Equal(t, reservedStart, run.Status.StartTime)
-	require.NotNil(t, run.Status.Full)
-	require.Equal(t, uint32(7), run.Status.Full.FilesUploaded)
-	require.Equal(t, uint64(42), run.Status.Full.LastAppliedIndex)
-	require.Equal(t, uint64(40), run.Status.Full.LastLogSequence)
-	require.Equal(t, uint64(41), run.Status.Full.LastAuditSequence)
+	require.NotNil(t, run.Status.Result)
+	require.Equal(t, uint32(7), run.Status.Result.FilesUploaded)
+	require.Equal(t, uint64(42), run.Status.Result.LastAppliedIndex)
+	require.Equal(t, uint64(40), run.Status.Result.LastLogSequence)
+	require.Equal(t, uint64(41), run.Status.Result.LastAuditSequence)
 	var jobs batchv1.JobList
 	require.NoError(t, c.List(testCtx, &jobs, client.InNamespace(namespace)))
 	require.Len(t, jobs.Items, 1)
 	require.Equal(t, committedUID, jobs.Items[0].UID)
 	require.Equal(t, 1, creates, "recovery must reuse the committed Job without another Create")
+	if manual {
+		// The registered Backup manager must observe this unowned run's status
+		// event. No explicit parent reconcile or spec update supplies a retry.
+		require.Eventually(t, func() bool {
+			var observed ledgerv1alpha1.Backup
+			if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil {
+				return false
+			}
+			return observed.Status.LastBackup != nil && observed.Status.LastRunCompletionTime != nil
+		}, 10*time.Second, 50*time.Millisecond, "unowned manual run must notify its parent")
+		require.NoError(t, c.Get(testCtx, client.ObjectKeyFromObject(backup), backup))
+		require.EqualValues(t, 7, backup.Status.LastBackup.FilesUploaded)
+		require.EqualValues(t, 42, backup.Status.LastBackup.LastAppliedIndex)
+		require.Equal(t, run.Status.CompletionTime, backup.Status.LastRunCompletionTime)
+		zero := int32(0)
+		backup.Spec.SuccessfulRunsHistoryLimit = &zero
+		backup.Spec.Schedule = "0 4 * * *"
+		require.NoError(t, c.Update(testCtx, backup))
+		require.Eventually(t, func() bool {
+			var observed ledgerv1alpha1.Backup
+			if err := c.Get(testCtx, client.ObjectKeyFromObject(backup), &observed); err != nil {
+				return false
+			}
+			return observed.Status.LastBackup != nil && observed.Status.LastRunCompletionTime != nil &&
+				observed.Status.NextBackupTime != nil &&
+				apierrors.IsNotFound(c.Get(testCtx, req.NamespacedName, &ledgerv1alpha1.BackupRun{}))
+		}, 10*time.Second, 50*time.Millisecond, "manual checkpoint result must schedule the next checkpoint and survive zero-retention pruning")
+	}
 }

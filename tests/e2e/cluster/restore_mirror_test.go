@@ -33,9 +33,8 @@ import (
 // (EN-1773, regression for EN-1776). Since EN-1513 there is no persisted mirror
 // cursor: LedgerBoundaries.last_mirror_v2_log_id — the FSM-applied high-water
 // mark — is the sole durable ingestion authority, and the worker resumes from
-// it. RebuildDelta replays the exported ledger logs to reconstruct the
-// boundaries, but it did not fold the mirror high-water mark, so a restored
-// mirror ledger came back with last_mirror_v2_log_id == 0.
+// it. The second checkpoint must capture this boundary after ingestion. A
+// restored mirror with last_mirror_v2_log_id == 0 would restart from log 1.
 //
 // The consequence is not a stalled mirror — it is a silent double ingestion.
 // The worker restarts at source log 1, and processMirrorIngest sees v2LogID ==
@@ -64,7 +63,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 		// Source logs 1..4 carry transactions 0..3, each crediting `account`
 		// with 100. sourceLogCount is therefore the cursor the mirror must hold
-		// when the delta is exported.
+		// when the later checkpoint is published.
 		sourceLogCount           = 4
 		checkpointSourceLogCount = 1
 		perTxAmount              = "100"
@@ -87,15 +86,15 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// reconnects to that exact address.
 		mockV2 *mockV2Server
 
-		// Captured on the live node before the delta is exported, then compared
+		// Captured on the live node before the later checkpoint is published, then compared
 		// against the restored node.
 		preBackupCursor  uint64
 		preBackupTxCount int
 		// Recorded rather than hard-coded so the comparison pins "unchanged by
 		// the restore" instead of a particular amount encoding.
 		preBackupInput string
-		// The transaction projection is rebuilt from the exported ledger-log
-		// delta. Keep an independent source-date oracle so the restore cannot
+		// The transaction projection is copied from the later checkpoint.
+		// Keep an independent source-date oracle so the restore cannot
 		// silently replace that field with its own apply time.
 		sourceDateMicrosByTxID map[uint64]uint64
 
@@ -104,7 +103,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// The mock's request count immediately before the restored node starts,
 		// and again at the instant the cursor was sampled. Equal means no source
 		// fetch completed before the read returned, so the cursor came from
-		// RebuildDelta rather than from a re-ingest. The mock is shared across
+		// the checkpoint rather than from a re-ingest. The mock is shared across
 		// all three phases, so the floor has to be captured, not assumed zero.
 		preRestoreRequests int
 		requestsAtSample   int
@@ -208,7 +207,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: a mirror checkpoint prefix followed by an exported delta", Ordered, func() {
+	Describe("Phase 1: mirror writes between complete checkpoints", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -291,7 +290,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("syncs source-dated transactions into the post-checkpoint delta", func() {
+		It("syncs source-dated transactions before the later checkpoint", func() {
 			for logID := checkpointSourceLogCount + 1; logID <= sourceLogCount; logID++ {
 				addSourceTransaction(logID)
 			}
@@ -330,10 +329,10 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			expectSingleIngestion(Default, client, "live")
 		})
 
-		It("exports the delta", func() {
-			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+		It("publishes the later checkpoint", func() {
+			incResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -416,7 +415,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// mirror workers on the leadership callback, which is not ordered
 			// against the sampling read below — so without this the worker
 			// could complete a fetch first and the sample would witness a
-			// re-ingest rather than the rebuild. Pausing makes "no source fetch
+			// re-ingest rather than checkpoint restore. Pausing makes "no source fetch
 			// has happened" a fact instead of a timing bet: parked requests are
 			// held at the handler entry, before the counter moves.
 			mockV2.pause()
@@ -430,7 +429,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 			// Sample the rebuilt high-water mark while the source is still
 			// parked. GetLedger serves from local Pebble and needs no leader,
-			// so this answers whatever RebuildDelta wrote.
+			// so this answers what the second checkpoint captured.
 			Eventually(func(g Gomega) {
 				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
@@ -456,21 +455,21 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("rebuilds the mirror high-water mark from the replayed delta", func() {
+		It("retains the mirror high-water mark from the later checkpoint", func() {
 			// The sample has to predate the mirror worker, or it proves nothing:
 			// on an unfixed build the rebuilt mark is 0, the worker restarts at
 			// source log 1 and re-applies logs 1..4, and processMirrorIngest
-			// advances the cursor back to 4 — the same value a correct rebuild
+			// advances the cursor back to 4 — the same value a correct restore
 			// leaves. No source request means no ingest, so the value below was
-			// written by RebuildDelta.
+			// written before the second checkpoint.
 			//
 			// The mock was paused across the sample, so this holds by
 			// construction rather than by winning a race with the election.
 			Expect(requestsAtSample).To(Equal(preRestoreRequests),
 				"the mirror worker fetched from the source before the cursor was sampled, so this read cannot distinguish a rebuilt mark from a re-ingested one")
 
-			// EN-1776: RebuildDelta folded every other boundary field but left
-			// last_mirror_v2_log_id at 0, so this read returned 0.
+			// EN-1776: The second checkpoint must include the captured
+			// last_mirror_v2_log_id, not reset it to zero.
 			Expect(restoredCursor).To(Equal(preBackupCursor),
 				"restored mirror cursor must match the position the backup captured")
 		})
@@ -483,7 +482,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			//
 			// ReadMirrorSyncProgress derives FOLLOWING from
 			// `sourceHead > 0 && cursor >= sourceHead`, and the source head lives
-			// in SubPLMirrorSourceHead, which RebuildDelta does NOT reconstruct.
+			// in SubPLMirrorSourceHead, which must survive checkpoint restore.
 			// A correctly restored mirror has nothing left to ingest, so the
 			// ingest path — which normally bundles the source head into its data
 			// proposal — never runs. To keep an idle restored mirror from
@@ -516,7 +515,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			}, 12*time.Second, 1*time.Second).Should(Succeed())
 		})
 
-		It("passes the integrity checker after restoring the non-empty mirror delta", func() {
+		It("passes the integrity checker after restoring the later mirror checkpoint", func() {
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty())

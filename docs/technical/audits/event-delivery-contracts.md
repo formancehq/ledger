@@ -9,6 +9,16 @@ It adds scope to the native workflow, not a runner, schema or product guarantee.
 
 ## Evidence contract
 
+A committed `AccountMetadataUpdated` ledger log maps to
+`ACCOUNT_METADATA_UPDATED` and retains its ledger, date and global log
+sequence. Trace it through `LogToEvent`,
+the sink allow-list and each selected output projection. It represents account
+metadata without a committed transaction or transaction ID. Public LedgerLog
+JSON places account addresses directly under `data`; the analytical projection
+must retain the account-address-to-key/value mapping. A sink that
+filters out `ACCOUNT_METADATA_UPDATED` may still advance past this log according
+to the filtered-log cursor contract.
+
 For each hypothesis identify the exact audited SHA, compiled sink implementation,
 reachable sink configuration, committed source log, selection decision, output
 representation, external effect and acknowledgement, returned error/success,
@@ -134,6 +144,20 @@ unknown numeric fields must not change type. A failed conversion can leave a
 partial local output file, which must never be imported. Do not infer successful
 migration or round-trip delivery
 from the DDL assertion alone; Docker-backed execution remains a CI obligation.
+
+Live ClickHouse insertion additionally passes through `sink_clickhouse_data.go`:
+the shared typed projection is serialized once with a call-scoped `*big.Int`
+marshaler; only transaction and revert posting amounts have that type.
+`TestSinkProjectionBigIntsAreOnlyPostingAmounts` guards this scope, and UInt256
+hints restore numeric storage. Preserve raw unrelated numbers,
+metadata and the source protobuf. `TestClickHousePublishExactAmounts` captures
+the actual Publish/native-driver boundary without a server; the tagged
+`TestClickHouseSinkIntegration_ExactAmountsAndCursorRecovery` checks both
+variants at 2^53+1, UInt64 max, 2^64+1 and MaxUInt256 through typed decimal
+queries with FINAL. Its real constraint rejection and same-process emitter
+restart check retained applied cursor/error and successful backlog delivery;
+the proposer fixture applies updates directly, so this does not prove Raft
+consensus or process-crash recovery. Docker-backed execution remains in CI.
 
 Attribute a symptom to the mechanism and required correction, not every domain
 whose files it touches. Keep one logical root cause across formats, sinks and

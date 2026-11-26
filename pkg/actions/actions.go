@@ -127,6 +127,16 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 	}
 }
 
+// ExecuteScriptAction executes Numscript without a transaction reference.
+func ExecuteScriptAction(ledgerName, script string, vars map[string]string) *servicepb.Request {
+	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		Ledger: ledgerName,
+		Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{
+			Script: &commonpb.Script{Plain: script, Vars: vars},
+		}}},
+	}}}
+}
+
 // AddAccountTypeAction creates an action for adding an account type to a ledger.
 func AddAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
 	return &servicepb.Request{
@@ -492,6 +502,15 @@ func SaveNumscriptWithVersionAction(ledger, name, content, version string) *serv
 	}
 }
 
+// SaveDescribedNumscriptAction creates an action for saving a numscript version
+// with a description.
+func SaveDescribedNumscriptAction(ledger, name, content, version, description string) *servicepb.Request {
+	req := SaveNumscriptWithVersionAction(ledger, name, content, version)
+	req.GetSaveNumscript().Description = description
+
+	return req
+}
+
 // CreateScriptRefTransactionAction creates a transaction using a script reference
 // from the library. version is required: the literal "latest" or an exact full
 // semver.
@@ -610,17 +629,24 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 	}
 }
 
-// UpdatePreparedQueryAction creates an action for updating a prepared query's filter.
-func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
+// UpdatePreparedQueryAction replaces a prepared query's target and filter.
+func UpdatePreparedQueryAction(ledger, name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 				Ledger: ledger,
 				Name:   name,
 				Filter: filter,
+				Target: target.Enum(),
 			},
 		},
 	}
+}
+
+// UpdatePreparedQueryForTargetAction replaces a prepared query's target and filter.
+// The explicit target also determines how public id is decoded by the caller.
+func UpdatePreparedQueryForTargetAction(ledger, name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
+	return UpdatePreparedQueryAction(ledger, name, target, filter)
 }
 
 // DeletePreparedQueryAction creates an action for removing a prepared query.

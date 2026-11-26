@@ -37,14 +37,27 @@ spec:
                 /bin/sh -c './ledgerctl provision run gaming-wallet --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
-    - name: Run full backup
+    - name: Create backup destination
       try:
         - apply:
             file: backup.yaml
+
+    - name: Run first checkpoint backup
+      try:
+        - apply:
+            file: first-run.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: BackupRun
+              metadata:
+                name: first-checkpoint
+              status:
+                phase: Succeeded
         - assert:
             file: assert-full-done.yaml
 
-    # Insert new data AFTER the full backup so the incremental has something to export.
+    # Insert new data after the first checkpoint.
     - name: Provision additional data
       try:
         - script:
@@ -53,10 +66,18 @@ spec:
                 /bin/sh -c './ledgerctl provision run subscription --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
-    - name: Wait for incremental backup
+    - name: Run second checkpoint backup
       try:
+        - apply:
+            file: second-run.yaml
         - assert:
-            file: assert-incremental-done.yaml
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: BackupRun
+              metadata:
+                name: second-checkpoint
+              status:
+                phase: Succeeded
 
     - name: Verify S3 content
       try:
@@ -64,7 +85,14 @@ spec:
             content: |
               set -eu
               cd "$(git rev-parse --show-toplevel)/misc/operator"
-              test_name=TestIncrementalBackup_S3Segments
+              first_sequence=$(kubectl get backuprun first-checkpoint -n "$NAMESPACE" -o jsonpath='{.status.result.lastLogSequence}')
+              second_sequence=$(kubectl get backuprun second-checkpoint -n "$NAMESPACE" -o jsonpath='{.status.result.lastLogSequence}')
+              bucket_id=$(kubectl get cluster bk-incr-cluster -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
+              test -n "$first_sequence"
+              test -n "$second_sequence"
+              test -n "$bucket_id"
+              test_name=TestRepeatedCheckpointBackup_S3Objects
               go test -tags e2e -count=1 -list "^${test_name}$" ./e2e/... | grep -Fqx "${test_name}"
-              go test -tags e2e -v -count=1 -run "^${test_name}$" -timeout 30s ./e2e/...
+              BACKUP_BUCKET_ID="$bucket_id" FIRST_CHECKPOINT_SEQUENCE="$first_sequence" SECOND_CHECKPOINT_SEQUENCE="$second_sequence" \
+                go test -tags e2e -v -count=1 -run "^${test_name}$" -timeout 30s ./e2e/...
             timeout: 60s

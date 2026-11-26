@@ -131,8 +131,8 @@ send $amount (
 
 **Usage:**
 ```bash
-ledgerctl transactions create --ledger demo \
-  --script escrow.num \
+ledgerctl numscripts execute --ledger demo \
+  --file escrow.num \
   --var "buyer=users:alice" \
   --var "order_id=order-12345" \
   --var "amount=USD/2 500"
@@ -372,8 +372,8 @@ send [USD/2 10000] (
 ### Create Transaction with Numscript
 
 ```bash
-ledgerctl transactions create --ledger demo \
-  --script path/to/script.num \
+ledgerctl numscripts execute --ledger demo \
+  --file path/to/script.num \
   --var "source=users:alice" \
   --var "destination=users:bob" \
   --var "amount=USD/2 1000"
@@ -383,21 +383,21 @@ ledgerctl transactions create --ledger demo \
 
 ```bash
 # Fund from world
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/world_funding.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/world_funding.num \
   --var "destination=treasury" \
   --var "amount=USD/2 100000"
 
 # Simple transfer
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/simple_transfer.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/simple_transfer.num \
   --var "source=treasury" \
   --var "destination=users:alice" \
   --var "amount=USD/2 1000"
 
 # Payment with fees
-ledgerctl transactions create --ledger demo \
-  --script numscript/examples/payment_with_fees.num \
+ledgerctl numscripts execute --ledger demo \
+  --file numscript/examples/payment_with_fees.num \
   --var "source=users:alice" \
   --var "merchant=merchants:shop" \
   --var "platform=platform:fees" \
@@ -510,7 +510,7 @@ Stale-inputs detection handles the case where discovery *succeeds* but the value
 So discovery failure is treated as a **preparation gap, not a verdict**:
 
 - **Admission** — if the batch carries an idempotency key, admission does *not* fail fast. It marks the order `OrderTechnical.preload_unavailable = true` and forwards it (empty coverage, no `inputs_resolution_hash`). Without a key there is no replay to preserve, so it keeps the cheap fail-fast (`DEPENDENCY_DISCOVERY_FAILED`).
-- **FSM** — the per-proposal idempotency dedup runs *before* `ProcessOrders`, so a **replay short-circuits to the frozen outcome**. A non-replay with `preload_unavailable` returns `ErrPreloadUnavailable` (`ERROR_REASON_PRELOAD_UNAVAILABLE`, `Kind=Unavailable`) before processing any order.
+- **FSM** — the per-proposal idempotency dedup runs *before* `ProcessOrders`, so a **replay short-circuits to the frozen outcome**. Without a replay, `ProcessOrders` executes the batch in sequence and fails the forwarded order **at its own position** with `ErrPreloadUnavailable` (`ERROR_REASON_PRELOAD_UNAVAILABLE`, `Kind=Unavailable`). An earlier order that fails definitively (`INSUFFICIENT_FUNDS`, `VOLUME_OVERFLOW`, …) therefore produces that audited, frozen verdict: admission's overlay folds earlier orders' effects without checking funds, so a script reading a balance the earlier order would overdraw is forwarded, and the FSM must not let that preparation gap mask the real rejection. `PRELOAD_UNAVAILABLE` surfaces only when every order before the forwarded one would have applied; the batch is atomic, so those effects are discarded with it. A `skippable_reasons` whitelist never turns a forwarded order into a skip.
 
 That reason is **retryable and deliberately neither auditable nor freezable**: a preparation gap is not an executed business outcome. A non-replay preload-unavailable writes no audit entry or idempotency result; the client retries and eventually re-admits successfully or replays an outcome frozen by another proposal. `preload_unavailable` rides in `OrderTechnical`, so it is excluded from the idempotency hash — a forwarded retry hashes identically to the original, which lets the FSM dedup match and replay.
 

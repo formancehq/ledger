@@ -2,9 +2,9 @@ package auth
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	jose "github.com/go-jose/go-jose/v4"
@@ -19,6 +19,8 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
 var authTracer = otel.Tracer("auth")
@@ -27,12 +29,12 @@ var authTracer = otel.Tracer("auth")
 type AuthConfig struct {
 	Enabled              bool
 	KeySet               oidc.KeySet
-	Issuer               string
+	Issuers              []string // trusted OIDC issuers
 	Service              string
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
 	Ed25519SuperuserKeys map[string]bool     // keyID -> true if the key can emit superuser-mode tokens
-	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
+	ClusterSecret        string              // shared secret for peer transport authentication (empty = disabled)
 }
 
 // EvaluateGRPCCredentials validates the JWT from gRPC metadata and stores an
@@ -57,53 +59,36 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 		return withAuthenticationState(ctx, false, false, nil), nil
 	}
 
-	token, hasToken := bearerTokenFromContext(ctx)
+	token, hasToken, err := BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	if !hasToken {
 		// No bearer token: fall back to anonymous scopes.
 		effective := cfg.ScopeMapping.AnonymousScopes()
 		ctx = WithExpandedScopes(ctx, effective)
 		ctx = WithAuthPresented(ctx, false)
+		ctx = transport.WithForwardedAnonymousCaller(ctx)
 
 		return withAuthenticationState(ctx, true, false, effective), nil
 	}
-
-	// Fast path: cluster-internal shared secret bypasses JWT validation.
-	// Grant all granular scopes so that per-request scope checks (e.g. in Apply)
-	// succeed when a follower forwards a request to the leader. The
-	// cluster-internal marker (WithClusterInternal below) lets downstream
-	// handlers decide whether to trust per-request fields carrying the
-	// original caller's identity.
-	//
-	// Compare with crypto/subtle.ConstantTimeCompare to avoid leaking
-	// the secret's length and common-prefix timing via Go's variable-time
-	// string equality. The explicit length pre-check is itself constant-
-	// time in the sense that it does not branch on secret bytes (only
-	// on the public input length), and short-circuits the comparison
-	// when lengths differ — a timing leak there is harmless because the
-	// expected length is a fixed configuration value (#339 / Review-2 M-25).
-	if cfg.ClusterSecret != "" &&
-		len(token) == len(cfg.ClusterSecret) &&
-		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
-		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
-		effective := allScopes()
-		ctx = WithExpandedScopes(ctx, effective)
-		ctx = WithAuthPresented(ctx, true)
-		ctx = WithClusterInternal(ctx, true)
-
-		return withAuthenticationState(ctx, true, true, effective), nil
-	}
+	// Keep the original user credential available to the service connection
+	// pool. Peer transport credentials are injected separately, so forwarding
+	// does not turn the cluster secret into the caller's authorization token.
+	ctx = transport.WithForwardedBearerToken(ctx, token)
 
 	keyID := extractKeyID(token)
-	ctx = WithKeyID(ctx, keyID)
 
-	claims, err := validateToken(ctx, token, cfg)
+	validated, err := validateToken(ctx, token, cfg)
 	if err != nil {
 		logAuthFailure(ctx, keyID, "invalid_token", err)
 
 		return ctx, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
+	claims := validated.claims
 	ctx = WithClaims(ctx, claims)
+	ctx = WithKeyID(ctx, validated.staticKeyID)
 
 	superuser := isSuperuserMode(claims)
 	span.SetAttributes(attribute.Bool("auth.superuser_mode", superuser))
@@ -119,6 +104,18 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 	ctx = WithAuthPresented(ctx, true)
 
 	return withAuthenticationState(ctx, true, true, effective), nil
+}
+
+// WithPeerSystemAuthentication records an authenticated node-to-node call
+// that carries no end-user token. The peer transport credential identifies a
+// trusted node, while the authentication state below represents a system
+// action rather than a user bearing the cluster secret.
+func WithPeerSystemAuthentication(ctx context.Context) context.Context {
+	ctx = WithExpandedScopes(ctx, allScopes())
+	ctx = WithAuthPresented(ctx, true)
+	ctx = WithClusterInternal(ctx, true)
+
+	return withAuthenticationState(ctx, true, true, allScopes())
 }
 
 // AuthorizeGRPC checks required scopes against the immutable state produced by
@@ -179,29 +176,39 @@ func allScopes() map[Scope]struct{} {
 // The boolean return is false when the metadata is absent or carries no
 // Bearer-prefixed authorization value — those cases are treated as "no token
 // presented" rather than "invalid token".
-func bearerTokenFromContext(ctx context.Context) (string, bool) {
+func BearerTokenFromGRPCContext(ctx context.Context) (string, bool, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 
 	values := md.Get("authorization")
 	if len(values) == 0 {
-		return "", false
+		return "", false, nil
+	}
+	if len(values) != 1 {
+		return "", false, status.Error(codes.Unauthenticated, "ambiguous authorization metadata")
 	}
 
 	authHeader := values[0]
 	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-		return "", false
+		return "", false, nil
 	}
 
-	return strings.TrimSpace(authHeader[7:]), true
+	return strings.TrimSpace(authHeader[7:]), true, nil
+}
+
+type validatedToken struct {
+	claims      *oidc.AccessTokenClaims
+	staticKeyID string
 }
 
 // validateToken validates a JWT token. It supports both OIDC (RS256/ES256/PS256) and
 // EdDSA tokens. For EdDSA tokens, the issuer check is skipped (self-signed) and
 // key-level scope enforcement is applied when Ed25519AllowedScopes is configured.
-func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.AccessTokenClaims, error) {
+// Only the validated static credential path supplies an attribution key ID;
+// an OIDC kid identifies a verification key, not the caller's credential source.
+func validateToken(ctx context.Context, token string, cfg AuthConfig) (*validatedToken, error) {
 	claims := &oidc.AccessTokenClaims{}
 
 	decrypted, err := oidc.DecryptToken(token)
@@ -225,37 +232,33 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		return nil, err
 	}
 
+	var staticKeyID string
 	if sigAlg == jose.EdDSA {
+		staticKeyID = extractKeyID(decrypted)
 		// EdDSA tokens are self-signed: skip OIDC issuer check.
 		// Enforce key-level scope restrictions if configured.
 		if cfg.Ed25519AllowedScopes != nil {
-			keyID := extractKeyID(decrypted)
-
-			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys, cfg.ScopeMapping)
+			err := enforceAllowedScopes(claims.Scopes, staticKeyID, cfg.Ed25519AllowedScopes, cfg.Ed25519SuperuserKeys, cfg.ScopeMapping)
 			if err != nil {
 				return nil, err
 			}
 
 			// If the token claims superuser mode, verify the signing key is allowed.
 			if isSuperuserMode(claims) {
-				if err := enforceSuperuserClaim(keyID, cfg.Ed25519SuperuserKeys); err != nil {
+				if err := enforceSuperuserClaim(staticKeyID, cfg.Ed25519SuperuserKeys); err != nil {
 					return nil, err
 				}
 			}
 		}
-	} else {
-		// OIDC token: verify issuer as before.
-		err := oidc.CheckIssuer(claims, cfg.Issuer)
-		if err != nil {
-			return nil, err
-		}
+	} else if !slices.Contains(cfg.Issuers, claims.Issuer) {
+		return nil, fmt.Errorf("%w: got: %s, trusted: %v", oidc.ErrIssuerInvalid, claims.Issuer, cfg.Issuers)
 	}
 
 	if err := oidc.CheckExpiration(claims, 0); err != nil {
 		return nil, err
 	}
 
-	return claims, nil
+	return &validatedToken{claims: claims, staticKeyID: staticKeyID}, nil
 }
 
 // extractKeyID extracts the kid from a compact JWS token header.

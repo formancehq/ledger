@@ -17,6 +17,45 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestMetadataOnlyRejectionsBuildAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		err  domain.SerializableError
+		code string
+	}{
+		{"transaction metadata", domain.ErrMetadataOnlyTransactionMetadata, "METADATA_ONLY_TRANSACTION_METADATA"},
+		{"reference", domain.ErrMetadataOnlyReference, "METADATA_ONLY_REFERENCE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failure := buildAuditFailure(tc.err)
+			require.Equal(t, tc.code, commonpb.FailureDetailsCode(failure.GetDetails()))
+			require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+		})
+	}
+}
+
+func TestNumscriptDescriptionRejectionsBuildAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		err  domain.SerializableError
+		code string
+	}{
+		{domain.ErrNumscriptDescriptionTooLong, "NUMSCRIPT_DESCRIPTION_TOO_LONG"},
+		{domain.ErrNumscriptDescriptionInvalidChar, "NUMSCRIPT_DESCRIPTION_INVALID_CHAR"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			t.Parallel()
+
+			failure := buildAuditFailure(tc.err)
+			require.Equal(t, tc.code, commonpb.FailureDetailsCode(failure.GetDetails()))
+			require.Equal(t, commonpb.ErrorReason_ERROR_REASON_VALIDATION, commonpb.FailureDetailsReason(failure.GetDetails()))
+		})
+	}
+}
+
 // TestIdempotencyFailureFactsMatchAudit pins the equality the checker's
 // idempotencyMismatch depends on: the reason, code, and facts frozen into the
 // SubIdempKeys projection by recordIdempotencyFailure must equal the ones
@@ -129,8 +168,8 @@ type auditFailureCase struct {
 }
 
 // auditFailureCases carries one row per auditable Describable reachable from
-// the FSM failure path. UncommittedFailure producers are excluded because the
-// FSM returns them before the audit writer.
+// the FSM failure path. UncommittedFailure producers have no row: they are not
+// SerializableError, and the FSM returns them before the audit writer.
 func auditFailureCases() []auditFailureCase {
 	return []auditFailureCase{
 		// ErrInsufficientFunds gates the color key on the separate ColorKnown
@@ -594,7 +633,7 @@ func (k describableTypeKey) String() string { return k.pkg + "." + k.name }
 // internal/infra/state holds the FSM-local ones (ErrCoverageMiss). Every other
 // implementation in the tree — admission's errIdempotencyKeyTooLong /
 // errIdempotencyKeyInvalidUTF8 / errCheckpointOrderNotLast,
-// query.ErrAggregateOverflow, grpc.validationError — is produced before a
+// grpc.validationError — is produced before a
 // proposal exists or on the read path, so it never reaches the audit chain. If
 // one of them ever becomes FSM-reachable, add its directory here.
 var describableScanDirs = map[string]string{
@@ -704,7 +743,9 @@ func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	out := make(map[string]bool)
 
 	for name := range hasReason {
-		if hasFacts[name] && !hasUncommitted[name] {
+		require.Falsef(t, hasFacts[name] && hasUncommitted[name],
+			"uncommitted failure %s declares FailureDetails: it has no audited outcome to offer", name)
+		if hasFacts[name] {
 			out[name] = true
 		}
 	}

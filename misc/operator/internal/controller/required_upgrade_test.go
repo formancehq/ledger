@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -23,33 +25,57 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-var testStopVersions = []string{"v3.0.0-rc.3"}
+var testStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 
 func TestMandatoryStopVersionBoundary(t *testing.T) {
 	t.Parallel()
 	require.False(t, requiresStoppedUpgrade("v3.0.0-rc.2", "v3.0.0-rc.3", mandatoryStopVersions), "rc.3 must remain rolling")
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions))
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.3", "v3.0.0-rc.4", mandatoryStopVersions), "rc.4 must stop rc.3 voters before emitting payloads")
+	require.True(t, requiresStoppedUpgrade("v3.0.0-rc.4", "v3.0.0-rc.5", mandatoryStopVersions), "rc.5 must stop rc.4 voters before peer port, schema, controls, aggregate and forwarded-order apply changes")
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", mandatoryStopVersions), "a moving tag could cross the rc.4 boundary")
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", mandatoryStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", mandatoryStopVersions), "a moving tag could cross the rc.5 boundary")
 	for _, tt := range []struct {
 		source, target string
 		stop           bool
 	}{
 		{"v3.0.0-rc.1", "v3.0.0-rc.2", false},
-		{"v3.0.0-rc.2", "v3.0.0-rc.3", true},
-		{"v3.0.0-rc.1", "v3.0.0-rc.3", true}, // Selection crosses the boundary; admission still rejects the RC jump.
-		{"v3.0.0-rc.3", "v3.0.0-rc.4", false},
+		{"v3.0.0-rc.2", "v3.0.0-rc.3", false},
+		{"v3.0.0-rc.1", "v3.0.0-rc.3", false}, // Admission still rejects the RC jump.
+		{"v3.0.0-rc.3", "v3.0.0-rc.4", true},
+		{"v3.0.0-rc.4", "v3.0.0-rc.5", true},
+		{"v3.0.0-rc.2", "v3.0.0-rc.4", true}, // Selection crosses the boundary; admission still rejects the RC jump.
 		{"v3.0.0-rc.3", "v3.0.0-rc.3", false},
 		{"v3.0.0-rc.4", "v3.0.0-rc.3", false},
-		{"latest", "v3.0.0-rc.3", false},
+		{"latest", "v3.0.0-rc.4", false},
+		{"latest", "v3.0.0-rc.5", false},
 	} {
 		require.Equal(t, tt.stop, requiresStoppedUpgrade(tt.source, tt.target, testStopVersions), "%s -> %s", tt.source, tt.target)
 	}
-	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "latest", testStopVersions))
-	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.2", "3.0.0-rc.3", testStopVersions))
-	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "latest", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.3", "3.0.0-rc.4", testStopVersions))
+	require.True(t, requiresPinnedUpgradeTarget("v3.0.0-rc.4", "latest", testStopVersions))
+	require.False(t, requiresPinnedUpgradeTarget("v3.0.0-rc.5", "latest", testStopVersions))
+	for _, tt := range []struct {
+		source, target string
+		block          bool
+	}{
+		{"latest", "v3.0.0", true},
+		{"", "v3.0.0", true}, // Digest or unreadable source image.
+		{"latest", "v3.0.0-rc.4", true},
+		{"latest", "v3.0.0-rc.5", true},
+		{"latest", "v3.0.0-rc.3", false},
+		{"latest", "latest", false},
+		{"latest", "main", false},
+		{"v3.0.0-rc.3", "v3.0.0", false},
+	} {
+		require.Equal(t, tt.block, requiresIdentifiedUpgradeSource(tt.source, tt.target, testStopVersions), "%q -> %q", tt.source, tt.target)
+	}
 }
 
 func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
@@ -57,7 +83,7 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true}
 	cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: new(bool)}
 	*cluster.Spec.Auth.Enabled = true
@@ -65,8 +91,8 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 	cluster.Spec.Replicas = new(int32(1))
 	applyDefaults(cluster)
 	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
-		Source: "v3.0.0-rc.2", Target: cluster.Spec.Image.Tag,
-		StatefulSetUID: "old-sts", TargetSpecHash: computeSpecHash(&cluster.Spec),
+		Source: "v3.0.0-rc.3", Target: cluster.Spec.Image.Tag,
+		StatefulSetUID: "old-sts", TargetSpecHash: computePodSpecHash(&cluster.Spec, false),
 		ExpectedReplicas: 1, DrainEpoch: "upgrade-epoch", Phase: "Preflighting",
 	}
 	scheme := runtime.NewScheme()
@@ -127,9 +153,9 @@ func TestStoppedUpgradeRepairsDependenciesBeforeWorkloadGate(t *testing.T) {
 func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.HeadlessService.Enabled = new(bool)
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.3", true)
 	r := &ClusterReconciler{stopVersions: testStopVersions}
 	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
 	require.False(t, proceed)
@@ -137,12 +163,29 @@ func TestStoppedUpgradeRequiresHeadlessService(t *testing.T) {
 	require.Nil(t, cluster.Status.Upgrade)
 }
 
+func TestStoppedUpgradeRejectsUnidentifiedSource(t *testing.T) {
+	t.Parallel()
+	for _, image := range []string{
+		"ghcr.io/formancehq/ledger:latest",
+		"ghcr.io/formancehq/ledger@sha256:abc",
+	} {
+		cluster := newMinimalCluster()
+		cluster.Spec.Image.Tag = "v3.0.0"
+		sts := rcStatefulSet(image, true)
+		r := &ClusterReconciler{stopVersions: testStopVersions}
+		proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, sts)
+		require.False(t, proceed, image)
+		require.ErrorContains(t, err, "run a canonical version tag first", image)
+		require.Nil(t, cluster.Status.Upgrade, image)
+	}
+}
+
 func TestStoppedUpgradeWaitsForAnnotatedDrain(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Annotations = map[string]string{ClusterDrainAnnotation: "true"}
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.3", true)
 	r := &ClusterReconciler{stopVersions: testStopVersions}
 	proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, sts)
 	require.False(t, proceed)
@@ -155,22 +198,34 @@ func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.Replicas = new(int32(1))
+	cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenScaled: "Delete"}
 	applyDefaults(cluster)
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("source-sts")
 	sts.Spec.Replicas = new(int32(1))
 	sts.Status.UpdatedReplicas, sts.Status.ReadyReplicas = 1, 1
 	sts.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/instance": cluster.Name, "app.kubernetes.io/name": "ledger"}}
 	sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}}
-	sts.Annotations = map[string]string{annotationScaleDownPVCFrom: "3"}
+	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
+		Name: "wal-" + sts.Name + "-2", Namespace: cluster.Namespace,
+		UID: "removed-claim", ResourceVersion: "1",
+		OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: sts.Name, UID: sts.UID}},
+	}}
+	plan := scaleDownPVCPlan{Version: 1, ClusterUID: cluster.UID, StatefulSetUID: sts.UID, From: 3, To: 1,
+		Claims: []scaleDownPVCClaim{{Name: claim.Name, Ordinal: 2, Volume: "wal", UID: claim.UID, InitialResourceVersion: claim.ResourceVersion}},
+	}
+	encoded, err := json.Marshal(plan)
+	require.NoError(t, err)
+	sts.Annotations = map[string]string{annotationScaleDownPVCFrom: "3", annotationScaleDownPVCPlan: string(encoded)}
+	sts.Spec.PersistentVolumeClaimRetentionPolicy = &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType, WhenScaled: appsv1.DeletePersistentVolumeClaimRetentionPolicyType}
 	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()
-	clientset := kubernetesfake.NewSimpleClientset()
+	clientset := kubernetesfake.NewSimpleClientset(claim)
 	failCleanup := true
 	clientset.PrependReactor("delete", "persistentvolumeclaims", func(clientgotesting.Action) (bool, runtime.Object, error) {
 		if failCleanup {
@@ -180,16 +235,20 @@ func TestStoppedUpgradeDrainsPendingScaleDownCleanup(t *testing.T) {
 		return false, nil, nil
 	})
 	r := &ClusterReconciler{Client: c, Scheme: scheme, Clientset: clientset, stopVersions: testStopVersions, OperatorVersion: "v3.0.0-rc.4"}
-	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
+	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.ErrorContains(t, err, "injected scale-down PVC deletion failure")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, sts))
 	require.Equal(t, "3", sts.Annotations[annotationScaleDownPVCFrom])
+	require.Equal(t, string(encoded), sts.Annotations[annotationScaleDownPVCPlan])
 	require.Nil(t, cluster.Status.Upgrade)
 	failCleanup = false
 	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.ErrorContains(t, err, "required upgrade PVC")
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, sts))
 	require.NotContains(t, sts.Annotations, annotationScaleDownPVCFrom)
+	require.NotContains(t, sts.Annotations, annotationScaleDownPVCPlan)
+	_, err = clientset.CoreV1().PersistentVolumeClaims(cluster.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err))
 }
 
 func TestStoppedUpgradePreservesAuthKeysWithUnresolvedCredentials(t *testing.T) {
@@ -219,10 +278,11 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	ctx := context.Background()
 	cluster := newMinimalCluster()
 	cluster.UID = types.UID("cluster-uid")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
 	cluster.Spec.Replicas = new(int32(1))
+	cluster.Spec.Persistence.WAL.Size = resource.MustParse("4Gi")
 	cluster.Spec.Persistence.RetentionPolicy = &ledgerv1alpha1.RetentionPolicySpec{WhenDeleted: "Delete", WhenScaled: "Delete"}
-	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ghcr.io/formancehq/ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("old-sts")
 	sts.Generation = 1
 	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
@@ -257,7 +317,9 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	released := false
 	durable := false
 	var commands []string
-	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
+	exec := func(_ context.Context, config *rest.Config, clients kubernetes.Interface, _, pod, _ string, command []string) (*execResult, error) {
+		require.Same(t, r.Config, config)
+		require.Same(t, r.Clientset, clients)
 		cmd := command[len(command)-1]
 		commands = append(commands, cmd)
 		switch {
@@ -302,8 +364,13 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, proceed)
 	require.Equal(t, "Draining", cluster.Status.Upgrade.Phase)
+	require.Equal(t, computePodSpecHash(&cluster.Spec, false), cluster.Status.Upgrade.TargetSpecHash, "new intents retain the released full-storage hash")
+	require.NotEqual(t, computeSpecHash(&cluster.Spec), cluster.Status.Upgrade.TargetSpecHash)
 	require.NotEmpty(t, cluster.Status.Upgrade.DrainEpoch)
 	require.False(t, drained)
+	persisted := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer, "claims are detached only after the finalizer is durable")
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, sts, exec)
 	require.NoError(t, err)
 	require.False(t, proceed)
@@ -372,7 +439,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.Equal(t, types.UID("pv-uid"), pv.UID)
 	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
 	// A replacement with the target image converges without deleting it again.
-	replacement := rcStatefulSet("ledger:v3.0.0-rc.3", true)
+	replacement := rcStatefulSet("ledger:v3.0.0-rc.4", true)
 	replacement.Name, replacement.Namespace, replacement.UID = sts.Name, sts.Namespace, types.UID("new-sts")
 	activeSts = replacement
 	replacement.OwnerReferences = sts.OwnerReferences
@@ -432,7 +499,7 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	require.ErrorContains(t, err, "replacement StatefulSet identity changed")
 	require.Equal(t, metav1.ConditionFalse, meta.FindStatusCondition(cluster.Status.Conditions, "Upgrade").Status)
 	require.True(t, drained)
-	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.3"
+	replacement.Spec.Template.Spec.Containers[0].Image = "ledger:v3.0.0-rc.4"
 	replacement.Status.ReadyReplicas = 1
 	// A replacement can itself disappear. Wait for its old Pods, then recreate
 	// while keeping the drain fence and original volume identities.
@@ -466,20 +533,48 @@ func TestStoppedUpgradeWaitsForOldPodsAndRetainsClaim(t *testing.T) {
 	replacement.UID = types.UID("newer-sts")
 	require.NoError(t, c.Create(ctx, replacement))
 	require.NoError(t, c.Status().Update(ctx, replacement))
-	for _, phase := range []string{"Verifying", "Unblocking"} {
+	for _, phase := range []string{"Verifying", "Unblocking", "Adopting"} {
 		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 		require.NoError(t, err)
 		require.False(t, proceed)
 		require.Equal(t, phase, cluster.Status.Upgrade.Phase)
 	}
+	require.False(t, drained)
+	require.True(t, released)
+	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+	require.NoError(t, err)
+	require.False(t, proceed)
+	require.NoError(t, c.Get(ctx, key, replacement))
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, replacement.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
+	// Ordinary reconciliation recreates a missing replacement with the requested
+	// policy while the claim inventory stays recorded.
+	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, nil, exec)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+	// Until the replacement owns every recorded claim, Cluster deletion still
+	// needs the finalizer and the claim inventory.
+	for _, name := range []string{claimName, dataClaimName} {
+		proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
+		require.NoError(t, err)
+		require.False(t, proceed)
+		require.Equal(t, "Adopting", cluster.Status.Upgrade.Phase)
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+		require.Contains(t, persisted.Finalizers, upgradeClaimsFinalizer)
+		adopted := &corev1.PersistentVolumeClaim{}
+		require.NoError(t, c.Get(ctx, types.NamespacedName{Name: name, Namespace: cluster.Namespace}, adopted))
+		adopted.OwnerReferences = []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: replacement.Name, UID: replacement.UID}}
+		require.NoError(t, c.Update(ctx, adopted))
+	}
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
 	require.Nil(t, cluster.Status.Upgrade)
-	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, buildRetentionPolicy(cluster).WhenDeleted)
-	require.False(t, drained)
-	require.True(t, released)
-	require.Contains(t, strings.Join(commands, " "), "'end-drain'")
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, persisted))
+	require.NotContains(t, persisted.Finalizers, upgradeClaimsFinalizer)
 	proceed, _, err = r.reconcileRequiredUpgradeWithExec(ctx, cluster, replacement, exec)
 	require.NoError(t, err)
 	require.True(t, proceed)
@@ -497,9 +592,9 @@ func TestStoppedUpgradeRejectsChangedTargetAndMissingClaim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.5"
 	cluster.Spec.Replicas = new(int32(1))
-	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.2", Target: "v3.0.0-rc.3", StatefulSetUID: "old", ExpectedReplicas: 1, Phase: "Deleting"}
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", StatefulSetUID: "old", ExpectedReplicas: 1, Phase: "Deleting"}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
@@ -508,8 +603,8 @@ func TestStoppedUpgradeRejectsChangedTargetAndMissingClaim(t *testing.T) {
 	proceed, _, err := r.reconcileRequiredUpgrade(ctx, cluster, nil)
 	require.False(t, proceed)
 	require.ErrorContains(t, err, "restore spec.image.tag")
-	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
-	cluster.Status.Upgrade.TargetSpecHash = computeSpecHash(&cluster.Spec)
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Status.Upgrade.TargetSpecHash = computePodSpecHash(&cluster.Spec, false)
 	cluster.Status.Upgrade.ClaimUIDs = map[string]string{"wal-ledger-0": "original"}
 	proceed, _, err = r.reconcileRequiredUpgrade(ctx, cluster, nil)
 	require.False(t, proceed)
@@ -520,7 +615,7 @@ func TestStoppedUpgradeBlocksUnpinnedTarget(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
 	cluster.Spec.Image.Tag = "latest"
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	r := &ClusterReconciler{stopVersions: testStopVersions}
 	proceed, _, err := r.reconcileRequiredUpgrade(context.Background(), cluster, sts)
 	require.False(t, proceed)
@@ -531,18 +626,18 @@ func TestStoppedUpgradeTargetDriftUpdatesCondition(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Spec.Image.Tag = "v3.0.0-rc.5"
 	cluster.Spec.Replicas = new(int32(3))
-	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.2", Target: "v3.0.0-rc.3", Phase: "Verifying"}
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", Phase: "Verifying"}
 	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: "Verifying", Message: "in progress"})
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace = resourceName(cluster.Name), cluster.Namespace
 	sts.OwnerReferences = []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster, sts).WithObjects(cluster, sts).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.5"}
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cluster))
@@ -557,12 +652,12 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	t.Parallel()
 	cluster := newMinimalCluster()
 	cluster.Spec.GrpcPort = 9999
-	sts := rcStatefulSet("ledger:v3.0.0-rc.2", true)
+	sts := rcStatefulSet("ledger:v3.0.0-rc.3", true)
 	sts.Name, sts.Namespace, sts.UID = resourceName(cluster.Name), cluster.Namespace, types.UID("source-sts")
 	sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "grpc", ContainerPort: 8888, Protocol: corev1.ProtocolTCP}}
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: sts.Name + "-0", Namespace: sts.Namespace,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "StatefulSet", Name: sts.Name, UID: sts.UID, Controller: new(true)}}}}
-	r := &ClusterReconciler{Config: &rest.Config{}, Clientset: kubernetesfake.NewSimpleClientset(pod)}
+	actor := &stoppedUpgradeReconciler{config: &rest.Config{}, clientset: kubernetesfake.NewSimpleClientset(pod)}
 	exec := func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
 		require.Contains(t, command[len(command)-1], ":8888")
 		require.NotContains(t, command[len(command)-1], ":9999")
@@ -571,6 +666,213 @@ func TestStoppedUpgradeUsesLiveGRPCPort(t *testing.T) {
 	}
 	live, err := drainClusterFromWorkload(cluster, sts)
 	require.NoError(t, err)
-	_, err = r.upgradeDrainCluster(live, sts, exec).run(t.Context(), 0, "cluster", "status", "--json")
+	actor.exec = exec
+	_, err = actor.upgradeDrainCluster(live, sts).run(t.Context(), 0, "cluster", "status", "--json")
 	require.NoError(t, err)
+}
+
+func TestStoppedUpgradeWiresBoundaryOverrides(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name         string
+		stopVersions []string
+		blocked      bool
+	}{
+		{name: "released defaults", blocked: true},
+		{name: "explicitly disabled", stopVersions: []string{}},
+		{name: "custom boundary", stopVersions: []string{"v3.0.0-rc.3"}},
+		{name: "custom future boundary", stopVersions: []string{"v3.0.0-rc.5"}, blocked: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Image.Tag = "latest"
+			reconciler := &ClusterReconciler{stopVersions: test.stopVersions}
+			proceed, _, err := reconciler.reconcileRequiredUpgrade(t.Context(), cluster, rcStatefulSet("ledger:v3.0.0-rc.3", true))
+			if test.blocked {
+				require.ErrorContains(t, err, "pin a canonical version tag")
+				require.False(t, proceed)
+			} else {
+				require.NoError(t, err)
+				require.True(t, proceed)
+			}
+		})
+	}
+}
+
+func TestStoppedUpgradeStatusPatchFailurePreservesLocalState(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"start", "advance", "clear"} {
+		t.Run(operation, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.ResourceVersion = "42"
+			state := &ledgerv1alpha1.ClusterUpgradeStatus{Source: "v3.0.0-rc.3", Target: "v3.0.0-rc.4", Phase: "Preflighting", DrainEpoch: "pinned-epoch"}
+			if operation != "start" {
+				cluster.Status.Upgrade = state.DeepCopy()
+				meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{Type: "Upgrade", Status: metav1.ConditionTrue, Reason: "Preflighting", Message: "persisted progress"})
+			}
+			before := cluster.DeepCopy()
+			failure := errors.New("status patch unavailable")
+			attempts := 0
+			wrapped := interceptor.NewClient(fake.NewClientBuilder().Build(), interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, _ client.Client, subresource string, obj client.Object, patch client.Patch, _ ...client.SubResourcePatchOption) error {
+					attempts++
+					require.Equal(t, "status", subresource)
+					data, err := patch.Data(obj)
+					require.NoError(t, err)
+					var body map[string]any
+					require.NoError(t, json.Unmarshal(data, &body))
+					require.Equal(t, "42", body["metadata"].(map[string]any)["resourceVersion"])
+					obj.SetResourceVersion("uncommitted")
+
+					return failure
+				},
+			})
+			actor := &stoppedUpgradeReconciler{client: wrapped}
+			var err error
+			switch operation {
+			case "start":
+				err = actor.persistUpgrade(t.Context(), cluster, state)
+			case "advance":
+				err = actor.advanceUpgrade(t.Context(), cluster, "Draining")
+			case "clear":
+				err = actor.persistUpgrade(t.Context(), cluster, nil)
+			}
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "persisting stopped upgrade state")
+			require.Equal(t, 1, attempts)
+			require.Equal(t, before, cluster)
+		})
+	}
+}
+
+func TestStoppedUpgradeFinalizerPatchFailureBlocksReconcile(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		upgrading bool
+	}{
+		{name: "release after upgrade"},
+		{name: "ensure during upgrade", upgrading: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			if test.upgrading {
+				cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Phase: "Preflighting"}
+			} else {
+				cluster.Finalizers = []string{upgradeClaimsFinalizer}
+			}
+			before := cluster.DeepCopy()
+			failure := errors.New("finalizer patch unavailable")
+			attempts := 0
+			wrapped := interceptor.NewClient(fake.NewClientBuilder().Build(), interceptor.Funcs{
+				Patch: func(_ context.Context, _ client.WithWatch, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+					attempts++
+					require.IsType(t, &ledgerv1alpha1.Cluster{}, obj)
+
+					return failure
+				},
+			})
+			reconciler := &ClusterReconciler{Client: wrapped}
+			proceed, _, err := reconciler.reconcileRequiredUpgradeWithExec(t.Context(), cluster, nil, nil)
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "patching Cluster finalizers")
+			require.False(t, proceed)
+			require.Equal(t, 1, attempts)
+			require.Equal(t, before, cluster)
+		})
+	}
+}
+
+func TestStoppedUpgradeUsesClaimLifecycleCallbacks(t *testing.T) {
+	t.Parallel()
+	cluster := newMinimalCluster()
+	actor := &stoppedUpgradeReconciler{}
+	calls := make([]string, 0, 3)
+	adoptionFailure := errors.New("adoption callback")
+	claims := stoppedUpgradeClaimLifecycle{
+		releaseFinalizer: func(context.Context, *ledgerv1alpha1.Cluster) error {
+			calls = append(calls, "release")
+
+			return nil
+		},
+		ensureFinalizer: func(context.Context, *ledgerv1alpha1.Cluster) error {
+			calls = append(calls, "ensure")
+
+			return nil
+		},
+		adoptClaims: func(context.Context, *ledgerv1alpha1.Cluster, *appsv1.StatefulSet) (bool, ctrl.Result, error) {
+			calls = append(calls, "adopt")
+
+			return false, ctrl.Result{}, adoptionFailure
+		},
+	}
+
+	proceed, _, err := actor.reconcile(t.Context(), cluster, nil, claims)
+	require.NoError(t, err)
+	require.True(t, proceed)
+	require.Equal(t, []string{"release"}, calls)
+
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{Phase: "Adopting", Target: cluster.Spec.Image.Tag}
+	proceed, _, err = actor.reconcile(t.Context(), cluster, nil, claims)
+	require.ErrorIs(t, err, adoptionFailure)
+	require.False(t, proceed)
+	require.Equal(t, []string{"release", "ensure", "adopt"}, calls)
+}
+
+func TestStoppedUpgradeResumesReleasedIntentAndRejectsClaimDeclarationChanges(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name   string
+		change func(*ledgerv1alpha1.ClusterSpec)
+	}{
+		{"capacity", func(spec *ledgerv1alpha1.ClusterSpec) { spec.Persistence.WAL.Size = resource.MustParse("8Gi") }},
+		{"profile", func(spec *ledgerv1alpha1.ClusterSpec) {
+			spec.Persistence.Data.VolumeAttributesClassName = "new-profile"
+		}},
+		{"storage class", func(spec *ledgerv1alpha1.ClusterSpec) { spec.Persistence.WAL.StorageClass = "new-class" }},
+		{"access mode", func(spec *ledgerv1alpha1.ClusterSpec) {
+			spec.Persistence.Data.AccessMode = string(corev1.ReadWriteMany)
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Image.Tag = "v3.0.0-rc.3"
+			cluster.Spec.Replicas = new(int32(1))
+			cluster.Spec.Persistence.WAL.Size = resource.MustParse("4Gi")
+			applyDefaults(cluster)
+			canonical := computeSpecHash(&cluster.Spec)
+			// An operator from before storage reconciliation persisted this hash.
+			released := computePodSpecHash(&cluster.Spec, false)
+			require.NotEqual(t, canonical, released)
+			cluster.Status.Upgrade = &ledgerv1alpha1.ClusterUpgradeStatus{
+				Source: "v3.0.0-rc.2", Target: cluster.Spec.Image.Tag,
+				StatefulSetUID: "old-sts", TargetSpecHash: released,
+				ExpectedReplicas: 1, DrainEpoch: "upgrade-epoch", Phase: "Recreating",
+			}
+			scheme := runtime.NewScheme()
+			require.NoError(t, clientgoscheme.AddToScheme(scheme))
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(cluster).WithObjects(cluster).Build()
+			r := &ClusterReconciler{Client: c, Scheme: scheme}
+			// Recreating with no old Pods may proceed, without rewriting the intent.
+			proceed, _, err := r.reconcileRequiredUpgrade(t.Context(), cluster, nil)
+			require.NoError(t, err)
+			require.True(t, proceed)
+			require.Equal(t, released, cluster.Status.Upgrade.TargetSpecHash)
+			tt.change(&cluster.Spec)
+			require.Equal(t, canonical, computeSpecHash(&cluster.Spec), "claim edits must not change the Pod restart hash")
+			proceed, _, err = r.reconcileRequiredUpgrade(t.Context(), cluster, nil)
+			require.False(t, proceed)
+			require.ErrorContains(t, err, "cluster workload spec changed during stopped upgrade")
+			require.Equal(t, released, cluster.Status.Upgrade.TargetSpecHash)
+			stored := &ledgerv1alpha1.Cluster{}
+			require.NoError(t, c.Get(t.Context(), client.ObjectKeyFromObject(cluster), stored))
+			require.Equal(t, cluster.Status.Upgrade, stored.Status.Upgrade, "a rejected edit must preserve the durable intent")
+		})
+	}
 }

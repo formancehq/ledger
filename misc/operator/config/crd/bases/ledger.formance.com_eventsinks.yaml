@@ -85,6 +85,7 @@ spec:
                   - CREATED_LEDGER
                   - DELETED_LEDGER
                   - SKIPPED_ORDER
+                  - ACCOUNT_METADATA_UPDATED
                   type: string
                 type: array
                 x-kubernetes-list-type: set

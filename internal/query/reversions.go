@@ -45,10 +45,10 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, []Malfo
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		// Key format: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes].
-		if len(key) < 2+dal.LedgerNameFixedSize+8 {
+		if len(key) != 2+dal.LedgerNameFixedSize+8 {
 			malformed = append(malformed, MalformedReversionRow{
 				Key:    append([]byte(nil), key...),
-				Reason: "key shorter than the reversion word layout",
+				Reason: "key length differs from the reversion word layout",
 			})
 
 			continue
@@ -63,6 +63,18 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, []Malfo
 
 		ledgerName := string(nameBytes[:end])
 		wordIndex := binary.BigEndian.Uint64(key[2+dal.LedgerNameFixedSize:])
+		canonical := make([]byte, len(key))
+		canonical[0], canonical[1] = dal.ZonePerLedger, dal.SubPLReversions
+		copy(canonical[2:], ledgerName)
+		binary.BigEndian.PutUint64(canonical[2+dal.LedgerNameFixedSize:], wordIndex)
+		if !bytes.Equal(key, canonical) {
+			malformed = append(malformed, MalformedReversionRow{
+				Key:    append([]byte(nil), key...),
+				Reason: "noncanonical key encoding",
+			})
+
+			continue
+		}
 
 		val, err := iter.ValueAndErr()
 		if err != nil {

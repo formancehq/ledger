@@ -257,6 +257,7 @@ func (r *signingBatchRunner) restart() *keystore.KeyStore {
 		logger, registry, NewCacheSnapshotter(logger, registry, nil), r.store,
 		dal.NewSentinelFactory(r.store, false), meterProvider, recovered,
 		NewSharedState(), newNoopNotifier(r.t), nil, "test-cluster", 0, noopConfChangeHandler,
+		NoopCapabilityPolicyCommitHandler,
 	)
 	require.NoError(r.t, err)
 	require.NoError(r.t, NewRecovery(machine, r.store).RecoverState())
@@ -359,7 +360,7 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 		},
 		{
 			// Admission only ever emits an empty ParentKeyId for the unsigned
-			// bootstrap registration, but recovery and RebuildDelta both rebuild
+			// bootstrap registration, but recovery rebuilds
 			// roots from parent-less rows, so the FSM must resolve one the same way.
 			name: "a child re-registered as a root leaves the subtree",
 			orders: func(replacement []byte) []*raftcmdpb.Order {

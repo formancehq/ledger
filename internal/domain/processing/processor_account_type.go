@@ -11,7 +11,7 @@ import (
 )
 
 // processAddAccountType adds a new account type to a ledger.
-func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -80,7 +80,7 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 }
 
 // processRemoveAccountType removes an account type from a ledger.
-func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -178,7 +178,7 @@ func validateAccountAgainstAccountTypes(
 }
 
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
-func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
+func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr

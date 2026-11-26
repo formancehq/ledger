@@ -1,12 +1,24 @@
 package admission
 
-import "github.com/formancehq/ledger/v3/internal/domain"
+import (
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
 
 // Sentinel errors for admission-layer validation that does not belong to the
 // domain (e.g. integration-config invariants like AWS RDS IAM auth fields).
 // Domain errors stay in internal/domain; cross-cutting application errors
 // live here so the domain package keeps its narrow ledger-semantics scope.
 var (
+	// Connection syntax errors never echo credential-bearing input or parser errors.
+	ErrMirrorPostgresURLInvalid = &invalidIntegrationConfig{message: "mirrorSource.postgres.dsn must be a hierarchical URL with an explicit scheme"}
+	ErrSinkNATSURLInvalid       = &invalidIntegrationConfig{message: "sink.nats.url must contain explicit nats://, tls://, ws:// or wss:// server URLs"}
+	ErrSinkClickHouseURLInvalid = &invalidIntegrationConfig{message: "sink.clickhouse.dsn must be a clickhouse://, http:// or https:// URL with a host"}
+
+	ErrMirrorSourceRequiresMirrorMode = &invalidIntegrationConfig{message: "mirrorSource requires mode MIRROR"}
+	ErrMirrorModeRequiresSource       = &invalidIntegrationConfig{message: "mode MIRROR requires mirrorSource"}
+	ErrSinkConfigIncomplete           = &invalidIntegrationConfig{message: "sink name and one sink type are required"}
+
 	// ErrMirrorHTTPURLInvalid rejects unusable HTTP source URLs before the
 	// configuration reaches Raft. Never include the credential-bearing input
 	// or the URL parser's error in this public validation message.
@@ -19,13 +31,6 @@ var (
 	// persisting a malformed mirror config in the audit chain.
 	ErrMirrorIAMRegionRequired = domain.NewValidationSentinel("MIRROR_IAM_REGION_REQUIRED", "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set")
 
-	// ErrMirrorIAMRequiresTLS rejects mirror configs that pair AWS RDS IAM
-	// authentication with an sslmode that allows cleartext (disable, allow,
-	// prefer, or unset -- libpq's default "prefer" falls back to non-TLS).
-	// The SigV4 token in cc.Password is a short-lived bearer credential and
-	// must not transit cleartext.
-	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("MIRROR_IAM_REQUIRES_TLS", "mirrorSource.postgres: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
-
 	// ErrMirrorRewriteRuleInvalid rejects a mirror config whose rewriteRules
 	// contain a rule that fails to compile: invalid CEL syntax, a match that is
 	// not boolean, a cel expression that does not return a transaction, an empty
@@ -33,6 +38,12 @@ var (
 	// admission so a malformed rule fails fast before the config is persisted,
 	// instead of stalling — or corrupting — the mirror on every batch.
 	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("MIRROR_REWRITE_RULE_INVALID", "mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
+
+	// ErrMirrorAssetMappingInvalid rejects a mirror config whose assetMappings
+	// cannot be compiled by v2.NewAssetMapper. Rejected at admission for the
+	// same reason as rewrite rules: the mirror worker must never stall on a
+	// configuration the ledger already persisted.
+	ErrMirrorAssetMappingInvalid = domain.NewValidationSentinel("MIRROR_ASSET_MAPPING_INVALID", "mirrorSource.assetMappings: each entry needs a unique non-empty sourceAsset (max 64 bytes), a valid v3 asset, a color matching ^[A-Z]{0,32}$, and a unique (asset, color) target; at most 256 entries")
 
 	// ErrLedgerNameReservedPrefix rejects the exact names "_" (system API
 	// routes) and "_system" (system events) on every ledger-scoped order.
@@ -58,3 +69,26 @@ var (
 	// pre-Raft and cannot diverge state across a mixed-binary rolling upgrade.
 	ErrSigningKeyInvalidLength = domain.NewValidationSentinel("SIGNING_KEY_INVALID_LENGTH", "signing key public_key must be exactly 32 bytes (Ed25519)")
 )
+
+// mirrorAssetMappingError is ErrMirrorAssetMappingInvalid with the offending
+// entry named in its message.
+type mirrorAssetMappingError struct {
+	cause error
+}
+
+func (e *mirrorAssetMappingError) Error() string {
+	return "mirrorSource." + e.cause.Error()
+}
+
+func (e *mirrorAssetMappingError) Is(target error) bool {
+	return target == ErrMirrorAssetMappingInvalid
+}
+
+func (*mirrorAssetMappingError) Kind() domain.ErrorKind { return ErrMirrorAssetMappingInvalid.Kind() }
+func (*mirrorAssetMappingError) Reason() string         { return ErrMirrorAssetMappingInvalid.Reason() }
+func (*mirrorAssetMappingError) FailureDetails() *commonpb.FailureDetails {
+	return ErrMirrorAssetMappingInvalid.FailureDetails()
+}
+func (e *mirrorAssetMappingError) PublicDetails() (string, map[string]string, bool) {
+	return e.Error(), nil, true
+}

@@ -65,6 +65,12 @@ type IdempotencyKeyValue struct {
 | Same key (after TTL expiration) | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
 
+Prepared-query updates carrying an explicit target are hashed independently of
+the stored query's current target. Repeating the same target and filter with the
+same key therefore follows the ordinary frozen-outcome path, even after the
+query has been deleted or recreated. Changing either field produces a normal
+idempotency-key conflict.
+
 ## Historical outcomes and checkpoint readiness
 
 The FSM marks a replay explicitly in its transient `ApplyResult`. Admission
@@ -79,6 +85,63 @@ read. In particular, checkpoint-create retries return their historical success
 after deletion and while the original call is still waiting for materialization.
 They do not wait again or recreate anything. New creations retain the
 [checkpoint lifecycle wait](../read-path/query-checkpoints.md#readiness-and-error-contract).
+
+## Replay after metadata limits tighten
+
+A retained outcome must remain recoverable when the committed metadata policy
+becomes stricter than the original accepted payload. Otherwise a client whose
+response was lost could see `METADATA_LIMIT_EXCEEDED` instead of its committed
+success or definitive failure, despite retaining the original key and content.
+
+Admission preserves authentication, signature, key-shape, structural validation,
+write-readiness and safe preload construction. Metadata ceilings are mutable
+replicated policy, so admission does not return a definitive limit verdict.
+A safely prepared request follows the ordinary business-proposal path, including
+its original orders and declared coverage. Internal mirror producers retain
+their own pre-proposal checks and retry contract.
+
+At apply, the existing FSM idempotency lookup runs before business handlers:
+
+- A matching live key returns its frozen success or definitive failure with
+  `Replayed`, without executing business orders or adding an audit entry.
+- Live different content is an audited conflict and cannot replace the retained
+  outcome.
+- A missing, expired or evicted key is a new attempt. The handlers evaluate the
+  policy committed before that proposal at its apply index. A definitive limit
+  refusal discards the business WriteSet and commits a failure audit containing
+  the attempted orders. A keyed failure is frozen under the existing TTL rules.
+
+A fresh refusal has no durable business effects or business logs. Handlers can
+stage speculative mutations before later validation fails; those mutations are
+discarded, while the failure audit and keyed outcome survive durable commit.
+Loosening policy later does not change a retained refusal. Maintenance, drain,
+audit capacity and other existing readiness/apply gates retain their precedence.
+Earlier structural or preparation errors still need not reach the FSM; this
+change does not provide a general replay bypass for admission failures.
+
+Raft orders an original and retry by proposal submission, even if the original
+is still awaiting apply. The retry waits for its own durable apply before
+returning the earlier frozen outcome. If it is proposed first, it is the first
+attempt and evaluates the policy at that index. There is no snapshot-only
+missing-key decision or reservation outside the FSM.
+
+The cost is the ordinary request-sized conversion, dependency discovery,
+preload, hashing, proposal serialization and one Raft/WAL entry. A retry now
+replicates its original business payload; a fresh policy refusal also stores it
+in the failure audit. Transport caps bound submitted bytes; replicated metadata
+ceilings govern business effects rather than limiting the bytes of a refused
+proposal. Coverage can grow with request keys and script dependencies, as on
+the existing path. No new history scan or lifecycle lock spans consensus.
+Requests fitting policy keep their existing path. Cost-shape tests compare
+ordinary proposal sizes before and after tightening; local benchmarks use real
+FSM/Pebble state with an in-process proposer and do not measure network latency
+or concurrent saturation.
+
+This placement follows the [replicated-policy rule](validation.md#replicated-policy-refusals).
+An admission-only barrier and snapshot lookup was rejected because a new policy
+refusal would leave no audit evidence and its observed policy could be stale.
+Using the existing handlers changes no committed-entry interpreter, persisted
+format, failure encoding or restore reconstruction.
 
 ## Numscript Dependency-Resolution Failures
 
@@ -232,7 +295,8 @@ All write operations support idempotency keys:
 | Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
 | Create ledger | `POST /{ledger}` | Yes |
 | Delete ledger | `DELETE /{ledger}` | Yes |
-| Bulk operations | `POST /{ledger}/bulk` | Yes (per action) |
+| Bulk operations (non-atomic, default) | `POST /{ledger}/bulk` | Per-element `ik`; `Idempotency-Key` header ignored |
+| Bulk operations (atomic) | `POST /{ledger}/bulk?atomic=true` | Batch-level `Idempotency-Key` header; per-element `ik` ignored |
 
 ## Key Validation
 
@@ -249,7 +313,7 @@ When a conflict is detected (same key, different content, within TTL):
 **HTTP Response:**
 ```json
 {
-  "errorCode": "CONFLICT",
+  "errorCode": "IDEMPOTENCY_KEY_CONFLICT",
   "errorMessage": "idempotency key conflict: same key used with different request content"
 }
 ```

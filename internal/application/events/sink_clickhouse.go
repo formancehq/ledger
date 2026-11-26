@@ -101,7 +101,7 @@ type ClickHouseSinkConfig struct {
 
 // ClickHouseSink publishes events to a ClickHouse table with a fully-typed
 // JSON column. Events are always serialized as ClickHouse-friendly JSON
-// (encoding/json with native Go types) — the Format field from SinkConfig
+// (with quoted decimal posting amounts) — the Format field from SinkConfig
 // is irrelevant for ClickHouse.
 type ClickHouseSink struct {
 	errors sinkErrorSanitizer
@@ -189,7 +189,7 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 	}
 
 	for _, event := range events {
-		data, err := eventToSinkJSON(event)
+		data, err := eventToClickHouseJSON(event)
 		if err != nil {
 			return fmt.Errorf("serializing event seq=%d: %w", event.GetLogSequence(), err)
 		}

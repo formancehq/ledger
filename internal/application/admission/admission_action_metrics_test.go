@@ -13,6 +13,9 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -168,11 +171,22 @@ func TestRecordActionOutcome(t *testing.T) {
 func TestAdmitActionCounters(t *testing.T) {
 	t.Parallel()
 
-	t.Run("metadata rejection before attribution records no action", func(t *testing.T) {
+	t.Run("metadata policy refusal from apply records an action", func(t *testing.T) {
 		t.Parallel()
 
 		store := createTestStore(t)
-		a, reader := createTestAdmissionWithReader(t, store, nil)
+		proposer := NewMockProposer(gomock.NewController(t))
+		proposer.EXPECT().InitialIndex().Return(uint64(0)).AnyTimes()
+		proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, p *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+			p.Resolve(nil, nil)
+			future := futures.New[state.ApplyResult]()
+			// The integration regression proves the real audited FSM verdict;
+			// this fixture pins counter wiring after the future returns it.
+			future.Resolve(state.ApplyResult{}, &domain.BusinessError{Err: &domain.ErrMetadataLimitExceeded{Dimension: domain.MetadataLimitDimensionValue, Limit: domain.DefaultMetadataMaxValueBytes, Actual: domain.DefaultMetadataMaxValueBytes + 1}})
+
+			return future, nil
+		})
+		a, reader := createTestAdmissionWithReader(t, store, proposer)
 		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: "ledger-oversized-metadata",
@@ -186,8 +200,8 @@ func TestAdmitActionCounters(t *testing.T) {
 		require.Equal(t, domain.MetadataLimitDimensionValue, limitErr.Dimension)
 
 		counts := recordedActionCounts(t, reader)
-		require.Empty(t, counts[mActionTotal])
-		require.Empty(t, counts[mActionErrors])
+		require.Equal(t, int64(1), counts[mActionTotal]["create_ledger"])
+		require.Equal(t, int64(1), counts[mActionErrors]["create_ledger"])
 	})
 
 	t.Run("failure after orders built increments total and errors", func(t *testing.T) {

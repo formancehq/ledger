@@ -22,6 +22,7 @@ func TestCompleteEventTypes(t *testing.T) {
 			name:       "empty offers every type",
 			toComplete: "",
 			want: []string{
+				"ACCOUNT_METADATA_UPDATED",
 				"COMMITTED_TRANSACTION",
 				"CREATED_LEDGER",
 				"DELETED_LEDGER",
@@ -45,6 +46,7 @@ func TestCompleteEventTypes(t *testing.T) {
 			name:       "after a comma the prefix is preserved and the selected type is excluded",
 			toComplete: "COMMITTED_TRANSACTION,",
 			want: []string{
+				"COMMITTED_TRANSACTION,ACCOUNT_METADATA_UPDATED",
 				"COMMITTED_TRANSACTION,CREATED_LEDGER",
 				"COMMITTED_TRANSACTION,DELETED_LEDGER",
 				"COMMITTED_TRANSACTION,DELETED_METADATA",

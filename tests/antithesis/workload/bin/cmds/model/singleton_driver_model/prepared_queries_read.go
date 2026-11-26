@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/holiman/uint256"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -915,11 +914,7 @@ func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *c
 func describeAggregate(agg *commonpb.AggregateResult) string {
 	parts := make([]string, 0, len(agg.GetVolumes()))
 	for _, v := range agg.GetVolumes() {
-		var in, out uint256.Int
-		v.GetInput().IntoUint256(&in)
-		v.GetOutput().IntoUint256(&out)
-
-		parts = append(parts, fmt.Sprintf("%s/%s=%s:%s", v.GetAsset(), v.GetColor(), in.Dec(), out.Dec()))
+		parts = append(parts, fmt.Sprintf("%s/%s=%s:%s", v.GetAsset(), v.GetColor(), v.GetInput().DecimalString(), v.GetOutput().DecimalString()))
 	}
 
 	sort.Strings(parts)

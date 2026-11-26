@@ -14,12 +14,74 @@ Signing is **optional by default** and can be made mandatory cluster-wide via `s
 
 ### Request signature: the whole batch, opaque
 
-The client builds an `ApplyBatch` (the list of requests + an idempotency key) and serialises it with `vtprotobuf` (deterministic encoding — no map iteration randomness, default-valued fields elided consistently). It then signs the resulting bytes once and wraps them in a `SignedApplyBatch{key_id, signature, payload}`. The payload is **opaque to the wire path**: the server doesn't decode it before verification.
+The client builds an `ApplyBatch` (the ordered requests, their skippable reasons, and the batch idempotency key), serializes it once, and signs those exact bytes. Go clients can use `actions.SignBatch`. The resulting `SignedApplyBatch{key_id, signature, payload}` retains the original serialized payload; admission verifies those bytes before trusting their decoded contents. HTTP first decodes the payload for an untrusted semantic comparison, as described below; that comparison never authenticates it.
 
 Two consequences:
 
 1. The signature covers the **composition and ordering** of the batch, not each request individually. Reordering, splitting, or removing requests breaks the signature.
-2. **Cross-language clients work** without coordination on canonical-form rules — vtprotobuf's determinism gives every SDK (Go, Java, Python, …) the exact same bytes for the exact same `ApplyBatch`, so all of them produce a signature the server will accept. See [`project_cross_language_clients`](../../../../../AGENTS.md) for the constraint and why it matters.
+2. **Cross-language clients work** without a shared canonical byte encoding. Protobuf implementations may serialize equivalent batches differently. Verification accepts a valid signature over the exact transmitted bytes; the server never reserializes the batch to reconstruct the signed bytes.
+
+### HTTP transaction signing boundary
+
+HTTP clients need the same batch authentication and retained audit evidence as
+gRPC clients, without a separate proof type or persisted field. Both transports
+therefore use `SignedApplyBatch` through `ApplyRequest.signed`, admission's
+`resolveBatch`, `Proposal.signature` and `AuditEntry.signature`. The HTTP wrapper
+only adapts the existing REST representation to that shared path. Clients must
+serialize and sign protobuf `ApplyBatch` bytes; signing the REST JSON or HTTP
+headers cannot authenticate those bytes. Ordinary unsigned REST bodies remain
+available when signing is optional.
+
+HTTP transaction mutations use `Content-Type: application/json`, including MIME
+parameters. Either signing header activates the signed representation, even
+with an empty value; without either header the ordinary unsigned REST body is
+used. The signed wrapper contains
+`request` (the legacy JSON body, or null for transaction metadata DELETE) and
+`payload` (standard-base64 exact protobuf batch bytes). The
+`Formance-Signing-Key-Id` and `Formance-Signature` headers carry the key ID and
+standard-base64 Ed25519 signature. Both headers are required exactly once and
+must be nonempty; the signature decodes to 64 bytes. The adapter assembles the
+existing `SignedApplyBatch{key_id, signature, payload}` from those inputs. The
+supported routes and client recipe are documented in
+[HTTP request signing](../../../../ops/signing.md#http-request-signing).
+
+The HTTP adapter builds the same `ApplyBatch` as its ordinary decoder from the
+URL, decoded body and `Idempotency-Key`. It decodes the supplied payload only as
+untrusted input and compares the complete messages with `proto.Equal`, including
+request count/order, oneofs, skippable reasons and the batch key. A mismatch is
+403 `PERMISSION_DENIED` before dispatch. A match forwards the original
+`SignedApplyBatch` unchanged into the existing backend/admission path; only
+admission's key lookup and Ed25519 verification authenticate it. No HTTP signing
+key cache or alternative verifier is introduced. JWT scopes and caller attribution
+remain separate requirements.
+
+Malformed, missing, empty or repeated signing headers, invalid base64 and invalid
+signature length reject with 400 before admission. Either signing header with
+a non-JSON or missing content type, or on an unsupported route, rejects with
+415; a signing attempt cannot silently become unsigned.
+
+Signed bulk requires a nonempty array and `atomic=true`. It uses the header key
+and ignores per-element `ik` exactly as unsigned atomic bulk does. Non-atomic
+signed bulk is rejected with 400. Bulk `continueOnFailure` cannot turn missing or
+invalid signature failures into success: 401/403 remain top-level failures and
+processing responses retain all element outcomes.
+
+This adds O(request bytes) transient decoding, comparison and copying under the
+existing 4 MiB body budget, including base64 and duplicated HTTP/protobuf content.
+It changes no proposal, persisted format, signature propagation, FSM behavior or
+protocol revision (40), and requires no data migration. Upgrade receiving HTTP
+nodes before clients send signing headers. Existing retained-key replay,
+unkeyed execution and expired-key behavior remain unchanged.
+
+The atomic HTTP Apply route uses the same boundary for all exposed command
+variants. Its wrapper `request` is `{requests:[...]}` and the header carries the
+single key. It checks every operation scope and compares the complete batch
+before invoking the existing service Apply once. It does not add signature
+verification to the HTTP codec or bypass mandatory admission policy. Unlike
+legacy transaction acknowledgements, its returned logs preserve the service's
+optional response-signature envelopes except for credential-redacted sink and
+mirror-ledger creation logs. See
+[atomic HTTP Apply](../api/http-api.md#atomic-http-apply).
 
 ### Response signature: per log
 
@@ -78,14 +140,14 @@ Registration is an upsert rather than an insert: nothing rejects a duplicate key
 
 `RevokeSigningKey` with `cascade` removes the revoked key and its entire descendant subtree, and records the descendants in `RevokedSigningKeyLog.cascaded_key_ids`.
 
-Which keys are descendants is decided by the **effective** parent relation: the committed key store with the current batch's staged signing updates folded over it **in order**, last write per key ID winning (`state.WriteSet.GetSigningKeyChildren`). That is the same sequence `WriteSet.Merge` replays into Pebble and the in-memory `KeyStore`, and the same one `backup.RebuildDelta` replays on restore, so all three agree on which keys a cascade reached.
+Which keys are descendants is decided by the **effective** parent relation: the committed key store with the current batch's staged signing updates folded over it **in order**, last write per key ID winning (`state.WriteSet.GetSigningKeyChildren`). That is the same sequence `WriteSet.Merge` replays into Pebble and the in-memory `KeyStore`. Checkpoint restore copies the persisted state directly.
 
 Two consequences inside a single signed batch, both following from "the last registration decides":
 
 - A key revoked earlier in the batch and then **re-registered** under the revoke target **is** cascaded. The registration supersedes the removal, so the key is back in the subtree when the cascade runs.
 - A key **reassigned** earlier in the batch is cascaded or not according to where its new parent sits. Reassignment removes the old edge, so the key is no longer reachable through it — but the walk is transitive, so a new parent that is *itself* inside the revoked subtree still carries the cascade to it. Only a new parent the cascade never reaches takes the key out of range.
 
-Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery and `RebuildDelta` both rebuild roots from parent-less persisted rows.
+Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery rebuilds roots from parent-less persisted rows.
 
 A batch boundary does not change either answer: the same ordered operations produce the same surviving key set whether they are submitted as one signed batch or several. Deriving the cascade from an unordered view of the staged updates is what made those two disagree (EN-2011).
 
@@ -99,7 +161,7 @@ Because registrations and revocations go through Raft, key changes are subject t
 
 ### Maintenance mode interaction
 
-When signing is required and the operator needs to register a fresh key without an existing signer (e.g. all parents revoked), the cluster can be put into maintenance mode. In maintenance, admission rejects every request type *except* `SetMaintenanceMode` — and `authorizeUnsignedBatch()` is allowed to admit an unsigned registration on the way out. See `docs/ops/maintenance-mode.md`.
+When signing is required and the operator needs to register a fresh key without an existing signer (e.g. all parents revoked), the cluster can be put into maintenance mode. In maintenance, admission rejects every client request type *except* `SetMaintenanceMode`; the separate leader-internal cluster-policy reconciliation path remains allowed. `authorizeUnsignedBatch()` is allowed to admit an unsigned registration on the way out. See `docs/ops/maintenance-mode.md`.
 
 ### Leader-internal proposals
 
@@ -109,11 +171,11 @@ Background work the leader schedules — query-checkpoint creation and other sch
 
 Signatures prove **non-repudiation**: the client cannot deny submitting a request whose signature verifies under their public key. They do not, by themselves, prevent a man-in-the-middle from re-submitting the same signed batch later.
 
-Replay protection is the job of the **idempotency key** + the FSM-side replay cache (see [pipeline.md § Idempotency](pipeline.md#idempotency)). A re-submitted signed batch with the same idempotency key returns the original outcome reference rather than executing again. A re-submitted batch with a fresh idempotency key is, by design, treated as a new request — the client is responsible for not reusing or rotating idempotency keys.
+Replay protection is the job of the **idempotency key** + the FSM-side replay cache (see [pipeline.md § Idempotency](pipeline.md#idempotency)). A re-submitted signed batch with the same idempotency key returns the original outcome reference rather than executing again. A newly signed batch with a fresh idempotency key is, by design, treated as a new request; changing that key under an existing signature fails verification. An empty key permits repeated execution, and an expired key follows the existing eviction/replay contract.
 
 ## Cross-language constraint
 
-The signed payload format is fixed by vtprotobuf encoding rules — `internal/pkg/vtmarshal`. Any change to those rules (custom marshal options, new "compact" encoding variants, field-tag renumbering, etc.) would break every client SDK at once. This is captured as a project-wide invariant: **preserve the envelope on the wire, never assume the Go SDK is the only consumer**.
+The signed payload is the published protobuf `ApplyBatch` format, not a Go-specific canonical encoding. Preserve its wire contract and the original envelope bytes through forwarding and audit capture. A different valid protobuf encoding may decode to the same value and still authenticate, provided the client signs the bytes it actually sends. Never assume the Go SDK is the only consumer.
 
 ## Failure modes
 

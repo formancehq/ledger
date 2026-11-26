@@ -32,7 +32,7 @@ func backupRunRecoveryFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.B
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: "test", UID: "run-uid", Labels: map[string]string{ledgerv1alpha1.LabelBackup: "backup"}},
-		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "backup", Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "backup"},
 	}
 	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: run.Namespace},
@@ -45,7 +45,8 @@ func backupRunRecoveryFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.B
 		}},
 	}
 
-	return fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(run, &batchv1.Job{}, &ledgerv1alpha1.Backup{}).WithObjects(run, backup, cluster, backupTLSWorkload(cluster, tlsModeDisabled), backupClusterService(cluster)).Build(), run
+	return fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).WithStatusSubresource(run, &batchv1.Job{}, &ledgerv1alpha1.Backup{}).WithObjects(run, backup, cluster, backupTLSWorkload(cluster, tlsModeDisabled), backupClusterService(cluster)).Build(), run
 }
 
 func TestBackupRunUsesOwnedWorkloadImage(t *testing.T) {
@@ -161,9 +162,9 @@ func testBackupRunCommittedCreateLostResponse(t *testing.T, dependency string) {
 	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
 	require.Equal(t, ledgerv1alpha1.BackupRunPhaseSucceeded, run.Status.Phase)
 	require.NotNil(t, run.Status.CompletionTime)
-	require.NotNil(t, run.Status.Full)
-	require.EqualValues(t, 7, run.Status.Full.FilesUploaded)
-	require.EqualValues(t, 42, run.Status.Full.LastAppliedIndex)
+	require.NotNil(t, run.Status.Result)
+	require.EqualValues(t, 7, run.Status.Result.FilesUploaded)
+	require.EqualValues(t, 42, run.Status.Result.LastAppliedIndex)
 	var jobs batchv1.JobList
 	require.NoError(t, c.List(ctx, &jobs))
 	require.Len(t, jobs.Items, 1)
@@ -277,7 +278,7 @@ func TestBackupRunRejectsForeignJob(t *testing.T) {
 			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
 			require.False(t, run.IsTerminal())
 			require.Contains(t, run.Status.Message, "is not controlled by BackupRun")
-			require.Nil(t, run.Status.Full)
+			require.Nil(t, run.Status.Result)
 			var jobs batchv1.JobList
 			require.NoError(t, c.List(ctx, &jobs))
 			require.Len(t, jobs.Items, 1)
@@ -297,29 +298,12 @@ func TestBackupRunRejectsForeignJob(t *testing.T) {
 			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
 			require.Empty(t, run.Status.Message)
 			require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
-			require.Nil(t, run.Status.Full)
+			require.Nil(t, run.Status.Result)
 			require.NoError(t, c.List(ctx, &jobs))
 			require.Len(t, jobs.Items, 1)
 			require.True(t, metav1.IsControlledBy(&jobs.Items[0], run))
 		})
 	}
-}
-
-func TestBackupRunInvalidTypeIsTerminal(t *testing.T) {
-	t.Parallel()
-	ctx := t.Context()
-	c, run := backupRunRecoveryFixture(t)
-	run.Spec.Type = "invalid"
-	require.NoError(t, c.Update(ctx, run))
-	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
-	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
-	require.NoError(t, err)
-	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
-	require.Equal(t, ledgerv1alpha1.BackupRunPhaseFailed, run.Status.Phase)
-	require.Contains(t, run.Status.Message, "unsupported backup type")
-	var jobs batchv1.JobList
-	require.NoError(t, c.List(ctx, &jobs))
-	require.Empty(t, jobs.Items)
 }
 
 func TestBackupRunCommittedCreateCacheLag(t *testing.T) {

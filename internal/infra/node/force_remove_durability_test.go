@@ -47,6 +47,21 @@ type forceRemoveWAL struct {
 	releaseOnce  sync.Once
 }
 
+type admissionLockProbeTransport struct {
+	noopMemTransport
+
+	admissionMu *sync.Mutex
+	observed    chan bool
+}
+
+func (transport *admissionLockProbeTransport) RemovePeer(context.Context, uint64) {
+	held := !transport.admissionMu.TryLock()
+	if !held {
+		transport.admissionMu.Unlock()
+	}
+	transport.observed <- held
+}
+
 func (w *forceRemoveWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	w.mu.Lock()
 	w.updates++
@@ -142,6 +157,7 @@ func newForceRemoveHarness(
 	failureStage forceRemoveFailureStage,
 	updateErr error,
 	blockUpdate bool,
+	peerTransports ...membership.Transport,
 ) *forceRemoveHarness {
 	t.Helper()
 
@@ -209,13 +225,14 @@ func newForceRemoveHarness(
 			"two acknowledgements are not a quorum of four")
 	}
 
-	m := newTestMembership(t)
+	m := newTestMembership(t, peerTransports...)
 	for _, id := range voters {
 		require.NoError(t, m.Register(
 			id,
 			fmt.Sprintf("node-%d:7000", id),
 			fmt.Sprintf("node-%d:8000", id),
 			fmt.Appendf(nil, "%016d", id),
+			nil,
 		))
 	}
 
@@ -438,7 +455,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 			require.ErrorIs(t, runErr, injected)
 			_, err = h.n.GetClusterState(context.Background())
 			require.ErrorIs(t, err, injected)
-			_, err = h.n.Propose(context.Background(), NewProposal(100, []byte("must not be admitted")))
+			_, err = h.n.Propose(context.Background(), newProposal(100, []byte("must not be admitted"), nil))
 			require.ErrorIs(t, err, injected)
 
 			_, restartedVoters := h.restartedState(t)
@@ -497,7 +514,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 			synctest.Wait()
 			require.Len(t, h.n.clusterCommandCh, 1)
 
-			proposal := NewProposal(101, []byte("queued before terminal publication"))
+			proposal := newProposal(101, []byte("queued before terminal publication"), nil)
 			trackerBefore := h.n.indexTracker.Next()
 			h.n.indexTracker.Lock()
 			fsmFuture, err := h.n.Propose(context.Background(), proposal)
@@ -618,5 +635,19 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 			_, restartedVoters := h.restartedState(t)
 			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}}, restartedVoters)
 		})
+	})
+}
+
+func TestForceRemoveNodeSerializesPeerRemovalWithAdmission(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		peerTransport := &admissionLockProbeTransport{observed: make(chan bool, 1)}
+		h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false, peerTransport)
+		peerTransport.admissionMu = &h.n.proposalAdmissionMu
+
+		require.NoError(t, h.n.ForceRemoveNode(context.Background(), 3))
+		require.True(t, <-peerTransport.observed)
+		require.NotContains(t, h.membership.PeerAddresses(), uint64(3))
 	})
 }

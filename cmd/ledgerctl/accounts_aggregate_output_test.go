@@ -38,8 +38,8 @@ func (s *aggregateVolumesOutputServer) AggregateVolumes(ctx context.Context, _ *
 	return &commonpb.AggregateResult{
 		Volumes: []*commonpb.AggregatedVolume{{
 			Asset:  s.asset,
-			Input:  commonpb.NewUint256FromUint64(1234),
-			Output: commonpb.NewUint256FromUint64(0),
+			Input:  commonpb.NewBigUintFromUint64(1234),
+			Output: commonpb.NewBigUintFromUint64(0),
 		}},
 	}, nil
 }

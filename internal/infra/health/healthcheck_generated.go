@@ -11,6 +11,7 @@ import (
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
+	grpc "google.golang.org/grpc"
 )
 
 // MockWriteGate is a mock of WriteGate interface.
@@ -49,4 +50,42 @@ func (m *MockWriteGate) CheckWritesAllowed() error {
 func (mr *MockWriteGateMockRecorder) CheckWritesAllowed() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckWritesAllowed", reflect.TypeOf((*MockWriteGate)(nil).CheckWritesAllowed))
+}
+
+// MockpeerConnections is a mock of peerConnections interface.
+type MockpeerConnections struct {
+	ctrl     *gomock.Controller
+	recorder *MockpeerConnectionsMockRecorder
+	isgomock struct{}
+}
+
+// MockpeerConnectionsMockRecorder is the mock recorder for MockpeerConnections.
+type MockpeerConnectionsMockRecorder struct {
+	mock *MockpeerConnections
+}
+
+// NewMockpeerConnections creates a new mock instance.
+func NewMockpeerConnections(ctrl *gomock.Controller) *MockpeerConnections {
+	mock := &MockpeerConnections{ctrl: ctrl}
+	mock.recorder = &MockpeerConnectionsMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockpeerConnections) EXPECT() *MockpeerConnectionsMockRecorder {
+	return m.recorder
+}
+
+// GetConnection mocks base method.
+func (m *MockpeerConnections) GetConnection(peerID uint64) *grpc.ClientConn {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConnection", peerID)
+	ret0, _ := ret[0].(*grpc.ClientConn)
+	return ret0
+}
+
+// GetConnection indicates an expected call of GetConnection.
+func (mr *MockpeerConnectionsMockRecorder) GetConnection(peerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnection", reflect.TypeOf((*MockpeerConnections)(nil).GetConnection), peerID)
 }

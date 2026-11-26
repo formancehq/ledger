@@ -174,15 +174,13 @@ type Describable interface {
 	Reason() string
 }
 
-// SerializableError is the return contract for FSM order processing. Audited
-// business rejections supply typed details; UncommittedFailure returns nil
-// because it exits before the audit and idempotency writers. Error() retains
-// diagnostic text for logs.
+// SerializableError is the contract of an audited FSM rejection: it supplies the
+// typed details persisted in the audit chain and the idempotency registry.
+// Error() retains diagnostic text for logs.
 //
-// Every error the FSM can emit must satisfy it, which is why the apply path
-// types its returns as SerializableError. The apply path tests the producer's
-// UncommittedFailure marker before asking for FailureDetails, so technical
-// failures cannot reach the audit chain.
+// Order processing returns Describable. The apply path tests the producer's
+// UncommittedFailure marker first, so technical failures exit before the audit
+// and idempotency writers; every other failure must satisfy SerializableError.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view. Audited failures
@@ -202,6 +200,31 @@ type UncommittedFailure interface {
 	UncommittedFailure()
 }
 
+// ProcessingFailureOf returns the first error in err's tree that order
+// processing propagates as its outcome: an audited SerializableError or an
+// UncommittedFailure. The tree is walked in the same depth-first pre-order as
+// errors.As.
+func ProcessingFailureOf(err error) (Describable, bool) {
+	switch e := err.(type) { //nolint:errorlint // deliberate per-node check; the walk unwraps the tree itself
+	case nil:
+		return nil, false
+	case SerializableError:
+		return e, true
+	case UncommittedFailure:
+		return e, true
+	case interface{ Unwrap() error }:
+		return ProcessingFailureOf(e.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, member := range e.Unwrap() {
+			if failure, ok := ProcessingFailureOf(member); ok {
+				return failure, true
+			}
+		}
+	}
+
+	return nil, false
+}
+
 // These failures describe preparation, infrastructure, or invariant failures.
 // Retrying or repairing the producer can change their outcome, so the FSM must
 // not persist them as a rejected business command or freeze an idempotency key.
@@ -214,6 +237,7 @@ func (*ErrInvalidOrderType) UncommittedFailure()             {}
 func (*ErrMirrorV2LogIDGap) UncommittedFailure()             {}
 func (*ErrMirrorV2LogIDInvalid) UncommittedFailure()         {}
 func (*ErrNumscriptRuntime) UncommittedFailure()             {}
+func (errPreloadUnavailable) UncommittedFailure()            {}
 func (*ErrSequenceExhausted) UncommittedFailure()            {}
 func (*ErrStaleClusterPolicy) UncommittedFailure()           {}
 func (errStaleInputsResolution) UncommittedFailure()         {}
@@ -291,22 +315,16 @@ func IsFreezableFailure(k ErrorKind) bool {
 // rename an existing constant. Each constant appears in exactly one
 // Reason() implementation below.
 const (
-	ErrReasonLedgerAlreadyExists          = "LEDGER_ALREADY_EXISTS"
-	ErrReasonLedgerNotFound               = "LEDGER_NOT_FOUND"
-	ErrReasonLedgerDeleted                = "LEDGER_DELETED"
-	ErrReasonIdempotencyKeyConflict       = "IDEMPOTENCY_KEY_CONFLICT"
-	ErrReasonTransactionReferenceConflict = "TRANSACTION_REFERENCE_CONFLICT"
-	ErrReasonTransactionReferenceNotFound = "TRANSACTION_REFERENCE_NOT_FOUND"
-	ErrReasonTransactionNotFound          = "TRANSACTION_NOT_FOUND"
-	ErrReasonTransactionAlreadyReverted   = "TRANSACTION_ALREADY_REVERTED"
-	ErrReasonInsufficientFunds            = "INSUFFICIENT_FUNDS"
-	ErrReasonVolumeOverflow               = "VOLUME_OVERFLOW"
-	// ErrReasonAggregateOverflow is the wire constant for the read-side
-	// aggregator overflow. The error type itself (query.ErrAggregateOverflow)
-	// lives in internal/query — it is a query-only outcome, not FSM-emitted —
-	// but the reason string and its KindForReason classification are the
-	// shared wire contract and stay here.
-	ErrReasonAggregateOverflow             = "AGGREGATE_OVERFLOW"
+	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
+	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
+	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
+	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
+	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionReferenceNotFound  = "TRANSACTION_REFERENCE_NOT_FOUND"
+	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
+	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
+	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
 	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
@@ -521,7 +539,7 @@ func (errStaleProposal) Error() string {
 func (errStaleProposal) Kind() ErrorKind { return KindUnavailable }
 func (errStaleProposal) Reason() string  { return ErrReasonStaleProposal }
 
-var ErrStaleProposal SerializableError = errStaleProposal{}
+var ErrStaleProposal Describable = errStaleProposal{}
 
 // ErrStaleInputsResolution — the state admission read to compute an order's
 // preload set changed before the FSM applied it. The preloaded key set may
@@ -544,19 +562,20 @@ func (errStaleInputsResolution) Error() string {
 func (errStaleInputsResolution) Kind() ErrorKind { return KindUnavailable }
 func (errStaleInputsResolution) Reason() string  { return ErrReasonStaleInputsResolution }
 
-var ErrStaleInputsResolution SerializableError = errStaleInputsResolution{}
+var ErrStaleInputsResolution Describable = errStaleInputsResolution{}
 
 // ErrPreloadUnavailable — admission could not build the preload set for an order
 // (e.g. Numscript dependency discovery failed against current state). When the
 // batch carries an idempotency key, admission forwards the order to the FSM
-// (marked OrderTechnical.preload_unavailable) rather than failing fast, so the
-// FSM can replay a frozen outcome. If none exists it returns this technical
-// interruption without an audit entry. Retryable (Kind=Unavailable) and
-// deliberately NOT freezable: it is a preparation gap, not an authoritative
-// business verdict — freezing it could let
-// a preload-unavailable retry shadow the real outcome of a concurrent same-key
-// proposal. A retry re-admits (and re-resolves) or replays the now-frozen
-// outcome. See EN-1406.
+// (marked OrderTechnical.preload_unavailable) so the dedup gate can replay a
+// frozen outcome. Without one, ProcessOrders executes the batch in sequence and
+// fails the forwarded order when it reaches it, so a definitive failure of an
+// earlier order wins and is frozen as usual. This technical interruption is
+// retryable (Kind=Unavailable) and deliberately NOT freezable or audited: it is
+// a preparation gap, not an authoritative business verdict — freezing it could
+// let a preload-unavailable retry shadow the real outcome of a concurrent
+// same-key proposal. A retry re-admits (and re-resolves) or replays the
+// now-frozen outcome. See EN-1406.
 type errPreloadUnavailable struct{}
 
 func (errPreloadUnavailable) Error() string {
@@ -597,20 +616,24 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired              = NewValidationSentinel("TARGET_REQUIRED", "target is required")
-	ErrMetadataKeyRequired         = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
-	ErrNumscriptContentRequired    = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
-	ErrScriptAndReferenceConflict  = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
-	ErrEmptyTransaction            = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict   = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
-	ErrTransactionReferenceTooLong = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
-	ErrScriptRequired              = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
+	ErrTargetRequired                  = NewValidationSentinel("TARGET_REQUIRED", "target is required")
+	ErrMetadataKeyRequired             = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrNumscriptContentRequired        = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
+	ErrScriptAndReferenceConflict      = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
+	ErrEmptyTransaction                = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict       = NewValidationSentinel("POSTINGS_AND_SCRIPT_CONFLICT", "postings cannot be combined with script or scriptReference")
+	ErrMetadataOnlyTransactionMetadata = NewValidationSentinel("METADATA_ONLY_TRANSACTION_METADATA", "metadata-only scripts cannot set transaction metadata")
+	ErrMetadataOnlyReference           = NewValidationSentinel("METADATA_ONLY_REFERENCE", "metadata-only scripts cannot set a transaction reference")
+	ErrTransactionReferenceTooLong     = NewValidationSentinel("TRANSACTION_REFERENCE_TOO_LONG", "transaction reference exceeds maximum length of 4096 bytes")
+	ErrScriptRequired                  = NewValidationSentinel("SCRIPT_REQUIRED", "numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrNumscriptNameRequired    = NewValidationSentinel("NUMSCRIPT_NAME_REQUIRED", "numscript name is required")
-	ErrNumscriptNameInvalidChar = NewValidationSentinel("NUMSCRIPT_NAME_INVALID_CHAR", "numscript name must contain only printable ASCII (0x20–0x7E)")
-	ErrNumscriptNameTooLong     = NewValidationSentinel("NUMSCRIPT_NAME_TOO_LONG", "numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptNameRequired           = NewValidationSentinel("NUMSCRIPT_NAME_REQUIRED", "numscript name is required")
+	ErrNumscriptNameInvalidChar        = NewValidationSentinel("NUMSCRIPT_NAME_INVALID_CHAR", "numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong            = NewValidationSentinel("NUMSCRIPT_NAME_TOO_LONG", "numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptDescriptionTooLong     = NewValidationSentinel("NUMSCRIPT_DESCRIPTION_TOO_LONG", "numscript description exceeds maximum length of 1024 bytes")
+	ErrNumscriptDescriptionInvalidChar = NewValidationSentinel("NUMSCRIPT_DESCRIPTION_INVALID_CHAR", "numscript description must not contain control characters other than newline and tab")
 	// ErrScopedBalanceUnsupported rejects a Numscript that reads or writes a
 	// scope-qualified balance or metadata. Color IS modelled — Ledger volumes are
 	// keyed by (ledger, account, asset, color), so colored reads/writes resolve
@@ -640,6 +663,7 @@ var (
 	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("PREPARED_QUERY_NAME_INVALID_CHAR", "prepared query name must contain only printable ASCII (0x20–0x7E)")
 	ErrPreparedQueryNameTooLong       = NewValidationSentinel("PREPARED_QUERY_NAME_TOO_LONG", "prepared query name exceeds maximum length of 256 bytes")
 	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("PREPARED_QUERY_TARGET_UNSUPPORTED", "prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
+	ErrPreparedQueryTargetRequired    = NewValidationSentinel("PREPARED_QUERY_TARGET_REQUIRED", "prepared query target is required")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
@@ -1276,7 +1300,7 @@ func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileE
 // compile reason but cannot be committed as a deterministic script rejection.
 type unclassifiedNumscriptCompile struct{ detail string }
 
-func NewUnclassifiedNumscriptCompile(detail string) SerializableError {
+func NewUnclassifiedNumscriptCompile(detail string) Describable {
 	return &unclassifiedNumscriptCompile{detail: detail}
 }
 
@@ -1612,7 +1636,7 @@ func (errMetadataLimitsUnconfigured) Error() string {
 func (errMetadataLimitsUnconfigured) Kind() ErrorKind { return KindValidation }
 func (errMetadataLimitsUnconfigured) Reason() string  { return ErrReasonClusterPolicyInvalid }
 
-var ErrMetadataLimitsUnconfigured SerializableError = errMetadataLimitsUnconfigured{}
+var ErrMetadataLimitsUnconfigured Describable = errMetadataLimitsUnconfigured{}
 
 // ErrCheckpointNotFound — a DeleteQueryCheckpoint targeted a checkpoint ID that
 // is not live (never created, or already deleted). KindNotFound.

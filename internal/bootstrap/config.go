@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 type AuthFlagConfig struct {
 	Enabled          bool
 	Issuer           string
+	Issuers          []string
 	Service          string
 	Ed25519KeysFile  string
 	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
@@ -35,6 +37,19 @@ type AuthFlagConfig struct {
 	// operator-controlled ceiling. 0 leaves them unbounded; the default (set in
 	// cmd/server/server.go) is 10s.
 	OIDCDiscoveryTimeout time.Duration
+}
+
+// TrustedIssuers returns the singular Issuer followed by Issuers, without
+// duplicates.
+func (a AuthFlagConfig) TrustedIssuers() []string {
+	issuers := make([]string, 0, len(a.Issuers)+1)
+	for _, issuer := range append([]string{a.Issuer}, a.Issuers...) {
+		if issuer != "" && !slices.Contains(issuers, issuer) {
+			issuers = append(issuers, issuer)
+		}
+	}
+
+	return issuers
 }
 
 // TLSMode controls the TLS posture of gRPC servers and the inter-node dialer.
@@ -149,6 +164,7 @@ type Config struct {
 	Debug                  bool
 	HTTPPort               int
 	GRPCPort               int
+	GRPCPeerPort           int
 	TransportConfig        node.TransportConfig
 	DataDir                string
 	PebbleConfig           dal.Config
@@ -175,12 +191,8 @@ type Config struct {
 	// SpoolSegmentMaxBytes caps the size of a spool segment before rotation
 	// (sealing). 0 means use the spool default (256Mi).
 	SpoolSegmentMaxBytes int64
-	// BackupMaxSegmentBytes caps the on-storage size of an incremental-backup
-	// export segment before it splits into a new segment. 0 means use the
-	// backup default (4Gi).
-	BackupMaxSegmentBytes int64
-	NumscriptCacheSize    int
-	MirrorMaxBatchSize    int
+	NumscriptCacheSize   int
+	MirrorMaxBatchSize   int
 	// MaxExecutionPlanSize caps the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
 	MaxExecutionPlanSize        int
@@ -289,6 +301,9 @@ func (c Config) Validate() error {
 	if c.ClusterID == "" {
 		return errors.New("--cluster-id is required")
 	}
+	if err := c.validatePeerGRPCPort(); err != nil {
+		return err
+	}
 
 	if err := c.validateTLSConfig(); err != nil {
 		return err
@@ -358,6 +373,24 @@ func (c Config) Validate() error {
 	}
 	if err := validateHealthThresholds(c.HealthConfig.DataThreshold, c.HealthConfig.DataResumeThreshold); err != nil {
 		return fmt.Errorf("data: %w", err)
+	}
+
+	return nil
+}
+
+func (c Config) validatePeerGRPCPort() error {
+	peerPort := c.PeerGRPCPort()
+	if peerPort < 1 || peerPort > 65535 {
+		return fmt.Errorf("--grpc-peer-port must resolve to a port between 1 and 65535, got %d", peerPort)
+	}
+	if peerPort == c.GRPCPort {
+		return fmt.Errorf("--grpc-peer-port must differ from --grpc-port, both are %d", peerPort)
+	}
+	if peerPort == c.HTTPPort {
+		return fmt.Errorf("--grpc-peer-port must differ from --http-port, both are %d", peerPort)
+	}
+	if _, raftPort, err := net.SplitHostPort(c.RaftConfig.BindAddr); err == nil && raftPort == strconv.Itoa(peerPort) {
+		return fmt.Errorf("--grpc-peer-port must differ from the Raft bind port, both are %d", peerPort)
 	}
 
 	return nil
@@ -442,13 +475,13 @@ func (c Config) validateTLSConfig() error {
 // validateAuthConfig enforces authentication configuration invariants.
 // It prevents unsafe combinations where credentials are configured but
 // authentication is disabled, or where authentication is enabled without
-// the required OIDC issuer.
+// an OIDC issuer or Ed25519 keys.
 func (c Config) validateAuthConfig() error {
 	auth := c.AuthConfig
 
 	if auth.Enabled {
-		if auth.Issuer == "" && auth.Ed25519KeysFile == "" {
-			return errors.New("--auth-enabled requires either --auth-issuer (OIDC) or --auth-ed25519-keys (Ed25519)")
+		if len(auth.TrustedIssuers()) == 0 && auth.Ed25519KeysFile == "" {
+			return errors.New("--auth-enabled requires either --auth-issuer / --auth-issuers (OIDC) or --auth-ed25519-keys (Ed25519)")
 		}
 
 		// Reject auth without full TLS — bearer JWT/Ed25519 tokens would be
@@ -460,6 +493,10 @@ func (c Config) validateAuthConfig() error {
 		// Authorization metadata in cleartext.
 		if c.TLSConfig.Mode != TLSModeRequired {
 			return errors.New("--auth-enabled requires --tls-mode=required (with --tls-cert-file / --tls-key-file); bearer tokens would otherwise be exposed to plaintext interception (--tls-mode=optional still accepts plaintext connections)")
+		}
+
+		if c.ClusterSecret == "" {
+			return errors.New("--auth-enabled requires --cluster-secret; peer forwarding requires the cluster secret")
 		}
 
 		return nil
@@ -500,4 +537,32 @@ func (c Config) ServiceAdvertiseAddr() string {
 	}
 
 	return net.JoinHostPort(host, strconv.Itoa(c.GRPCPort))
+}
+
+// PeerGRPCPort is the dedicated service port used for authenticated
+// inter-node forwarding. A zero value keeps programmatic configurations
+// backwards-compatible by placing it immediately after the public service
+// port. When the public port is 0 (an ephemeral listener used by local tests),
+// retain the standard 8889 peer port instead of trying to bind port 1.
+func (c Config) PeerGRPCPort() int {
+	if c.GRPCPeerPort != 0 {
+		return c.GRPCPeerPort
+	}
+	if c.GRPCPort == 0 {
+		return 8889
+	}
+
+	return c.GRPCPort + 1
+}
+
+// PeerServiceAdvertiseAddr returns the address other Ledger nodes use for
+// authenticated service forwarding. The public service address remains
+// available through ServiceAdvertiseAddr.
+func (c Config) PeerServiceAdvertiseAddr() string {
+	host, _, err := net.SplitHostPort(c.RaftConfig.AdvertiseAddr)
+	if err != nil {
+		host = c.RaftConfig.AdvertiseAddr
+	}
+
+	return net.JoinHostPort(host, strconv.Itoa(c.PeerGRPCPort()))
 }

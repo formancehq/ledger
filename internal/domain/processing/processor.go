@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -40,6 +41,12 @@ type RequestProcessor struct {
 // apply-child handlers. Per-batch fields (caches) are owned by the
 // *RequestProcessor and live for the lifetime of a ProcessOrders call.
 type Context struct {
+	// auditReplay executes recorded business intent without operational quotas.
+	auditReplay bool
+	// strictCreateLedgerAccountTypes enables strict initial type validation for
+	// new orders. Audit replay retains the historical creation semantics.
+	strictCreateLedgerAccountTypes bool
+
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
 
@@ -226,7 +233,20 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.SerializableError) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, false, true)
+}
+
+// ProcessAuditedOrders verifies recorded business effects. Operational quotas
+// are live admission/apply concerns, not historical business invariants. Audit
+// items contain orders, and historical creations may contain initial account
+// types that the stricter new-order validation would reject. Successful new
+// creations satisfy the legacy validation and reconstruct the same log.
+func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, true, false)
+}
+
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -235,10 +255,12 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
-		NumscriptCache:       p.numscriptCache,
-		CompiledTypes:        p.compiledTypesCache,
-		AssetCache:           p.assetCache,
-		batchInitialNextTxID: make(map[string]uint64),
+		auditReplay:                    auditReplay,
+		strictCreateLedgerAccountTypes: strictCreateLedgerAccountTypes,
+		NumscriptCache:                 p.numscriptCache,
+		CompiledTypes:                  p.compiledTypesCache,
+		AssetCache:                     p.assetCache,
+		batchInitialNextTxID:           make(map[string]uint64),
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}
@@ -253,6 +275,18 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	stagedTransactions := 0
 
 	for i, order := range orders {
+		// Admission forwarded this order without a preload only so the FSM
+		// dedup gate could replay an earlier outcome under the batch's key.
+		// Reaching it means every earlier order applied and there is nothing
+		// to replay: fail here, in sequence, so an earlier order's definitive
+		// rejection wins over this preparation gap. The marker sits before the
+		// skip matcher on purpose: a skippable_reasons whitelist cannot turn a
+		// never-prepared order into a skip. The flag is part of the committed
+		// order bytes, so every voter reaches the same verdict.
+		if order.GetTechnical().GetPreloadUnavailable() {
+			return nil, domain.ErrPreloadUnavailable
+		}
+
 		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan
@@ -423,7 +457,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 // Single-threaded apply only (reuses p.hashBuf via computeOrderHash).
 func (p *RequestProcessor) HashProposal(proposal *raftcmdpb.Proposal) []byte {
 	h := blake3.New()
-	for _, order := range proposal.GetOrders() {
+	for _, order := range proposals.BatchOrders(proposal) {
 		var oh []byte
 		oh, p.hashBuf = hashOrder(order, p.hashBuf)
 		_, _ = h.Write(oh)
@@ -514,7 +548,7 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // This entry point is kept for callers that don't already hold a Context
 // (tests, recovery flows). It allocates a transient Context wrapping the
 // processor's per-batch caches and forwards to processOrder.
-func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.SerializableError) {
+func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ctx := &Context{
 		metadataBudget:       &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
 		NumscriptCache:       p.numscriptCache,
@@ -530,7 +564,7 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 // (and clears per-apply fields) before delegating to a wrapper-level
 // dispatcher. The ledger name is passed explicitly to ledger-scoped
 // handlers; system-scoped handlers don't receive it.
-func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ctx.Scope = s
 	// Stage this order's admission-derived inputs hash (from OrderTechnical) for
 	// the stale-inputs check in the numscript producer, which only sees the
@@ -555,7 +589,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 // extracts the wrapper-level ledger name once and passes it explicitly
 // to each handler — keeping ctx free of an "always present for half the
 // dispatch table" field.
-func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ledger := ls.GetLedger()
 	switch payload := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_Apply:
@@ -587,7 +621,7 @@ func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*common
 
 // processSystemScoped dispatches a system-scoped order payload. These commands
 // affect cluster or global state and are never attributed to a single ledger.
-func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
+func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
 		return processRegisterSigningKey(payload.RegisterSigningKey, ctx)

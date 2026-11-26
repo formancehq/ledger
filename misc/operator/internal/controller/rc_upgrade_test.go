@@ -49,6 +49,8 @@ func TestValidateRCUpgrade(t *testing.T) {
 		wantError string
 	}{
 		{"adjacent", "v3.0.0-rc.1", "v3.0.0-rc.2", true, ""},
+		{"rolling rc.3", "v3.0.0-rc.2", "v3.0.0-rc.3", true, ""},
+		{"stopped rc.4 remains adjacent", "v3.0.0-rc.3", "v3.0.0-rc.4", true, ""},
 		{"generic release line", "v4.12.7-rc.9", "v4.12.7-rc.10", true, ""},
 		{"skip", "v3.0.0-rc.1", "v3.0.0-rc.3", true, "immediately next RC"},
 		{"downgrade", "v3.0.0-rc.2", "v3.0.0-rc.1", true, "immediately next RC"},

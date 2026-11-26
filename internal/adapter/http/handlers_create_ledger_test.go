@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -313,4 +314,35 @@ func TestHandleCreateLedger_ExplicitNormalMode(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, captured)
 	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, captured.GetMode())
+}
+
+func TestHandleCreateLedger_PreservesMirrorSourceForAdmission(t *testing.T) {
+	t.Parallel()
+
+	for name, modeField := range map[string]string{"explicit NORMAL": `"mode":"NORMAL",`, "default NORMAL": ""} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+					create := req.GetUnsigned().GetRequests()[0].GetCreateLedger()
+					require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, create.GetMode())
+					require.Equal(t, "source", create.GetMirrorSource().GetLedgerName())
+					require.Equal(t, "http://localhost:3068", create.GetMirrorSource().GetHttp().GetBaseUrl())
+
+					return nil, &domain.BusinessError{Err: admission.ErrMirrorSourceRequiresMirrorMode}
+				})
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/test-ledger",
+				strings.NewReader(`{`+modeField+`"mirrorSource":{"ledgerName":"source","baseUrl":"http://localhost:3068"}}`),
+				map[string]string{"ledgerName": "test-ledger"})
+
+			newTestServer(t, backend).handleCreateLedger(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.JSONEq(t, `{"errorCode":"VALIDATION","errorMessage":"mirrorSource requires mode MIRROR"}`, w.Body.String())
+		})
+	}
 }

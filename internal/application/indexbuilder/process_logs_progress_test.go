@@ -626,8 +626,8 @@ func TestProcessLogsUsesRestoreProvenanceAfterNewRaftOvertakesSourceCheckpoint(t
 	b.notifications = signal.NewNotifications()
 	b.batchSize = 1
 
-	// Incremental restore rebuilds the checkpoint log with its source-cluster
-	// applied index, while the restored node enters a new Raft domain. The new
+	// Checkpoint restore carries the source-cluster applied index, while the
+	// restored node enters a new Raft domain. The new
 	// domain may already have overtaken that numeric source index before the
 	// read-index builder catches up, so numeric ordering cannot identify restore
 	// provenance.

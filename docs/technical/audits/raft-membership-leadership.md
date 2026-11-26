@@ -75,6 +75,49 @@ question rather than inventing a membership guarantee.
 
 ## Transition-specific evidence
 
+### Capability evidence and policy activation
+
+Configuration and capability state use independent control payloads and
+revisions. ClusterPolicy remains the flag-derived aggregate at its original
+key; current field-12 controls set `configuration_only` and merge committed
+capabilities, while omitted-marker historical controls keep their replay meaning.
+Automatic discovery must check every voter and learner; final
+serialized admission must recheck activation against current membership.
+Activation uses one entry, without durable intermediate intent. Membership is
+fenced through durable apply; active IDs then become membership requirements.
+After leadership loss, admission and consensus-based membership changes wait
+for the current-term no-op to apply before reevaluating current evidence.
+Business proposals wait from readiness through activation, including
+after drain release, but ordinary configuration controls continue. Retrying a
+pre-submission activation barrier must release preparation guards, respect the
+caller deadline, preserve one caller action count, and never replay a submitted
+future. Schema-3 migration is stopped, atomic and synchronized before serving;
+active state survives replay, snapshot and incremental restore. Exercise an
+uncommitted interrupted attempt, a committed activation with lost response,
+reopen, and an incompatible membership change winning before final admission.
+ForceRemoveNode is an emergency exception: it uses raw Raft leadership without
+WaitLeaderReady. It shares the membership coordinator with activation and
+serializes peer removal with final proposal admission. Previously admitted
+proposals may commit after the removal.
+Self routing refreshes on restart or snapshot install must not add positive
+support evidence. Require the leader's own ConfChange refresh before automatic
+activation, including single-member recovery and transient refresh failures.
+
+For bootstrap join, restart refresh, promotion, and membership changes, record
+the member's `(node_id, instance_id)`, advertised capability IDs, committed
+membership row, and the policy revision and active capabilities on every
+replica. A restarted member must refresh its committed evidence using peers
+recovered from membership even when no `--join` flag is present. Distinguish a
+transient old-peer `Unimplemented` refresh response from permanent identity or
+policy rejection, and prove eventual convergence through a compatible peer.
+Before activating a capability, require support by the local binary and
+committed evidence from every member; after activation, reject announcements
+and proposals that lack the required evidence. Exercise policy activation and
+membership `ConfChange` in adjacent FSM batches and compare the final policy,
+membership, `ConfState`, and admission decision on every replica. This records
+the foundation for future activations; the current protocol cutover uses a
+coordinated stop and restart.
+
 ### Normal membership changes
 
 Prove which `ConfChangeV2` was admitted and which configuration commits it.
@@ -107,6 +150,16 @@ history through WAL replay. Require both tombstones and final ConfState parity.
 Missing tombstones/read failures must retain protection. Check the lookup cost
 partition and benchmark growing per-ordinal history separately from unrelated
 nodes; no set lock may span apply, store reads or proposal waits.
+
+For maintenance snapshots, keep the durable authorities ordered: fsync the
+snapshot file, append and persist its matching WAL snapshot record, then publish
+the new snapshot in memory and allow compaction. If the WAL-record append fails,
+the file is only an orphan and the previous snapshot remains authoritative; an
+idle retry must recreate the same snapshot and must not compact on an
+`ErrSnapOutOfDate` produced by a prematurely published in-memory snapshot.
+Separately, compaction must remain behind the minimum of the durable FSM cursor
+and the Raft apply-ack cursor, preserving the unapplied interval for election
+scans until `MsgStorageApplyResp` advances that frontier.
 
 ### Leadership and quorum transitions
 
@@ -379,11 +432,44 @@ publication is a separate explicitly authorized action.
 
 ## Received snapshot Ready suffix evidence
 
-For a Ready containing both a snapshot and subsequent entries, retain the
-original entries/HardState durability order, then verify that snapshot
-installation cannot erase the suffix from `LastIndex`, `Term`, `Entries` or
-a reopened WAL before storage acknowledgement. Identify the residual
-in-memory snapshot/cache and durable WAL prefix on any failure. The focused
+For a Ready containing both a snapshot and subsequent entries, skip the
+ordinary append to the old WAL. Verify that installation writes the full
+snapshot file, prepares and syncs a
+candidate WAL with the snapshot record, current HardState, and only the same
+Ready suffix, and publishes that WAL before storage acknowledgement. The
+suffix must remain visible through `LastIndex`, `Term`, and `Entries` and after
+reopening the WAL. Identify the residual in-memory snapshot/cache and durable
+WAL prefix at each preparation or directory-switch failure. The focused
 regression is `process_ready_snapshot_test.go` under `internal/infra/node/`.
-Snapshot-only processing retains its existing append count; a combined Ready
-reappends only the suffix once, with no retained-log scan.
+Ready persistence does not call `Append`; installation writes the suffix
+only to the candidate WAL. Even a snapshot-only Ready builds and syncs a
+candidate WAL. Replacement work depends on the snapshot and Ready suffix,
+not on the retained log length.
+
+## Sent snapshot liveness evidence
+
+etcd/raft pauses every append to a peer whose Progress is in `StateSnapshot`.
+It leaves that state only when the leader calls `ReportSnapshot` for the peer
+or when an acknowledgement leaves `Match+1 >= firstIndex` on the leader.
+Prove that every outbound `MsgSnap` is reported from the orchestrate goroutine
+(`snapshotRecipients` in `sendReadyMessages`, then `finishReady`), and that a
+lost snapshot or a late acknowledgement after leader compaction leads to
+renewed probing or a fresh snapshot rather than a stalled peer. The focused
+regression is `leader_snapshot_report_test.go` under `internal/infra/node/`;
+the cluster-level triggers are the out-of-sync election and lost-follower
+specs under `tests/e2e/cluster/`.
+
+## Proposal payload cutover
+
+The proposal codec is part of this contract. Production writers serialize the
+execution and policy oneof directly after a full-stop upgrade. All source nodes
+must stop before any target starts, and old binaries must never reopen a WAL
+containing new payloads, including technical entries written during startup.
+Historical replay must retain exact audit bytes and hashes. Native policy
+controls are operational and emit neither audit nor business logs; they are never
+lowered to orders. Compare final state across formats, verify each chain and its
+expected audit count, and preserve the historical prefix byte-for-byte. Preserve
+coverage, HLC semantics and checkpoint boundaries. Test policy-only second
+checkpoint publication and mixed historical/native policy recovery. Current policy
+and operational quotas are explicitly outside business checker scope.
+See [proposal payloads](../architecture/subsystems/consensus/proposal-payloads.md).
