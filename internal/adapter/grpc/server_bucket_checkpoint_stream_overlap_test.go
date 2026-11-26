@@ -11,13 +11,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
@@ -33,20 +31,20 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 	attrs := attributes.New()
 	impl := newCheckpointGateFixture(t, func(store *dal.Store) {
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveLedger(batch, ledger, &ledgerpb.LedgerInfo{Name: ledger}))
+		require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 		// The thirteenth row exercises the peek that produces a next-page
 		// cursor while the request itself returns exactly twelve rows.
 		for id := uint64(1); id <= 13; id++ {
 			key := domain.TransactionKey{LedgerName: ledger, ID: id}
 			_, err := attrs.Transaction.Set(batch, key.Bytes(), &commonpb.TransactionState{CreatedByLog: id})
 			require.NoError(t, err)
-			require.NoError(t, state.AppendLogs(batch, []*ledgerpb.Log{{
+			require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 				Sequence: id,
-				Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
-						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
-							Transaction: &ledgerpb.Transaction{Id: id},
+					Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+							Transaction: &commonpb.Transaction{Id: id},
 						}},
 					}},
 				}}},
@@ -57,10 +55,10 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 	impl.localCtrl = ctrl.NewDefaultController(nil, impl.store, impl.logger, attrs, impl.readStore, nil, noop.NewMeterProvider().Meter("test"))
 	req := &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
-		Options: &ledgerpb.ListOptions{
+		Options: &commonpb.ListOptions{
 			PageSize: 12,
 			Reverse:  true,
-			Read:     &ledgerpb.ReadOptions{CheckpointId: gateCheckpointID},
+			Read:     &commonpb.ReadOptions{CheckpointId: gateCheckpointID},
 		},
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -70,10 +68,10 @@ func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 	firstDone := make(chan error, 1)
 	var firstRows, secondRows []uint64
 	var firstTrailer, secondTrailer metadata.MD
-	newStream := func(rows *[]uint64, trailer *metadata.MD, hold bool) *MockServerStreamingServer[ledgerpb.Transaction] {
-		stream := NewMockServerStreamingServer[ledgerpb.Transaction](mocks)
+	newStream := func(rows *[]uint64, trailer *metadata.MD, hold bool) *MockServerStreamingServer[commonpb.Transaction] {
+		stream := NewMockServerStreamingServer[commonpb.Transaction](mocks)
 		stream.EXPECT().Context().Return(ctx).AnyTimes()
-		stream.EXPECT().Send(gomock.Any()).DoAndReturn(func(tx *ledgerpb.Transaction) error {
+		stream.EXPECT().Send(gomock.Any()).DoAndReturn(func(tx *commonpb.Transaction) error {
 			*rows = append(*rows, tx.GetId())
 			if hold && len(*rows) == 1 {
 				close(sending)

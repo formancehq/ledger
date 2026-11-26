@@ -3,11 +3,11 @@ package events
 import (
 	"context"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // sinkFactory creates a Sink using its captured leadership-generation context.
-type sinkFactory func(context.Context, *ledgerpb.SinkConfig, Format) (Sink, error)
+type sinkFactory func(context.Context, *commonpb.SinkConfig, Format) (Sink, error)
 
 // sinkFactories maps sink type names to their factory functions.
 // Optional sinks (Kafka, NATS, ClickHouse, Databricks) register themselves
@@ -21,17 +21,17 @@ func registerSinkFactory(name string, fn sinkFactory) {
 }
 
 // sinkTypeName returns the registry key for a SinkConfig's type.
-func sinkTypeName(sc *ledgerpb.SinkConfig) string {
+func sinkTypeName(sc *commonpb.SinkConfig) string {
 	switch sc.GetType().(type) {
-	case *ledgerpb.SinkConfig_Kafka:
+	case *commonpb.SinkConfig_Kafka:
 		return "kafka"
-	case *ledgerpb.SinkConfig_Nats:
+	case *commonpb.SinkConfig_Nats:
 		return "nats"
-	case *ledgerpb.SinkConfig_Clickhouse:
+	case *commonpb.SinkConfig_Clickhouse:
 		return "clickhouse"
-	case *ledgerpb.SinkConfig_Databricks:
+	case *commonpb.SinkConfig_Databricks:
 		return "databricks"
-	case *ledgerpb.SinkConfig_Http:
+	case *commonpb.SinkConfig_Http:
 		return "http"
 	default:
 		return ""

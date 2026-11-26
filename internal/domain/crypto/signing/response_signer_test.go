@@ -11,8 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
@@ -45,11 +44,11 @@ func TestResponseSigner(t *testing.T) {
 	t.Run("sign and verify log", func(t *testing.T) {
 		t.Parallel()
 
-		log := &ledgerpb.Log{
+		log := &commonpb.Log{
 			Sequence: 42,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_CreateLedger{
-					CreateLedger: &ledgerpb.CreatedLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test-ledger",
 					},
 				},
@@ -70,11 +69,11 @@ func TestResponseSigner(t *testing.T) {
 	t.Run("verify fails with wrong public key", func(t *testing.T) {
 		t.Parallel()
 
-		log := &ledgerpb.Log{
+		log := &commonpb.Log{
 			Sequence: 1,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_CreateLedger{
-					CreateLedger: &ledgerpb.CreatedLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},
@@ -98,11 +97,11 @@ func TestResponseSigner(t *testing.T) {
 	t.Run("verify fails with tampered payload", func(t *testing.T) {
 		t.Parallel()
 
-		log := &ledgerpb.Log{
+		log := &commonpb.Log{
 			Sequence: 1,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_CreateLedger{
-					CreateLedger: &ledgerpb.CreatedLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},

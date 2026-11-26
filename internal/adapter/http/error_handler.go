@@ -8,12 +8,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // kindToHTTPStatus maps a semantic ErrorKind to an HTTP status code. Adding
@@ -130,13 +129,23 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 // internal/domain flows through kindToHTTPStatus + Reason(), and an error that
 // classifies itself without declaring a reason answers from its kind alone.
 // The few branches below handle errors that carry neither — the
-// leader-discovery sentinel from ledgerpb and the generic NotFoundError used
+// leader-discovery sentinel from commonpb and the generic NotFoundError used
 // by route lookups.
 func classifyError(err error) errorClass {
-	// ledgerpb.ErrNoLeader carries its own retry hint (Retry-After) — keep
+	// A signing rejection answers the same whether raised here or decoded
+	// from the leader.
+	if reason, ok := grpcerr.SigningReason(err); ok {
+		kind := domain.KindPermissionDenied
+		if reason == grpcerr.SigningReasonMissingSignature {
+			kind = domain.KindUnauthenticated
+		}
+
+		return errorClass{status: kindToHTTPStatus(kind), code: reason, message: domain.PublicKindMessage(kind)}
+	}
+	// commonpb.ErrNoLeader carries its own retry hint (Retry-After) — keep
 	// the dedicated branch so the response shape stays stable for clients
 	// that have been told to honour it.
-	if errors.Is(err, ledgerpb.ErrNoLeader) {
+	if errors.Is(err, commonpb.ErrNoLeader) {
 		return errorClass{status: http.StatusServiceUnavailable, code: "NO_LEADER", message: err.Error()}
 	}
 
@@ -150,7 +159,7 @@ func classifyError(err error) errorClass {
 		return errorClass{status: http.StatusServiceUnavailable, code: "CACHE_HORIZON_EXCEEDED", message: err.Error()}
 	}
 
-	if _, ok := errors.AsType[*ledgerpb.NotFoundError](err); ok {
+	if _, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
 		return errorClass{status: http.StatusNotFound, code: "NOT_FOUND", message: err.Error()}
 	}
 

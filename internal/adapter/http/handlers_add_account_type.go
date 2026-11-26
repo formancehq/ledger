@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -22,27 +21,27 @@ type accountTypeBody struct {
 	Persistence string `json:"persistence,omitempty"`
 	// SegmentTypes maps a pattern variable name to a type constraint
 	// (regex/uuid/uint64/bytes).
-	SegmentTypes map[string]*ledgerpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
+	SegmentTypes map[string]*commonpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
 }
 
 // toProto converts the HTTP request body to a proto AccountType, reusing the
-// shared ledgerpb conversion helpers.
-func (b accountTypeBody) toProto() (*ledgerpb.AccountType, error) {
-	persistence, err := ledgerpb.ParsePersistence(b.Persistence)
+// shared commonpb conversion helpers.
+func (b accountTypeBody) toProto() (*commonpb.AccountType, error) {
+	persistence, err := commonpb.ParsePersistence(b.Persistence)
 	if err != nil {
 		return nil, err
 	}
 
-	at := &ledgerpb.AccountType{
+	at := &commonpb.AccountType{
 		Name:        b.Name,
 		Pattern:     b.Pattern,
 		Persistence: persistence,
 	}
 
 	if len(b.SegmentTypes) > 0 {
-		at.SegmentTypes = make(map[string]*ledgerpb.SegmentType, len(b.SegmentTypes))
+		at.SegmentTypes = make(map[string]*commonpb.SegmentType, len(b.SegmentTypes))
 		for name, st := range b.SegmentTypes {
-			converted, err := ledgerpb.SegmentTypeFromJSON(st)
+			converted, err := commonpb.SegmentTypeFromJSON(st)
 			if err != nil {
 				return nil, fmt.Errorf("segmentTypes[%q]: %w", name, err)
 			}

@@ -15,12 +15,12 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -45,18 +45,18 @@ func TestHandleAggregateVolumes_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, ledgerName string, filter *ledgerpb.QueryFilter, opts query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+		func(_ context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 			require.Nil(t, filter)
 			require.False(t, opts.UseMaxPrecision)
 			require.Empty(t, opts.GroupByPrefixes)
 
-			return &ledgerpb.AggregateResult{
-				Volumes: []*ledgerpb.AggregatedVolume{
+			return &commonpb.AggregateResult{
+				Volumes: []*commonpb.AggregatedVolume{
 					{
 						Asset:  "USD/2",
-						Input:  ledgerpb.NewUint256FromUint64(1000),
-						Output: ledgerpb.NewUint256FromUint64(400),
+						Input:  commonpb.NewBigUintFromUint64(1000),
+						Output: commonpb.NewBigUintFromUint64(400),
 					},
 				},
 			}, nil
@@ -86,15 +86,15 @@ func TestHandleAggregateVolumes_WithOptions(t *testing.T) {
 	t.Parallel()
 
 	var capturedOpts query.AggregateOptions
-	var capturedFilter *ledgerpb.QueryFilter
+	var capturedFilter *commonpb.QueryFilter
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, filter *ledgerpb.QueryFilter, opts query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+		func(_ context.Context, _ string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			capturedOpts = opts
 			capturedFilter = filter
 
-			return &ledgerpb.AggregateResult{}, nil
+			return &commonpb.AggregateResult{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -120,16 +120,16 @@ func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
-			return &ledgerpb.AggregateResult{
-				Groups: []*ledgerpb.GroupedAggregateResult{
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+			return &commonpb.AggregateResult{
+				Groups: []*commonpb.GroupedAggregateResult{
 					{
 						Prefix: "users:",
-						Volumes: []*ledgerpb.AggregatedVolume{
+						Volumes: []*commonpb.AggregatedVolume{
 							{
 								Asset:  "EUR/2",
-								Input:  ledgerpb.NewUint256FromUint64(500),
-								Output: ledgerpb.NewUint256FromUint64(200),
+								Input:  commonpb.NewBigUintFromUint64(500),
+								Output: commonpb.NewBigUintFromUint64(200),
 							},
 						},
 					},
@@ -178,7 +178,7 @@ func TestHandleAggregateVolumes_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -198,7 +198,7 @@ func TestHandleAggregateVolumes_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -218,8 +218,8 @@ func TestHandleAggregateVolumes_NoLeaderError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
-			return nil, ledgerpb.ErrNoLeader
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+			return nil, commonpb.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -238,13 +238,13 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
-			return &ledgerpb.AggregateResult{
-				Volumes: []*ledgerpb.AggregatedVolume{
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+			return &commonpb.AggregateResult{
+				Volumes: []*commonpb.AggregatedVolume{
 					{
 						Asset:  "USD/2",
-						Input:  ledgerpb.NewUint256FromUint64(100),
-						Output: ledgerpb.NewUint256FromUint64(50),
+						Input:  commonpb.NewBigUintFromUint64(100),
+						Output: commonpb.NewBigUintFromUint64(50),
 					},
 				},
 			}, nil
@@ -270,16 +270,16 @@ func TestHandleAggregateVolumes_EmitsColorAlways(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, _ *ledgerpb.QueryFilter, opts query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+		DoAndReturn(func(_ context.Context, _ string, _ *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			require.True(t, opts.CollapseColors, "?collapseColors=true must reach the backend")
 
-			return &ledgerpb.AggregateResult{
-				Volumes: []*ledgerpb.AggregatedVolume{
+			return &commonpb.AggregateResult{
+				Volumes: []*commonpb.AggregatedVolume{
 					{
 						Asset:  "USD/2",
 						Color:  "", // uncolored / collapsed bucket
-						Input:  ledgerpb.NewUint256FromUint64(100),
-						Output: ledgerpb.NewUint256FromUint64(30),
+						Input:  commonpb.NewBigUintFromUint64(100),
+						Output: commonpb.NewBigUintFromUint64(30),
 					},
 				},
 			}, nil
@@ -304,17 +304,17 @@ func TestHandleAggregateVolumes_EmitsColorAlways(t *testing.T) {
 func TestHandleAggregateVolumes_DualFormatFilter(t *testing.T) {
 	t.Parallel()
 
-	capture := func(t *testing.T, target string) *ledgerpb.QueryFilter {
+	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
 		t.Helper()
 
-		var captured *ledgerpb.QueryFilter
+		var captured *commonpb.QueryFilter
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, filter *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+			func(_ context.Context, _ string, filter *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 				captured = filter
 
-				return &ledgerpb.AggregateResult{}, nil
+				return &commonpb.AggregateResult{}, nil
 			}).AnyTimes()
 		srv := newTestServer(t, backend)
 
@@ -343,17 +343,17 @@ func TestHandleAggregateVolumes_DualFormatFilter(t *testing.T) {
 func TestHandleAggregateVolumes_FilterReachesBackend(t *testing.T) {
 	t.Parallel()
 
-	capture := func(t *testing.T, target string) *ledgerpb.QueryFilter {
+	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
 		t.Helper()
 
-		var captured *ledgerpb.QueryFilter
+		var captured *commonpb.QueryFilter
 
 		backend := NewMockBackend(gomock.NewController(t))
 		backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, filter *ledgerpb.QueryFilter, _ query.AggregateOptions) (*ledgerpb.AggregateResult, error) {
+			func(_ context.Context, _ string, filter *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 				captured = filter
 
-				return &ledgerpb.AggregateResult{}, nil
+				return &commonpb.AggregateResult{}, nil
 			}).AnyTimes()
 		srv := newTestServer(t, backend)
 
@@ -410,13 +410,14 @@ func TestHandleAggregateVolumes_FilterInvalidForTarget(t *testing.T) {
 
 func TestAggregateVolumesMonetaryOptions(t *testing.T) {
 	t.Parallel()
-	value := &ledgerpb.AggregatedVolume{Asset: "USD", Color: "red", Input: ledgerpb.NewUint256FromUint64(9007199254740993), Output: ledgerpb.NewUint256FromUint64(9007199254740994)}
-	result := &ledgerpb.AggregateResult{Volumes: []*ledgerpb.AggregatedVolume{value}, Groups: []*ledgerpb.GroupedAggregateResult{{Prefix: "users:", Volumes: []*ledgerpb.AggregatedVolume{value}}}}
-	dto := toAggregateVolumesJSON(result)
-	numeric, err := json.MarshalWithOptions(dto, ledgerpb.BigIntegersAsNumbers())
+	value := &commonpb.AggregatedVolume{Asset: "USD", Color: "red", Input: commonpb.NewBigUintFromUint64(9007199254740993), Output: commonpb.NewBigUintFromUint64(9007199254740994)}
+	result := &commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{value}, Groups: []*commonpb.GroupedAggregateResult{{Prefix: "users:", Volumes: []*commonpb.AggregatedVolume{value}}}}
+	dto, err := toAggregateVolumesJSON(result)
+	require.NoError(t, err)
+	numeric, err := json.MarshalWithOptions(dto, commonpb.BigIntegersAsNumbers())
 	require.NoError(t, err)
 	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":9007199254740993,"output":9007199254740994,"balance":-1}]}]}`, string(numeric))
-	quoted, err := json.MarshalWithOptions(dto, ledgerpb.BigIntegersAsStrings())
+	quoted, err := json.MarshalWithOptions(dto, commonpb.BigIntegersAsStrings())
 	require.NoError(t, err)
 	require.Equal(t, `{"volumes":[{"asset":"USD","color":"red","input":"9007199254740993","output":"9007199254740994","balance":"-1"}],"groups":[{"prefix":"users:","volumes":[{"asset":"USD","color":"red","input":"9007199254740993","output":"9007199254740994","balance":"-1"}]}]}`, string(quoted))
 }
@@ -430,8 +431,8 @@ func TestHandleAggregateVolumesMonetaryHeader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			backend := NewMockBackend(gomock.NewController(t))
-			volume := &ledgerpb.AggregatedVolume{Asset: "USD", Input: ledgerpb.NewUint256FromUint64(9007199254740993), Output: ledgerpb.NewUint256FromUint64(9007199254740994)}
-			backend.EXPECT().AggregateVolumes(gomock.Any(), "ledger", gomock.Any(), gomock.Any()).Return(&ledgerpb.AggregateResult{Groups: []*ledgerpb.GroupedAggregateResult{{Prefix: "world", Volumes: []*ledgerpb.AggregatedVolume{volume}}}}, nil)
+			volume := &commonpb.AggregatedVolume{Asset: "USD", Input: commonpb.NewBigUintFromUint64(9007199254740993), Output: commonpb.NewBigUintFromUint64(9007199254740994)}
+			backend.EXPECT().AggregateVolumes(gomock.Any(), "ledger", gomock.Any(), gomock.Any()).Return(&commonpb.AggregateResult{Groups: []*commonpb.GroupedAggregateResult{{Prefix: "world", Volumes: []*commonpb.AggregatedVolume{volume}}}}, nil)
 			srv := newTestServer(t, backend)
 			request := newRequest(t, http.MethodGet, "/ledger/volumes", nil, map[string]string{"ledgerName": "ledger"})
 			if tc.header != "" {

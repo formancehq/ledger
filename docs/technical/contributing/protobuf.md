@@ -23,19 +23,24 @@ backend-only generated state remains in internal packages.
 | `events.proto` | Domain event types |
 | `restore.proto` | Restore service |
 
-### Generated Code (`internal/proto/`)
+### Generated Go code
+
+Public types and descriptors for `common.proto`, `signature.proto`,
+`audit.proto`, `bucket.proto`, `cluster.proto`, and `restore.proto` live in
+`pkg/proto/v3/ledgerpb`. Internal packages retain private generated types and
+compatibility aliases.
 
 | Package | Contents |
 |---------|----------|
-| `commonpb/` | Common types |
+| `commonpb/` | Private state and public compatibility aliases |
 | `raftcmdpb/` | FSM command types |
-| `servicepb/` | gRPC service |
-| `clusterpb/` | Cluster state |
-| `signaturepb/` | Signature types |
+| `servicepb/` | gRPC service compatibility aliases |
+| `clusterpb/` | Cluster service compatibility aliases |
+| `signaturepb/` | Signature compatibility aliases |
 | `snapshotpb/` | Snapshot service |
-| `auditpb/` | Audit log types |
+| `auditpb/` | Audit compatibility aliases |
 | `eventspb/` | Domain event types |
-| `restorepb/` | Restore service |
+| `restorepb/` | Restore service compatibility aliases |
 
 Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_transport.pb.go`, `raft_transport_grpc.pb.go`).
 

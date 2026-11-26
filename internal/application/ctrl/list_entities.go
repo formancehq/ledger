@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -22,14 +21,15 @@ import (
 // iterates — see the comment on listEntities for why the resolver
 // MUST share the iteration snapshot.
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
-	target       ledgerpb.QueryTarget
+	target       commonpb.QueryTarget
 	ledgerName   string
 	pageSize     uint32
 	after        T
-	filter       *ledgerpb.QueryFilter
+	hasAfter     bool
+	filter       *commonpb.QueryFilter
 	reverse      bool
-	schema       map[string]*ledgerpb.MetadataFieldSchema
-	info         *ledgerpb.LedgerInfo
+	schema       map[string]*commonpb.MetadataFieldSchema
+	info         *commonpb.LedgerInfo
 	profile      *query.QueryProfile
 	pebbleReader *dal.ReadHandle
 	// releaseHold drops the reclaim-floor reservation OpenQueryHandle took
@@ -228,7 +228,7 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 // (EN-1966).
 func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T]) (iter readstore.ReverseIterator, label, kind, bucket string, err error) {
 	switch params.target {
-	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledgerName)
 		if itErr != nil {
 			return nil, "", "", "", fmt.Errorf("creating reverse tx iterator: %w", itErr)
@@ -238,7 +238,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 			fmt.Sprintf("PebbleReverseTxIterator(%s)", params.ledgerName),
 			"PebbleReverseTx", "pebble:txupdate", nil
 
-	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		it, itErr := readstore.NewPebbleReverseAccountIterator(params.pebbleReader, params.ledgerName)
 		if itErr != nil {
 			return nil, "", "", "", fmt.Errorf("creating reverse account iterator: %w", itErr)
@@ -248,7 +248,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 			fmt.Sprintf("PebbleReverseAccountIterator(%s)", params.ledgerName),
 			"PebbleReverseAccount", "pebble:attributes", nil
 
-	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		kb := dal.NewKeyBuilder()
 		prefix := readstore.LedgerLogPrefix(kb, params.ledgerName)
 		entityOffset := len(prefix)

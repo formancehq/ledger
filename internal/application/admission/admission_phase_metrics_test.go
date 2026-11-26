@@ -10,7 +10,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -22,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -249,7 +249,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		// entered, so admission must record both histograms.
 		proposer.EXPECT().
 			Propose(gomock.Any(), gomock.Any()).
-			Return(nil, ledgerpb.ErrNoLeader).
+			Return(nil, commonpb.ErrNoLeader).
 			AnyTimes()
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
@@ -261,7 +261,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},
 		}))
-		require.ErrorIs(t, err, ledgerpb.ErrNoLeader)
+		require.ErrorIs(t, err, commonpb.ErrNoLeader)
 
 		counts := recordedPhaseCounts(t, reader)
 

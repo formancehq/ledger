@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -45,9 +44,9 @@ func TestProcessCreateQueryCheckpoint_UnderLimit(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 42}
+	now := &commonpb.Timestamp{Data: 42}
 
-	mockStore.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{QueryCheckpointLimit: 2})
+	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{QueryCheckpointLimit: 2})
 	mockStore.EXPECT().LiveQueryCheckpointCount().Return(uint64(1))
 	mockStore.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(7))
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
@@ -76,7 +75,7 @@ func TestProcessCreateQueryCheckpoint_AtLimit(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{QueryCheckpointLimit: 2})
+	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{QueryCheckpointLimit: 2})
 	mockStore.EXPECT().LiveQueryCheckpointCount().Return(uint64(2))
 
 	_, procErr := processor.ProcessOrder(createQueryCheckpointOrder(), mockStore)
@@ -96,9 +95,9 @@ func TestProcessCreateQueryCheckpoint_UncappedWhenLimitZero(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1}
+	now := &commonpb.Timestamp{Data: 1}
 
-	mockStore.EXPECT().GetClusterPolicy().Return(&ledgerpb.ClusterPolicy{QueryCheckpointLimit: 0})
+	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{QueryCheckpointLimit: 0})
 	mockStore.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())

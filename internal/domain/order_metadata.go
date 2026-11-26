@@ -4,8 +4,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -20,7 +19,7 @@ type MetadataWalk struct {
 	// VisitMap receives one entity's metadata map. account is the account
 	// address for account-scoped maps and "" for the transaction- and
 	// ledger-scoped ones, so a visitor can add the account context itself.
-	VisitMap func(account string, m map[string]*ledgerpb.MetadataValue) SerializableError
+	VisitMap func(account string, m map[string]*commonpb.MetadataValue) Describable
 	// VisitKey receives a bare metadata key: the delete-metadata and
 	// metadata-field-type orders carry a key with no value.
 	VisitKey func(key string) Describable
@@ -116,7 +115,7 @@ func walkMirrorMetadata(entry *raftcmdpb.MirrorLogEntry, walk MetadataWalk) Desc
 // walkAccountMetadata walks the per-account maps of a transaction order. A nil
 // map value carries nothing and is skipped rather than reported: an absent map
 // is not a validation failure.
-func walkAccountMetadata(accountMetadata map[string]*ledgerpb.MetadataMap, walk MetadataWalk) SerializableError {
+func walkAccountMetadata(accountMetadata map[string]*commonpb.MetadataMap, walk MetadataWalk) Describable {
 	for _, account := range slices.Sorted(maps.Keys(accountMetadata)) {
 		mm := accountMetadata[account]
 		if mm == nil {
@@ -140,7 +139,7 @@ func OrderMetadataSize(order *raftcmdpb.Order) uint64 {
 	// The visitors only accumulate and never fail, so the walk cannot return an
 	// error here.
 	_ = WalkOrderMetadata(order, MetadataWalk{
-		VisitMap: func(_ string, m map[string]*ledgerpb.MetadataValue) SerializableError {
+		VisitMap: func(_ string, m map[string]*commonpb.MetadataValue) Describable {
 			total += MetadataMapSize(m)
 
 			return nil
@@ -157,8 +156,8 @@ func OrderMetadataSize(order *raftcmdpb.Order) uint64 {
 
 // ValidateOrderMetadata checks the shape and size of every metadata payload.
 // Account and key traversal is sorted so replicated rejection details are stable.
-func ValidateOrderMetadata(order *raftcmdpb.Order, limits MetadataLimits) SerializableError {
-	return validateOrderMetadata(order, func(metadata map[string]*ledgerpb.MetadataValue) SerializableError {
+func ValidateOrderMetadata(order *raftcmdpb.Order, limits MetadataLimits) Describable {
+	return validateOrderMetadata(order, func(metadata map[string]*commonpb.MetadataValue) Describable {
 		if err := validateMetadataShape(metadata); err != nil {
 			return err
 		}
@@ -181,9 +180,9 @@ func ValidateOrderMetadataShape(order *raftcmdpb.Order) Describable {
 	})
 }
 
-func validateOrderMetadata(order *raftcmdpb.Order, validateMap func(map[string]*ledgerpb.MetadataValue) SerializableError, validateKey func(string) SerializableError) SerializableError {
+func validateOrderMetadata(order *raftcmdpb.Order, validateMap func(map[string]*commonpb.MetadataValue) Describable, validateKey func(string) Describable) Describable {
 	return WalkOrderMetadata(order, MetadataWalk{
-		VisitMap: func(account string, metadata map[string]*ledgerpb.MetadataValue) SerializableError {
+		VisitMap: func(account string, metadata map[string]*commonpb.MetadataValue) Describable {
 			err := validateMap(metadata)
 			if err == nil || account == "" {
 				return err
@@ -199,7 +198,7 @@ func validateOrderMetadata(order *raftcmdpb.Order, validateMap func(map[string]*
 	})
 }
 
-func validateMetadataShape(metadata map[string]*ledgerpb.MetadataValue) SerializableError {
+func validateMetadataShape(metadata map[string]*commonpb.MetadataValue) Describable {
 	for _, key := range slices.Sorted(maps.Keys(metadata)) {
 		if err := ValidateMetadataKey(key); err != nil {
 			return err

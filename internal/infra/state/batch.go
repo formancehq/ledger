@@ -4,19 +4,17 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // AppendLogs appends system logs to the batch.
-func AppendLogs(b *dal.WriteSession, logs []*ledgerpb.Log) error {
+func AppendLogs(b *dal.WriteSession, logs []*commonpb.Log) error {
 	for _, log := range logs {
 		b.KeyBuilder.
 			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
@@ -42,7 +40,7 @@ func AppendLogs(b *dal.WriteSession, logs []*ledgerpb.Log) error {
 // pass would catch it, since they all re-derive the name from the payload.
 // Callers pass the identity they were given: the canonical attribute key on the
 // Merge path, the log-replayed name during a rebuild.
-func SaveLedger(b *dal.WriteSession, name string, info *ledgerpb.LedgerInfo) error {
+func SaveLedger(b *dal.WriteSession, name string, info *commonpb.LedgerInfo) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).
 		PutLedgerName(name)
@@ -210,9 +208,19 @@ func saveClusterState(b *dal.WriteSession, state *commonpb.PersistedClusterState
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, state)
 }
 
-// SaveClusterPolicy stores the replicated cluster policy in the batch.
-func SaveClusterPolicy(b *dal.WriteSession, policy *ledgerpb.ClusterPolicy) error {
-	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy)
+// SaveClusterPolicy atomically saves the existing policy and detached capabilities.
+// The assembled message is a compatibility view, not another stored authority.
+func SaveClusterPolicy(b *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
+	configuration := policy.CloneVT()
+	configuration.CapabilityActivations = nil
+	if err := b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, configuration); err != nil {
+		return err
+	}
+	if err := b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobCapabilityState}, &commonpb.CapabilityState{Activations: policy.GetCapabilityActivations()}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // SaveQueryCheckpointSchedule stores the query checkpoint schedule cron expression in the batch.
@@ -285,7 +293,7 @@ func buildLedgerScopedPrefixSuccessor(zone, sub byte, ledgerName string) []byte 
 // SavePreparedQuery stores a prepared query in the canonical attributes zone.
 // The ledger no longer lives on the PreparedQuery value itself, so it is
 // encoded in the canonical attribute key provided by the caller.
-func SavePreparedQuery(b *dal.WriteSession, ledger string, pq *ledgerpb.PreparedQuery) error {
+func SavePreparedQuery(b *dal.WriteSession, ledger string, pq *commonpb.PreparedQuery) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneAttributes, dal.SubAttrPreparedQuery).
 		PutBytes(domain.PreparedQueryKey{LedgerName: ledger, Name: pq.GetName()}.Bytes())
 
@@ -366,7 +374,7 @@ func SetSinkCursor(b *dal.WriteSession, sinkName string, sequence uint64) error 
 }
 
 // SetSinkStatus writes a per-sink status to the batch (Raft-replicated).
-func SetSinkStatus(b *dal.WriteSession, status *ledgerpb.SinkStatus) error {
+func SetSinkStatus(b *dal.WriteSession, status *commonpb.SinkStatus) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).
 		PutString(status.GetSinkName())
 
@@ -408,7 +416,7 @@ func SetMirrorSourceHead(b *dal.WriteSession, ledgerName string, count uint64) e
 }
 
 // SetMirrorStatus writes a per-ledger mirror sync error to the batch.
-func SetMirrorStatus(b *dal.WriteSession, ledgerName string, syncErr *ledgerpb.MirrorSyncError) error {
+func SetMirrorStatus(b *dal.WriteSession, ledgerName string, syncErr *commonpb.MirrorSyncError) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
 		PutLedgerNameFixed(ledgerName)
 

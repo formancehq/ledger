@@ -3,15 +3,13 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Metadata", Ordered, func() {
@@ -25,7 +23,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create account via transaction
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -48,7 +46,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Metadata).NotTo(BeNil())
-			metaMap := ledgerpb.MetadataToGoMap(account.Metadata)
+			metaMap := commonpb.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["type"]).To(Equal("savings"))
 			Expect(metaMap["owner"]).To(Equal("user123"))
 			Expect(metaMap["tier"]).To(Equal("premium"))
@@ -75,7 +73,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(account.Metadata)
+			metaMap := commonpb.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("updated_value2"))
 			Expect(metaMap["key3"]).To(Equal("value3"))
@@ -99,7 +97,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(account.Metadata)
+			metaMap := commonpb.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -119,7 +117,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "new-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(ledgerpb.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
+			Expect(commonpb.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
 		})
 
 		It("Should handle metadata with special characters", func() {
@@ -138,7 +136,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(account.Metadata)
+			metaMap := commonpb.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["url"]).To(Equal("https://example.com/path?query=value"))
 			Expect(metaMap["description"]).To(Equal("A \"quoted\" string with 'apostrophes'"))
 			Expect(metaMap["json"]).To(Equal(`{"key": "value"}`))
@@ -166,7 +164,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(account.Metadata)
+			metaMap := commonpb.MetadataToGoMap(account.Metadata)
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			_, key2Exists := metaMap["key2"]
@@ -186,7 +184,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should be able to get a transaction after creating it", func() {
 			// Create transaction without metadata
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -206,7 +204,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should be able to get a transaction before and after saving metadata", func() {
 			// Create transaction without metadata
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -235,12 +233,12 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed(), "GetTransaction after metadata should succeed")
 			Expect(txAfter.Transaction.Id).To(Equal(transactionID))
-			Expect(ledgerpb.MetadataToGoMap(txAfter.Transaction.Metadata)["key"]).To(Equal("value"))
+			Expect(commonpb.MetadataToGoMap(txAfter.Transaction.Metadata)["key"]).To(Equal("value"))
 		})
 
 		It("Should set metadata and verify it persists", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -264,7 +262,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(tx.Transaction.Metadata).NotTo(BeNil())
-			metaMap := ledgerpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["reference"]).To(Equal("order-123"))
 			Expect(metaMap["source"]).To(Equal("api"))
 			Expect(metaMap["status"]).To(Equal("processed"))
@@ -272,7 +270,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should update existing transaction metadata", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -300,7 +298,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["status"]).To(Equal("completed"))
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -308,7 +306,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should delete transaction metadata and verify removal", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -333,7 +331,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -342,7 +340,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should read back empty metadata after deleting the last key", func() {
 			// Create a transaction carrying a single metadata key at creation.
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, map[string]string{"only": "value"}, nil)))
 			Expect(err).To(Succeed())
@@ -358,12 +356,12 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(ledgerpb.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
+			Expect(commonpb.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
 		})
 
 		It("Should preserve metadata set at transaction creation", func() {
 			// Create transaction with initial metadata
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 			}, map[string]string{
 				"initial": "metadata",
@@ -387,7 +385,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: newTxID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["initial"]).To(Equal("metadata"))
 			Expect(metaMap["type"]).To(Equal("deposit"))
 			Expect(metaMap["additional"]).To(Equal("metadata"))
@@ -395,7 +393,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should delete multiple metadata keys in bulk", func() {
 			// Create transaction
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -423,7 +421,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := ledgerpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -434,7 +432,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 		It("Should handle metadata on reverted transaction", func() {
 			// Create transaction to revert
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "user", big.NewInt(100), "USD"),
 			}, map[string]string{"original": "true"}, nil)))
 			Expect(err).To(Succeed())
@@ -460,7 +458,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: revertTxID,
 			})
 			Expect(err).To(Succeed())
-			Expect(ledgerpb.MetadataToGoMap(revertTx.Transaction.Metadata)["revert_reason"]).To(Equal("test"))
+			Expect(commonpb.MetadataToGoMap(revertTx.Transaction.Metadata)["revert_reason"]).To(Equal("test"))
 
 			// Original transaction should still have its metadata and be marked as reverted
 			originalTx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
@@ -469,7 +467,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(originalTx.Transaction.Reverted).To(BeTrue())
-			Expect(ledgerpb.MetadataToGoMap(originalTx.Transaction.Metadata)["original"]).To(Equal("true"))
+			Expect(commonpb.MetadataToGoMap(originalTx.Transaction.Metadata)["original"]).To(Equal("true"))
 		})
 	})
 })

@@ -1,9 +1,10 @@
 package processing
 
 import (
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -15,8 +16,11 @@ import (
 //   - same revision, identical payload: idempotent no-op (no log);
 //   - same revision, different payload: contract violation, rejected;
 //   - lower revision: stale, rejected (a newer policy already won).
-func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
-	newPolicy := order.GetPolicy()
+func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	return applyClusterPolicy(order.GetPolicy(), ctx.Scope)
+}
+
+func applyClusterPolicy(newPolicy *commonpb.ClusterPolicy, scope Scope) (*commonpb.LogPayload, domain.Describable) {
 	if newPolicy == nil {
 		return nil, &domain.ErrClusterPolicyInvalid{Detail: "missing policy"}
 	}
@@ -76,9 +80,9 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 	case newRev > appliedRev:
 		scope.SetClusterPolicy(newPolicy)
 
-		return &ledgerpb.LogPayload{
-			Type: &ledgerpb.LogPayload_SetClusterPolicy{
-				SetClusterPolicy: &ledgerpb.SetClusterPolicyLog{Policy: newPolicy},
+		return &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_SetClusterPolicy{
+				SetClusterPolicy: &commonpb.SetClusterPolicyLog{Policy: newPolicy},
 			},
 		}, nil
 	case newRev < appliedRev:
@@ -99,7 +103,7 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 // raising it would observe no effect. Both checks are pure functions of the
 // proposed policy, so every node reaches the same verdict for one committed
 // entry.
-func validateClusterPolicyMetadataLimits(policy *ledgerpb.ClusterPolicy) domain.SerializableError {
+func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.Describable {
 	if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
 		return &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
 	}

@@ -40,7 +40,8 @@ message AuditEntry {
   //     domain-separated BLAKE3, independently of the operational cluster ID
   //   - `header_payload` is the canonical binary encoding of EVERY other field
   //     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
-  //     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
+  //     order_count, ledgers, hash_version, caller_snapshot, and nonempty
+  //     required_capabilities), rebuilt by the
   //     verifier at check time from the stored fields via
   //     state.BuildHashedHeaderPayload — never persisted separately, so the
   //     typed fields ARE the source of truth
@@ -66,6 +67,9 @@ message AuditEntry {
   // event consumers, which the checker verifies against this entry.
   common.Idempotency idempotency = 12;
   signature.SignedApplyBatch signature = 13;
+  // Proposal-level semantic requirements, preserved after Raft WAL compaction.
+  // This is distinct from request identity and is not part of idempotency.
+  repeated fixed32 required_capabilities = 14;
 }
 
 // AuditItem represents one order within a proposal, stored separately from the

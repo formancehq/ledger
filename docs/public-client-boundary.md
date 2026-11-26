@@ -1,17 +1,17 @@
 # Public client boundary
 
-The Ledger server owns the protobufs under `internal/proto`. They are private
-implementation types and must not be imported by external consumers.
+The shared module `pkg/proto/v3` owns public protobuf types and descriptors.
+The Ledger server keeps backend-only state under `internal/proto`; external
+consumers must not import those internal packages.
 
 The public gRPC client is a separate Go module under `pkg/client/v3`. Its
-protobufs are generated from the checked-in schemas under `pkg/client/v3/proto`.
-Applications and SDK consumers may import that module; server packages must not.
+schemas are generated under `pkg/client/v3/proto`, while its Go package aliases
+the shared types and provides gRPC clients. Applications and SDK consumers may
+import this module; server packages must not.
 
-The public module is generated with only `protoc-gen-go` and
-`protoc-gen-go-grpc`. Server-only generators such as `protoc-gen-dethash`,
-`protoc-gen-skippable`, and the vtprotobuf/reader generators are intentionally
-not run for this module; their generated helpers belong to the server's
-internal protobuf packages.
+The client module uses `protoc-gen-go-grpc` for its client stubs. The shared
+module runs the protobuf, vtprotobuf, reader, JSON, and other generators for
+the types used by both server and client.
 
 The protobufs under `misc/proto/` are the canonical source. The public `.proto`
 files under `pkg/client/v3/proto/` are a generated projection of that source:

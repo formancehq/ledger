@@ -4,8 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	commonpb "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 )
@@ -42,7 +41,7 @@ func WithForwardedAttribution(ctx context.Context, capability attribution.Capabi
 // ForwardedSnapshotFromContext returns the forwarded caller snapshot, or nil
 // when none was attached (direct request, or no auth presented at the
 // forwarding hop).
-func ForwardedSnapshotFromContext(ctx context.Context) *ledgerpb.CallerSnapshot {
+func ForwardedSnapshotFromContext(ctx context.Context) *commonpb.CallerSnapshot {
 	capability, _ := ctx.Value(forwardedSnapshotKey{}).(attribution.Capability)
 
 	return capability.Snapshot()
@@ -88,7 +87,7 @@ func IsSystemActor(ctx context.Context) bool {
 // Use this from both the follower (when forwarding to the leader, to keep the
 // original snapshot intact across hops) and the leader (when building the
 // proposal carried through Raft).
-func ResolveCallerSnapshot(ctx context.Context) *ledgerpb.CallerSnapshot {
+func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 	if component, ok := systemActorFromContext(ctx); ok {
 		return commands.SystemCallerSnapshot(component)
 	}
@@ -124,7 +123,7 @@ func ResolveCallerAttribution(ctx context.Context) (attribution.Capability, erro
 // buildCallerSnapshot freezes the admission-time auth state of the current
 // context into exactly one principal variant. Downstream code MUST NOT
 // re-derive permissions from this audit-only snapshot.
-func buildCallerSnapshot(ctx context.Context) *ledgerpb.CallerSnapshot {
+func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 	claims := ClaimsFromContext(ctx)
 	if claims == nil {
 		state, ok := authenticationStateFromContext(ctx)
@@ -132,33 +131,29 @@ func buildCallerSnapshot(ctx context.Context) *ledgerpb.CallerSnapshot {
 			return nil
 		}
 		if state.enabled {
-			return &ledgerpb.CallerSnapshot{
-				Principal: &ledgerpb.CallerSnapshot_Anonymous{
-					Anonymous: &ledgerpb.AnonymousCaller{Scopes: sortedScopeStrings(state.scopes)},
+			return &commonpb.CallerSnapshot{
+				Principal: &commonpb.CallerSnapshot_Anonymous{
+					Anonymous: &commonpb.AnonymousCaller{Scopes: sortedScopeStrings(state.scopes)},
 				},
 			}
 		}
 
-		return &ledgerpb.CallerSnapshot{
-			Principal: &ledgerpb.CallerSnapshot_AuthDisabled{
-				AuthDisabled: &ledgerpb.AuthDisabledCaller{},
-			},
-		}
+		return authDisabledCallerSnapshot()
 	}
 
-	identity := &ledgerpb.CallerIdentity{
+	identity := &commonpb.CallerIdentity{
 		Subject: claims.Subject,
 	}
 
 	// Credential evaluation installs a key ID only for validated static
 	// Ed25519 credentials; an OIDC token's kid never overrides its issuer.
 	if keyID := KeyIDFromContext(ctx); keyID != "" {
-		identity.Source = &ledgerpb.CallerIdentity_KeyId{KeyId: keyID}
+		identity.Source = &commonpb.CallerIdentity_KeyId{KeyId: keyID}
 	} else if claims.Issuer != "" {
-		identity.Source = &ledgerpb.CallerIdentity_Issuer{Issuer: claims.Issuer}
+		identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: claims.Issuer}
 	}
 
-	authenticated := &ledgerpb.AuthenticatedCaller{
+	authenticated := &commonpb.AuthenticatedCaller{
 		Identity: identity,
 	}
 
@@ -168,8 +163,8 @@ func buildCallerSnapshot(ctx context.Context) *ledgerpb.CallerSnapshot {
 
 	authenticated.Scopes = sortedScopeStrings(ExpandedScopesFromContext(ctx))
 
-	return &ledgerpb.CallerSnapshot{
-		Principal: &ledgerpb.CallerSnapshot_Authenticated{Authenticated: authenticated},
+	return &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: authenticated},
 	}
 }
 

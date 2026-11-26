@@ -6,10 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -24,9 +23,7 @@ type coverageMissDescribable struct{}
 func (coverageMissDescribable) Error() string          { return "preload coverage miss (test)" }
 func (coverageMissDescribable) Kind() domain.ErrorKind { return domain.KindInternal }
 func (coverageMissDescribable) Reason() string         { return domain.ErrReasonCoverageMiss }
-func (coverageMissDescribable) FailureDetails() *ledgerpb.FailureDetails {
-	return ledgerpb.MustFailureDetails(domain.ErrReasonCoverageMiss, nil)
-}
+func (coverageMissDescribable) UncommittedFailure()    {}
 
 // staleScript reads a balance DURING dependency resolution via balance() in a
 // var origin, so the apply-path re-resolution consults the Scope for @wallet's
@@ -65,14 +62,14 @@ func TestProduce_ChangedValueWithCompletedResolutionIsStale(t *testing.T) {
 	// @wallet has a real balance, so resolution completes; the recomputed hash
 	// will not equal the arbitrary stored hash, so the block rejects as stale.
 	walletVol := &raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(1000),
-		Output: ledgerpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(1000),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 	volumes.expectGet(domain.NewVolumeKey("test", "wallet", "USD/2", ""), walletVol.AsReader(), nil)
 
 	producer := newNumscriptProducer()
 
-	_, err := producer.produce(mockStore, "test", order, &ledgerpb.Script{Plain: staleScript})
+	_, err := producer.produceExecution(mockStore, "test", false, &commonpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, domain.ErrStaleInputsResolution,
@@ -100,7 +97,7 @@ func TestProduce_CoverageMissDuringResolutionIsLoudNotStale(t *testing.T) {
 
 	producer := newNumscriptProducer()
 
-	_, err := producer.produce(mockStore, "test", order, &ledgerpb.Script{Plain: staleScript})
+	_, err := producer.produceExecution(mockStore, "test", false, &commonpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
@@ -130,7 +127,7 @@ func TestProduce_InvalidExecutionPlanDuringResolutionIsLoudNotStale(t *testing.T
 
 	producer := newNumscriptProducer()
 
-	_, err := producer.produce(mockStore, "test", order, &ledgerpb.Script{Plain: staleScript})
+	_, err := producer.produceExecution(mockStore, "test", false, &commonpb.Script{Plain: staleScript})
 
 	require.NotNil(t, err)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)

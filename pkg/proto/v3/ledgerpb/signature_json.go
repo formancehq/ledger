@@ -1,4 +1,4 @@
-package signaturepb
+package ledgerpb
 
 import jsonv2 "encoding/json/v2"
 

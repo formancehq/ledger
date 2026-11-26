@@ -86,7 +86,7 @@ func (l getAccountRequestListReadonly) Range(yield func(int, GetAccountRequestRe
 
 // NewGetAccountRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetAccountRequestListReader(s []*GetAccountRequest) GetAccountRequestListReader {
+func NewGetAccountRequestListReader(s []*GetAccountRequest) getAccountRequestListReadonly {
 	return getAccountRequestListReadonly(s)
 }
 
@@ -163,7 +163,7 @@ func (l getTransactionRequestListReadonly) Range(yield func(int, GetTransactionR
 
 // NewGetTransactionRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetTransactionRequestListReader(s []*GetTransactionRequest) GetTransactionRequestListReader {
+func NewGetTransactionRequestListReader(s []*GetTransactionRequest) getTransactionRequestListReadonly {
 	return getTransactionRequestListReadonly(s)
 }
 
@@ -234,7 +234,7 @@ func (l getTransactionResponseListReadonly) Range(yield func(int, GetTransaction
 
 // NewGetTransactionResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetTransactionResponseListReader(s []*GetTransactionResponse) GetTransactionResponseListReader {
+func NewGetTransactionResponseListReader(s []*GetTransactionResponse) getTransactionResponseListReadonly {
 	return getTransactionResponseListReadonly(s)
 }
 
@@ -310,7 +310,7 @@ func (l listTransactionsRequestListReadonly) Range(yield func(int, ListTransacti
 
 // NewListTransactionsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListTransactionsRequestListReader(s []*ListTransactionsRequest) ListTransactionsRequestListReader {
+func NewListTransactionsRequestListReader(s []*ListTransactionsRequest) listTransactionsRequestListReadonly {
 	return listTransactionsRequestListReadonly(s)
 }
 
@@ -386,7 +386,7 @@ func (l listAccountsRequestListReadonly) Range(yield func(int, ListAccountsReque
 
 // NewListAccountsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListAccountsRequestListReader(s []*ListAccountsRequest) ListAccountsRequestListReader {
+func NewListAccountsRequestListReader(s []*ListAccountsRequest) listAccountsRequestListReadonly {
 	return listAccountsRequestListReadonly(s)
 }
 
@@ -487,7 +487,7 @@ func (l createLedgerRequestListReadonly) Range(yield func(int, CreateLedgerReque
 
 // NewCreateLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCreateLedgerRequestListReader(s []*CreateLedgerRequest) CreateLedgerRequestListReader {
+func NewCreateLedgerRequestListReader(s []*CreateLedgerRequest) createLedgerRequestListReadonly {
 	return createLedgerRequestListReadonly(s)
 }
 
@@ -616,7 +616,7 @@ func (l deleteLedgerRequestListReadonly) Range(yield func(int, DeleteLedgerReque
 
 // NewDeleteLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeleteLedgerRequestListReader(s []*DeleteLedgerRequest) DeleteLedgerRequestListReader {
+func NewDeleteLedgerRequestListReader(s []*DeleteLedgerRequest) deleteLedgerRequestListReadonly {
 	return deleteLedgerRequestListReadonly(s)
 }
 
@@ -678,7 +678,7 @@ func (l deleteLedgerResponseListReadonly) Range(yield func(int, DeleteLedgerResp
 
 // NewDeleteLedgerResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeleteLedgerResponseListReader(s []*DeleteLedgerResponse) DeleteLedgerResponseListReader {
+func NewDeleteLedgerResponseListReader(s []*DeleteLedgerResponse) deleteLedgerResponseListReadonly {
 	return deleteLedgerResponseListReadonly(s)
 }
 
@@ -749,7 +749,7 @@ func (l listLedgersRequestListReadonly) Range(yield func(int, ListLedgersRequest
 
 // NewListLedgersRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListLedgersRequestListReader(s []*ListLedgersRequest) ListLedgersRequestListReader {
+func NewListLedgersRequestListReader(s []*ListLedgersRequest) listLedgersRequestListReadonly {
 	return listLedgersRequestListReadonly(s)
 }
 
@@ -825,13 +825,15 @@ func (l getLedgerRequestListReadonly) Range(yield func(int, GetLedgerRequestRead
 
 // NewGetLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetLedgerRequestListReader(s []*GetLedgerRequest) GetLedgerRequestListReader {
+func NewGetLedgerRequestListReader(s []*GetLedgerRequest) getLedgerRequestListReadonly {
 	return getLedgerRequestListReadonly(s)
 }
 
 // ApplyRequestReader provides read-only access to ApplyRequest.
 // Call Mutate() to obtain a mutable clone.
 type ApplyRequestReader interface {
+	GetUnsigned() ApplyBatchReader
+	GetSigned() SignedApplyBatchReader
 	GetForwardedCallerSnapshot() CallerSnapshotReader
 	GetSkipResponse() bool
 	WhichVariant() ApplyRequest_VariantReaderCase
@@ -839,6 +841,22 @@ type ApplyRequestReader interface {
 }
 
 type applyRequestReadonly ApplyRequest
+
+func (r *applyRequestReadonly) GetUnsigned() ApplyBatchReader {
+	v, ok := (*ApplyRequest)(r).GetVariant().(*ApplyRequest_Unsigned)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Unsigned.AsReader()
+}
+
+func (r *applyRequestReadonly) GetSigned() SignedApplyBatchReader {
+	v, ok := (*ApplyRequest)(r).GetVariant().(*ApplyRequest_Signed)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.Signed.AsReader()
+}
 
 func (r *applyRequestReadonly) GetForwardedCallerSnapshot() CallerSnapshotReader {
 	v := (*ApplyRequest)(r).GetForwardedCallerSnapshot()
@@ -922,7 +940,7 @@ func (l applyRequestListReadonly) Range(yield func(int, ApplyRequestReader) bool
 
 // NewApplyRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewApplyRequestListReader(s []*ApplyRequest) ApplyRequestListReader {
+func NewApplyRequestListReader(s []*ApplyRequest) applyRequestListReadonly {
 	return applyRequestListReadonly(s)
 }
 
@@ -994,7 +1012,9 @@ func (l applyBatchListReadonly) Range(yield func(int, ApplyBatchReader) bool) {
 
 // NewApplyBatchListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewApplyBatchListReader(s []*ApplyBatch) ApplyBatchListReader { return applyBatchListReadonly(s) }
+func NewApplyBatchListReader(s []*ApplyBatch) applyBatchListReadonly {
+	return applyBatchListReadonly(s)
+}
 
 // ApplyResponseReader provides read-only access to ApplyResponse.
 // Call Mutate() to obtain a mutable clone.
@@ -1059,7 +1079,7 @@ func (l applyResponseListReadonly) Range(yield func(int, ApplyResponseReader) bo
 
 // NewApplyResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewApplyResponseListReader(s []*ApplyResponse) ApplyResponseListReader {
+func NewApplyResponseListReader(s []*ApplyResponse) applyResponseListReadonly {
 	return applyResponseListReadonly(s)
 }
 
@@ -1460,7 +1480,7 @@ func (l requestListReadonly) Range(yield func(int, RequestReader) bool) {
 
 // NewRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRequestListReader(s []*Request) RequestListReader { return requestListReadonly(s) }
+func NewRequestListReader(s []*Request) requestListReadonly { return requestListReadonly(s) }
 
 // CreateQueryCheckpointRequestReader provides read-only access to CreateQueryCheckpointRequest.
 // Call Mutate() to obtain a mutable clone.
@@ -1520,7 +1540,7 @@ func (l createQueryCheckpointRequestListReadonly) Range(yield func(int, CreateQu
 
 // NewCreateQueryCheckpointRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCreateQueryCheckpointRequestListReader(s []*CreateQueryCheckpointRequest) CreateQueryCheckpointRequestListReader {
+func NewCreateQueryCheckpointRequestListReader(s []*CreateQueryCheckpointRequest) createQueryCheckpointRequestListReadonly {
 	return createQueryCheckpointRequestListReadonly(s)
 }
 
@@ -1587,7 +1607,7 @@ func (l deleteQueryCheckpointRequestListReadonly) Range(yield func(int, DeleteQu
 
 // NewDeleteQueryCheckpointRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeleteQueryCheckpointRequestListReader(s []*DeleteQueryCheckpointRequest) DeleteQueryCheckpointRequestListReader {
+func NewDeleteQueryCheckpointRequestListReader(s []*DeleteQueryCheckpointRequest) deleteQueryCheckpointRequestListReadonly {
 	return deleteQueryCheckpointRequestListReadonly(s)
 }
 
@@ -1654,7 +1674,7 @@ func (l promoteLedgerRequestListReadonly) Range(yield func(int, PromoteLedgerReq
 
 // NewPromoteLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPromoteLedgerRequestListReader(s []*PromoteLedgerRequest) PromoteLedgerRequestListReader {
+func NewPromoteLedgerRequestListReader(s []*PromoteLedgerRequest) promoteLedgerRequestListReadonly {
 	return promoteLedgerRequestListReadonly(s)
 }
 
@@ -1726,7 +1746,7 @@ func (l saveLedgerMetadataRequestListReadonly) Range(yield func(int, SaveLedgerM
 
 // NewSaveLedgerMetadataRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSaveLedgerMetadataRequestListReader(s []*SaveLedgerMetadataRequest) SaveLedgerMetadataRequestListReader {
+func NewSaveLedgerMetadataRequestListReader(s []*SaveLedgerMetadataRequest) saveLedgerMetadataRequestListReadonly {
 	return saveLedgerMetadataRequestListReadonly(s)
 }
 
@@ -1829,7 +1849,7 @@ func (l deleteLedgerMetadataRequestListReadonly) Range(yield func(int, DeleteLed
 
 // NewDeleteLedgerMetadataRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeleteLedgerMetadataRequestListReader(s []*DeleteLedgerMetadataRequest) DeleteLedgerMetadataRequestListReader {
+func NewDeleteLedgerMetadataRequestListReader(s []*DeleteLedgerMetadataRequest) deleteLedgerMetadataRequestListReadonly {
 	return deleteLedgerMetadataRequestListReadonly(s)
 }
 
@@ -1900,7 +1920,7 @@ func (l addEventsSinkRequestListReadonly) Range(yield func(int, AddEventsSinkReq
 
 // NewAddEventsSinkRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAddEventsSinkRequestListReader(s []*AddEventsSinkRequest) AddEventsSinkRequestListReader {
+func NewAddEventsSinkRequestListReader(s []*AddEventsSinkRequest) addEventsSinkRequestListReadonly {
 	return addEventsSinkRequestListReadonly(s)
 }
 
@@ -1972,7 +1992,7 @@ func (l removeEventsSinkRequestListReadonly) Range(yield func(int, RemoveEventsS
 
 // NewRemoveEventsSinkRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRemoveEventsSinkRequestListReader(s []*RemoveEventsSinkRequest) RemoveEventsSinkRequestListReader {
+func NewRemoveEventsSinkRequestListReader(s []*RemoveEventsSinkRequest) removeEventsSinkRequestListReadonly {
 	return removeEventsSinkRequestListReadonly(s)
 }
 
@@ -2044,7 +2064,7 @@ func (l registerSigningKeyRequestListReadonly) Range(yield func(int, RegisterSig
 
 // NewRegisterSigningKeyRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRegisterSigningKeyRequestListReader(s []*RegisterSigningKeyRequest) RegisterSigningKeyRequestListReader {
+func NewRegisterSigningKeyRequestListReader(s []*RegisterSigningKeyRequest) registerSigningKeyRequestListReadonly {
 	return registerSigningKeyRequestListReadonly(s)
 }
 
@@ -2116,7 +2136,7 @@ func (l revokeSigningKeyRequestListReadonly) Range(yield func(int, RevokeSigning
 
 // NewRevokeSigningKeyRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRevokeSigningKeyRequestListReader(s []*RevokeSigningKeyRequest) RevokeSigningKeyRequestListReader {
+func NewRevokeSigningKeyRequestListReader(s []*RevokeSigningKeyRequest) revokeSigningKeyRequestListReadonly {
 	return revokeSigningKeyRequestListReadonly(s)
 }
 
@@ -2183,7 +2203,7 @@ func (l setSigningConfigRequestListReadonly) Range(yield func(int, SetSigningCon
 
 // NewSetSigningConfigRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetSigningConfigRequestListReader(s []*SetSigningConfigRequest) SetSigningConfigRequestListReader {
+func NewSetSigningConfigRequestListReader(s []*SetSigningConfigRequest) setSigningConfigRequestListReadonly {
 	return setSigningConfigRequestListReadonly(s)
 }
 
@@ -2254,7 +2274,7 @@ func (l listSigningKeysRequestListReadonly) Range(yield func(int, ListSigningKey
 
 // NewListSigningKeysRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListSigningKeysRequestListReader(s []*ListSigningKeysRequest) ListSigningKeysRequestListReader {
+func NewListSigningKeysRequestListReader(s []*ListSigningKeysRequest) listSigningKeysRequestListReadonly {
 	return listSigningKeysRequestListReadonly(s)
 }
 
@@ -2450,7 +2470,7 @@ func (l setMaintenanceModeRequestListReadonly) Range(yield func(int, SetMaintena
 
 // NewSetMaintenanceModeRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetMaintenanceModeRequestListReader(s []*SetMaintenanceModeRequest) SetMaintenanceModeRequestListReader {
+func NewSetMaintenanceModeRequestListReader(s []*SetMaintenanceModeRequest) setMaintenanceModeRequestListReadonly {
 	return setMaintenanceModeRequestListReadonly(s)
 }
 
@@ -2532,7 +2552,7 @@ func (l setMetadataFieldTypeRequestListReadonly) Range(yield func(int, SetMetada
 
 // NewSetMetadataFieldTypeRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetMetadataFieldTypeRequestListReader(s []*SetMetadataFieldTypeRequest) SetMetadataFieldTypeRequestListReader {
+func NewSetMetadataFieldTypeRequestListReader(s []*SetMetadataFieldTypeRequest) setMetadataFieldTypeRequestListReadonly {
 	return setMetadataFieldTypeRequestListReadonly(s)
 }
 
@@ -2609,7 +2629,7 @@ func (l removeMetadataFieldTypeRequestListReadonly) Range(yield func(int, Remove
 
 // NewRemoveMetadataFieldTypeRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRemoveMetadataFieldTypeRequestListReader(s []*RemoveMetadataFieldTypeRequest) RemoveMetadataFieldTypeRequestListReader {
+func NewRemoveMetadataFieldTypeRequestListReader(s []*RemoveMetadataFieldTypeRequest) removeMetadataFieldTypeRequestListReadonly {
 	return removeMetadataFieldTypeRequestListReadonly(s)
 }
 
@@ -2685,7 +2705,7 @@ func (l createIndexRequestListReadonly) Range(yield func(int, CreateIndexRequest
 
 // NewCreateIndexRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCreateIndexRequestListReader(s []*CreateIndexRequest) CreateIndexRequestListReader {
+func NewCreateIndexRequestListReader(s []*CreateIndexRequest) createIndexRequestListReadonly {
 	return createIndexRequestListReadonly(s)
 }
 
@@ -2761,7 +2781,7 @@ func (l dropIndexRequestListReadonly) Range(yield func(int, DropIndexRequestRead
 
 // NewDropIndexRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDropIndexRequestListReader(s []*DropIndexRequest) DropIndexRequestListReader {
+func NewDropIndexRequestListReader(s []*DropIndexRequest) dropIndexRequestListReadonly {
 	return dropIndexRequestListReadonly(s)
 }
 
@@ -2833,7 +2853,7 @@ func (l analyzeNumscriptRequestListReadonly) Range(yield func(int, AnalyzeNumscr
 
 // NewAnalyzeNumscriptRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeNumscriptRequestListReader(s []*AnalyzeNumscriptRequest) AnalyzeNumscriptRequestListReader {
+func NewAnalyzeNumscriptRequestListReader(s []*AnalyzeNumscriptRequest) analyzeNumscriptRequestListReadonly {
 	return analyzeNumscriptRequestListReadonly(s)
 }
 
@@ -2905,7 +2925,7 @@ func (l numscriptInputListReadonly) Range(yield func(int, NumscriptInputReader) 
 
 // NewNumscriptInputListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewNumscriptInputListReader(s []*NumscriptInput) NumscriptInputListReader {
+func NewNumscriptInputListReader(s []*NumscriptInput) numscriptInputListReadonly {
 	return numscriptInputListReadonly(s)
 }
 
@@ -3002,7 +3022,7 @@ func (l numscriptDiagnosticListReadonly) Range(yield func(int, NumscriptDiagnost
 
 // NewNumscriptDiagnosticListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewNumscriptDiagnosticListReader(s []*NumscriptDiagnostic) NumscriptDiagnosticListReader {
+func NewNumscriptDiagnosticListReader(s []*NumscriptDiagnostic) numscriptDiagnosticListReadonly {
 	return numscriptDiagnosticListReadonly(s)
 }
 
@@ -3074,7 +3094,7 @@ func (l analyzeNumscriptResponseListReadonly) Range(yield func(int, AnalyzeNumsc
 
 // NewAnalyzeNumscriptResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeNumscriptResponseListReader(s []*AnalyzeNumscriptResponse) AnalyzeNumscriptResponseListReader {
+func NewAnalyzeNumscriptResponseListReader(s []*AnalyzeNumscriptResponse) analyzeNumscriptResponseListReadonly {
 	return analyzeNumscriptResponseListReadonly(s)
 }
 
@@ -3161,7 +3181,7 @@ func (l saveNumscriptRequestListReadonly) Range(yield func(int, SaveNumscriptReq
 
 // NewSaveNumscriptRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSaveNumscriptRequestListReader(s []*SaveNumscriptRequest) SaveNumscriptRequestListReader {
+func NewSaveNumscriptRequestListReader(s []*SaveNumscriptRequest) saveNumscriptRequestListReadonly {
 	return saveNumscriptRequestListReadonly(s)
 }
 
@@ -3247,7 +3267,7 @@ func (l getNumscriptRequestListReadonly) Range(yield func(int, GetNumscriptReque
 
 // NewGetNumscriptRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetNumscriptRequestListReader(s []*GetNumscriptRequest) GetNumscriptRequestListReader {
+func NewGetNumscriptRequestListReader(s []*GetNumscriptRequest) getNumscriptRequestListReadonly {
 	return getNumscriptRequestListReadonly(s)
 }
 
@@ -3323,7 +3343,7 @@ func (l listNumscriptsRequestListReadonly) Range(yield func(int, ListNumscriptsR
 
 // NewListNumscriptsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListNumscriptsRequestListReader(s []*ListNumscriptsRequest) ListNumscriptsRequestListReader {
+func NewListNumscriptsRequestListReader(s []*ListNumscriptsRequest) listNumscriptsRequestListReadonly {
 	return listNumscriptsRequestListReadonly(s)
 }
 
@@ -3404,7 +3424,7 @@ func (l listNumscriptVersionsRequestListReadonly) Range(yield func(int, ListNums
 
 // NewListNumscriptVersionsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListNumscriptVersionsRequestListReader(s []*ListNumscriptVersionsRequest) ListNumscriptVersionsRequestListReader {
+func NewListNumscriptVersionsRequestListReader(s []*ListNumscriptVersionsRequest) listNumscriptVersionsRequestListReadonly {
 	return listNumscriptVersionsRequestListReadonly(s)
 }
 
@@ -3476,7 +3496,7 @@ func (l listNumscriptVersionsResponseListReadonly) Range(yield func(int, ListNum
 
 // NewListNumscriptVersionsResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListNumscriptVersionsResponseListReader(s []*ListNumscriptVersionsResponse) ListNumscriptVersionsResponseListReader {
+func NewListNumscriptVersionsResponseListReader(s []*ListNumscriptVersionsResponse) listNumscriptVersionsResponseListReadonly {
 	return listNumscriptVersionsResponseListReadonly(s)
 }
 
@@ -3548,7 +3568,7 @@ func (l getTemplateUsageRequestListReadonly) Range(yield func(int, GetTemplateUs
 
 // NewGetTemplateUsageRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetTemplateUsageRequestListReader(s []*GetTemplateUsageRequest) GetTemplateUsageRequestListReader {
+func NewGetTemplateUsageRequestListReader(s []*GetTemplateUsageRequest) getTemplateUsageRequestListReadonly {
 	return getTemplateUsageRequestListReadonly(s)
 }
 
@@ -3625,7 +3645,7 @@ func (l scriptReferenceListReadonly) Range(yield func(int, ScriptReferenceReader
 
 // NewScriptReferenceListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewScriptReferenceListReader(s []*ScriptReference) ScriptReferenceListReader {
+func NewScriptReferenceListReader(s []*ScriptReference) scriptReferenceListReadonly {
 	return scriptReferenceListReadonly(s)
 }
 
@@ -3716,7 +3736,7 @@ func (l setQueryCheckpointScheduleRequestListReadonly) Range(yield func(int, Set
 
 // NewSetQueryCheckpointScheduleRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetQueryCheckpointScheduleRequestListReader(s []*SetQueryCheckpointScheduleRequest) SetQueryCheckpointScheduleRequestListReader {
+func NewSetQueryCheckpointScheduleRequestListReader(s []*SetQueryCheckpointScheduleRequest) setQueryCheckpointScheduleRequestListReadonly {
 	return setQueryCheckpointScheduleRequestListReadonly(s)
 }
 
@@ -3778,7 +3798,7 @@ func (l deleteQueryCheckpointScheduleRequestListReadonly) Range(yield func(int, 
 
 // NewDeleteQueryCheckpointScheduleRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeleteQueryCheckpointScheduleRequestListReader(s []*DeleteQueryCheckpointScheduleRequest) DeleteQueryCheckpointScheduleRequestListReader {
+func NewDeleteQueryCheckpointScheduleRequestListReader(s []*DeleteQueryCheckpointScheduleRequest) deleteQueryCheckpointScheduleRequestListReadonly {
 	return deleteQueryCheckpointScheduleRequestListReadonly(s)
 }
 
@@ -3840,7 +3860,7 @@ func (l discoveryRequestListReadonly) Range(yield func(int, DiscoveryRequestRead
 
 // NewDiscoveryRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDiscoveryRequestListReader(s []*DiscoveryRequest) DiscoveryRequestListReader {
+func NewDiscoveryRequestListReader(s []*DiscoveryRequest) discoveryRequestListReadonly {
 	return discoveryRequestListReadonly(s)
 }
 
@@ -3927,7 +3947,9 @@ func (l serverInfoListReadonly) Range(yield func(int, ServerInfoReader) bool) {
 
 // NewServerInfoListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewServerInfoListReader(s []*ServerInfo) ServerInfoListReader { return serverInfoListReadonly(s) }
+func NewServerInfoListReader(s []*ServerInfo) serverInfoListReadonly {
+	return serverInfoListReadonly(s)
+}
 
 // DiscoveryResponseReader provides read-only access to DiscoveryResponse.
 // Call Mutate() to obtain a mutable clone.
@@ -4014,7 +4036,7 @@ func (l discoveryResponseListReadonly) Range(yield func(int, DiscoveryResponseRe
 
 // NewDiscoveryResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDiscoveryResponseListReader(s []*DiscoveryResponse) DiscoveryResponseListReader {
+func NewDiscoveryResponseListReader(s []*DiscoveryResponse) discoveryResponseListReadonly {
 	return discoveryResponseListReadonly(s)
 }
 
@@ -4086,7 +4108,7 @@ func (l responseSigningInfoListReadonly) Range(yield func(int, ResponseSigningIn
 
 // NewResponseSigningInfoListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewResponseSigningInfoListReader(s []*ResponseSigningInfo) ResponseSigningInfoListReader {
+func NewResponseSigningInfoListReader(s []*ResponseSigningInfo) responseSigningInfoListReadonly {
 	return responseSigningInfoListReadonly(s)
 }
 
@@ -4200,7 +4222,7 @@ func (l createTransactionPayloadListReadonly) Range(yield func(int, CreateTransa
 
 // NewCreateTransactionPayloadListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCreateTransactionPayloadListReader(s []*CreateTransactionPayload) CreateTransactionPayloadListReader {
+func NewCreateTransactionPayloadListReader(s []*CreateTransactionPayload) createTransactionPayloadListReadonly {
 	return createTransactionPayloadListReadonly(s)
 }
 
@@ -4269,9 +4291,9 @@ func (m createTransactionPayload_accountMetadataMapReadonly) Range(yield func(st
 // ExecuteNumscriptPayloadReader provides read-only access to ExecuteNumscriptPayload.
 // Call Mutate() to obtain a mutable clone.
 type ExecuteNumscriptPayloadReader interface {
-	GetScript() commonpb.ScriptReader
+	GetScript() ScriptReader
 	GetScriptReference() ScriptReferenceReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() TimestampReader
 	GetMetadata() ExecuteNumscriptPayload_MetadataMapReader
 	GetAccountMetadata() ExecuteNumscriptPayload_AccountMetadataMapReader
 	GetReference() string
@@ -4280,7 +4302,7 @@ type ExecuteNumscriptPayloadReader interface {
 
 type executeNumscriptPayloadReadonly ExecuteNumscriptPayload
 
-func (r *executeNumscriptPayloadReadonly) GetScript() commonpb.ScriptReader {
+func (r *executeNumscriptPayloadReadonly) GetScript() ScriptReader {
 	v := (*ExecuteNumscriptPayload)(r).GetScript()
 	if v == nil {
 		return nil
@@ -4296,7 +4318,7 @@ func (r *executeNumscriptPayloadReadonly) GetScriptReference() ScriptReferenceRe
 	return v.AsReader()
 }
 
-func (r *executeNumscriptPayloadReadonly) GetTimestamp() commonpb.TimestampReader {
+func (r *executeNumscriptPayloadReadonly) GetTimestamp() TimestampReader {
 	v := (*ExecuteNumscriptPayload)(r).GetTimestamp()
 	if v == nil {
 		return nil
@@ -4366,22 +4388,22 @@ func (l executeNumscriptPayloadListReadonly) Range(yield func(int, ExecuteNumscr
 
 // NewExecuteNumscriptPayloadListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewExecuteNumscriptPayloadListReader(s []*ExecuteNumscriptPayload) ExecuteNumscriptPayloadListReader {
+func NewExecuteNumscriptPayloadListReader(s []*ExecuteNumscriptPayload) executeNumscriptPayloadListReadonly {
 	return executeNumscriptPayloadListReadonly(s)
 }
 
 // ExecuteNumscriptPayload_MetadataMapReader provides read-only access to ExecuteNumscriptPayload.Metadata.
 type ExecuteNumscriptPayload_MetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataValueReader, bool)
-	Range(yield func(string, commonpb.MetadataValueReader) bool)
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
 }
 
-type executeNumscriptPayload_metadataMapReadonly map[string]*commonpb.MetadataValue
+type executeNumscriptPayload_metadataMapReadonly map[string]*MetadataValue
 
 func (m executeNumscriptPayload_metadataMapReadonly) Len() int { return len(m) }
 
-func (m executeNumscriptPayload_metadataMapReadonly) Get(k string) (commonpb.MetadataValueReader, bool) {
+func (m executeNumscriptPayload_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -4389,9 +4411,9 @@ func (m executeNumscriptPayload_metadataMapReadonly) Get(k string) (commonpb.Met
 	return v.AsReader(), true
 }
 
-func (m executeNumscriptPayload_metadataMapReadonly) Range(yield func(string, commonpb.MetadataValueReader) bool) {
+func (m executeNumscriptPayload_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataValueReader
+		var r MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -4404,15 +4426,15 @@ func (m executeNumscriptPayload_metadataMapReadonly) Range(yield func(string, co
 // ExecuteNumscriptPayload_AccountMetadataMapReader provides read-only access to ExecuteNumscriptPayload.AccountMetadata.
 type ExecuteNumscriptPayload_AccountMetadataMapReader interface {
 	Len() int
-	Get(k string) (commonpb.MetadataMapReader, bool)
-	Range(yield func(string, commonpb.MetadataMapReader) bool)
+	Get(k string) (MetadataMapReader, bool)
+	Range(yield func(string, MetadataMapReader) bool)
 }
 
-type executeNumscriptPayload_accountMetadataMapReadonly map[string]*commonpb.MetadataMap
+type executeNumscriptPayload_accountMetadataMapReadonly map[string]*MetadataMap
 
 func (m executeNumscriptPayload_accountMetadataMapReadonly) Len() int { return len(m) }
 
-func (m executeNumscriptPayload_accountMetadataMapReadonly) Get(k string) (commonpb.MetadataMapReader, bool) {
+func (m executeNumscriptPayload_accountMetadataMapReadonly) Get(k string) (MetadataMapReader, bool) {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil, ok
@@ -4420,9 +4442,9 @@ func (m executeNumscriptPayload_accountMetadataMapReadonly) Get(k string) (commo
 	return v.AsReader(), true
 }
 
-func (m executeNumscriptPayload_accountMetadataMapReadonly) Range(yield func(string, commonpb.MetadataMapReader) bool) {
+func (m executeNumscriptPayload_accountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
 	for k, v := range m {
-		var r commonpb.MetadataMapReader
+		var r MetadataMapReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -4510,7 +4532,7 @@ func (l revertTransactionPayloadListReadonly) Range(yield func(int, RevertTransa
 
 // NewRevertTransactionPayloadListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRevertTransactionPayloadListReader(s []*RevertTransactionPayload) RevertTransactionPayloadListReader {
+func NewRevertTransactionPayloadListReader(s []*RevertTransactionPayload) revertTransactionPayloadListReadonly {
 	return revertTransactionPayloadListReadonly(s)
 }
 
@@ -4549,9 +4571,9 @@ func (m revertTransactionPayload_metadataMapReadonly) Range(yield func(string, M
 // Call Mutate() to obtain a mutable clone.
 type LedgerActionReader interface {
 	GetCreateTransaction() CreateTransactionPayloadReader
-	GetAddMetadata() commonpb.SaveMetadataCommandReader
+	GetAddMetadata() SaveMetadataCommandReader
 	GetRevertTransaction() RevertTransactionPayloadReader
-	GetDeleteMetadata() commonpb.DeleteMetadataCommandReader
+	GetDeleteMetadata() DeleteMetadataCommandReader
 	GetAddAccountType() AddAccountTypeRequestReader
 	GetRemoveAccountType() RemoveAccountTypeRequestReader
 	GetSetDefaultEnforcementMode() SetDefaultEnforcementModeRequestReader
@@ -4570,7 +4592,7 @@ func (r *ledgerActionReadonly) GetCreateTransaction() CreateTransactionPayloadRe
 	return v.CreateTransaction.AsReader()
 }
 
-func (r *ledgerActionReadonly) GetAddMetadata() commonpb.SaveMetadataCommandReader {
+func (r *ledgerActionReadonly) GetAddMetadata() SaveMetadataCommandReader {
 	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_AddMetadata)
 	if !ok || v == nil {
 		return nil
@@ -4586,7 +4608,7 @@ func (r *ledgerActionReadonly) GetRevertTransaction() RevertTransactionPayloadRe
 	return v.RevertTransaction.AsReader()
 }
 
-func (r *ledgerActionReadonly) GetDeleteMetadata() commonpb.DeleteMetadataCommandReader {
+func (r *ledgerActionReadonly) GetDeleteMetadata() DeleteMetadataCommandReader {
 	v, ok := (*LedgerAction)(r).GetData().(*LedgerAction_DeleteMetadata)
 	if !ok || v == nil {
 		return nil
@@ -4714,7 +4736,7 @@ func (l ledgerActionListReadonly) Range(yield func(int, LedgerActionReader) bool
 
 // NewLedgerActionListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewLedgerActionListReader(s []*LedgerAction) LedgerActionListReader {
+func NewLedgerActionListReader(s []*LedgerAction) ledgerActionListReadonly {
 	return ledgerActionListReadonly(s)
 }
 
@@ -4795,7 +4817,7 @@ func (l ledgerApplyRequestListReadonly) Range(yield func(int, LedgerApplyRequest
 
 // NewLedgerApplyRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewLedgerApplyRequestListReader(s []*LedgerApplyRequest) LedgerApplyRequestListReader {
+func NewLedgerApplyRequestListReader(s []*LedgerApplyRequest) ledgerApplyRequestListReadonly {
 	return ledgerApplyRequestListReadonly(s)
 }
 
@@ -4866,7 +4888,7 @@ func (l addAccountTypeRequestListReadonly) Range(yield func(int, AddAccountTypeR
 
 // NewAddAccountTypeRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAddAccountTypeRequestListReader(s []*AddAccountTypeRequest) AddAccountTypeRequestListReader {
+func NewAddAccountTypeRequestListReader(s []*AddAccountTypeRequest) addAccountTypeRequestListReadonly {
 	return addAccountTypeRequestListReadonly(s)
 }
 
@@ -4933,7 +4955,7 @@ func (l removeAccountTypeRequestListReadonly) Range(yield func(int, RemoveAccoun
 
 // NewRemoveAccountTypeRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRemoveAccountTypeRequestListReader(s []*RemoveAccountTypeRequest) RemoveAccountTypeRequestListReader {
+func NewRemoveAccountTypeRequestListReader(s []*RemoveAccountTypeRequest) removeAccountTypeRequestListReadonly {
 	return removeAccountTypeRequestListReadonly(s)
 }
 
@@ -5000,7 +5022,7 @@ func (l setDefaultEnforcementModeRequestListReadonly) Range(yield func(int, SetD
 
 // NewSetDefaultEnforcementModeRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetDefaultEnforcementModeRequestListReader(s []*SetDefaultEnforcementModeRequest) SetDefaultEnforcementModeRequestListReader {
+func NewSetDefaultEnforcementModeRequestListReader(s []*SetDefaultEnforcementModeRequest) setDefaultEnforcementModeRequestListReadonly {
 	return setDefaultEnforcementModeRequestListReadonly(s)
 }
 
@@ -5072,7 +5094,7 @@ func (l setDefaultEnforcementModeLedgerRequestListReadonly) Range(yield func(int
 
 // NewSetDefaultEnforcementModeLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetDefaultEnforcementModeLedgerRequestListReader(s []*SetDefaultEnforcementModeLedgerRequest) SetDefaultEnforcementModeLedgerRequestListReader {
+func NewSetDefaultEnforcementModeLedgerRequestListReader(s []*SetDefaultEnforcementModeLedgerRequest) setDefaultEnforcementModeLedgerRequestListReadonly {
 	return setDefaultEnforcementModeLedgerRequestListReadonly(s)
 }
 
@@ -5148,7 +5170,7 @@ func (l addAccountTypeLedgerRequestListReadonly) Range(yield func(int, AddAccoun
 
 // NewAddAccountTypeLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAddAccountTypeLedgerRequestListReader(s []*AddAccountTypeLedgerRequest) AddAccountTypeLedgerRequestListReader {
+func NewAddAccountTypeLedgerRequestListReader(s []*AddAccountTypeLedgerRequest) addAccountTypeLedgerRequestListReadonly {
 	return addAccountTypeLedgerRequestListReadonly(s)
 }
 
@@ -5220,7 +5242,7 @@ func (l removeAccountTypeLedgerRequestListReadonly) Range(yield func(int, Remove
 
 // NewRemoveAccountTypeLedgerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRemoveAccountTypeLedgerRequestListReader(s []*RemoveAccountTypeLedgerRequest) RemoveAccountTypeLedgerRequestListReader {
+func NewRemoveAccountTypeLedgerRequestListReader(s []*RemoveAccountTypeLedgerRequest) removeAccountTypeLedgerRequestListReadonly {
 	return removeAccountTypeLedgerRequestListReadonly(s)
 }
 
@@ -5287,7 +5309,7 @@ func (l getPrimaryMetricsRequestListReadonly) Range(yield func(int, GetPrimaryMe
 
 // NewGetPrimaryMetricsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetPrimaryMetricsRequestListReader(s []*GetPrimaryMetricsRequest) GetPrimaryMetricsRequestListReader {
+func NewGetPrimaryMetricsRequestListReader(s []*GetPrimaryMetricsRequest) getPrimaryMetricsRequestListReadonly {
 	return getPrimaryMetricsRequestListReadonly(s)
 }
 
@@ -5363,7 +5385,7 @@ func (l getPrimaryMetricsResponseListReadonly) Range(yield func(int, GetPrimaryM
 
 // NewGetPrimaryMetricsResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetPrimaryMetricsResponseListReader(s []*GetPrimaryMetricsResponse) GetPrimaryMetricsResponseListReader {
+func NewGetPrimaryMetricsResponseListReader(s []*GetPrimaryMetricsResponse) getPrimaryMetricsResponseListReadonly {
 	return getPrimaryMetricsResponseListReadonly(s)
 }
 
@@ -5430,7 +5452,7 @@ func (l getSecondaryMetricsRequestListReadonly) Range(yield func(int, GetSeconda
 
 // NewGetSecondaryMetricsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetSecondaryMetricsRequestListReader(s []*GetSecondaryMetricsRequest) GetSecondaryMetricsRequestListReader {
+func NewGetSecondaryMetricsRequestListReader(s []*GetSecondaryMetricsRequest) getSecondaryMetricsRequestListReadonly {
 	return getSecondaryMetricsRequestListReadonly(s)
 }
 
@@ -5506,7 +5528,7 @@ func (l getSecondaryMetricsResponseListReadonly) Range(yield func(int, GetSecond
 
 // NewGetSecondaryMetricsResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetSecondaryMetricsResponseListReader(s []*GetSecondaryMetricsResponse) GetSecondaryMetricsResponseListReader {
+func NewGetSecondaryMetricsResponseListReader(s []*GetSecondaryMetricsResponse) getSecondaryMetricsResponseListReadonly {
 	return getSecondaryMetricsResponseListReadonly(s)
 }
 
@@ -5659,7 +5681,7 @@ func (l pebbleMetricsListReadonly) Range(yield func(int, PebbleMetricsReader) bo
 
 // NewPebbleMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPebbleMetricsListReader(s []*PebbleMetrics) PebbleMetricsListReader {
+func NewPebbleMetricsListReader(s []*PebbleMetrics) pebbleMetricsListReadonly {
 	return pebbleMetricsListReadonly(s)
 }
 
@@ -5741,7 +5763,7 @@ func (l blockCacheMetricsListReadonly) Range(yield func(int, BlockCacheMetricsRe
 
 // NewBlockCacheMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewBlockCacheMetricsListReader(s []*BlockCacheMetrics) BlockCacheMetricsListReader {
+func NewBlockCacheMetricsListReader(s []*BlockCacheMetrics) blockCacheMetricsListReadonly {
 	return blockCacheMetricsListReadonly(s)
 }
 
@@ -5863,7 +5885,7 @@ func (l compactMetricsListReadonly) Range(yield func(int, CompactMetricsReader) 
 
 // NewCompactMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCompactMetricsListReader(s []*CompactMetrics) CompactMetricsListReader {
+func NewCompactMetricsListReader(s []*CompactMetrics) compactMetricsListReadonly {
 	return compactMetricsListReadonly(s)
 }
 
@@ -5950,7 +5972,7 @@ func (l flushMetricsListReadonly) Range(yield func(int, FlushMetricsReader) bool
 
 // NewFlushMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFlushMetricsListReader(s []*FlushMetrics) FlushMetricsListReader {
+func NewFlushMetricsListReader(s []*FlushMetrics) flushMetricsListReadonly {
 	return flushMetricsListReadonly(s)
 }
 
@@ -6032,7 +6054,7 @@ func (l memTableMetricsListReadonly) Range(yield func(int, MemTableMetricsReader
 
 // NewMemTableMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewMemTableMetricsListReader(s []*MemTableMetrics) MemTableMetricsListReader {
+func NewMemTableMetricsListReader(s []*MemTableMetrics) memTableMetricsListReadonly {
 	return memTableMetricsListReadonly(s)
 }
 
@@ -6114,7 +6136,7 @@ func (l snapshotsMetricsListReadonly) Range(yield func(int, SnapshotsMetricsRead
 
 // NewSnapshotsMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSnapshotsMetricsListReader(s []*SnapshotsMetrics) SnapshotsMetricsListReader {
+func NewSnapshotsMetricsListReader(s []*SnapshotsMetrics) snapshotsMetricsListReadonly {
 	return snapshotsMetricsListReadonly(s)
 }
 
@@ -6196,7 +6218,7 @@ func (l tableMetricsListReadonly) Range(yield func(int, TableMetricsReader) bool
 
 // NewTableMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewTableMetricsListReader(s []*TableMetrics) TableMetricsListReader {
+func NewTableMetricsListReader(s []*TableMetrics) tableMetricsListReadonly {
 	return tableMetricsListReadonly(s)
 }
 
@@ -6278,7 +6300,7 @@ func (l tableCacheMetricsListReadonly) Range(yield func(int, TableCacheMetricsRe
 
 // NewTableCacheMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewTableCacheMetricsListReader(s []*TableCacheMetrics) TableCacheMetricsListReader {
+func NewTableCacheMetricsListReader(s []*TableCacheMetrics) tableCacheMetricsListReadonly {
 	return tableCacheMetricsListReadonly(s)
 }
 
@@ -6365,7 +6387,9 @@ func (l wALMetricsListReadonly) Range(yield func(int, WALMetricsReader) bool) {
 
 // NewWALMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewWALMetricsListReader(s []*WALMetrics) WALMetricsListReader { return wALMetricsListReadonly(s) }
+func NewWALMetricsListReader(s []*WALMetrics) wALMetricsListReadonly {
+	return wALMetricsListReadonly(s)
+}
 
 // KeysMetricsReader provides read-only access to KeysMetrics.
 // Call Mutate() to obtain a mutable clone.
@@ -6435,7 +6459,7 @@ func (l keysMetricsListReadonly) Range(yield func(int, KeysMetricsReader) bool) 
 
 // NewKeysMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewKeysMetricsListReader(s []*KeysMetrics) KeysMetricsListReader {
+func NewKeysMetricsListReader(s []*KeysMetrics) keysMetricsListReadonly {
 	return keysMetricsListReadonly(s)
 }
 
@@ -6567,7 +6591,7 @@ func (l levelMetricsListReadonly) Range(yield func(int, LevelMetricsReader) bool
 
 // NewLevelMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewLevelMetricsListReader(s []*LevelMetrics) LevelMetricsListReader {
+func NewLevelMetricsListReader(s []*LevelMetrics) levelMetricsListReadonly {
 	return levelMetricsListReadonly(s)
 }
 
@@ -6629,7 +6653,7 @@ func (l checkStoreRequestListReadonly) Range(yield func(int, CheckStoreRequestRe
 
 // NewCheckStoreRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCheckStoreRequestListReader(s []*CheckStoreRequest) CheckStoreRequestListReader {
+func NewCheckStoreRequestListReader(s []*CheckStoreRequest) checkStoreRequestListReadonly {
 	return checkStoreRequestListReadonly(s)
 }
 
@@ -6730,7 +6754,7 @@ func (l checkStoreEventListReadonly) Range(yield func(int, CheckStoreEventReader
 
 // NewCheckStoreEventListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCheckStoreEventListReader(s []*CheckStoreEvent) CheckStoreEventListReader {
+func NewCheckStoreEventListReader(s []*CheckStoreEvent) checkStoreEventListReadonly {
 	return checkStoreEventListReadonly(s)
 }
 
@@ -6827,7 +6851,7 @@ func (l checkStoreErrorListReadonly) Range(yield func(int, CheckStoreErrorReader
 
 // NewCheckStoreErrorListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCheckStoreErrorListReader(s []*CheckStoreError) CheckStoreErrorListReader {
+func NewCheckStoreErrorListReader(s []*CheckStoreError) checkStoreErrorListReadonly {
 	return checkStoreErrorListReadonly(s)
 }
 
@@ -6899,7 +6923,7 @@ func (l checkStoreProgressListReadonly) Range(yield func(int, CheckStoreProgress
 
 // NewCheckStoreProgressListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCheckStoreProgressListReader(s []*CheckStoreProgress) CheckStoreProgressListReader {
+func NewCheckStoreProgressListReader(s []*CheckStoreProgress) checkStoreProgressListReadonly {
 	return checkStoreProgressListReadonly(s)
 }
 
@@ -6970,7 +6994,7 @@ func (l listAuditEntriesRequestListReadonly) Range(yield func(int, ListAuditEntr
 
 // NewListAuditEntriesRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListAuditEntriesRequestListReader(s []*ListAuditEntriesRequest) ListAuditEntriesRequestListReader {
+func NewListAuditEntriesRequestListReader(s []*ListAuditEntriesRequest) listAuditEntriesRequestListReadonly {
 	return listAuditEntriesRequestListReadonly(s)
 }
 
@@ -7037,7 +7061,7 @@ func (l getAuditEntryRequestListReadonly) Range(yield func(int, GetAuditEntryReq
 
 // NewGetAuditEntryRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetAuditEntryRequestListReader(s []*GetAuditEntryRequest) GetAuditEntryRequestListReader {
+func NewGetAuditEntryRequestListReader(s []*GetAuditEntryRequest) getAuditEntryRequestListReadonly {
 	return getAuditEntryRequestListReadonly(s)
 }
 
@@ -7113,7 +7137,7 @@ func (l listLogsRequestListReadonly) Range(yield func(int, ListLogsRequestReader
 
 // NewListLogsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListLogsRequestListReader(s []*ListLogsRequest) ListLogsRequestListReader {
+func NewListLogsRequestListReader(s []*ListLogsRequest) listLogsRequestListReadonly {
 	return listLogsRequestListReadonly(s)
 }
 
@@ -7185,7 +7209,7 @@ func (l getLogRequestListReadonly) Range(yield func(int, GetLogRequestReader) bo
 
 // NewGetLogRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetLogRequestListReader(s []*GetLogRequest) GetLogRequestListReader {
+func NewGetLogRequestListReader(s []*GetLogRequest) getLogRequestListReadonly {
 	return getLogRequestListReadonly(s)
 }
 
@@ -7247,7 +7271,7 @@ func (l getEventsSinksRequestListReadonly) Range(yield func(int, GetEventsSinksR
 
 // NewGetEventsSinksRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetEventsSinksRequestListReader(s []*GetEventsSinksRequest) GetEventsSinksRequestListReader {
+func NewGetEventsSinksRequestListReader(s []*GetEventsSinksRequest) getEventsSinksRequestListReadonly {
 	return getEventsSinksRequestListReadonly(s)
 }
 
@@ -7319,7 +7343,7 @@ func (l getEventsSinksResponseListReadonly) Range(yield func(int, GetEventsSinks
 
 // NewGetEventsSinksResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetEventsSinksResponseListReader(s []*GetEventsSinksResponse) GetEventsSinksResponseListReader {
+func NewGetEventsSinksResponseListReader(s []*GetEventsSinksResponse) getEventsSinksResponseListReadonly {
 	return getEventsSinksResponseListReadonly(s)
 }
 
@@ -7386,7 +7410,7 @@ func (l getMetadataSchemaStatusRequestListReadonly) Range(yield func(int, GetMet
 
 // NewGetMetadataSchemaStatusRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetMetadataSchemaStatusRequestListReader(s []*GetMetadataSchemaStatusRequest) GetMetadataSchemaStatusRequestListReader {
+func NewGetMetadataSchemaStatusRequestListReader(s []*GetMetadataSchemaStatusRequest) getMetadataSchemaStatusRequestListReadonly {
 	return getMetadataSchemaStatusRequestListReadonly(s)
 }
 
@@ -7463,7 +7487,7 @@ func (l getMetadataSchemaStatusResponseListReadonly) Range(yield func(int, GetMe
 
 // NewGetMetadataSchemaStatusResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetMetadataSchemaStatusResponseListReader(s []*GetMetadataSchemaStatusResponse) GetMetadataSchemaStatusResponseListReader {
+func NewGetMetadataSchemaStatusResponseListReader(s []*GetMetadataSchemaStatusResponse) getMetadataSchemaStatusResponseListReadonly {
 	return getMetadataSchemaStatusResponseListReadonly(s)
 }
 
@@ -7623,7 +7647,7 @@ func (l metadataFieldStatusListReadonly) Range(yield func(int, MetadataFieldStat
 
 // NewMetadataFieldStatusListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewMetadataFieldStatusListReader(s []*MetadataFieldStatus) MetadataFieldStatusListReader {
+func NewMetadataFieldStatusListReader(s []*MetadataFieldStatus) metadataFieldStatusListReadonly {
 	return metadataFieldStatusListReadonly(s)
 }
 
@@ -7695,7 +7719,7 @@ func (l analyzeAccountsRequestListReadonly) Range(yield func(int, AnalyzeAccount
 
 // NewAnalyzeAccountsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeAccountsRequestListReader(s []*AnalyzeAccountsRequest) AnalyzeAccountsRequestListReader {
+func NewAnalyzeAccountsRequestListReader(s []*AnalyzeAccountsRequest) analyzeAccountsRequestListReadonly {
 	return analyzeAccountsRequestListReadonly(s)
 }
 
@@ -7767,7 +7791,7 @@ func (l analyzeAccountsResponseListReadonly) Range(yield func(int, AnalyzeAccoun
 
 // NewAnalyzeAccountsResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeAccountsResponseListReader(s []*AnalyzeAccountsResponse) AnalyzeAccountsResponseListReader {
+func NewAnalyzeAccountsResponseListReader(s []*AnalyzeAccountsResponse) analyzeAccountsResponseListReadonly {
 	return analyzeAccountsResponseListReadonly(s)
 }
 
@@ -7844,7 +7868,7 @@ func (l analyzeProgressListReadonly) Range(yield func(int, AnalyzeProgressReader
 
 // NewAnalyzeProgressListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeProgressListReader(s []*AnalyzeProgress) AnalyzeProgressListReader {
+func NewAnalyzeProgressListReader(s []*AnalyzeProgress) analyzeProgressListReadonly {
 	return analyzeProgressListReadonly(s)
 }
 
@@ -7945,7 +7969,7 @@ func (l analyzeAccountsEventListReadonly) Range(yield func(int, AnalyzeAccountsE
 
 // NewAnalyzeAccountsEventListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeAccountsEventListReader(s []*AnalyzeAccountsEvent) AnalyzeAccountsEventListReader {
+func NewAnalyzeAccountsEventListReader(s []*AnalyzeAccountsEvent) analyzeAccountsEventListReadonly {
 	return analyzeAccountsEventListReadonly(s)
 }
 
@@ -8046,7 +8070,7 @@ func (l analyzeTransactionsEventListReadonly) Range(yield func(int, AnalyzeTrans
 
 // NewAnalyzeTransactionsEventListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeTransactionsEventListReader(s []*AnalyzeTransactionsEvent) AnalyzeTransactionsEventListReader {
+func NewAnalyzeTransactionsEventListReader(s []*AnalyzeTransactionsEvent) analyzeTransactionsEventListReadonly {
 	return analyzeTransactionsEventListReadonly(s)
 }
 
@@ -8133,7 +8157,7 @@ func (l accountPatternListReadonly) Range(yield func(int, AccountPatternReader) 
 
 // NewAccountPatternListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAccountPatternListReader(s []*AccountPattern) AccountPatternListReader {
+func NewAccountPatternListReader(s []*AccountPattern) accountPatternListReadonly {
 	return accountPatternListReadonly(s)
 }
 
@@ -8230,7 +8254,7 @@ func (l patternSegmentListReadonly) Range(yield func(int, PatternSegmentReader) 
 
 // NewPatternSegmentListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPatternSegmentListReader(s []*PatternSegment) PatternSegmentListReader {
+func NewPatternSegmentListReader(s []*PatternSegment) patternSegmentListReadonly {
 	return patternSegmentListReadonly(s)
 }
 
@@ -8302,7 +8326,7 @@ func (l analyzeTransactionsRequestListReadonly) Range(yield func(int, AnalyzeTra
 
 // NewAnalyzeTransactionsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeTransactionsRequestListReader(s []*AnalyzeTransactionsRequest) AnalyzeTransactionsRequestListReader {
+func NewAnalyzeTransactionsRequestListReader(s []*AnalyzeTransactionsRequest) analyzeTransactionsRequestListReadonly {
 	return analyzeTransactionsRequestListReadonly(s)
 }
 
@@ -8379,7 +8403,7 @@ func (l analyzeTransactionsResponseListReadonly) Range(yield func(int, AnalyzeTr
 
 // NewAnalyzeTransactionsResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAnalyzeTransactionsResponseListReader(s []*AnalyzeTransactionsResponse) AnalyzeTransactionsResponseListReader {
+func NewAnalyzeTransactionsResponseListReader(s []*AnalyzeTransactionsResponse) analyzeTransactionsResponseListReadonly {
 	return analyzeTransactionsResponseListReadonly(s)
 }
 
@@ -8480,7 +8504,7 @@ func (l flowPatternListReadonly) Range(yield func(int, FlowPatternReader) bool) 
 
 // NewFlowPatternListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFlowPatternListReader(s []*FlowPattern) FlowPatternListReader {
+func NewFlowPatternListReader(s []*FlowPattern) flowPatternListReadonly {
 	return flowPatternListReadonly(s)
 }
 
@@ -8562,7 +8586,7 @@ func (l normalizedPostingListReadonly) Range(yield func(int, NormalizedPostingRe
 
 // NewNormalizedPostingListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewNormalizedPostingListReader(s []*NormalizedPosting) NormalizedPostingListReader {
+func NewNormalizedPostingListReader(s []*NormalizedPosting) normalizedPostingListReadonly {
 	return normalizedPostingListReadonly(s)
 }
 
@@ -8652,7 +8676,7 @@ func (l temporalStatsListReadonly) Range(yield func(int, TemporalStatsReader) bo
 
 // NewTemporalStatsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewTemporalStatsListReader(s []*TemporalStats) TemporalStatsListReader {
+func NewTemporalStatsListReader(s []*TemporalStats) temporalStatsListReadonly {
 	return temporalStatsListReadonly(s)
 }
 
@@ -8724,7 +8748,9 @@ func (l hourBucketListReadonly) Range(yield func(int, HourBucketReader) bool) {
 
 // NewHourBucketListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewHourBucketListReader(s []*HourBucket) HourBucketListReader { return hourBucketListReadonly(s) }
+func NewHourBucketListReader(s []*HourBucket) hourBucketListReadonly {
+	return hourBucketListReadonly(s)
+}
 
 // AssetVolumeStatsReader provides read-only access to AssetVolumeStats.
 // Call Mutate() to obtain a mutable clone.
@@ -8814,7 +8840,7 @@ func (l assetVolumeStatsListReadonly) Range(yield func(int, AssetVolumeStatsRead
 
 // NewAssetVolumeStatsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAssetVolumeStatsListReader(s []*AssetVolumeStats) AssetVolumeStatsListReader {
+func NewAssetVolumeStatsListReader(s []*AssetVolumeStats) assetVolumeStatsListReadonly {
 	return assetVolumeStatsListReadonly(s)
 }
 
@@ -8890,7 +8916,7 @@ func (l createPreparedQueryRequestListReadonly) Range(yield func(int, CreatePrep
 
 // NewCreatePreparedQueryRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCreatePreparedQueryRequestListReader(s []*CreatePreparedQueryRequest) CreatePreparedQueryRequestListReader {
+func NewCreatePreparedQueryRequestListReader(s []*CreatePreparedQueryRequest) createPreparedQueryRequestListReadonly {
 	return createPreparedQueryRequestListReadonly(s)
 }
 
@@ -8900,6 +8926,7 @@ type UpdatePreparedQueryRequestReader interface {
 	GetLedger() string
 	GetName() string
 	GetFilter() QueryFilterReader
+	GetTarget() QueryTarget
 	Mutate() *UpdatePreparedQueryRequest
 }
 
@@ -8921,7 +8948,7 @@ func (r *updatePreparedQueryRequestReadonly) GetFilter() QueryFilterReader {
 	return v.AsReader()
 }
 
-func (r *updatePreparedQueryRequestReadonly) GetTarget() commonpb.QueryTarget {
+func (r *updatePreparedQueryRequestReadonly) GetTarget() QueryTarget {
 	return (*UpdatePreparedQueryRequest)(r).GetTarget()
 }
 
@@ -8975,7 +9002,7 @@ func (l updatePreparedQueryRequestListReadonly) Range(yield func(int, UpdatePrep
 
 // NewUpdatePreparedQueryRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewUpdatePreparedQueryRequestListReader(s []*UpdatePreparedQueryRequest) UpdatePreparedQueryRequestListReader {
+func NewUpdatePreparedQueryRequestListReader(s []*UpdatePreparedQueryRequest) updatePreparedQueryRequestListReadonly {
 	return updatePreparedQueryRequestListReadonly(s)
 }
 
@@ -9047,7 +9074,7 @@ func (l deletePreparedQueryRequestListReadonly) Range(yield func(int, DeletePrep
 
 // NewDeletePreparedQueryRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeletePreparedQueryRequestListReader(s []*DeletePreparedQueryRequest) DeletePreparedQueryRequestListReader {
+func NewDeletePreparedQueryRequestListReader(s []*DeletePreparedQueryRequest) deletePreparedQueryRequestListReadonly {
 	return deletePreparedQueryRequestListReadonly(s)
 }
 
@@ -9114,7 +9141,7 @@ func (l listPreparedQueriesRequestListReadonly) Range(yield func(int, ListPrepar
 
 // NewListPreparedQueriesRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListPreparedQueriesRequestListReader(s []*ListPreparedQueriesRequest) ListPreparedQueriesRequestListReader {
+func NewListPreparedQueriesRequestListReader(s []*ListPreparedQueriesRequest) listPreparedQueriesRequestListReadonly {
 	return listPreparedQueriesRequestListReadonly(s)
 }
 
@@ -9181,7 +9208,7 @@ func (l listPreparedQueriesResponseListReadonly) Range(yield func(int, ListPrepa
 
 // NewListPreparedQueriesResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListPreparedQueriesResponseListReader(s []*ListPreparedQueriesResponse) ListPreparedQueriesResponseListReader {
+func NewListPreparedQueriesResponseListReader(s []*ListPreparedQueriesResponse) listPreparedQueriesResponseListReadonly {
 	return listPreparedQueriesResponseListReadonly(s)
 }
 
@@ -9278,7 +9305,7 @@ func (l executePreparedQueryRequestListReadonly) Range(yield func(int, ExecutePr
 
 // NewExecutePreparedQueryRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewExecutePreparedQueryRequestListReader(s []*ExecutePreparedQueryRequest) ExecutePreparedQueryRequestListReader {
+func NewExecutePreparedQueryRequestListReader(s []*ExecutePreparedQueryRequest) executePreparedQueryRequestListReadonly {
 	return executePreparedQueryRequestListReadonly(s)
 }
 
@@ -9316,15 +9343,15 @@ func (m executePreparedQueryRequest_parametersMapReadonly) Range(yield func(stri
 // ExecutePreparedQueryResponseReader provides read-only access to ExecutePreparedQueryResponse.
 // Call Mutate() to obtain a mutable clone.
 type ExecutePreparedQueryResponseReader interface {
-	GetCursor() commonpb.PreparedQueryCursorReader
-	GetAggregate() commonpb.AggregateResultReader
+	GetCursor() PreparedQueryCursorReader
+	GetAggregate() AggregateResultReader
 	WhichResult() ExecutePreparedQueryResponse_ResultReaderCase
 	Mutate() *ExecutePreparedQueryResponse
 }
 
 type executePreparedQueryResponseReadonly ExecutePreparedQueryResponse
 
-func (r *executePreparedQueryResponseReadonly) GetCursor() commonpb.PreparedQueryCursorReader {
+func (r *executePreparedQueryResponseReadonly) GetCursor() PreparedQueryCursorReader {
 	v, ok := (*ExecutePreparedQueryResponse)(r).GetResult().(*ExecutePreparedQueryResponse_Cursor)
 	if !ok || v == nil {
 		return nil
@@ -9332,7 +9359,7 @@ func (r *executePreparedQueryResponseReadonly) GetCursor() commonpb.PreparedQuer
 	return v.Cursor.AsReader()
 }
 
-func (r *executePreparedQueryResponseReadonly) GetAggregate() commonpb.AggregateResultReader {
+func (r *executePreparedQueryResponseReadonly) GetAggregate() AggregateResultReader {
 	v, ok := (*ExecutePreparedQueryResponse)(r).GetResult().(*ExecutePreparedQueryResponse_Aggregate)
 	if !ok || v == nil {
 		return nil
@@ -9410,7 +9437,7 @@ func (l executePreparedQueryResponseListReadonly) Range(yield func(int, ExecuteP
 
 // NewExecutePreparedQueryResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewExecutePreparedQueryResponseListReader(s []*ExecutePreparedQueryResponse) ExecutePreparedQueryResponseListReader {
+func NewExecutePreparedQueryResponseListReader(s []*ExecutePreparedQueryResponse) executePreparedQueryResponseListReadonly {
 	return executePreparedQueryResponseListReadonly(s)
 }
 
@@ -9477,7 +9504,7 @@ func (l getIndexStatusRequestListReadonly) Range(yield func(int, GetIndexStatusR
 
 // NewGetIndexStatusRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetIndexStatusRequestListReader(s []*GetIndexStatusRequest) GetIndexStatusRequestListReader {
+func NewGetIndexStatusRequestListReader(s []*GetIndexStatusRequest) getIndexStatusRequestListReadonly {
 	return getIndexStatusRequestListReadonly(s)
 }
 
@@ -9564,7 +9591,7 @@ func (l getIndexStatusResponseListReadonly) Range(yield func(int, GetIndexStatus
 
 // NewGetIndexStatusResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetIndexStatusResponseListReader(s []*GetIndexStatusResponse) GetIndexStatusResponseListReader {
+func NewGetIndexStatusResponseListReader(s []*GetIndexStatusResponse) getIndexStatusResponseListReadonly {
 	return getIndexStatusResponseListReadonly(s)
 }
 
@@ -9640,7 +9667,7 @@ func (l getIndexRequestListReadonly) Range(yield func(int, GetIndexRequestReader
 
 // NewGetIndexRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetIndexRequestListReader(s []*GetIndexRequest) GetIndexRequestListReader {
+func NewGetIndexRequestListReader(s []*GetIndexRequest) getIndexRequestListReadonly {
 	return getIndexRequestListReadonly(s)
 }
 
@@ -9716,7 +9743,7 @@ func (l getIndexEntryStatusRequestListReadonly) Range(yield func(int, GetIndexEn
 
 // NewGetIndexEntryStatusRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetIndexEntryStatusRequestListReader(s []*GetIndexEntryStatusRequest) GetIndexEntryStatusRequestListReader {
+func NewGetIndexEntryStatusRequestListReader(s []*GetIndexEntryStatusRequest) getIndexEntryStatusRequestListReadonly {
 	return getIndexEntryStatusRequestListReadonly(s)
 }
 
@@ -9807,7 +9834,9 @@ func (l indexEntryListReadonly) Range(yield func(int, IndexEntryReader) bool) {
 
 // NewIndexEntryListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewIndexEntryListReader(s []*IndexEntry) IndexEntryListReader { return indexEntryListReadonly(s) }
+func NewIndexEntryListReader(s []*IndexEntry) indexEntryListReadonly {
+	return indexEntryListReadonly(s)
+}
 
 // ListIndexesRequestReader provides read-only access to ListIndexesRequest.
 // Call Mutate() to obtain a mutable clone.
@@ -9877,7 +9906,7 @@ func (l listIndexesRequestListReadonly) Range(yield func(int, ListIndexesRequest
 
 // NewListIndexesRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewListIndexesRequestListReader(s []*ListIndexesRequest) ListIndexesRequestListReader {
+func NewListIndexesRequestListReader(s []*ListIndexesRequest) listIndexesRequestListReadonly {
 	return listIndexesRequestListReadonly(s)
 }
 
@@ -9949,7 +9978,7 @@ func (l getLedgerStatsRequestListReadonly) Range(yield func(int, GetLedgerStatsR
 
 // NewGetLedgerStatsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetLedgerStatsRequestListReader(s []*GetLedgerStatsRequest) GetLedgerStatsRequestListReader {
+func NewGetLedgerStatsRequestListReader(s []*GetLedgerStatsRequest) getLedgerStatsRequestListReadonly {
 	return getLedgerStatsRequestListReadonly(s)
 }
 
@@ -10045,7 +10074,7 @@ func (l aggregateVolumesRequestListReadonly) Range(yield func(int, AggregateVolu
 
 // NewAggregateVolumesRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAggregateVolumesRequestListReader(s []*AggregateVolumesRequest) AggregateVolumesRequestListReader {
+func NewAggregateVolumesRequestListReader(s []*AggregateVolumesRequest) aggregateVolumesRequestListReadonly {
 	return aggregateVolumesRequestListReadonly(s)
 }
 
@@ -10181,7 +10210,7 @@ func (l queryProfileListReadonly) Range(yield func(int, QueryProfileReader) bool
 
 // NewQueryProfileListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewQueryProfileListReader(s []*QueryProfile) QueryProfileListReader {
+func NewQueryProfileListReader(s []*QueryProfile) queryProfileListReadonly {
 	return queryProfileListReadonly(s)
 }
 
@@ -10298,7 +10327,7 @@ func (l iteratorProfileListReadonly) Range(yield func(int, IteratorProfileReader
 
 // NewIteratorProfileListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewIteratorProfileListReader(s []*IteratorProfile) IteratorProfileListReader {
+func NewIteratorProfileListReader(s []*IteratorProfile) iteratorProfileListReadonly {
 	return iteratorProfileListReadonly(s)
 }
 
@@ -10395,7 +10424,7 @@ func (l inspectIndexRequestListReadonly) Range(yield func(int, InspectIndexReque
 
 // NewInspectIndexRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewInspectIndexRequestListReader(s []*InspectIndexRequest) InspectIndexRequestListReader {
+func NewInspectIndexRequestListReader(s []*InspectIndexRequest) inspectIndexRequestListReadonly {
 	return inspectIndexRequestListReadonly(s)
 }
 
@@ -10508,7 +10537,7 @@ func (l inspectIndexResponseListReadonly) Range(yield func(int, InspectIndexResp
 
 // NewInspectIndexResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewInspectIndexResponseListReader(s []*InspectIndexResponse) InspectIndexResponseListReader {
+func NewInspectIndexResponseListReader(s []*InspectIndexResponse) inspectIndexResponseListReadonly {
 	return inspectIndexResponseListReadonly(s)
 }
 
@@ -10590,7 +10619,7 @@ func (l inspectDistinctValuesListReadonly) Range(yield func(int, InspectDistinct
 
 // NewInspectDistinctValuesListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewInspectDistinctValuesListReader(s []*InspectDistinctValues) InspectDistinctValuesListReader {
+func NewInspectDistinctValuesListReader(s []*InspectDistinctValues) inspectDistinctValuesListReadonly {
 	return inspectDistinctValuesListReadonly(s)
 }
 
@@ -10666,7 +10695,7 @@ func (l inspectFacetListReadonly) Range(yield func(int, InspectFacetReader) bool
 
 // NewInspectFacetListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewInspectFacetListReader(s []*InspectFacet) InspectFacetListReader {
+func NewInspectFacetListReader(s []*InspectFacet) inspectFacetListReadonly {
 	return inspectFacetListReadonly(s)
 }
 
@@ -10748,7 +10777,7 @@ func (l inspectFacetsListReadonly) Range(yield func(int, InspectFacetsReader) bo
 
 // NewInspectFacetsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewInspectFacetsListReader(s []*InspectFacets) InspectFacetsListReader {
+func NewInspectFacetsListReader(s []*InspectFacets) inspectFacetsListReadonly {
 	return inspectFacetsListReadonly(s)
 }
 
@@ -10843,7 +10872,7 @@ func (l inspectSummaryListReadonly) Range(yield func(int, InspectSummaryReader) 
 
 // NewInspectSummaryListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewInspectSummaryListReader(s []*InspectSummary) InspectSummaryListReader {
+func NewInspectSummaryListReader(s []*InspectSummary) inspectSummaryListReadonly {
 	return inspectSummaryListReadonly(s)
 }
 
@@ -10905,7 +10934,7 @@ func (l barrierRequestListReadonly) Range(yield func(int, BarrierRequestReader) 
 
 // NewBarrierRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewBarrierRequestListReader(s []*BarrierRequest) BarrierRequestListReader {
+func NewBarrierRequestListReader(s []*BarrierRequest) barrierRequestListReadonly {
 	return barrierRequestListReadonly(s)
 }
 
@@ -10972,6 +11001,6 @@ func (l barrierResponseListReadonly) Range(yield func(int, BarrierResponseReader
 
 // NewBarrierResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewBarrierResponseListReader(s []*BarrierResponse) BarrierResponseListReader {
+func NewBarrierResponseListReader(s []*BarrierResponse) barrierResponseListReadonly {
 	return barrierResponseListReadonly(s)
 }

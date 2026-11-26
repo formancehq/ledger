@@ -3,8 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -31,10 +30,10 @@ func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Requ
 				Ledger: ledgerName,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
-							Target: &ledgerpb.Target{
-								Target: &ledgerpb.Target_Account{
-									Account: &ledgerpb.TargetAccount{
+						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{
 										Addr: address,
 									},
 								},

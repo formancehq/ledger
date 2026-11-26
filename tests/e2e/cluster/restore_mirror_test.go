@@ -12,23 +12,21 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
-	"google.golang.org/grpc"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"google.golang.org/grpc"
 )
 
 // This suite pins the mirror resume position across a backup/restore cycle
@@ -111,15 +109,15 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		requestsAtSample   int
 	)
 
-	storage := func() *ledgerpb.BackupStorage {
-		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
+	storage := func() *commonpb.BackupStorage {
+		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
 		})
 	}
 
-	syncProgress := func(g Gomega, client servicepb.BucketServiceClient) *ledgerpb.MirrorSyncProgress {
+	syncProgress := func(g Gomega, client servicepb.BucketServiceClient) *commonpb.MirrorSyncProgress {
 		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 		g.Expect(err).To(Succeed())
 
@@ -255,11 +253,11 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				Type: &servicepb.Request_CreateLedger{
 					CreateLedger: &servicepb.CreateLedgerRequest{
 						Name: ledgerName,
-						Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
-						MirrorSource: &ledgerpb.MirrorSourceConfig{
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &ledgerpb.MirrorSourceConfig_Http{
-								Http: &ledgerpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -276,7 +274,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(uint64(checkpointSourceLogCount)))
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(checkpointSourceLogCount)))
-				g.Expect(progress.GetState()).To(Equal(ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 
 				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 				g.Expect(err).To(Succeed())
@@ -305,7 +303,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(uint64(sourceLogCount)))
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(sourceLogCount)))
-				g.Expect(progress.GetState()).To(Equal(ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 
 				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 				g.Expect(err).To(Succeed())
@@ -502,7 +500,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				// by ANY head from 1 to sourceLogCount. Only this assertion
 				// separates "published the real head" from "published a head".
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(sourceLogCount)))
-				g.Expect(progress.GetState()).To(Equal(ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
@@ -549,7 +547,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				// FOLLOWING again after the fresh ingest advances both the
 				// cursor and the source head in lock-step.
 				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(postRestoreLogID)))
-				g.Expect(progress.GetState()).To(Equal(ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 				g.Expect(progress.GetRemainingLogs()).To(BeZero())
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})

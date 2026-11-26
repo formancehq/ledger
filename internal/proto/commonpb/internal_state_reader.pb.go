@@ -79,7 +79,7 @@ func (l persistedClusterStateListReadonly) Range(yield func(int, PersistedCluste
 
 // NewPersistedClusterStateListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPersistedClusterStateListReader(s []*PersistedClusterState) PersistedClusterStateListReader {
+func NewPersistedClusterStateListReader(s []*PersistedClusterState) persistedClusterStateListReadonly {
 	return persistedClusterStateListReadonly(s)
 }
 
@@ -184,7 +184,7 @@ func (l transactionStateListReadonly) Range(yield func(int, TransactionStateRead
 
 // NewTransactionStateListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewTransactionStateListReader(s []*TransactionState) TransactionStateListReader {
+func NewTransactionStateListReader(s []*TransactionState) transactionStateListReadonly {
 	return transactionStateListReadonly(s)
 }
 
@@ -316,7 +316,7 @@ func (l idempotencyKeyValueListReadonly) Range(yield func(int, IdempotencyKeyVal
 
 // NewIdempotencyKeyValueListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewIdempotencyKeyValueListReader(s []*IdempotencyKeyValue) IdempotencyKeyValueListReader {
+func NewIdempotencyKeyValueListReader(s []*IdempotencyKeyValue) idempotencyKeyValueListReadonly {
 	return idempotencyKeyValueListReadonly(s)
 }
 
@@ -387,7 +387,7 @@ func (l idempotencyFailureListReadonly) Range(yield func(int, IdempotencyFailure
 
 // NewIdempotencyFailureListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewIdempotencyFailureListReader(s []*IdempotencyFailure) IdempotencyFailureListReader {
+func NewIdempotencyFailureListReader(s []*IdempotencyFailure) idempotencyFailureListReadonly {
 	return idempotencyFailureListReadonly(s)
 }
 
@@ -454,7 +454,7 @@ func (l transactionReferenceValueListReadonly) Range(yield func(int, Transaction
 
 // NewTransactionReferenceValueListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewTransactionReferenceValueListReader(s []*TransactionReferenceValue) TransactionReferenceValueListReader {
+func NewTransactionReferenceValueListReader(s []*TransactionReferenceValue) transactionReferenceValueListReadonly {
 	return transactionReferenceValueListReadonly(s)
 }
 
@@ -521,7 +521,7 @@ func (l numscriptVersionValueListReadonly) Range(yield func(int, NumscriptVersio
 
 // NewNumscriptVersionValueListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewNumscriptVersionValueListReader(s []*NumscriptVersionValue) NumscriptVersionValueListReader {
+func NewNumscriptVersionValueListReader(s []*NumscriptVersionValue) numscriptVersionValueListReadonly {
 	return numscriptVersionValueListReadonly(s)
 }
 
@@ -598,6 +598,6 @@ func (l persistedConfigListReadonly) Range(yield func(int, PersistedConfigReader
 
 // NewPersistedConfigListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPersistedConfigListReader(s []*PersistedConfig) PersistedConfigListReader {
+func NewPersistedConfigListReader(s []*PersistedConfig) persistedConfigListReadonly {
 	return persistedConfigListReadonly(s)
 }

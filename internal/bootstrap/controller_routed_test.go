@@ -8,13 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -95,8 +94,8 @@ func TestRoutedController_FinishLeaderFallback(t *testing.T) {
 		t.Parallel()
 
 		ctx, profile := query.WithProfile(context.Background())
-		selected, barrier, err := routed.finishLeaderFallback(ctx, nil, ledgerpb.ErrNoLeader, barrierErr)
-		require.ErrorIs(t, err, ledgerpb.ErrNoLeader)
+		selected, barrier, err := routed.finishLeaderFallback(ctx, nil, commonpb.ErrNoLeader, barrierErr)
+		require.ErrorIs(t, err, commonpb.ErrNoLeader)
 		assert.Nil(t, selected)
 		assert.Nil(t, barrier)
 		assert.False(t, profile.Forwarded)
@@ -134,8 +133,8 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 		{
 			name: "list transactions",
 			expect: func(local *ctrlmock.MockController) {
-				local.EXPECT().ListTransactions(barrierHorizonMatcher(42), "ledger", uint32(10), uint64(0), nil, false).
-					Return(cursor.NewSliceCursor([]*ledgerpb.Transaction{}), nil)
+				local.EXPECT().ListTransactions(barrierHorizonMatcher(42), "ledger", uint32(10), nil, nil, false).
+					Return(cursor.NewSliceCursor([]*commonpb.Transaction{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListTransactions(ctx, "ledger", 10, nil, nil, false)
@@ -147,7 +146,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list logs",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListLogs(barrierHorizonMatcher(42), "ledger", uint64(0), uint32(10), nil, false).
-					Return(cursor.NewSliceCursor([]*ledgerpb.Log{}), nil)
+					Return(cursor.NewSliceCursor([]*commonpb.Log{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListLogs(ctx, "ledger", 0, 10, nil, false)
@@ -171,7 +170,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list accounts",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListAccounts(barrierHorizonMatcher(42), "ledger", uint32(10), "", nil, false).
-					Return(cursor.NewSliceCursor([]*ledgerpb.Account{}), nil)
+					Return(cursor.NewSliceCursor([]*commonpb.Account{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListAccounts(ctx, "ledger", 10, "", nil, false)
@@ -183,7 +182,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "aggregate volumes",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().AggregateVolumes(barrierHorizonMatcher(42), "ledger", nil, query.AggregateOptions{}).
-					Return(&ledgerpb.AggregateResult{}, nil)
+					Return(&commonpb.AggregateResult{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.AggregateVolumes(ctx, "ledger", nil, query.AggregateOptions{})
@@ -244,11 +243,11 @@ func TestRoutedControllerStaleReadSkipsBarrier(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	local := ctrlmock.NewMockController(mockCtrl)
 	local.EXPECT().GetAccount(gomock.Any(), "ledger", "world", gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _, _ string, _ ctrl.GetAccountOptions) (*ledgerpb.Account, error) {
+		DoAndReturn(func(ctx context.Context, _, _ string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
 			_, hasHorizon := query.ReadBarrierHorizon(ctx)
 			assert.False(t, hasHorizon, "a stale read must not carry a barrier horizon")
 
-			return &ledgerpb.Account{}, nil
+			return &commonpb.Account{}, nil
 		})
 
 	routed := &RoutedController{

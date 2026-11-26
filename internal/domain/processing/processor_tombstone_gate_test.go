@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -42,7 +41,7 @@ func TestLedgerScopedWrite_RejectsTombstonedLedger(t *testing.T) {
 		// mode of the tombstoned ledger the Scope resolves. PromoteLedger
 		// rejects a non-mirror ledger on its own, so its case needs a
 		// tombstone that would otherwise be promotable.
-		mode  ledgerpb.LedgerMode
+		mode  commonpb.LedgerMode
 		order *raftcmdpb.LedgerScopedOrder
 	}{
 		{
@@ -51,8 +50,8 @@ func TestLedgerScopedWrite_RejectsTombstonedLedger(t *testing.T) {
 				Ledger: tombstonedLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
 					SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
-						Metadata: map[string]*ledgerpb.MetadataValue{
-							"color": ledgerpb.NewStringValue("blue"),
+						Metadata: map[string]*commonpb.MetadataValue{
+							"color": commonpb.NewStringValue("blue"),
 						},
 					},
 				},
@@ -86,9 +85,9 @@ func TestLedgerScopedWrite_RejectsTombstonedLedger(t *testing.T) {
 				Ledger: tombstonedLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-						Query: &ledgerpb.PreparedQuery{
+						Query: &commonpb.PreparedQuery{
 							Name:   "q1",
-							Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 						},
 					},
 				},
@@ -114,7 +113,7 @@ func TestLedgerScopedWrite_RejectsTombstonedLedger(t *testing.T) {
 		},
 		{
 			name: "promote ledger",
-			mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+			mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 			order: &raftcmdpb.LedgerScopedOrder{
 				Ledger: tombstonedLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
@@ -130,7 +129,7 @@ func TestLedgerScopedWrite_RejectsTombstonedLedger(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
 							AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-								AccountType: &ledgerpb.AccountType{Name: "customer", Pattern: "customer:*"},
+								AccountType: &commonpb.AccountType{Name: "customer", Pattern: "customer:*"},
 							},
 						},
 					},
@@ -152,11 +151,11 @@ func TestLedgerScopedWrite_RejectsTombstonedLedger(t *testing.T) {
 			// alongside the nil log payload below.
 			mockStore := NewMockScope(ctrl)
 			expectGetLedger(mockStore, domain.LedgerKey{Name: tombstonedLedger},
-				(&ledgerpb.LedgerInfo{
+				(&commonpb.LedgerInfo{
 					Name:      tombstonedLedger,
 					Id:        9,
 					Mode:      tc.mode,
-					DeletedAt: &ledgerpb.Timestamp{Data: 1},
+					DeletedAt: &commonpb.Timestamp{Data: 1},
 				}).AsReader(), nil)
 
 			processor, err := NewRequestProcessor(nil, 0)

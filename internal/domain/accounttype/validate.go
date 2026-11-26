@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ValidatePattern parses and validates a pattern string.
@@ -19,18 +19,18 @@ func ValidatePattern(pattern string) error {
 
 // ValidateSegmentTypes checks that segment_types references valid variable names
 // from the pattern and applies the constraint to each segment.
-func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*ledgerpb.SegmentType) error {
-	return applySegmentTypes(segments, slices.Sorted(maps.Keys(segTypes)), func(name string) any {
-		return segTypes[name].GetConstraint()
+func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*commonpb.SegmentType) error {
+	return applySegmentTypes(segments, slices.Sorted(maps.Keys(segTypes)), func(name string) commonpb.SegmentTypeReader {
+		return segTypes[name].AsReader()
 	})
 }
 
 // validateSegmentTypesReader is the read-only twin of ValidateSegmentTypes:
 // it consumes the immutable segment-types map reader so compiled account
 // types never alias the cached ledger configuration.
-func validateSegmentTypesReader(segments []PatternSegment, segTypes ledgerpb.AccountType_SegmentTypesMapReader) error {
+func validateSegmentTypesReader(segments []PatternSegment, segTypes commonpb.AccountType_SegmentTypesMapReader) error {
 	names := make([]string, 0, segTypes.Len())
-	segTypes.Range(func(name string, _ ledgerpb.SegmentTypeReader) bool {
+	segTypes.Range(func(name string, _ commonpb.SegmentTypeReader) bool {
 		names = append(names, name)
 
 		return true
@@ -83,22 +83,23 @@ func buildMatcher(segmentType commonpb.SegmentTypeReader) (SegmentMatcher, error
 		return nil, nil
 	}
 
-	switch c := constraint.(type) {
-	case *ledgerpb.SegmentType_Regex:
-		compiled, err := regexp.Compile("^(?:" + c.Regex + ")$")
+	switch segmentType.WhichConstraint() {
+	case commonpb.SegmentType_ConstraintReaderCase_Regex:
+		pattern := segmentType.GetRegex()
+		compiled, err := regexp.Compile("^(?:" + pattern + ")$")
 		if err != nil {
 			return nil, fmt.Errorf("invalid regex %q: %w", pattern, err)
 		}
 
 		return compiled.MatchString, nil
 
-	case *ledgerpb.SegmentType_Uuid:
+	case commonpb.SegmentType_ConstraintReaderCase_Uuid:
 		return matchUUID, nil
 
-	case *ledgerpb.SegmentType_Uint64:
+	case commonpb.SegmentType_ConstraintReaderCase_Uint64:
 		return matchUint64, nil
 
-	case *ledgerpb.SegmentType_Bytes:
+	case commonpb.SegmentType_ConstraintReaderCase_Bytes:
 		return matchHexBytes, nil
 
 	default:

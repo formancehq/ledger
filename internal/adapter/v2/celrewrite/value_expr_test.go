@@ -4,8 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -16,13 +15,13 @@ func TestValueExpr_CopiesReferenceIntoMetadata(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
-				Actions: []*ledgerpb.CreatedTransactionAction{{
-					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &ledgerpb.SetMetadataAction{
+		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransactionRule{
+				Actions: []*commonpb.CreatedTransactionAction{{
+					Action: &commonpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &commonpb.SetMetadataAction{
 							Key:    "original_ref",
-							Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: `log.reference`},
+							Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: `log.reference`},
 						},
 					},
 				}},
@@ -36,7 +35,7 @@ func TestValueExpr_CopiesReferenceIntoMetadata(t *testing.T) {
 			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 				TransactionId: 42,
 				Reference:     "invoice-2026-07-08",
-				Postings:      []*ledgerpb.Posting{posting("world", "acme")},
+				Postings:      []*commonpb.Posting{posting("world", "acme")},
 			},
 		},
 	}
@@ -58,21 +57,21 @@ func TestValueExpr_ReadsMutatedStateFromPreviousAction(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
-				Actions: []*ledgerpb.CreatedTransactionAction{
+		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransactionRule{
+				Actions: []*commonpb.CreatedTransactionAction{
 					// (1) write a literal metadata key
-					{Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &ledgerpb.SetMetadataAction{
+					{Action: &commonpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &commonpb.SetMetadataAction{
 							Key:    "seed",
-							Source: &ledgerpb.SetMetadataAction_Value{Value: "hello"},
+							Source: &commonpb.SetMetadataAction_Value{Value: "hello"},
 						},
 					}},
 					// (2) read what (1) wrote via value_expr
-					{Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &ledgerpb.SetMetadataAction{
+					{Action: &commonpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &commonpb.SetMetadataAction{
 							Key:    "echo",
-							Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: `log.metadata["seed"].string_value`},
+							Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: `log.metadata["seed"].string_value`},
 						},
 					}},
 				},
@@ -102,20 +101,20 @@ func TestValueExpr_ReadsMutatedStateFromPreviousAction(t *testing.T) {
 func TestValueExpr_WrongOutputType(t *testing.T) {
 	t.Parallel()
 
-	rule := &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-		CreatedTransaction: &ledgerpb.CreatedTransactionRule{
-			Actions: []*ledgerpb.CreatedTransactionAction{{
-				Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-					SetMetadata: &ledgerpb.SetMetadataAction{
+	rule := &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &commonpb.CreatedTransactionRule{
+			Actions: []*commonpb.CreatedTransactionAction{{
+				Action: &commonpb.CreatedTransactionAction_SetMetadata{
+					SetMetadata: &commonpb.SetMetadataAction{
 						Key:    "k",
-						Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: `42`},
+						Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: `42`},
 					},
 				},
 			}},
 		},
 	}}
 
-	_, err := NewRewriter([]*ledgerpb.MirrorRewriteRule{rule})
+	_, err := NewRewriter([]*commonpb.MirrorRewriteRule{rule})
 	if err == nil {
 		t.Fatalf("expected compile error on non-string value_expr")
 	}
@@ -132,20 +131,20 @@ func TestValueExpr_WrongOutputType(t *testing.T) {
 func TestValueExpr_ForeignVariantFieldRejectedAtAdmission(t *testing.T) {
 	t.Parallel()
 
-	rule := &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_SavedMetadata{
-		SavedMetadata: &ledgerpb.SavedMetadataRule{
-			Actions: []*ledgerpb.SavedMetadataAction{{
-				Action: &ledgerpb.SavedMetadataAction_SetMetadata{
-					SetMetadata: &ledgerpb.SetMetadataAction{
+	rule := &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_SavedMetadata{
+		SavedMetadata: &commonpb.SavedMetadataRule{
+			Actions: []*commonpb.SavedMetadataAction{{
+				Action: &commonpb.SavedMetadataAction_SetMetadata{
+					SetMetadata: &commonpb.SetMetadataAction{
 						Key:    "k",
-						Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: `log.reference`},
+						Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: `log.reference`},
 					},
 				},
 			}},
 		},
 	}}
 
-	_, err := NewRewriter([]*ledgerpb.MirrorRewriteRule{rule})
+	_, err := NewRewriter([]*commonpb.MirrorRewriteRule{rule})
 	if err == nil {
 		t.Fatalf("expected compile error; MirrorSavedMetadata has no reference field")
 	}
@@ -165,14 +164,14 @@ func TestValueExpr_RuntimeErrorFailsBatch(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
-				Actions: []*ledgerpb.CreatedTransactionAction{{
+		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransactionRule{
+				Actions: []*commonpb.CreatedTransactionAction{{
 					// Indexing a missing metadata key raises "no such key" at runtime.
-					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &ledgerpb.SetMetadataAction{
+					Action: &commonpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &commonpb.SetMetadataAction{
 							Key:    "k",
-							Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: `log.metadata["missing"].string_value`},
+							Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: `log.metadata["missing"].string_value`},
 						},
 					},
 				}},
@@ -205,17 +204,17 @@ func TestValueExpr_ProducesInvalidValueRejected(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
-				Actions: []*ledgerpb.CreatedTransactionAction{{
+		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransactionRule{
+				Actions: []*commonpb.CreatedTransactionAction{{
 					// A metadata value containing a NUL byte fails validateValue.
 					// The CEL literal uses  so the produced string carries
 					// an actual NUL — which the admission-time literal check
 					// couldn't spot because the value is computed.
-					Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-						SetMetadata: &ledgerpb.SetMetadataAction{
+					Action: &commonpb.CreatedTransactionAction_SetMetadata{
+						SetMetadata: &commonpb.SetMetadataAction{
 							Key:    "k",
-							Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: "\"a\\u0000b\""},
+							Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: "\"a\\u0000b\""},
 						},
 					},
 				}},
@@ -247,9 +246,9 @@ func TestValueExpr_OnSetAccountMetadata(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransactionRule{
-				Actions: []*ledgerpb.CreatedTransactionAction{
+		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransactionRule{
+				Actions: []*commonpb.CreatedTransactionAction{
 					actSetAccountMetadataCreatedExpr("world", "invoice", "log.reference"),
 				},
 			},
@@ -262,7 +261,7 @@ func TestValueExpr_OnSetAccountMetadata(t *testing.T) {
 			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 				TransactionId: 42,
 				Reference:     "inv-42",
-				Postings:      []*ledgerpb.Posting{posting("world", "acme")},
+				Postings:      []*commonpb.Posting{posting("world", "acme")},
 			},
 		},
 	}
@@ -288,9 +287,9 @@ func TestValueExpr_SavedMetadataReadsTarget(t *testing.T) {
 	t.Parallel()
 
 	r := mustCompile(t,
-		&ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_SavedMetadata{
-			SavedMetadata: &ledgerpb.SavedMetadataRule{
-				Actions: []*ledgerpb.SavedMetadataAction{
+		&commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_SavedMetadata{
+			SavedMetadata: &commonpb.SavedMetadataRule{
+				Actions: []*commonpb.SavedMetadataAction{
 					actSetMetadataSavedExpr("target_copy", "log.target.account.addr"),
 				},
 			},

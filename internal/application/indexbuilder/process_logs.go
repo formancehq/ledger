@@ -7,9 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -176,7 +174,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 
-			if cl, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_CreateLedger); ok {
+			if cl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreateLedger); ok {
 				if cl.CreateLedger == nil {
 					_ = batch.Cancel()
 
@@ -192,7 +190,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			// Handle ledger deletion: remove all read indexes for the deleted ledger.
-			if dl, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_DeleteLedger); ok {
+			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 				if dl.DeleteLedger == nil {
 					_ = batch.Cancel()
 
@@ -210,7 +208,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 			// A query checkpoint creation ends the batch: the read index is
 			// materialized at this exact point once the batch is committed.
-			if cqc, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_CreatedQueryCheckpoint); ok {
+			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
 				fields := checkpointLogFields{
 					sequence:     log.GetSequence(),
 					createID:     cqc.CreatedQueryCheckpoint.GetCheckpointId(),
@@ -233,7 +231,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 			// A query checkpoint deletion ends the batch the same way; the
 			// physical checkpoint files are removed once it is committed.
-			if dqc, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_DeletedQueryCheckpoint); ok {
+			if dqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeletedQueryCheckpoint); ok {
 				fields := checkpointLogFields{
 					sequence: log.GetSequence(),
 					deleteID: dqc.DeletedQueryCheckpoint.GetCheckpointId(),
@@ -249,7 +247,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				break
 			}
 
-			applyLog, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
+			applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 			if !ok {
 				continue
 			}
@@ -261,7 +259,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 			historyBefore, historyExists := b.historyStateFor(ledgerName)
-			category := ledgerpb.LedgerLogCategoryOf(ledgerLog.GetData())
+			category := commonpb.LedgerLogCategoryOf(ledgerLog.GetData())
 			if err := b.observeLedgerPayload(ledgerName, ledgerLog.GetData()); err != nil {
 				_ = batch.Cancel()
 
@@ -292,9 +290,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// If the first HISTORY arrives before log_date is registered, discard
 			// the speculative prefix in this same fold: a genuine late index will
 			// rebuild the complete stream through its normal backfill.
-			logDateActive := cfg.isLogBuiltinIndexed(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+			logDateActive := cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 			wasEmpty := historyExists && historyBefore == ledgerHistoryEmpty
-			if wasEmpty && category == ledgerpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY && !logDateActive {
+			if wasEmpty && category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY && !logDateActive {
 				if err := purgeSpeculativeLogDates(batch, ledgerName); err != nil {
 					_ = batch.Cancel()
 

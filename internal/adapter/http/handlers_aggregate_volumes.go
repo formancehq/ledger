@@ -5,8 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -22,9 +21,9 @@ type aggregatedVolumeJSON struct {
 	// the uncolored bucket from an older response shape that didn't carry
 	// the color dimension at all.
 	Color   string                 `json:"color"`
-	Input   *ledgerpb.BigUint      `json:"input"`
-	Output  *ledgerpb.BigUint      `json:"output"`
-	Balance *ledgerpb.SignedBigInt `json:"balance"`
+	Input   *commonpb.BigUint      `json:"input"`
+	Output  *commonpb.BigUint      `json:"output"`
+	Balance *commonpb.SignedBigInt `json:"balance"`
 }
 
 type groupedAggregateResultJSON struct {
@@ -32,24 +31,44 @@ type groupedAggregateResultJSON struct {
 	Volumes []*aggregatedVolumeJSON `json:"volumes"`
 }
 
-func toAggregatedVolumeJSON(v *ledgerpb.AggregatedVolume) *aggregatedVolumeJSON {
-	input := v.GetInput().ToBigInt()
-	output := v.GetOutput().ToBigInt()
+func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) (*aggregatedVolumeJSON, error) {
+	input, output, err := v.Totals()
+	if err != nil {
+		return nil, err
+	}
 	balance := new(big.Int).Sub(input, output)
-	// Uint256 inputs are unsigned, so conversion cannot fail.
-	inputAmount, _ := ledgerpb.NewBigUint(input)
-	outputAmount, _ := ledgerpb.NewBigUint(output)
+	inputAmount, err := commonpb.NewBigUint(input)
+	if err != nil {
+		return nil, err
+	}
+	outputAmount, err := commonpb.NewBigUint(output)
+	if err != nil {
+		return nil, err
+	}
 
 	return &aggregatedVolumeJSON{
 		Asset:   v.GetAsset(),
 		Color:   v.GetColor(),
 		Input:   inputAmount,
 		Output:  outputAmount,
-		Balance: ledgerpb.NewSignedBigInt(balance),
-	}
+		Balance: commonpb.NewSignedBigInt(balance),
+	}, nil
 }
 
-func toAggregateVolumesJSON(result *ledgerpb.AggregateResult) *aggregateVolumesResponseJSON {
+func toAggregatedVolumesJSON(volumes []*commonpb.AggregatedVolume) ([]*aggregatedVolumeJSON, error) {
+	out := make([]*aggregatedVolumeJSON, 0, len(volumes))
+	for _, v := range volumes {
+		vol, err := toAggregatedVolumeJSON(v)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vol)
+	}
+
+	return out, nil
+}
+
+func toAggregateVolumesJSON(result *commonpb.AggregateResult) (*aggregateVolumesResponseJSON, error) {
 	resp := &aggregateVolumesResponseJSON{}
 
 	var err error
@@ -98,7 +117,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	// or the structured v2 JSON DSL (EN-1511) and is the sole account selector.
 	// It is compiled for the Accounts target and forwarded unchanged; aggregation
 	// options (precision, grouping, color collapsing) stay independent of it.
-	filter, ok := parseListFilter(w, r, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	filter, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if !ok {
 		return
 	}

@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -103,7 +103,7 @@ func TestConfigMetadataLimits(t *testing.T) {
 	require.Equal(t, uint64(1234), cfg.MetadataLimits().MaxValueBytes)
 }
 
-func commitPolicy(t *testing.T, store *dal.Store, policy *ledgerpb.ClusterPolicy) {
+func commitPolicy(t *testing.T, store *dal.Store, policy *commonpb.ClusterPolicy) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -118,8 +118,8 @@ func commitPolicy(t *testing.T, store *dal.Store, policy *ledgerpb.ClusterPolicy
 func TestValidateCommittedMetadataLimits(t *testing.T) {
 	t.Parallel()
 
-	withLimits := func(revision uint64) *ledgerpb.ClusterPolicy {
-		return &ledgerpb.ClusterPolicy{
+	withLimits := func(revision uint64) *commonpb.ClusterPolicy {
+		return &commonpb.ClusterPolicy{
 			Revision:                    revision,
 			QueryCheckpointLimit:        10,
 			MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -132,7 +132,7 @@ func TestValidateCommittedMetadataLimits(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		policy          *ledgerpb.ClusterPolicy
+		policy          *commonpb.ClusterPolicy
 		desiredRevision uint64
 		wantErr         bool
 	}{
@@ -148,24 +148,24 @@ func TestValidateCommittedMetadataLimits(t *testing.T) {
 		},
 		{
 			name:            "ceilings missing but a higher revision supersedes it",
-			policy:          &ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10},
+			policy:          &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10},
 			desiredRevision: 3,
 		},
 		{
 			name:            "ceilings missing at the same revision",
-			policy:          &ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10},
+			policy:          &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10},
 			desiredRevision: 2,
 			wantErr:         true,
 		},
 		{
 			name:            "ceilings missing and the desired revision is lower",
-			policy:          &ledgerpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 10},
+			policy:          &commonpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 10},
 			desiredRevision: 2,
 			wantErr:         true,
 		},
 		{
 			name: "one ceiling missing is enough to refuse",
-			policy: func() *ledgerpb.ClusterPolicy {
+			policy: func() *commonpb.ClusterPolicy {
 				p := withLimits(4)
 				p.MetadataMaxCommandBytes = 0
 
@@ -219,7 +219,7 @@ func TestValidateOrPersistConfig_ForcedIdentityPreservesMetadataGuard(t *testing
 					require.NoError(t, ValidateOrPersistConfig(store, cfg, logger, false))
 					original, err := LoadPersistedConfig(store)
 					require.NoError(t, err)
-					commitPolicy(t, store, &ledgerpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10})
+					commitPolicy(t, store, &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10})
 					if field == "node" {
 						cfg.RaftConfig.NodeID++
 					} else {

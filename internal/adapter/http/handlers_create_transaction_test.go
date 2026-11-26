@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -22,16 +21,16 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
-					Payload: &ledgerpb.LogPayload{
-						Type: &ledgerpb.LogPayload_Apply{
-							Apply: &ledgerpb.ApplyLedgerLog{
-								Log: &ledgerpb.LedgerLog{
-									Data: &ledgerpb.LedgerLogPayload{
-										Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-											CreatedTransaction: &ledgerpb.CreatedTransaction{
-												Transaction: &ledgerpb.Transaction{
+					Payload: &commonpb.LogPayload{
+						Type: &commonpb.LogPayload_Apply{
+							Apply: &commonpb.ApplyLedgerLog{
+								Log: &commonpb.LedgerLog{
+									Data: &commonpb.LedgerLogPayload{
+										Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+											CreatedTransaction: &commonpb.CreatedTransaction{
+												Transaction: &commonpb.Transaction{
 													Id: 1,
 												},
 											},
@@ -144,40 +143,40 @@ func TestHandleExecuteNumscript_UsesReferenceAndIgnoresPostings(t *testing.T) {
 func TestHandleCreateTransaction_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	created := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
-			Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-				CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 1}},
+	created := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
 			},
 		}}},
 	}}}
-	wrongOuter := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{
-		Type: &ledgerpb.LogPayload_CreateLedger{CreateLedger: &ledgerpb.CreatedLedgerLog{Name: "ledger1"}},
+	wrongOuter := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger1"}},
 	}}
-	wrongInner := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
-			Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-				RevertedTransaction: &ledgerpb.RevertedTransaction{RevertTransaction: &ledgerpb.Transaction{Id: 2}},
+	wrongInner := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+				RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}},
 			},
 		}}},
 	}}}
-	emptyBody := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
-			Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil},
+	emptyBody := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil},
 		}}},
 	}}}
 
 	cases := []struct {
 		name    string
-		logs    []*ledgerpb.Log
+		logs    []*commonpb.Log
 		wantMsg string
 	}{
-		{"zero logs", []*ledgerpb.Log{}, "apply did not return exactly one log"},
-		{"two logs", []*ledgerpb.Log{created, created}, "apply did not return exactly one log"},
-		{"nil sole log", []*ledgerpb.Log{nil}, "apply returned a nil log"},
-		{"wrong outer payload", []*ledgerpb.Log{wrongOuter}, "apply returned an unexpected log payload type"},
-		{"wrong inner payload", []*ledgerpb.Log{wrongInner}, "apply returned an unexpected log payload type"},
-		{"empty payload body", []*ledgerpb.Log{emptyBody}, "apply returned a log with no payload body"},
+		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*commonpb.Log{created, created}, "apply did not return exactly one log"},
+		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
+		{"wrong outer payload", []*commonpb.Log{wrongOuter}, "apply returned an unexpected log payload type"},
+		{"wrong inner payload", []*commonpb.Log{wrongInner}, "apply returned an unexpected log payload type"},
+		{"empty payload body", []*commonpb.Log{emptyBody}, "apply returned a log with no payload body"},
 	}
 
 	for _, tc := range cases {
@@ -314,11 +313,11 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 				func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 					captured = req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction()
 
-					return &domain.ApplyResult{Logs: []*ledgerpb.Log{
-						{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-							Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
-								Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-									CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 1}},
+					return &domain.ApplyResult{Logs: []*commonpb.Log{
+						{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+							Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+									CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
 								},
 							}}},
 						}}},
@@ -385,11 +384,11 @@ func TestHandleCreateTransaction_UnknownFieldsAreLenient(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{
-				{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{Data: &ledgerpb.LedgerLogPayload{
-						Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 1}},
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
+				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
 						},
 					}}},
 				}}},

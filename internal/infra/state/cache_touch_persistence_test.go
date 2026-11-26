@@ -6,11 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -147,7 +145,7 @@ func TestPreload_RejectsExistingU128WithDifferentTag(t *testing.T) {
 				t.Parallel()
 				machine, dataStore, _ := newTestMachine(t)
 				id, tag := attributes.MakeKey(domain.LedgerKey{Name: "collision"}.Bytes())
-				entry := attributes.Entry[*ledgerpb.LedgerInfo]{Tag: tag + 1, Deleted: deleted, Data: &ledgerpb.LedgerInfo{}}
+				entry := attributes.Entry[*commonpb.LedgerInfo]{Tag: tag + 1, Deleted: deleted, Data: &commonpb.LedgerInfo{}}
 				if gen1 {
 					machine.Registry.Cache.Ledgers.Gen1().Put(id, entry)
 				} else {
@@ -220,13 +218,13 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	hash := attributes.HashU128(canonicalKey)
 	tag := uint64(42)
 
-	staleInfo := &ledgerpb.NumscriptInfo{
+	staleInfo := &commonpb.NumscriptInfo{
 		Ledger:  "lending",
 		Name:    "disburse_loan",
 		Version: "1.0.0",
 		Content: "STALE — leader's admission view",
 	}
-	freshInfo := &ledgerpb.NumscriptInfo{
+	freshInfo := &commonpb.NumscriptInfo{
 		Ledger:  "lending",
 		Name:    "disburse_loan",
 		Version: "1.0.0",
@@ -234,7 +232,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	}
 
 	// Post-Merge shape on entry N: fresh value in gen0 + 0xFF gen0Byte.
-	registry.Cache.NumscriptContents.Gen0().Put(hash, attributes.Entry[*ledgerpb.NumscriptInfo]{Tag: tag, Data: freshInfo})
+	registry.Cache.NumscriptContents.Gen0().Put(hash, attributes.Entry[*commonpb.NumscriptInfo]{Tag: tag, Data: freshInfo})
 
 	seedBatch := dataStore.OpenWriteSession()
 
@@ -307,7 +305,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 	hash := attributes.HashU128(canonicalKey)
 	tag := uint64(42)
 
-	scriptInfo := &ledgerpb.NumscriptInfo{
+	scriptInfo := &commonpb.NumscriptInfo{
 		Ledger:  "lending",
 		Name:    "disburse_loan",
 		Version: "1.0.0",

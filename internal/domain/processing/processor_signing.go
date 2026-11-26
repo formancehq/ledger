@@ -1,13 +1,12 @@
 package processing
 
 import (
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
+func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
 		return nil, err
 	}
@@ -22,9 +21,9 @@ func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Co
 
 	ctx.Scope.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
 
-	return &ledgerpb.LogPayload{
-		Type: &ledgerpb.LogPayload_RegisterSigningKey{
-			RegisterSigningKey: &ledgerpb.RegisteredSigningKeyLog{
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_RegisterSigningKey{
+			RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
 				KeyId:       order.GetKeyId(),
 				PublicKey:   order.GetPublicKey(),
 				ParentKeyId: order.GetParentKeyId(),
@@ -33,7 +32,7 @@ func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Co
 	}, nil
 }
 
-func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
+func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
 		return nil, err
@@ -89,9 +88,9 @@ func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Contex
 		s.RemoveSigningKey(id)
 	}
 
-	return &ledgerpb.LogPayload{
-		Type: &ledgerpb.LogPayload_RevokeSigningKey{
-			RevokeSigningKey: &ledgerpb.RevokedSigningKeyLog{
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_RevokeSigningKey{
+			RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
 				KeyId:          order.GetKeyId(),
 				CascadedKeyIds: cascaded,
 			},
@@ -99,12 +98,12 @@ func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Contex
 	}, nil
 }
 
-func processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
+func processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ctx.Scope.SetRequireSignatures(order.GetRequireSignatures())
 
-	return &ledgerpb.LogPayload{
-		Type: &ledgerpb.LogPayload_SetSigningConfig{
-			SetSigningConfig: &ledgerpb.SetSigningConfigLog{
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SetSigningConfig{
+			SetSigningConfig: &commonpb.SetSigningConfigLog{
 				RequireSignatures: order.GetRequireSignatures(),
 			},
 		},

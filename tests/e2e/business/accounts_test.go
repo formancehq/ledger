@@ -6,16 +6,14 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Accounts", Ordered, func() {
@@ -29,13 +27,13 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create transactions that touch multiple accounts
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -129,7 +127,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Find alice in the list
-			var aliceAccount *ledgerpb.Account
+			var aliceAccount *commonpb.Account
 			for _, a := range accounts {
 				if a.Address == "alice" {
 					aliceAccount = a
@@ -138,8 +136,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			}
 			Expect(aliceAccount).NotTo(BeNil())
 			Expect(aliceAccount.Metadata).NotTo(BeNil())
-			Expect(ledgerpb.MetadataToGoMap(aliceAccount.Metadata)["role"]).To(Equal("admin"))
-			Expect(ledgerpb.MetadataToGoMap(aliceAccount.Metadata)["tier"]).To(Equal("premium"))
+			Expect(commonpb.MetadataToGoMap(aliceAccount.Metadata)["role"]).To(Equal("admin"))
+			Expect(commonpb.MetadataToGoMap(aliceAccount.Metadata)["tier"]).To(Equal("premium"))
 		})
 	})
 
@@ -151,16 +149,16 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create accounts with different prefixes
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "merchants:shop2", big.NewInt(400), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -220,13 +218,13 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create a force transaction from an unfunded account (source-only, no input)
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("unfunded-source", "destination-only", big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
 
 			// Create a normal transaction from world
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "normal-account", big.NewInt(200), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -277,7 +275,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create transactions with different assets to the same account
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "multi-asset", big.NewInt(100), "USD"),
 				actions.NewPosting("world", "multi-asset", big.NewInt(50), "EUR"),
 				actions.NewPosting("world", "multi-asset", big.NewInt(1000), "JPY"),
@@ -315,7 +313,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should accumulate accounts across transactions", func() {
 			// First batch
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -328,10 +326,10 @@ var _ = Describe("Accounts", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Second batch
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "account-3", big.NewInt(300), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -349,29 +347,29 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with int64 schema for "age" and its index
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
-					Type:       ledgerpb.MetadataType_METADATA_TYPE_INT64,
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "age")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
 
 			// Create accounts with transactions and set typed int metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "dave", big.NewInt(400), "USD"),
 				}, nil, nil),
 				// alice=20, bob=35, charlie=50, dave=65
@@ -392,12 +390,12 @@ var _ = Describe("Accounts", Ordered, func() {
 		It("Should filter accounts with > (greater than)", func() {
 			// age > 35 should match charlie(50), dave(65)
 			val := int64(35)
-			filter := &ledgerpb.QueryFilter{
-				Filter: &ledgerpb.QueryFilter_Field{
-					Field: &ledgerpb.FieldCondition{
-						Field: &ledgerpb.FieldRef{Metadata: "age"},
-						Condition: &ledgerpb.FieldCondition_IntCond{
-							IntCond: &ledgerpb.IntCondition{
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
 								Min:          &val,
 								MinExclusive: true,
 							},
@@ -417,12 +415,12 @@ var _ = Describe("Accounts", Ordered, func() {
 		It("Should filter accounts with >= (greater than or equal)", func() {
 			// age >= 35 should match bob(35), charlie(50), dave(65)
 			val := int64(35)
-			filter := &ledgerpb.QueryFilter{
-				Filter: &ledgerpb.QueryFilter_Field{
-					Field: &ledgerpb.FieldCondition{
-						Field: &ledgerpb.FieldRef{Metadata: "age"},
-						Condition: &ledgerpb.FieldCondition_IntCond{
-							IntCond: &ledgerpb.IntCondition{
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
 								Min: &val,
 							},
 						},
@@ -442,12 +440,12 @@ var _ = Describe("Accounts", Ordered, func() {
 		It("Should filter accounts with < (less than)", func() {
 			// age < 50 should match alice(20), bob(35)
 			val := int64(50)
-			filter := &ledgerpb.QueryFilter{
-				Filter: &ledgerpb.QueryFilter_Field{
-					Field: &ledgerpb.FieldCondition{
-						Field: &ledgerpb.FieldRef{Metadata: "age"},
-						Condition: &ledgerpb.FieldCondition_IntCond{
-							IntCond: &ledgerpb.IntCondition{
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
 								Max:          &val,
 								MaxExclusive: true,
 							},
@@ -465,12 +463,12 @@ var _ = Describe("Accounts", Ordered, func() {
 		It("Should filter accounts with <= (less than or equal)", func() {
 			// age <= 50 should match alice(20), bob(35), charlie(50)
 			val := int64(50)
-			filter := &ledgerpb.QueryFilter{
-				Filter: &ledgerpb.QueryFilter_Field{
-					Field: &ledgerpb.FieldCondition{
-						Field: &ledgerpb.FieldRef{Metadata: "age"},
-						Condition: &ledgerpb.FieldCondition_IntCond{
-							IntCond: &ledgerpb.IntCondition{
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
 								Max: &val,
 							},
 						},
@@ -491,16 +489,16 @@ var _ = Describe("Accounts", Ordered, func() {
 			// age >= 30 AND age < 60 should match bob(35), charlie(50)
 			minVal := int64(30)
 			maxVal := int64(60)
-			filter := &ledgerpb.QueryFilter{
-				Filter: &ledgerpb.QueryFilter_And{
-					And: &ledgerpb.AndFilter{
-						Filters: []*ledgerpb.QueryFilter{
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{
+						Filters: []*commonpb.QueryFilter{
 							{
-								Filter: &ledgerpb.QueryFilter_Field{
-									Field: &ledgerpb.FieldCondition{
-										Field: &ledgerpb.FieldRef{Metadata: "age"},
-										Condition: &ledgerpb.FieldCondition_IntCond{
-											IntCond: &ledgerpb.IntCondition{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "age"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
 												Min: &minVal,
 											},
 										},
@@ -508,11 +506,11 @@ var _ = Describe("Accounts", Ordered, func() {
 								},
 							},
 							{
-								Filter: &ledgerpb.QueryFilter_Field{
-									Field: &ledgerpb.FieldCondition{
-										Field: &ledgerpb.FieldRef{Metadata: "age"},
-										Condition: &ledgerpb.FieldCondition_IntCond{
-											IntCond: &ledgerpb.IntCondition{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "age"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
 												Max:          &maxVal,
 												MaxExclusive: true,
 											},
@@ -534,12 +532,12 @@ var _ = Describe("Accounts", Ordered, func() {
 		It("Should return empty list when no accounts match the range", func() {
 			// age > 100 should match nobody
 			val := int64(100)
-			filter := &ledgerpb.QueryFilter{
-				Filter: &ledgerpb.QueryFilter_Field{
-					Field: &ledgerpb.FieldCondition{
-						Field: &ledgerpb.FieldRef{Metadata: "age"},
-						Condition: &ledgerpb.FieldCondition_IntCond{
-							IntCond: &ledgerpb.IntCondition{
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
 								Min:          &val,
 								MinExclusive: true,
 							},
@@ -554,7 +552,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts with `between` (inclusive bounds)", func() {
 			// age between 30 and 50 should match bob(35), charlie(50)
-			filter, err := filterexpr.Parse("metadata[age] between 30 and 50", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse("metadata[age] between 30 and 50", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -567,10 +565,10 @@ var _ = Describe("Accounts", Ordered, func() {
 			// `age >= 30 and age < 60` is coalesced into a single bounded
 			// IntCondition; must match the same set as `between 30 and 59`
 			// (bob=35, charlie=50).
-			fromAnd, err := filterexpr.Parse("metadata[age] >= 30 and metadata[age] < 60", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			fromAnd, err := filterexpr.Parse("metadata[age] >= 30 and metadata[age] < 60", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
-			fromBetween, err := filterexpr.Parse("metadata[age] between 30 and 59", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			fromBetween, err := filterexpr.Parse("metadata[age] between 30 and 59", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			fromAndAccts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", fromAnd)
@@ -597,16 +595,16 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Create accounts in ledger A
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerA, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerA, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Create accounts in ledger B
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerB, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -649,29 +647,29 @@ var _ = Describe("Accounts", Ordered, func() {
 		var ledgerName = "accounts-in-filter-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
-					TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "role",
-					Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 				},
 			}),
 				actions.CreateAccountMetadataIndexAction(ledgerName, "role")))
 			Expect(err).To(Succeed())
 
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 
 			// Create accounts with different roles
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "dave", big.NewInt(400), "USD"),
 				}, nil),
 				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
@@ -690,7 +688,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts matching any value in the list", func() {
 			// metadata[role] in (admin, viewer) → alice, charlie, dave
-			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -707,7 +705,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts with single value in list", func() {
 			// metadata[role] in (user) → bob only
-			filter, err := filterexpr.Parse(`metadata[role] in (user)`, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse(`metadata[role] in (user)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -717,7 +715,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty when no values match", func() {
-			filter, err := filterexpr.Parse(`metadata[role] in (superadmin, moderator)`, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse(`metadata[role] in (superadmin, moderator)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -727,7 +725,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should combine in filter with AND", func() {
 			// metadata[role] in (admin, user) and address ^= "a" → alice only
-			filter, err := filterexpr.Parse(`metadata[role] in (admin, user) and address ^= "a"`, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, user) and address ^= "a"`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -744,13 +742,13 @@ var _ = Describe("Accounts", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 				}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
 				}, nil)))
 			Expect(err).To(Succeed())
@@ -764,7 +762,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts by exact address list", func() {
 			// address in ("users:alice", "merchants:shop1") → 2 accounts
-			filter, err := filterexpr.Parse(`address in ("users:alice", "merchants:shop1")`, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse(`address in ("users:alice", "merchants:shop1")`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -775,7 +773,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty when no addresses match", func() {
-			filter, err := filterexpr.Parse(`address in ("nonexistent:a", "nonexistent:b")`, ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+			filter, err := filterexpr.Parse(`address in ("nonexistent:a", "nonexistent:b")`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)

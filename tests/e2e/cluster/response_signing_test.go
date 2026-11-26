@@ -11,16 +11,14 @@ import (
 	"os"
 	"path/filepath"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 // writeTestSeedFile writes an Ed25519 seed to a temp file and returns the path.
@@ -69,7 +67,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should include response signature in Apply response logs", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -83,7 +81,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should produce verifiable response signatures", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -96,7 +94,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should fail verification with a wrong public key", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -113,10 +111,10 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should sign all logs in bulk Apply response", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 			}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -169,7 +167,7 @@ var _ = Describe("Response Signing", func() {
 		})
 
 		It("should not include response signature in Apply response logs", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

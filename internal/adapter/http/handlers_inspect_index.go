@@ -8,9 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -48,27 +47,27 @@ type inspectSummaryJSON struct {
 // is the field's schema type for the inspected key: datetime index keys share
 // the int64 encoding (decode reconstructs an int_value), so a datetime field is
 // rendered as an RFC3339 string here rather than as a raw integer.
-func metadataValueToAny(v *ledgerpb.MetadataValue, declaredType ledgerpb.MetadataType) any {
+func metadataValueToAny(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) any {
 	if v == nil {
 		return nil
 	}
 
 	switch t := v.GetType().(type) {
-	case *ledgerpb.MetadataValue_StringValue:
+	case *commonpb.MetadataValue_StringValue:
 		return t.StringValue
-	case *ledgerpb.MetadataValue_IntValue:
-		if ledgerpb.IsDatetimeType(declaredType) {
+	case *commonpb.MetadataValue_IntValue:
+		if commonpb.IsDatetimeType(declaredType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
 		return t.IntValue
-	case *ledgerpb.MetadataValue_UintValue:
+	case *commonpb.MetadataValue_UintValue:
 		return t.UintValue
-	case *ledgerpb.MetadataValue_DatetimeValue:
+	case *commonpb.MetadataValue_DatetimeValue:
 		return time.UnixMicro(t.DatetimeValue).UTC().Format(time.RFC3339Nano)
-	case *ledgerpb.MetadataValue_BoolValue:
+	case *commonpb.MetadataValue_BoolValue:
 		return t.BoolValue
-	case *ledgerpb.MetadataValue_NullValue:
+	case *commonpb.MetadataValue_NullValue:
 		return nil
 	default:
 		return nil
@@ -213,13 +212,13 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 // (ledger, targetType, key), or METADATA_TYPE_STRING when the ledger lookup
 // fails or the key has no declaration. It is a render hint only: a failed
 // lookup degrades to the default (raw integer) rendering rather than erroring.
-func (s *Server) declaredMetadataType(ctx context.Context, ledgerName string, targetType ledgerpb.TargetType, key string) ledgerpb.MetadataType {
+func (s *Server) declaredMetadataType(ctx context.Context, ledgerName string, targetType commonpb.TargetType, key string) commonpb.MetadataType {
 	info, err := s.backend.GetLedgerByName(ctx, ledgerName)
 	if err != nil {
-		return ledgerpb.MetadataType_METADATA_TYPE_STRING
+		return commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	_, fs := ledgerpb.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
+	_, fs := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
 
 	return fs.GetType()
 }

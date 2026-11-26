@@ -6,10 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -26,7 +24,7 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -36,7 +34,7 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 						AddMetadata: &raftcmdpb.SaveMetadataOrder{
 							Target:   nil,
-							Metadata: map[string]*ledgerpb.MetadataValue{},
+							Metadata: map[string]*commonpb.MetadataValue{},
 						},
 					},
 					},
@@ -62,15 +60,15 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
-		MetadataSchema: &ledgerpb.MetadataSchema{
-			AccountFields: map[string]*ledgerpb.MetadataFieldSchema{
-				"age": {Type: ledgerpb.MetadataType_METADATA_TYPE_INT64},
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
@@ -89,14 +87,14 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-					AddMetadata: &ledgerpb.SaveMetadataCommand{
-						Target: &ledgerpb.Target{
-							Target: &ledgerpb.Target_Account{
-								Account: &ledgerpb.TargetAccount{Addr: "users:001"},
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: "users:001"},
 							},
 						},
-						Metadata: map[string]*ledgerpb.MetadataValue{
-							"age": ledgerpb.NewStringValue("25"),
+						Metadata: map[string]*commonpb.MetadataValue{
+							"age": commonpb.NewStringValue("25"),
 						},
 					},
 				}},
@@ -123,19 +121,19 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-					AddMetadata: &ledgerpb.SaveMetadataCommand{
-						Target: &ledgerpb.Target{
-							Target: &ledgerpb.Target_TransactionId{TransactionId: 99}, // Beyond NextTransactionId=5
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_TransactionId{TransactionId: 99}, // Beyond NextTransactionId=5
 						},
-						Metadata: map[string]*ledgerpb.MetadataValue{
-							"status": ledgerpb.NewStringValue("done"),
+						Metadata: map[string]*commonpb.MetadataValue{
+							"status": commonpb.NewStringValue("done"),
 						},
 					},
 				}},
@@ -164,7 +162,7 @@ func TestProcessDeleteMetadata_NilTarget(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -201,7 +199,7 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -210,9 +208,9 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-							Target: &ledgerpb.Target{
-								Target: &ledgerpb.Target_Account{
-									Account: &ledgerpb.TargetAccount{Addr: "users:123"},
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: "users:123"},
 								},
 							},
 							Key: "",
@@ -241,20 +239,20 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
 	existingState := &commonpb.TransactionState{
 		CreatedByLog: 1,
-		Metadata: map[string]*ledgerpb.MetadataValue{
-			"category": ledgerpb.NewStringValue("expense"),
-			"status":   ledgerpb.NewStringValue("active"),
+		Metadata: map[string]*commonpb.MetadataValue{
+			"category": commonpb.NewStringValue("expense"),
+			"status":   commonpb.NewStringValue("active"),
 		},
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetTransactionState(mockStore, txKey, existingState.AsReader(), nil)
 	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
 		// "category" should be removed, only "status" remains
@@ -270,9 +268,9 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
-					DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
-						Target: &ledgerpb.Target{
-							Target: &ledgerpb.Target_TransactionId{TransactionId: 3},
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_TransactionId{TransactionId: 3},
 						},
 						Key: "category",
 					},
@@ -306,16 +304,16 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
-					DeleteMetadata: &ledgerpb.DeleteMetadataCommand{
-						Target: &ledgerpb.Target{
-							Target: &ledgerpb.Target_TransactionId{TransactionId: 99},
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_TransactionId{TransactionId: 99},
 						},
 						Key: "status",
 					},

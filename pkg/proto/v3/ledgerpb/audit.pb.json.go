@@ -65,19 +65,20 @@ func auditProtoFieldJSON(msg proto.Message) (json.RawValue, error) {
 // submessages, and the empty-on-list slices.
 func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Sequence       uint64        `json:"sequence"`
-		Timestamp      *Timestamp    `json:"timestamp,omitempty"`
-		ProposalId     uint64        `json:"proposalId"`
-		Success        *AuditSuccess `json:"success,omitempty"`
-		Failure        *AuditFailure `json:"failure,omitempty"`
-		OrderCount     uint32        `json:"orderCount"`
-		Items          []*AuditItem  `json:"items,omitempty"`
-		Ledgers        []string      `json:"ledgers,omitempty"`
-		Hash           string        `json:"hash,omitempty"`
-		HashVersion    uint32        `json:"hashVersion"`
-		CallerSnapshot json.RawValue `json:"callerSnapshot,omitempty"`
-		Idempotency    json.RawValue `json:"idempotency,omitempty"`
-		Signature      json.RawValue `json:"signature,omitempty"`
+		Sequence             uint64        `json:"sequence"`
+		Timestamp            *Timestamp    `json:"timestamp,omitempty"`
+		ProposalId           uint64        `json:"proposalId"`
+		Success              *AuditSuccess `json:"success,omitempty"`
+		Failure              *AuditFailure `json:"failure,omitempty"`
+		OrderCount           uint32        `json:"orderCount"`
+		Items                []*AuditItem  `json:"items,omitempty"`
+		Ledgers              []string      `json:"ledgers,omitempty"`
+		Hash                 string        `json:"hash,omitempty"`
+		HashVersion          uint32        `json:"hashVersion"`
+		RequiredCapabilities []uint32      `json:"requiredCapabilities,omitempty"`
+		CallerSnapshot       json.RawValue `json:"callerSnapshot,omitempty"`
+		Idempotency          json.RawValue `json:"idempotency,omitempty"`
+		Signature            json.RawValue `json:"signature,omitempty"`
 	}
 
 	aux := Aux{

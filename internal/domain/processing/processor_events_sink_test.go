@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -22,11 +21,11 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	sinkConfig := &ledgerpb.SinkConfig{
+	sinkConfig := &commonpb.SinkConfig{
 		Name:         "my-nats-sink",
 		ControllerId: "cr-uid-1",
-		Type: &ledgerpb.SinkConfig_Nats{
-			Nats: &ledgerpb.NatsSinkConfig{
+		Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{
 				Url:   "nats://localhost:4222",
 				Topic: "ledger.events",
 			},
@@ -75,7 +74,7 @@ func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
 				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-						Config: &ledgerpb.SinkConfig{
+						Config: &commonpb.SinkConfig{
 							Name:      "huge-sink",
 							BatchSize: domain.MaxSinkBatchSize + 1,
 						},
@@ -106,7 +105,7 @@ func TestProcessAddEventsSink_BatchSizeAtMaxAccepted(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	cfg := &ledgerpb.SinkConfig{
+	cfg := &commonpb.SinkConfig{
 		Name:      "max-sink",
 		BatchSize: domain.MaxSinkBatchSize,
 	}
@@ -139,7 +138,7 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	existingConfig := &ledgerpb.SinkConfig{Name: "my-nats-sink"}
+	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
 
 	order := &raftcmdpb.Order{
@@ -147,7 +146,7 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
 				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-						Config: &ledgerpb.SinkConfig{
+						Config: &commonpb.SinkConfig{
 							Name: "my-nats-sink",
 						},
 					},
@@ -175,7 +174,7 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	existingConfig := &ledgerpb.SinkConfig{Name: "my-nats-sink"}
+	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
 
 	order := &raftcmdpb.Order{
@@ -249,7 +248,7 @@ func TestProcessRemoveEventsSink_ControllerGuard(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			store := NewMockScope(ctrl)
-			store.EXPECT().GetSinkConfig("sink").Return((&ledgerpb.SinkConfig{Name: "sink", ControllerId: tc.current}).AsReader(), nil)
+			store.EXPECT().GetSinkConfig("sink").Return((&commonpb.SinkConfig{Name: "sink", ControllerId: tc.current}).AsReader(), nil)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{

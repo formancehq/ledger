@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -35,7 +35,7 @@ func addTypeReqL(ledger string, prefix int) *servicepb.Request {
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: ledger,
-				AccountType: &ledgerpb.AccountType{
+				AccountType: &commonpb.AccountType{
 					Name:    name,
 					Pattern: name + ":{id}",
 				},
@@ -51,10 +51,10 @@ func saveAccountMetaReqL(ledger, addr, key, val string) *servicepb.Request {
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
-						AddMetadata: &ledgerpb.SaveMetadataCommand{
+						AddMetadata: &commonpb.SaveMetadataCommand{
 							Target: accountTarget(addr),
-							Metadata: map[string]*ledgerpb.MetadataValue{
-								key: {Type: &ledgerpb.MetadataValue_StringValue{StringValue: val}},
+							Metadata: map[string]*commonpb.MetadataValue{
+								key: {Type: &commonpb.MetadataValue_StringValue{StringValue: val}},
 							},
 						},
 					},

@@ -8,8 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -18,57 +17,57 @@ func TestLogToEvent(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		log          *ledgerpb.Log
-		expectedType ledgerpb.EventType
+		log          *commonpb.Log
+		expectedType commonpb.EventType
 		expectedName string
 	}{
 		{
 			name: "CREATED_LEDGER",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 1,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_CreateLedger{
-						CreateLedger: &ledgerpb.CreatedLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name:      "orders",
-							CreatedAt: &ledgerpb.Timestamp{Data: 1000},
+							CreatedAt: &commonpb.Timestamp{Data: 1000},
 						},
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_CREATED_LEDGER,
+			expectedType: commonpb.EventType_CREATED_LEDGER,
 			expectedName: "orders",
 		},
 		{
 			name: "DELETED_LEDGER",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 2,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_DeleteLedger{
-						DeleteLedger: &ledgerpb.DeletedLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_DeleteLedger{
+						DeleteLedger: &commonpb.DeletedLedgerLog{
 							Name:      "orders",
-							DeletedAt: &ledgerpb.Timestamp{Data: 2000},
+							DeletedAt: &commonpb.Timestamp{Data: 2000},
 						},
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_DELETED_LEDGER,
+			expectedType: commonpb.EventType_DELETED_LEDGER,
 			expectedName: "orders",
 		},
 		{
 			name: "COMMITTED_TRANSACTION",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 3,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_Apply{
-						Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "payments",
-							Log: &ledgerpb.LedgerLog{
-								Date: &ledgerpb.Timestamp{Data: 3000},
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 3000},
 								Id:   1,
-								Data: &ledgerpb.LedgerLogPayload{
-									Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-										CreatedTransaction: &ledgerpb.CreatedTransaction{
-											Transaction: &ledgerpb.Transaction{Id: 1},
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+										CreatedTransaction: &commonpb.CreatedTransaction{
+											Transaction: &commonpb.Transaction{Id: 1},
 										},
 									},
 								},
@@ -77,25 +76,25 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_COMMITTED_TRANSACTION,
+			expectedType: commonpb.EventType_COMMITTED_TRANSACTION,
 			expectedName: "payments",
 		},
 		{
 			name: "REVERTED_TRANSACTION",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 4,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_Apply{
-						Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "payments",
-							Log: &ledgerpb.LedgerLog{
-								Date: &ledgerpb.Timestamp{Data: 4000},
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 4000},
 								Id:   2,
-								Data: &ledgerpb.LedgerLogPayload{
-									Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-										RevertedTransaction: &ledgerpb.RevertedTransaction{
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+										RevertedTransaction: &commonpb.RevertedTransaction{
 											RevertedTransactionId: 1,
-											RevertTransaction:     &ledgerpb.Transaction{Id: 2},
+											RevertTransaction:     &commonpb.Transaction{Id: 2},
 										},
 									},
 								},
@@ -104,26 +103,26 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_REVERTED_TRANSACTION,
+			expectedType: commonpb.EventType_REVERTED_TRANSACTION,
 			expectedName: "payments",
 		},
 		{
 			name: "SAVED_METADATA",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 5,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_Apply{
-						Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "orders",
-							Log: &ledgerpb.LedgerLog{
-								Date: &ledgerpb.Timestamp{Data: 5000},
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 5000},
 								Id:   3,
-								Data: &ledgerpb.LedgerLogPayload{
-									Payload: &ledgerpb.LedgerLogPayload_SavedMetadata{
-										SavedMetadata: &ledgerpb.SavedMetadata{
-											Target: &ledgerpb.Target{
-												Target: &ledgerpb.Target_Account{
-													Account: &ledgerpb.TargetAccount{Addr: "user:123"},
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_SavedMetadata{
+										SavedMetadata: &commonpb.SavedMetadata{
+											Target: &commonpb.Target{
+												Target: &commonpb.Target_Account{
+													Account: &commonpb.TargetAccount{Addr: "user:123"},
 												},
 											},
 										},
@@ -134,7 +133,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_SAVED_METADATA,
+			expectedType: commonpb.EventType_SAVED_METADATA,
 			expectedName: "orders",
 		},
 		{
@@ -167,21 +166,21 @@ func TestLogToEvent(t *testing.T) {
 		},
 		{
 			name: "DELETED_METADATA",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 6,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_Apply{
-						Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "orders",
-							Log: &ledgerpb.LedgerLog{
-								Date: &ledgerpb.Timestamp{Data: 6000},
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 6000},
 								Id:   4,
-								Data: &ledgerpb.LedgerLogPayload{
-									Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{
-										DeletedMetadata: &ledgerpb.DeletedMetadata{
-											Target: &ledgerpb.Target{
-												Target: &ledgerpb.Target_Account{
-													Account: &ledgerpb.TargetAccount{Addr: "user:123"},
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
+										DeletedMetadata: &commonpb.DeletedMetadata{
+											Target: &commonpb.Target{
+												Target: &commonpb.Target_Account{
+													Account: &commonpb.TargetAccount{Addr: "user:123"},
 												},
 											},
 											Key: "status",
@@ -193,25 +192,25 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_DELETED_METADATA,
+			expectedType: commonpb.EventType_DELETED_METADATA,
 			expectedName: "orders",
 		},
 		{
 			name: "SKIPPED_ORDER",
-			log: &ledgerpb.Log{
+			log: &commonpb.Log{
 				Sequence: 7,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_Apply{
-						Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "orders",
-							Log: &ledgerpb.LedgerLog{
-								Date: &ledgerpb.Timestamp{Data: 7000},
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 7000},
 								Id:   5,
-								Data: &ledgerpb.LedgerLogPayload{
-									Payload: &ledgerpb.LedgerLogPayload_OrderSkipped{
-										OrderSkipped: &ledgerpb.OrderSkippedLog{
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+										OrderSkipped: &commonpb.OrderSkippedLog{
 
-											Details: ledgerpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-1"}),
+											Details: commonpb.MustFailureDetails("TRANSACTION_REFERENCE_CONFLICT", map[string]string{"reference": "ref-1"}),
 										},
 									},
 								},
@@ -220,7 +219,7 @@ func TestLogToEvent(t *testing.T) {
 					},
 				},
 			},
-			expectedType: ledgerpb.EventType_SKIPPED_ORDER,
+			expectedType: commonpb.EventType_SKIPPED_ORDER,
 			expectedName: "orders",
 		},
 	}
@@ -304,10 +303,10 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	event := &eventspb.Event{
 		App:         EventApp,
 		Version:     EventVersion,
-		Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
-		Date:        &ledgerpb.Timestamp{Data: 1000},
+		Date:        &commonpb.Timestamp{Data: 1000},
 	}
 
 	data, err := SerializeEvent(event, FormatJSON)
@@ -325,29 +324,29 @@ func TestSerializeEvent_JSON(t *testing.T) {
 func TestSerializeEvent_JSONLedgerLogOutput(t *testing.T) {
 	t.Parallel()
 
-	wantLog := &ledgerpb.LedgerLog{
+	wantLog := &commonpb.LedgerLog{
 		Id:   7,
-		Date: &ledgerpb.Timestamp{Data: 1_700_000_000_000_000},
-		Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransaction{
-				Transaction: &ledgerpb.Transaction{
+		Date: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+		Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{
 					Id:        9,
 					Reference: "order-456",
-					Postings: []*ledgerpb.Posting{
-						ledgerpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+					Postings: []*commonpb.Posting{
+						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
 					},
-					Metadata: map[string]*ledgerpb.MetadataValue{"note": ledgerpb.NewStringValue("checkout")},
+					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
 				},
-				AccountMetadata: map[string]*ledgerpb.MetadataMap{
-					"alice": {Values: map[string]*ledgerpb.MetadataValue{"tier": ledgerpb.NewStringValue("gold")}},
+				AccountMetadata: map[string]*commonpb.MetadataMap{
+					"alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
 				},
 			},
 		}},
 	}
-	event := LogToEvent(&ledgerpb.Log{
+	event := LogToEvent(&commonpb.Log{
 		Sequence: 42,
-		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-			Apply: &ledgerpb.ApplyLedgerLog{LedgerName: "orders", Log: wantLog},
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{LedgerName: "orders", Log: wantLog},
 		}},
 	})
 
@@ -384,10 +383,10 @@ func TestSerializeEvent_Proto(t *testing.T) {
 	event := &eventspb.Event{
 		App:         EventApp,
 		Version:     EventVersion,
-		Type:        ledgerpb.EventType_COMMITTED_TRANSACTION,
+		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
-		Date:        &ledgerpb.Timestamp{Data: 1000},
+		Date:        &commonpb.Timestamp{Data: 1000},
 	}
 
 	data, err := SerializeEvent(event, FormatProto)
@@ -407,7 +406,7 @@ func TestSerializeEvent_Proto(t *testing.T) {
 func TestSerializeEvent_UnsupportedFormat(t *testing.T) {
 	t.Parallel()
 
-	event := &eventspb.Event{Type: ledgerpb.EventType_COMMITTED_TRANSACTION}
+	event := &eventspb.Event{Type: commonpb.EventType_COMMITTED_TRANSACTION}
 
 	_, err := SerializeEvent(event, Format("xml"))
 	require.Error(t, err)

@@ -218,7 +218,7 @@ func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {
 
 		location := target.location
 		resolution := "move it to an unconstrained test file or extend the runner explicitly"
-		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to unsupported nested Go module ") {
+		if strings.Contains(target.unreachableReason, "nested Go module ") {
 			resolution = "extend the runner to invoke targets from that module before adding the target"
 		}
 		location.message = fmt.Sprintf(

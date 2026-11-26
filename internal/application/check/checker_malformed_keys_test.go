@@ -6,10 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -30,7 +28,7 @@ func TestCheckerFSMRejectsMalformedMetadataKey(t *testing.T) {
 	key = append(key, []byte("users:001/status")...)
 	batch := store.OpenWriteSession()
 	defer func() { _ = batch.Cancel() }() // Best-effort cleanup after commit or assertion failure.
-	_, err := attrs.Metadata.Set(batch, key, ledgerpb.NewStringValue("injected"))
+	_, err := attrs.Metadata.Set(batch, key, commonpb.NewStringValue("injected"))
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 

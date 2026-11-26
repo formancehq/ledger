@@ -12,7 +12,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -25,7 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -56,7 +55,7 @@ func commitClusterPolicy(t *testing.T, store *dal.Store, revision uint64) {
 	// The metadata ceilings are part of every committed policy: admission
 	// rejects a business write when they are absent, so a seed without them
 	// would fail every write path rather than the behaviour under test.
-	require.NoError(t, state.SaveClusterPolicy(batch, &ledgerpb.ClusterPolicy{
+	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
 		Revision:                    revision,
 		QueryCheckpointLimit:        10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -84,10 +83,10 @@ func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
 	// Register test ledger in both global zone (for GetLedgerByName queries)
 	// and attribute zone (for preloader's bloom → cache → Pebble resolution).
 	testAttrs := attributes.New()
-	info := &ledgerpb.LedgerInfo{
+	info := &commonpb.LedgerInfo{
 		Name:      testLedgerName,
 		Id:        1,
-		CreatedAt: ledgerpb.NewTimestamp(time.Now()),
+		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	}
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
@@ -151,11 +150,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Postings: []*ledgerpb.Posting{
+									Postings: []*commonpb.Posting{
 										{
 											Source:      "world",
 											Destination: "user:alice",
-											Amount:      ledgerpb.NewUint256FromUint64(100),
+											Amount:      commonpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -200,11 +199,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
-			presentRevertTarget([]*ledgerpb.Posting{
+			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
-					Amount:      ledgerpb.NewUint256FromUint64(100),
+					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
 			}),
@@ -255,17 +254,17 @@ func TestExtractNeededVolumes(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
-			presentRevertTarget([]*ledgerpb.Posting{
+			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
-					Amount:      ledgerpb.NewUint256FromUint64(100),
+					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
 				{
 					Source:      "user:alice",
 					Destination: "user:bob",
-					Amount:      ledgerpb.NewUint256FromUint64(50),
+					Amount:      commonpb.NewUint256FromUint64(50),
 					Asset:       "USD",
 				},
 			}),
@@ -327,11 +326,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 								AddMetadata: &raftcmdpb.SaveMetadataOrder{
-									Target: &ledgerpb.Target{
-										Target: &ledgerpb.Target_TransactionId{TransactionId: 7},
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_TransactionId{TransactionId: 7},
 									},
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"status": ledgerpb.NewStringValue("paid"),
+									Metadata: map[string]*commonpb.MetadataValue{
+										"status": commonpb.NewStringValue("paid"),
 									},
 								},
 							},
@@ -360,11 +359,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		// Setup: persist a TxState with Postings — the shape a post-EN-1242
 		// FSM would produce after applying a CreateTransaction.
-		expectedPostings := []*ledgerpb.Posting{
+		expectedPostings := []*commonpb.Posting{
 			{
 				Source:      "world",
 				Destination: "user:alice",
-				Amount:      ledgerpb.NewUint256FromUint64(100),
+				Amount:      commonpb.NewUint256FromUint64(100),
 				Asset:       "USD",
 			},
 		}
@@ -487,11 +486,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: true,
-									Postings: []*ledgerpb.Posting{
+									Postings: []*commonpb.Posting{
 										{
 											Source:      "users:alice",
 											Destination: "users:bob",
-											Amount:      ledgerpb.NewUint256FromUint64(100),
+											Amount:      commonpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -537,11 +536,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: false, // Default behavior
-									Postings: []*ledgerpb.Posting{
+									Postings: []*commonpb.Posting{
 										{
 											Source:      "users:alice",
 											Destination: "users:bob",
-											Amount:      ledgerpb.NewUint256FromUint64(100),
+											Amount:      commonpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -588,11 +587,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: true,
-									Postings: []*ledgerpb.Posting{
+									Postings: []*commonpb.Posting{
 										{
 											Source:      "users:force_source",
 											Destination: "users:force_dest",
-											Amount:      ledgerpb.NewUint256FromUint64(100),
+											Amount:      commonpb.NewUint256FromUint64(100),
 											Asset:       "USD",
 										},
 									},
@@ -612,11 +611,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: false,
-									Postings: []*ledgerpb.Posting{
+									Postings: []*commonpb.Posting{
 										{
 											Source:      "users:normal_source",
 											Destination: "users:normal_dest",
-											Amount:      ledgerpb.NewUint256FromUint64(200),
+											Amount:      commonpb.NewUint256FromUint64(200),
 											Asset:       "EUR",
 										},
 									},
@@ -669,11 +668,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
-			presentRevertTarget([]*ledgerpb.Posting{
+			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
-					Amount:      ledgerpb.NewUint256FromUint64(100),
+					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
 			}),
@@ -731,10 +730,10 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 	t.Parallel()
 
-	makeAccountMetadata := func() map[string]*ledgerpb.MetadataMap {
-		return map[string]*ledgerpb.MetadataMap{
-			"users:alice": {Values: map[string]*ledgerpb.MetadataValue{
-				"vip": ledgerpb.NewStringValue("yes"),
+	makeAccountMetadata := func() map[string]*commonpb.MetadataMap {
+		return map[string]*commonpb.MetadataMap{
+			"users:alice": {Values: map[string]*commonpb.MetadataValue{
+				"vip": commonpb.NewStringValue("yes"),
 			}},
 		}
 	}
@@ -746,10 +745,10 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 		{
 			name: "postings + accountMetadata",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings: []*ledgerpb.Posting{{
+				Postings: []*commonpb.Posting{{
 					Source:      "world",
 					Destination: "users:alice",
-					Amount:      ledgerpb.NewUint256FromUint64(1),
+					Amount:      commonpb.NewUint256FromUint64(1),
 					Asset:       "USD",
 				}},
 				AccountMetadata: makeAccountMetadata(),
@@ -758,7 +757,7 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 		{
 			name: "inline script + accountMetadata",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Script:          &ledgerpb.Script{Plain: "send [USD 1] (source = @world destination = @users:alice)"},
+				Script:          &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @users:alice)"},
 				AccountMetadata: makeAccountMetadata(),
 			},
 		},
@@ -821,11 +820,11 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 				Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true,
-						Postings: []*ledgerpb.Posting{
+						Postings: []*commonpb.Posting{
 							{
 								Source:      "users:alice",
 								Destination: "users:bob",
-								Amount:      ledgerpb.NewUint256FromUint64(100),
+								Amount:      commonpb.NewUint256FromUint64(100),
 								Asset:       "USD",
 							},
 						},
@@ -927,10 +926,10 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*ledgerpb.Posting{{
+								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: "user:alice",
-									Amount:      ledgerpb.NewUint256FromUint64(100),
+									Amount:      commonpb.NewUint256FromUint64(100),
 									Asset:       "USD",
 								}},
 							},
@@ -984,7 +983,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `
 										send [USD/2 1000] (
 											source = @users:alice
@@ -1037,7 +1036,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Force: true,
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `
 										send [USD/2 1000] (
 											source = @users:alice
@@ -1147,7 +1146,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
 									},
 								},
@@ -1194,7 +1193,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `
 										vars {
 											monetary $amount
@@ -1258,7 +1257,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `
 										vars {
 											account $dst = meta(@cfg, "dest")
@@ -1307,7 +1306,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
 									},
 								},
@@ -1347,14 +1346,14 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{
+									Script: &commonpb.Script{
 										Plain: `send [USD/2 1000] ( source = @world destination = @treasury )`,
 									},
-									Postings: []*ledgerpb.Posting{
+									Postings: []*commonpb.Posting{
 										{
 											Source:      "bank",
 											Destination: "merchant",
-											Amount:      ledgerpb.NewUint256FromUint64(100),
+											Amount:      commonpb.NewUint256FromUint64(100),
 											Asset:       "EUR",
 										},
 									},

@@ -3,9 +3,9 @@ package events
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
@@ -23,7 +23,7 @@ const (
 )
 
 // LogToEvent converts a committed global log entry into a domain event.
-func LogToEvent(log *ledgerpb.Log) *eventspb.Event {
+func LogToEvent(log *commonpb.Log) *eventspb.Event {
 	event := &eventspb.Event{
 		LogSequence: log.GetSequence(),
 		Log:         log,
@@ -32,33 +32,38 @@ func LogToEvent(log *ledgerpb.Log) *eventspb.Event {
 	}
 
 	switch p := log.GetPayload().GetType().(type) {
-	case *ledgerpb.LogPayload_CreateLedger:
-		event.Type = ledgerpb.EventType_CREATED_LEDGER
+	case *commonpb.LogPayload_CreateLedger:
+		event.Type = commonpb.EventType_CREATED_LEDGER
+		// Mirror credentials can occur in created-ledger logs. Other emitted
+		// log variants have no credential-bearing configuration fields.
+		event.Log = sensitive.Redact(log)
 		event.Ledger = p.CreateLedger.GetName()
 		event.Date = p.CreateLedger.GetCreatedAt()
-	case *ledgerpb.LogPayload_DeleteLedger:
-		event.Type = ledgerpb.EventType_DELETED_LEDGER
+	case *commonpb.LogPayload_DeleteLedger:
+		event.Type = commonpb.EventType_DELETED_LEDGER
 		event.Ledger = p.DeleteLedger.GetName()
 		event.Date = p.DeleteLedger.GetDeletedAt()
-	case *ledgerpb.LogPayload_Apply:
+	case *commonpb.LogPayload_Apply:
 		event.Ledger = p.Apply.GetLedgerName()
 		event.Date = p.Apply.GetLog().GetDate()
 
 		switch p.Apply.GetLog().GetData().GetPayload().(type) {
-		case *ledgerpb.LedgerLogPayload_CreatedTransaction:
-			event.Type = ledgerpb.EventType_COMMITTED_TRANSACTION
-		case *ledgerpb.LedgerLogPayload_RevertedTransaction:
-			event.Type = ledgerpb.EventType_REVERTED_TRANSACTION
-		case *ledgerpb.LedgerLogPayload_SavedMetadata:
-			event.Type = ledgerpb.EventType_SAVED_METADATA
-		case *ledgerpb.LedgerLogPayload_DeletedMetadata:
-			event.Type = ledgerpb.EventType_DELETED_METADATA
-		case *ledgerpb.LedgerLogPayload_SetMetadataFieldType:
+		case *commonpb.LedgerLogPayload_CreatedTransaction:
+			event.Type = commonpb.EventType_COMMITTED_TRANSACTION
+		case *commonpb.LedgerLogPayload_RevertedTransaction:
+			event.Type = commonpb.EventType_REVERTED_TRANSACTION
+		case *commonpb.LedgerLogPayload_SavedMetadata:
+			event.Type = commonpb.EventType_SAVED_METADATA
+		case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+			event.Type = commonpb.EventType_ACCOUNT_METADATA_UPDATED
+		case *commonpb.LedgerLogPayload_DeletedMetadata:
+			event.Type = commonpb.EventType_DELETED_METADATA
+		case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 			// Schema operations — no dedicated event type, use unspecified
-		case *ledgerpb.LedgerLogPayload_RemovedMetadataFieldType:
+		case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 			// Schema operations — no dedicated event type, use unspecified
-		case *ledgerpb.LedgerLogPayload_OrderSkipped:
-			event.Type = ledgerpb.EventType_SKIPPED_ORDER
+		case *commonpb.LedgerLogPayload_OrderSkipped:
+			event.Type = commonpb.EventType_SKIPPED_ORDER
 		}
 	}
 

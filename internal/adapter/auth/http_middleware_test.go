@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ok200 is a simple handler that returns 200.
@@ -124,7 +125,7 @@ func TestHTTPAuthMiddleware_AnonymousWriteCallerSnapshot(t *testing.T) {
 	mapping := DefaultMapping("ledger")
 	mapping[ScopeMappingAnonymousKey] = []Scope{ScopeTransactionsWrite}
 
-	var captured *ledgerpb.CallerSnapshot
+	var captured *commonpb.CallerSnapshot
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		captured = ResolveCallerSnapshot(r.Context())
 		w.WriteHeader(http.StatusOK)

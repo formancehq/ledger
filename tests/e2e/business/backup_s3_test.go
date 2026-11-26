@@ -18,10 +18,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -130,8 +129,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		clusterClient = node.ClusterClient
 	})
 
-	s3Storage := func() *ledgerpb.BackupStorage {
-		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
+	s3Storage := func() *commonpb.BackupStorage {
+		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 			Bucket:   backupS3Bucket,
 			Region:   backupS3Region,
 			Endpoint: minioEndpoint,
@@ -158,7 +157,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*ledgerpb.Posting{
+			[]*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 			},
 			nil,
@@ -205,7 +204,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		// Add more data
 		for i := range 5 {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-				[]*ledgerpb.Posting{
+				[]*commonpb.Posting{
 					actions.NewPosting("world", "users:bob", big.NewInt(int64(100*(i+1))), "EUR"),
 				},
 				nil,
@@ -244,11 +243,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		beforeAudit := manifestBefore.Checkpoint.LastAuditSequence
 
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*ledgerpb.Posting{
-				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
-			},
-			nil,
-		)))
+			[]*commonpb.Posting{actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP")}, nil)))
 		Expect(err).To(Succeed())
 		response, err := clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
 		Expect(err).To(Succeed())
@@ -257,73 +252,12 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(response.GetLastAuditSequence()).To(BeNumerically(">", beforeAudit))
 		manifest, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
-		Expect(manifest.Checkpoint).NotTo(BeNil())
-		Expect(manifest.Exports).NotTo(BeEmpty())
-
-		// Verify export segments exist on S3
-		for _, seg := range manifest.Exports {
-			Expect(backupS3ObjectExists(ctx, s3Client, seg.Key)).To(BeTrue(),
-				"export segment %s should exist", seg.Key)
-		}
-	})
-
-	It("should accumulate multiple incremental exports", func() {
-		// First incremental is already done from previous test
-		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
-		Expect(err).To(Succeed())
-		exportCountBefore := len(manifestBefore.Exports)
-
-		// Add more data
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
-			[]*ledgerpb.Posting{
-				actions.NewPosting("world", "users:dave", big.NewInt(200), "JPY"),
-			},
-			nil,
-		)))
-		Expect(err).To(Succeed())
-
-		// Run another incremental
-		_, err = clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
-		Expect(err).To(Succeed())
-
-		// Verify exports accumulated
-		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
-		Expect(err).To(Succeed())
-		Expect(len(manifestAfter.Exports)).To(BeNumerically(">", exportCountBefore))
-	})
-
-	It("should no-op when no new data since last export", func() {
-		resp, err := clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
-		Expect(err).To(Succeed())
-		Expect(resp.GetLogEntriesExported()).To(BeZero())
-		Expect(resp.GetAuditEntriesExported()).To(BeZero())
-		Expect(resp.GetSegmentsUploaded()).To(BeZero())
-	})
-
-	It("should clean up old exports when a new full backup is taken", func() {
-		// Verify exports exist before
-		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
-		Expect(err).To(Succeed())
-		Expect(manifestBefore.Exports).NotTo(BeEmpty())
-
-		oldExportKeys := make([]string, len(manifestBefore.Exports))
-		for i, seg := range manifestBefore.Exports {
-			oldExportKeys[i] = seg.Key
-		}
-
-		// Take a new full backup — this should clean up old exports
-		_, err = clusterClient.Backup(ctx, backupRequest())
-		Expect(err).To(Succeed())
-
-		// Verify exports are cleared in manifest
-		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
-		Expect(err).To(Succeed())
-		Expect(manifestAfter.Exports).To(BeEmpty())
-
-		// Verify old export segments were deleted from S3
-		for _, key := range oldExportKeys {
-			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeFalse(),
-				"old export segment %s should have been cleaned up", key)
+		Expect(manifest.Exports).To(BeEmpty())
+		Expect(manifest.Checkpoint.Files).NotTo(BeEmpty())
+		Expect(manifest.Checkpoint.LastLogSequence).To(Equal(response.GetLastLogSequence()))
+		Expect(manifest.Checkpoint.LastAuditSequence).To(Equal(response.GetLastAuditSequence()))
+		for _, file := range manifest.Checkpoint.Files {
+			Expect(backupS3ObjectExists(ctx, s3Client, file.Key)).To(BeTrue())
 		}
 	})
 })

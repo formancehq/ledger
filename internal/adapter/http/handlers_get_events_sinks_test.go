@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetEventsSinks_Success(t *testing.T) {
@@ -19,9 +19,11 @@ func TestHandleGetEventsSinks_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetEventsSinks(gomock.Any()).DoAndReturn(
-		func(_ context.Context) ([]*ledgerpb.SinkConfig, []*ledgerpb.SinkStatus, error) {
-			return []*ledgerpb.SinkConfig{{Name: "kafka"}},
-				[]*ledgerpb.SinkStatus{{SinkName: "kafka", Cursor: 42}}, nil
+		func(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
+			return []*commonpb.SinkConfig{{Name: "kafka", EventTypes: []commonpb.EventType{
+					commonpb.EventType_COMMITTED_TRANSACTION, commonpb.EventType(99),
+				}}},
+				[]*commonpb.SinkStatus{{SinkName: "kafka", Cursor: 42}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -52,7 +54,7 @@ func TestHandleGetEventsSinks_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetEventsSinks(gomock.Any()).DoAndReturn(
-		func(_ context.Context) ([]*ledgerpb.SinkConfig, []*ledgerpb.SinkStatus, error) {
+		func(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 			return nil, nil, errors.New("boom")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

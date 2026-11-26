@@ -6,12 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -22,7 +21,7 @@ func TestApplyPostingsSinglePosting(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("alice", "bob", "USD", 100),
 	}
 
@@ -52,7 +51,7 @@ func TestApplyPostingsMultiplePostings(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("treasury", "alice", "USD", 500),
 		newPosting("treasury", "bob", "USD", 300),
 	}
@@ -74,10 +73,10 @@ func TestApplyPostingsAccumulatesAcrossCalls(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	require.NoError(t, domainreplay.ApplyPostings("ledger", []*ledgerpb.Posting{
+	require.NoError(t, domainreplay.ApplyPostings("ledger", []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 100),
 	}, rs))
-	require.NoError(t, domainreplay.ApplyPostings("ledger", []*ledgerpb.Posting{
+	require.NoError(t, domainreplay.ApplyPostings("ledger", []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 200),
 	}, rs))
 
@@ -98,17 +97,17 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 
 	// Create an ephemeral account type matching "orders:*"
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*ledgerpb.AccountType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"orders": {
 				Name:        "orders",
 				Pattern:     "orders:{id}",
-				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		}),
 	}
 
 	// Fund order account: world -> orders:123  100 USD
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("world", "orders:123", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
@@ -125,7 +124,7 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	require.NotNil(t, pair, "volume should still exist (non-zero balance)")
 
 	// Now drain: orders:123 -> world  100 USD
-	drainPostings := []*ledgerpb.Posting{
+	drainPostings := []*commonpb.Posting{
 		newPosting("orders:123", "world", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
@@ -145,7 +144,7 @@ func TestSimulateEphemeralPurgeSkipsNonEphemeral(t *testing.T) {
 
 	// No ephemeral types
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*ledgerpb.AccountType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"users": {
 				Name:    "users",
 				Pattern: "users:{id}",
@@ -154,12 +153,12 @@ func TestSimulateEphemeralPurgeSkipsNonEphemeral(t *testing.T) {
 		}),
 	}
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("world", "users:alice", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
 
-	drainPostings := []*ledgerpb.Posting{
+	drainPostings := []*commonpb.Posting{
 		newPosting("users:alice", "world", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
@@ -184,7 +183,7 @@ func TestSimulateEphemeralPurgeNoAccountTypes(t *testing.T) {
 	// Empty account types — should be a no-op
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("world", "account", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
@@ -206,16 +205,16 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*ledgerpb.AccountType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"world-type": {
 				Name:        "world-type",
 				Pattern:     "world",
-				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		}),
 	}
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
@@ -240,10 +239,10 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	}
 
 	// Create tx 1
-	checkReversionInvariants("ledger", 1, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransaction{
-				Transaction: &ledgerpb.Transaction{Id: 1},
+	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: 1},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -251,11 +250,11 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	require.Empty(t, errors)
 
 	// Revert tx 1 (valid)
-	checkReversionInvariants("ledger", 2, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &ledgerpb.RevertedTransaction{
+	checkReversionInvariants("ledger", 2, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
-				RevertTransaction:     &ledgerpb.Transaction{Id: 2},
+				RevertTransaction:     &commonpb.Transaction{Id: 2},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -282,20 +281,20 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	}
 
 	// Create tx 1
-	checkReversionInvariants("ledger", 1, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransaction{
-				Transaction: &ledgerpb.Transaction{Id: 1},
+	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: 1},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
 
 	// Revert tx 1 (valid)
-	checkReversionInvariants("ledger", 2, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &ledgerpb.RevertedTransaction{
+	checkReversionInvariants("ledger", 2, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
-				RevertTransaction:     &ledgerpb.Transaction{Id: 2},
+				RevertTransaction:     &commonpb.Transaction{Id: 2},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -303,11 +302,11 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	require.Empty(t, errors)
 
 	// Double-revert tx 1
-	checkReversionInvariants("ledger", 3, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &ledgerpb.RevertedTransaction{
+	checkReversionInvariants("ledger", 3, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
-				RevertTransaction:     &ledgerpb.Transaction{Id: 3},
+				RevertTransaction:     &commonpb.Transaction{Id: 3},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -331,11 +330,11 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 	}
 
 	// Revert tx 999 without ever creating it
-	checkReversionInvariants("ledger", 1, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &ledgerpb.RevertedTransaction{
+	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 999,
-				RevertTransaction:     &ledgerpb.Transaction{Id: 1},
+				RevertTransaction:     &commonpb.Transaction{Id: 1},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -359,20 +358,20 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 	}
 
 	// Create tx 1 in ledger-a
-	checkReversionInvariants("ledger-a", 1, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransaction{
-				Transaction: &ledgerpb.Transaction{Id: 1},
+	checkReversionInvariants("ledger-a", 1, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: 1},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
 
 	// Try to revert tx 1 from ledger-b (different ledger — tx 1 doesn't exist there)
-	checkReversionInvariants("ledger-b", 2, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
-			RevertedTransaction: &ledgerpb.RevertedTransaction{
+	checkReversionInvariants("ledger-b", 2, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
-				RevertTransaction:     &ledgerpb.Transaction{Id: 1},
+				RevertTransaction:     &commonpb.Transaction{Id: 1},
 			},
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -395,8 +394,8 @@ func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 	}
 
 	// Nil RevertedTransaction payload should not panic
-	checkReversionInvariants("ledger", 1, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RevertedTransaction{
+	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: nil,
 		},
 	}, knownTxIDs, revertedTxIDs, callback)
@@ -409,7 +408,7 @@ func TestApplyPostingsMultipleAssets(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 100),
 		newPosting("world", "alice", "EUR", 200),
 	}
@@ -438,24 +437,24 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
-		"ledger": accounttype.CompileTypes(map[string]*ledgerpb.AccountType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"orders": {
 				Name:        "orders",
 				Pattern:     "orders:{id}",
-				Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		}),
 	}
 
 	// Fund in two assets
-	fundPostings := []*ledgerpb.Posting{
+	fundPostings := []*commonpb.Posting{
 		newPosting("world", "orders:1", "USD", 100),
 		newPosting("world", "orders:1", "EUR", 200),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", fundPostings, rs))
 
 	// Drain only USD
-	drainPostings := []*ledgerpb.Posting{
+	drainPostings := []*commonpb.Posting{
 		newPosting("orders:1", "world", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
@@ -486,7 +485,7 @@ func TestApplyPostingsZeroAmount(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	postings := []*ledgerpb.Posting{
+	postings := []*commonpb.Posting{
 		newPosting("alice", "bob", "USD", 0),
 	}
 

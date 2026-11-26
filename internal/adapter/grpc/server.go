@@ -32,7 +32,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -42,6 +41,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -634,7 +634,7 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 		errors.Is(err, node.ErrNotLeader) ||
 		errors.Is(err, node.ErrNodeSyncing) ||
 		errors.Is(err, node.ErrTransferLeaderTimeout) ||
-		errors.Is(err, ledgerpb.ErrNoLeader) ||
+		errors.Is(err, commonpb.ErrNoLeader) ||
 		errors.Is(err, plan.ErrCacheHorizonExceeded) ||
 		errors.Is(err, ErrNodeNotReachable) {
 		return status.Error(codes.Unavailable, err.Error())
@@ -675,7 +675,7 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 	}
 
 	// Convert NotFoundError to NotFound
-	if notFoundErr, ok := errors.AsType[*ledgerpb.NotFoundError](err); ok {
+	if notFoundErr, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
 		return status.Error(codes.NotFound, notFoundErr.Error())
 	}
 
@@ -792,7 +792,7 @@ func isInfrastructureRPCMethod(fullMethod string) bool {
 }
 
 func validatePublicRPCPolicies(services map[string]ggrpc.ServiceInfo) error {
-	unregisteredPolicies := ledgerpb.AllRPCAuthPolicies()
+	unregisteredPolicies := commonpb.AllRPCAuthPolicies()
 	for serviceName, service := range services {
 		for _, method := range service.Methods {
 			fullMethod := "/" + serviceName + "/" + method.Name
@@ -800,7 +800,7 @@ func validatePublicRPCPolicies(services map[string]ggrpc.ServiceInfo) error {
 				continue
 			}
 
-			if _, err := ledgerpb.RPCAuthPolicyForMethod(fullMethod); err != nil {
+			if _, err := commonpb.RPCAuthPolicyForMethod(fullMethod); err != nil {
 				return err
 			}
 

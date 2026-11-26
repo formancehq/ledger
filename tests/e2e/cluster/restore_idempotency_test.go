@@ -12,6 +12,16 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/testcontainers/testcontainers-go"
@@ -19,18 +29,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 // This suite pins the idempotency-key loss the model test surfaced: keys frozen
@@ -80,21 +78,21 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 	// conflictBody reuses that key with a different amount, which must conflict.
 	replayTx := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(replayKey,
-			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", account, big.NewInt(100), "USD"),
 			}, nil, nil),
 		)
 	}
 	conflictSeed := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(conflictKey,
-			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", account, big.NewInt(50), "USD"),
 			}, nil, nil),
 		)
 	}
 	conflictBody := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(conflictKey,
-			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", account, big.NewInt(999), "USD"),
 			}, nil, nil),
 		)
@@ -105,7 +103,7 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 	// remain present in the later complete checkpoint.
 	preservedTx := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(preservedKey,
-			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", preservedAccount, big.NewInt(77), "USD"),
 			}, nil, nil),
 		)
@@ -141,8 +139,8 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 		Expect(vol.GetInput().DecimalString()).To(Equal("150"), "%s: %s USD input (keys must dedup, no double-apply)", phase, account)
 	}
 
-	storage := func() *ledgerpb.BackupStorage {
-		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
+	storage := func() *commonpb.BackupStorage {
+		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,

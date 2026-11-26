@@ -12,9 +12,11 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -188,7 +190,7 @@ func TestAdmitActionCounters(t *testing.T) {
 		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: "ledger-oversized-metadata",
-				Metadata: map[string]*ledgerpb.MetadataValue{
+				Metadata: map[string]*commonpb.MetadataValue{
 					"key": metadataStringValue(strings.Repeat("x", domain.DefaultMetadataMaxValueBytes+1)),
 				},
 			}},
@@ -241,7 +243,7 @@ func TestAdmitActionCounters(t *testing.T) {
 		proposer.EXPECT().InitialIndex().Return(uint64(0)).AnyTimes()
 		proposer.EXPECT().
 			Propose(gomock.Any(), gomock.Any()).
-			Return(nil, ledgerpb.ErrNoLeader).
+			Return(nil, commonpb.ErrNoLeader).
 			AnyTimes()
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
@@ -251,7 +253,7 @@ func TestAdmitActionCounters(t *testing.T) {
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},
 		}))
-		require.ErrorIs(t, err, ledgerpb.ErrNoLeader)
+		require.ErrorIs(t, err, commonpb.ErrNoLeader)
 
 		counts := recordedActionCounts(t, reader)
 		require.Equal(t, int64(1), counts[mActionTotal]["create_ledger"])
@@ -268,7 +270,7 @@ func TestAdmitActionCounters(t *testing.T) {
 		proposer.EXPECT().InitialIndex().Return(uint64(0)).AnyTimes()
 		proposer.EXPECT().
 			Propose(gomock.Any(), gomock.Any()).
-			Return(nil, ledgerpb.ErrNoLeader).
+			Return(nil, commonpb.ErrNoLeader).
 			AnyTimes()
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
@@ -283,7 +285,7 @@ func TestAdmitActionCounters(t *testing.T) {
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-b"},
 			}},
 		))
-		require.ErrorIs(t, err, ledgerpb.ErrNoLeader)
+		require.ErrorIs(t, err, commonpb.ErrNoLeader)
 
 		counts := recordedActionCounts(t, reader)
 		require.Equal(t, int64(2), counts[mActionTotal]["create_ledger"])

@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -22,7 +21,7 @@ func TestHandleUpdatePreparedQuery_Success(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -50,7 +49,7 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -173,10 +172,7 @@ func TestHandleUpdatePreparedQuery_InvalidBody(t *testing.T) {
 func TestHandleUpdatePreparedQuery_RequiresTarget(t *testing.T) {
 	t.Parallel()
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListPreparedQueries(gomock.Any(), "ledger1").Return(
-		[]*ledgerpb.PreparedQuery{{Name: "my-query"}}, nil)
-	srv := newTestServer(t, backend)
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
@@ -218,7 +214,7 @@ func TestHandleUpdatePreparedQuery_NullFilterClears(t *testing.T) {
 		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{}}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		})
 	srv := newTestServer(t, backend)
 

@@ -11,24 +11,21 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
-	"google.golang.org/grpc"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"google.golang.org/grpc"
 )
 
 // Native policy is operational state: the second checkpoint must include
@@ -60,8 +57,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		sourceDataDir  string
 	)
 
-	storage := func() *ledgerpb.BackupStorage {
-		return testutil.S3BackupStorage(&ledgerpb.S3StorageConfig{
+	storage := func() *commonpb.BackupStorage {
+		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -340,12 +337,3 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 	})
 })
-
-func clusterPolicyFromAuditItem(item *auditpb.AuditItem) (*ledgerpb.ClusterPolicy, error) {
-	order := &raftcmdpb.Order{}
-	if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
-		return nil, err
-	}
-
-	return order.GetSystemScoped().GetSetClusterPolicy().GetPolicy(), nil
-}

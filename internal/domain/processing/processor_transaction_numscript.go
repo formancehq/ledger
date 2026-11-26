@@ -11,12 +11,11 @@ import (
 
 	"github.com/holiman/uint256"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type numscriptPostingProducer struct {
@@ -29,7 +28,7 @@ type numscriptPostingProducer struct {
 	inputsResolutionHash []byte
 }
 
-func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *ledgerpb.Script) (*produceResult, domain.SerializableError) {
+func (p *numscriptPostingProducer) produceExecution(s Scope, ledgerName string, force bool, script *commonpb.Script) (*produceResult, domain.Describable) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -126,8 +125,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		return nil, execErr
 	}
 
-	// Convert numscript postings to ledgerpb postings and update buffer
-	postings := make([]*ledgerpb.Posting, len(result.Postings))
+	// Convert numscript postings to commonpb postings and update buffer
+	postings := make([]*commonpb.Posting, len(result.Postings))
 
 	var (
 		scratch    uint256.Int // reused across all postings
@@ -137,9 +136,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	for i, posting := range result.Postings {
 		// Authoritative rejection of scope-qualified postings. Color IS modelled —
-		// posting.Color flows into the ledgerpb.Posting and NewVolumeKey below, so
+		// posting.Color flows into the commonpb.Posting and NewVolumeKey below, so
 		// a colored posting materialises its own segregated volume bucket. Scope is
-		// NOT modelled: building a ledgerpb.Posting would silently drop the scope
+		// NOT modelled: building a commonpb.Posting would silently drop the scope
 		// qualifier and collapse onto the unscoped volume — a silent semantic loss.
 		// Reject deterministically so every node produces the same definitive
 		// failure. Mirrors admission's discover-side rejection.
@@ -152,8 +151,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 			return nil, domain.NewNumscriptExecution(
 				fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
-				&ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptPostingNegativeAmount{
-					NumscriptPostingNegativeAmount: &ledgerpb.NumscriptPostingNegativeAmountDetails{
+				&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptPostingNegativeAmount{
+					NumscriptPostingNegativeAmount: &commonpb.NumscriptPostingNegativeAmountDetails{
 						PostingIndex: &index, Amount: &amount,
 					},
 				}},
@@ -165,18 +164,18 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 			return nil, domain.NewNumscriptExecution(
 				fmt.Sprintf("posting %d amount %s exceeds 256 bits", i, posting.Amount),
-				&ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_NumscriptPostingAmountOverflow{
-					NumscriptPostingAmountOverflow: &ledgerpb.NumscriptPostingAmountOverflowDetails{
+				&commonpb.FailureDetails{Kind: &commonpb.FailureDetails_NumscriptPostingAmountOverflow{
+					NumscriptPostingAmountOverflow: &commonpb.NumscriptPostingAmountOverflowDetails{
 						PostingIndex: &index, Amount: &amount,
 					},
 				}},
 			)
 		}
 
-		postings[i] = &ledgerpb.Posting{
+		postings[i] = &commonpb.Posting{
 			Source:      posting.Source,
 			Destination: posting.Destination,
-			Amount:      ledgerpb.NewUint256(&u256Amount),
+			Amount:      commonpb.NewUint256(&u256Amount),
 			Asset:       posting.Asset,
 			Color:       posting.Color,
 		}
@@ -263,9 +262,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// never pass through admission's ValidateMetadataKey, so an empty or
 	// NUL-bearing key from a Numscript program would otherwise corrupt
 	// read-index entries (#322).
-	var accountsMeta map[string]map[string]*ledgerpb.MetadataValue
+	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
-		accountsMeta = make(map[string]map[string]*ledgerpb.MetadataValue, len(result.AccountsMetadata))
+		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
 		for _, row := range result.AccountsMetadata {
 			// Ledger account metadata has no scope dimension; a scoped write would
 			// silently collapse onto the unscoped key. Reject deterministically,
@@ -287,18 +286,18 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 			mdMap := accountsMeta[row.Account]
 			if mdMap == nil {
-				mdMap = make(map[string]*ledgerpb.MetadataValue)
+				mdMap = make(map[string]*commonpb.MetadataValue)
 				accountsMeta[row.Account] = mdMap
 			}
 
-			mdMap[row.Key] = ledgerpb.NewStringValue(value)
+			mdMap[row.Key] = commonpb.NewStringValue(value)
 		}
 	}
 
 	// Transaction metadata arrives already rendered to strings by the library.
-	var txMeta map[string]*ledgerpb.MetadataValue
+	var txMeta map[string]*commonpb.MetadataValue
 	if len(result.Metadata) > 0 {
-		txMeta = make(map[string]*ledgerpb.MetadataValue, len(result.Metadata))
+		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
 		// A validation failure becomes hash-chained audit state. Select the
 		// first invalid key canonically on every replica.
 		keys := slices.Sorted(maps.Keys(result.Metadata))
@@ -312,7 +311,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, err
 			}
 
-			txMeta[key] = ledgerpb.NewStringValue(value)
+			txMeta[key] = commonpb.NewStringValue(value)
 		}
 	}
 
@@ -387,5 +386,5 @@ func (s *scopeValueSource) Metadata(account, key string) (string, bool, error) {
 	// str=="" would make a valid meta() read of an empty string resolve as
 	// absent, diverging from the admission-side admissionValueSource and
 	// poisoning the resolution hash with the absent sentinel.
-	return ledgerpb.MetadataValueToString(valueReader.Mutate()), true, nil
+	return commonpb.MetadataValueToString(valueReader.Mutate()), true, nil
 }

@@ -458,6 +458,7 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+    @go run ./scripts/fix-vtproto-capability-length.go -- internal/proto/raftcmdpb/raft_cmd_vtproto.pb.go
     # Public contract descriptors are generated in pkg/proto/v3. The backend
     # only retains private state generated here; remove duplicate public
     # descriptors emitted as protoc dependencies above.

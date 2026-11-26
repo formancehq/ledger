@@ -7,13 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -39,15 +38,15 @@ const auditOnlyClusterID = "test-cluster"
 func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
 		Sequence:       sequence,
-		Timestamp:      &ledgerpb.Timestamp{Data: 1700000000 + sequence},
+		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
 		ProposalId:     sequence,
 		OrderCount:     uint32(orderCount),
-		HashVersion:    uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 
-				Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		},
 	}
@@ -77,7 +76,7 @@ func persistFailureOnlyHistory(
 ) ([]*auditpb.AuditEntry, [][]*auditpb.AuditItem) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -196,7 +195,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedAuditHash(t *testing.T) {
 		mutate func(entry *auditpb.AuditEntry)
 	}{
 		{"failure details", func(e *auditpb.AuditEntry) {
-			e.GetFailure().Details = ledgerpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
+			e.GetFailure().Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 		}},
 		{"proposal id", func(e *auditpb.AuditEntry) { e.ProposalId += 100 }},
 		{"stored hash", func(e *auditpb.AuditEntry) { e.Hash = []byte("forged-chain-hash") }},
@@ -273,8 +272,8 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		store := createTestStore(t)
 
 		entry, items := newFailureAuditEntry(1, len(orders))
-		entry.Timestamp = &ledgerpb.Timestamp{Data: createdAt}
-		entry.Idempotency = &ledgerpb.Idempotency{Key: idemKey}
+		entry.Timestamp = &commonpb.Timestamp{Data: createdAt}
+		entry.Idempotency = &commonpb.Idempotency{Key: idemKey}
 		persistAuditEntry(t, store, entry, items, auditOnlyClusterID)
 
 		return store
@@ -285,7 +284,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
 
-			Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
+			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 		},
 	}
 
@@ -304,7 +303,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		mutate func(v *commonpb.IdempotencyKeyValue)
 	}{
 		{"failure details", func(v *commonpb.IdempotencyKeyValue) {
-			v.Failure.Details = ledgerpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
+			v.Failure.Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 		}},
 		{"proposal hash", func(v *commonpb.IdempotencyKeyValue) { v.Hash = []byte("forged-hash") }},
 		// A nil failure with a log range is how a SUCCESS is frozen; the audit

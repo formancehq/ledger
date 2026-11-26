@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
@@ -19,14 +18,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // seedClusterState persists a cluster state whose config matches the desired
 // one, so proposeClusterConfigIfNeeded short-circuits at its equality check
 // and never reaches the proposal path (which needs a live *node.Node).
-func seedClusterState(t *testing.T, store *dal.Store, cfg *ledgerpb.ClusterConfig) {
+func seedClusterState(t *testing.T, store *dal.Store, cfg *commonpb.ClusterConfig) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -47,9 +46,9 @@ func TestProposeClusterConfigIfNeeded_DoesNotMutateSharedConfig(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
-	seedClusterState(t, store, &ledgerpb.ClusterConfig{RotationThreshold: 42})
+	seedClusterState(t, store, &commonpb.ClusterConfig{RotationThreshold: 42})
 
-	shared := &ledgerpb.ClusterConfig{}
+	shared := &commonpb.ClusterConfig{}
 	cfg := Config{
 		BloomConfig: shared,
 		RaftConfig:  node.NodeConfig{RotationThreshold: 42},
@@ -72,9 +71,9 @@ func TestProposeClusterConfigIfNeeded_ConcurrentCallsDoNotRace(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
-	seedClusterState(t, store, &ledgerpb.ClusterConfig{RotationThreshold: 42})
+	seedClusterState(t, store, &commonpb.ClusterConfig{RotationThreshold: 42})
 
-	shared := &ledgerpb.ClusterConfig{}
+	shared := &commonpb.ClusterConfig{}
 	cfg := Config{
 		BloomConfig: shared,
 		RaftConfig:  node.NodeConfig{RotationThreshold: 42},
@@ -128,7 +127,7 @@ func TestProposeClusterConfigIfNeeded_CancelledGenerationJoinsObserver(t *testin
 		observer := node.NewObserver(func(event any) {
 			e := event.(node.LeaderReadyEvent)
 			proposeClusterConfigIfNeeded(e.Context, proposer, builder, store,
-				Config{BloomConfig: &ledgerpb.ClusterConfig{}}, logger)
+				Config{BloomConfig: &commonpb.ClusterConfig{}}, logger)
 		})
 		done := make(chan struct{})
 		go func() {

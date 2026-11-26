@@ -18,9 +18,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -135,27 +135,27 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 1,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_CreateLedger{
-					CreateLedger: &ledgerpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: ledgerpb.NewTimestamp(now),
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreatedLedgerLog{
+						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 2,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &ledgerpb.CreatedTransaction{
-									Transaction: ledgerpb.NewTransaction().
-										WithPostings(ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -247,17 +247,17 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 1,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &ledgerpb.CreatedTransaction{
-									Transaction: ledgerpb.NewTransaction().
-										WithPostings(ledgerpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -297,7 +297,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Data()))
 	require.Equal(t, events.EventApp, evt.GetApp())
 	require.Equal(t, events.EventVersion, evt.GetVersion())
-	require.Equal(t, ledgerpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
 	require.Equal(t, "payments", evt.GetLedger())
 	require.Equal(t, uint64(1), evt.GetLogSequence())
 	require.NotNil(t, evt.GetLog(), "event should carry the full Log")
@@ -345,39 +345,39 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 
 	appendTestLogs(t, store,
 		// Log 1: Create "orders" ledger
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 1,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_CreateLedger{
-					CreateLedger: &ledgerpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: ledgerpb.NewTimestamp(now),
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreatedLedgerLog{
+						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
 		// Log 2: Create "payments" ledger
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 2,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_CreateLedger{
-					CreateLedger: &ledgerpb.CreatedLedgerLog{
-						Name: "payments", CreatedAt: ledgerpb.NewTimestamp(now),
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_CreateLedger{
+					CreateLedger: &commonpb.CreatedLedgerLog{
+						Name: "payments", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
 		},
 		// Log 3: Transaction on "orders"
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 3,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &ledgerpb.CreatedTransaction{
-									Transaction: ledgerpb.NewTransaction().
-										WithPostings(ledgerpb.NewPosting("world", "shop", "USD", big.NewInt(100))).
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "shop", "USD", big.NewInt(100))).
 										WithID(1).WithTimestamp(now),
 								},
 							},
@@ -387,17 +387,17 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 			},
 		},
 		// Log 4: Transaction on "payments"
-		&ledgerpb.Log{
+		&commonpb.Log{
 			Sequence: 4,
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &ledgerpb.CreatedTransaction{
-									Transaction: ledgerpb.NewTransaction().
-										WithPostings(ledgerpb.NewPosting("world", "merchant", "EUR", big.NewInt(200))).
+						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: commonpb.NewTransaction().
+										WithPostings(commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(200))).
 										WithID(1).WithTimestamp(now),
 								},
 							},

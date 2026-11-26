@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestAuditComparableLogIgnoresQueryCheckpointAppliedIndex(t *testing.T) {
@@ -28,15 +28,15 @@ func TestAuditReplayLogWithExecutionMetadataCarriesQueryCheckpointAppliedIndex(t
 	require.Zero(t, replayed.GetPayload().GetCreatedQueryCheckpoint().GetAppliedIndex(), "the shared audit expectation must not be mutated")
 }
 
-func queryCheckpointLog(appliedIndex uint64) *ledgerpb.Log {
-	return &ledgerpb.Log{
+func queryCheckpointLog(appliedIndex uint64) *commonpb.Log {
+	return &commonpb.Log{
 		Sequence: 1,
-		Payload: &ledgerpb.LogPayload{
-			Type: &ledgerpb.LogPayload_CreatedQueryCheckpoint{
-				CreatedQueryCheckpoint: &ledgerpb.CreatedQueryCheckpointLog{
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
 					CheckpointId: 1,
 					MaxSequence:  10,
-					CreatedAt:    &ledgerpb.Timestamp{Data: 123},
+					CreatedAt:    &commonpb.Timestamp{Data: 123},
 					AppliedIndex: appliedIndex,
 				},
 			},

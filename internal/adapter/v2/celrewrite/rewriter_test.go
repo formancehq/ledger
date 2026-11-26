@@ -6,8 +6,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -15,18 +14,18 @@ import (
 
 // entrySavedMetadata builds a SavedMetadata log entry with an account target.
 func entrySavedMetadata(target string, md map[string]string) *raftcmdpb.MirrorLogEntry {
-	values := make(map[string]*ledgerpb.MetadataValue, len(md))
+	values := make(map[string]*commonpb.MetadataValue, len(md))
 	for k, v := range md {
-		values[k] = ledgerpb.NewStringValue(v)
+		values[k] = commonpb.NewStringValue(v)
 	}
 
 	return &raftcmdpb.MirrorLogEntry{
 		V2LogId: 42,
 		Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 			SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-				Target: &ledgerpb.Target{
-					Target: &ledgerpb.Target_Account{
-						Account: &ledgerpb.TargetAccount{Addr: target},
+				Target: &commonpb.Target{
+					Target: &commonpb.Target_Account{
+						Account: &commonpb.TargetAccount{Addr: target},
 					},
 				},
 				Metadata: values,
@@ -36,10 +35,10 @@ func entrySavedMetadata(target string, md map[string]string) *raftcmdpb.MirrorLo
 }
 
 // entryCreatedTx builds a CreatedTransaction log entry.
-func entryCreatedTx(txID uint64, postings []*ledgerpb.Posting, md map[string]string) *raftcmdpb.MirrorLogEntry {
-	values := make(map[string]*ledgerpb.MetadataValue, len(md))
+func entryCreatedTx(txID uint64, postings []*commonpb.Posting, md map[string]string) *raftcmdpb.MirrorLogEntry {
+	values := make(map[string]*commonpb.MetadataValue, len(md))
 	for k, v := range md {
-		values[k] = ledgerpb.NewStringValue(v)
+		values[k] = commonpb.NewStringValue(v)
 	}
 
 	return &raftcmdpb.MirrorLogEntry{
@@ -54,84 +53,84 @@ func entryCreatedTx(txID uint64, postings []*ledgerpb.Posting, md map[string]str
 	}
 }
 
-func posting(src, dst string) *ledgerpb.Posting {
-	return &ledgerpb.Posting{Source: src, Destination: dst, Asset: "USD"}
+func posting(src, dst string) *commonpb.Posting {
+	return &commonpb.Posting{Source: src, Destination: dst, Asset: "USD"}
 }
 
 // -------------------- Rule builders --------------------
 
-func createdRule(match string, actions ...*ledgerpb.CreatedTransactionAction) *ledgerpb.MirrorRewriteRule {
-	return &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_CreatedTransaction{
-		CreatedTransaction: &ledgerpb.CreatedTransactionRule{Match: match, Actions: actions},
+func createdRule(match string, actions ...*commonpb.CreatedTransactionAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &commonpb.CreatedTransactionRule{Match: match, Actions: actions},
 	}}
 }
 
-func savedRule(match string, actions ...*ledgerpb.SavedMetadataAction) *ledgerpb.MirrorRewriteRule {
-	return &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_SavedMetadata{
-		SavedMetadata: &ledgerpb.SavedMetadataRule{Match: match, Actions: actions},
+func savedRule(match string, actions ...*commonpb.SavedMetadataAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_SavedMetadata{
+		SavedMetadata: &commonpb.SavedMetadataRule{Match: match, Actions: actions},
 	}}
 }
 
-func anyRule(match string, actions ...*ledgerpb.AnyVariantAction) *ledgerpb.MirrorRewriteRule {
-	return &ledgerpb.MirrorRewriteRule{Scope: &ledgerpb.MirrorRewriteRule_AnyVariant{
-		AnyVariant: &ledgerpb.AnyVariantRule{Match: match, Actions: actions},
+func anyRule(match string, actions ...*commonpb.AnyVariantAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_AnyVariant{
+		AnyVariant: &commonpb.AnyVariantRule{Match: match, Actions: actions},
 	}}
 }
 
 // Actions.
 
-func actSetMetadataCreated(key, value string) *ledgerpb.CreatedTransactionAction {
-	return &ledgerpb.CreatedTransactionAction{Action: &ledgerpb.CreatedTransactionAction_SetMetadata{
-		SetMetadata: &ledgerpb.SetMetadataAction{
+func actSetMetadataCreated(key, value string) *commonpb.CreatedTransactionAction {
+	return &commonpb.CreatedTransactionAction{Action: &commonpb.CreatedTransactionAction_SetMetadata{
+		SetMetadata: &commonpb.SetMetadataAction{
 			Key:    key,
-			Source: &ledgerpb.SetMetadataAction_Value{Value: value},
+			Source: &commonpb.SetMetadataAction_Value{Value: value},
 		},
 	}}
 }
 
-func actSetMetadataSaved(key, value string) *ledgerpb.SavedMetadataAction {
-	return &ledgerpb.SavedMetadataAction{Action: &ledgerpb.SavedMetadataAction_SetMetadata{
-		SetMetadata: &ledgerpb.SetMetadataAction{
+func actSetMetadataSaved(key, value string) *commonpb.SavedMetadataAction {
+	return &commonpb.SavedMetadataAction{Action: &commonpb.SavedMetadataAction_SetMetadata{
+		SetMetadata: &commonpb.SetMetadataAction{
 			Key:    key,
-			Source: &ledgerpb.SetMetadataAction_Value{Value: value},
+			Source: &commonpb.SetMetadataAction_Value{Value: value},
 		},
 	}}
 }
 
-func actSetMetadataSavedExpr(key, expr string) *ledgerpb.SavedMetadataAction {
-	return &ledgerpb.SavedMetadataAction{Action: &ledgerpb.SavedMetadataAction_SetMetadata{
-		SetMetadata: &ledgerpb.SetMetadataAction{
+func actSetMetadataSavedExpr(key, expr string) *commonpb.SavedMetadataAction {
+	return &commonpb.SavedMetadataAction{Action: &commonpb.SavedMetadataAction_SetMetadata{
+		SetMetadata: &commonpb.SetMetadataAction{
 			Key:    key,
-			Source: &ledgerpb.SetMetadataAction_ValueExpr{ValueExpr: expr},
+			Source: &commonpb.SetMetadataAction_ValueExpr{ValueExpr: expr},
 		},
 	}}
 }
 
-func actSetAccountMetadataCreatedExpr(account, key, expr string) *ledgerpb.CreatedTransactionAction {
-	return &ledgerpb.CreatedTransactionAction{Action: &ledgerpb.CreatedTransactionAction_SetAccountMetadata{
-		SetAccountMetadata: &ledgerpb.SetAccountMetadataAction{
+func actSetAccountMetadataCreatedExpr(account, key, expr string) *commonpb.CreatedTransactionAction {
+	return &commonpb.CreatedTransactionAction{Action: &commonpb.CreatedTransactionAction_SetAccountMetadata{
+		SetAccountMetadata: &commonpb.SetAccountMetadataAction{
 			Account: account,
 			Key:     key,
-			Source:  &ledgerpb.SetAccountMetadataAction_ValueExpr{ValueExpr: expr},
+			Source:  &commonpb.SetAccountMetadataAction_ValueExpr{ValueExpr: expr},
 		},
 	}}
 }
 
-func actRewriteAddressAny(pattern, replacement string) *ledgerpb.AnyVariantAction {
-	return &ledgerpb.AnyVariantAction{Action: &ledgerpb.AnyVariantAction_RewriteAddress{
-		RewriteAddress: &ledgerpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
+func actRewriteAddressAny(pattern, replacement string) *commonpb.AnyVariantAction {
+	return &commonpb.AnyVariantAction{Action: &commonpb.AnyVariantAction_RewriteAddress{
+		RewriteAddress: &commonpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
 	}}
 }
 
-func actDropCreated() *ledgerpb.CreatedTransactionAction {
-	return &ledgerpb.CreatedTransactionAction{Action: &ledgerpb.CreatedTransactionAction_Drop{
-		Drop: &ledgerpb.DropAction{},
+func actDropCreated() *commonpb.CreatedTransactionAction {
+	return &commonpb.CreatedTransactionAction{Action: &commonpb.CreatedTransactionAction_Drop{
+		Drop: &commonpb.DropAction{},
 	}}
 }
 
 // -------------------- Helpers --------------------
 
-func mustCompile(t *testing.T, rules ...*ledgerpb.MirrorRewriteRule) *Rewriter {
+func mustCompile(t *testing.T, rules ...*commonpb.MirrorRewriteRule) *Rewriter {
 	t.Helper()
 
 	r, err := NewRewriter(rules)
@@ -142,10 +141,10 @@ func mustCompile(t *testing.T, rules ...*ledgerpb.MirrorRewriteRule) *Rewriter {
 	return r
 }
 
-func mustFailCompile(t *testing.T, rule *ledgerpb.MirrorRewriteRule, wantSubstr string) {
+func mustFailCompile(t *testing.T, rule *commonpb.MirrorRewriteRule, wantSubstr string) {
 	t.Helper()
 
-	_, err := NewRewriter([]*ledgerpb.MirrorRewriteRule{rule})
+	_, err := NewRewriter([]*commonpb.MirrorRewriteRule{rule})
 	if err == nil {
 		t.Fatalf("NewRewriter succeeded; wanted compile error containing %q", wantSubstr)
 	}
@@ -174,17 +173,17 @@ func TestWireSafety_InvalidCombosImpossible(t *testing.T) {
 	// This test is intentionally a compile-time smoke test — it asserts the
 	// available oneof cases and would fail to build if the proto shape ever
 	// widened. If the code below still compiles, the safety property holds.
-	_ = &ledgerpb.SavedMetadataAction{Action: &ledgerpb.SavedMetadataAction_SetMetadata{
-		SetMetadata: &ledgerpb.SetMetadataAction{
+	_ = &commonpb.SavedMetadataAction{Action: &commonpb.SavedMetadataAction_SetMetadata{
+		SetMetadata: &commonpb.SetMetadataAction{
 			Key:    "k",
-			Source: &ledgerpb.SetMetadataAction_Value{Value: "v"},
+			Source: &commonpb.SetMetadataAction_Value{Value: "v"},
 		},
 	}}
-	_ = &ledgerpb.SavedMetadataAction{Action: &ledgerpb.SavedMetadataAction_Drop{
-		Drop: &ledgerpb.DropAction{},
+	_ = &commonpb.SavedMetadataAction{Action: &commonpb.SavedMetadataAction_Drop{
+		Drop: &commonpb.DropAction{},
 	}}
 	// Uncommenting the below MUST NOT compile — it proves the wire safety.
-	// _ = &ledgerpb.SavedMetadataAction{Action: &ledgerpb.SavedMetadataAction_SetAccountMetadata{...}}
+	// _ = &commonpb.SavedMetadataAction{Action: &commonpb.SavedMetadataAction_SetAccountMetadata{...}}
 }
 
 // -------------------- End-to-end Apply --------------------
@@ -216,7 +215,7 @@ func TestApply_RewriteAddressAcrossPostingsAndTarget(t *testing.T) {
 	r := mustCompile(t, anyRule("", actRewriteAddressAny(":worker:\\d+", "")))
 
 	entry := entryCreatedTx(9,
-		[]*ledgerpb.Posting{
+		[]*commonpb.Posting{
 			posting("acquirer:acme:worker:001", "world"),
 			posting("world", "customer:bob:worker:007"),
 		},
@@ -243,7 +242,7 @@ func TestApply_DropCreatedTransactionEmitsFillGapWithTxID(t *testing.T) {
 
 	r := mustCompile(t, createdRule("", actDropCreated()))
 
-	entry := entryCreatedTx(1234, []*ledgerpb.Posting{posting("world", "alice")}, nil)
+	entry := entryCreatedTx(1234, []*commonpb.Posting{posting("world", "alice")}, nil)
 
 	out, err := r.Apply(entry)
 	if err != nil {
@@ -403,7 +402,7 @@ func TestApply_DoesNotMutateInput(t *testing.T) {
 func TestAdmission_UnsetScopeRejected(t *testing.T) {
 	t.Parallel()
 
-	mustFailCompile(t, &ledgerpb.MirrorRewriteRule{}, "scope must be set")
+	mustFailCompile(t, &commonpb.MirrorRewriteRule{}, "scope must be set")
 }
 
 func TestAdmission_InvalidCELMatch(t *testing.T) {
@@ -436,7 +435,7 @@ func TestAdmission_InvalidLiteralMetadataKey(t *testing.T) {
 func TestAdmission_TooManyRules(t *testing.T) {
 	t.Parallel()
 
-	rules := make([]*ledgerpb.MirrorRewriteRule, MaxRules+1)
+	rules := make([]*commonpb.MirrorRewriteRule, MaxRules+1)
 	for i := range rules {
 		rules[i] = anyRule("")
 	}

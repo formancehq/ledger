@@ -9,25 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestRedactSinkConfig_Databricks_PAT(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
+	cfg := &commonpb.SinkConfig{
 		Name: "analytics",
-		Type: &ledgerpb.SinkConfig_Databricks{
-			Databricks: &ledgerpb.DatabricksSinkConfig{
+		Type: &commonpb.SinkConfig_Databricks{
+			Databricks: &commonpb.DatabricksSinkConfig{
 				ServerHostname: "adb-123.azuredatabricks.net",
 				HttpPath:       "/sql/1.0/warehouses/abc",
 				Catalog:        "main",
 				Schema:         "default",
 				Table:          "ledger_events",
 				Port:           443,
-				Auth:           &ledgerpb.DatabricksSinkConfig_Token{Token: "dapi-supersecret"},
+				Auth:           &commonpb.DatabricksSinkConfig_Token{Token: "dapi-supersecret"},
 			},
 		},
 	}
@@ -46,16 +45,16 @@ func TestRedactSinkConfig_Databricks_PAT(t *testing.T) {
 func TestRedactSinkConfig_Databricks_OAuthM2M(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
+	cfg := &commonpb.SinkConfig{
 		Name: "analytics",
-		Type: &ledgerpb.SinkConfig_Databricks{
-			Databricks: &ledgerpb.DatabricksSinkConfig{
+		Type: &commonpb.SinkConfig_Databricks{
+			Databricks: &commonpb.DatabricksSinkConfig{
 				ServerHostname: "adb-123.azuredatabricks.net",
 				HttpPath:       "/sql/1.0/warehouses/abc",
 				Catalog:        "main",
 				Schema:         "default",
-				Auth: &ledgerpb.DatabricksSinkConfig_OauthM2M{
-					OauthM2M: &ledgerpb.DatabricksOAuthM2M{
+				Auth: &commonpb.DatabricksSinkConfig_OauthM2M{
+					OauthM2M: &commonpb.DatabricksOAuthM2M{
 						ClientId:     "sp-client-id",
 						ClientSecret: "sp-very-secret",
 					},
@@ -76,10 +75,10 @@ func TestRedactSinkConfig_Databricks_OAuthM2M(t *testing.T) {
 func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Databricks{
-			Databricks: &ledgerpb.DatabricksSinkConfig{
-				Auth: &ledgerpb.DatabricksSinkConfig_Token{Token: ""},
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Databricks{
+			Databricks: &commonpb.DatabricksSinkConfig{
+				Auth: &commonpb.DatabricksSinkConfig_Token{Token: ""},
 			},
 		},
 	}
@@ -90,9 +89,9 @@ func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
 func TestRedactSinkConfig_Http(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Http{
-			Http: &ledgerpb.HttpSinkConfig{
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Http{
+			Http: &commonpb.HttpSinkConfig{
 				Endpoint: "https://operator:http-password@example.com/hook",
 				Secret:   "hmac-key",
 			},
@@ -108,9 +107,9 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 func TestRedactSinkConfig_HTTPUsernameOnly(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Http{
-			Http: &ledgerpb.HttpSinkConfig{Endpoint: "https://operator@example.com/hook"},
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Http{
+			Http: &commonpb.HttpSinkConfig{Endpoint: "https://operator@example.com/hook"},
 		},
 	}
 
@@ -120,9 +119,9 @@ func TestRedactSinkConfig_HTTPUsernameOnly(t *testing.T) {
 func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Kafka{
-			Kafka: &ledgerpb.KafkaSinkConfig{
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Kafka{
+			Kafka: &commonpb.KafkaSinkConfig{
 				Brokers:       []string{"b1:9092"},
 				Topic:         "evt",
 				SaslMechanism: "SCRAM-SHA-256",
@@ -142,9 +141,9 @@ func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
 func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Clickhouse{
-			Clickhouse: &ledgerpb.ClickHouseSinkConfig{
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Clickhouse{
+			Clickhouse: &commonpb.ClickHouseSinkConfig{
 				Dsn:   "clickhouse://user:secretpw@host:9000/db?password=query-secret&secure=true",
 				Table: "events",
 			},
@@ -164,9 +163,9 @@ func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
 func TestRedactSinkConfig_NATSCredentials(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Nats{
-			Nats: &ledgerpb.NatsSinkConfig{
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Nats{
+			Nats: &commonpb.NatsSinkConfig{
 				Url:   "nats://operator:nats-password@one:4222, nats://nats-token@two:4222,nats://three:4222",
 				Topic: "evt",
 			},
@@ -210,33 +209,33 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	}
 
 	resp := &servicepb.GetEventsSinksResponse{
-		Sinks: []*ledgerpb.SinkConfig{
+		Sinks: []*commonpb.SinkConfig{
 			{
 				Name: "db-pat",
-				Type: &ledgerpb.SinkConfig_Databricks{
-					Databricks: &ledgerpb.DatabricksSinkConfig{
+				Type: &commonpb.SinkConfig_Databricks{
+					Databricks: &commonpb.DatabricksSinkConfig{
 						ServerHostname: "adb-1.azuredatabricks.net",
 						HttpPath:       "/sql/1.0/warehouses/abc",
-						Auth:           &ledgerpb.DatabricksSinkConfig_Token{Token: secrets[0]},
+						Auth:           &commonpb.DatabricksSinkConfig_Token{Token: secrets[0]},
 					},
 				},
 			},
 			{
 				Name: "db-oauth",
-				Type: &ledgerpb.SinkConfig_Databricks{
-					Databricks: &ledgerpb.DatabricksSinkConfig{
+				Type: &commonpb.SinkConfig_Databricks{
+					Databricks: &commonpb.DatabricksSinkConfig{
 						ServerHostname: "adb-2.azuredatabricks.net",
 						HttpPath:       "/sql/1.0/warehouses/def",
-						Auth: &ledgerpb.DatabricksSinkConfig_OauthM2M{
-							OauthM2M: &ledgerpb.DatabricksOAuthM2M{ClientId: "id", ClientSecret: secrets[1]},
+						Auth: &commonpb.DatabricksSinkConfig_OauthM2M{
+							OauthM2M: &commonpb.DatabricksOAuthM2M{ClientId: "id", ClientSecret: secrets[1]},
 						},
 					},
 				},
 			},
 			{
 				Name: "hook",
-				Type: &ledgerpb.SinkConfig_Http{
-					Http: &ledgerpb.HttpSinkConfig{
+				Type: &commonpb.SinkConfig_Http{
+					Http: &commonpb.HttpSinkConfig{
 						Endpoint: "https://operator:" + secrets[7] + "@example.com",
 						Secret:   secrets[2],
 					},
@@ -244,8 +243,8 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 			},
 			{
 				Name: "stream",
-				Type: &ledgerpb.SinkConfig_Kafka{
-					Kafka: &ledgerpb.KafkaSinkConfig{
+				Type: &commonpb.SinkConfig_Kafka{
+					Kafka: &commonpb.KafkaSinkConfig{
 						Brokers:       []string{"b:9092"},
 						SaslMechanism: "PLAIN",
 						SaslUsername:  "u",
@@ -255,16 +254,16 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 			},
 			{
 				Name: "ch",
-				Type: &ledgerpb.SinkConfig_Clickhouse{
-					Clickhouse: &ledgerpb.ClickHouseSinkConfig{
+				Type: &commonpb.SinkConfig_Clickhouse{
+					Clickhouse: &commonpb.ClickHouseSinkConfig{
 						Dsn: "clickhouse://user:" + secrets[4] + "@host:9000/db?password=" + secrets[8],
 					},
 				},
 			},
 			{
 				Name: "nats",
-				Type: &ledgerpb.SinkConfig_Nats{
-					Nats: &ledgerpb.NatsSinkConfig{
+				Type: &commonpb.SinkConfig_Nats{
+					Nats: &commonpb.NatsSinkConfig{
 						Url: "nats://operator:" + secrets[5] + "@one:4222,nats://" + secrets[6] + "@two:4222",
 					},
 				},
@@ -310,11 +309,11 @@ func TestRedactGetEventsSinksResponse_NilSafe(t *testing.T) {
 func TestRedactSinkConfig_DoesNotMutateInput(t *testing.T) {
 	t.Parallel()
 
-	cfg := &ledgerpb.SinkConfig{
-		Type: &ledgerpb.SinkConfig_Databricks{
-			Databricks: &ledgerpb.DatabricksSinkConfig{
-				Auth: &ledgerpb.DatabricksSinkConfig_OauthM2M{
-					OauthM2M: &ledgerpb.DatabricksOAuthM2M{ClientSecret: "keep-this"},
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Databricks{
+			Databricks: &commonpb.DatabricksSinkConfig{
+				Auth: &commonpb.DatabricksSinkConfig_OauthM2M{
+					OauthM2M: &commonpb.DatabricksOAuthM2M{ClientSecret: "keep-this"},
 				},
 			},
 		},

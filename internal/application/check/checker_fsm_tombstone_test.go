@@ -10,13 +10,13 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -71,7 +71,7 @@ func newTombstoneFSMMachine(t *testing.T) (*state.Machine, *dal.Store, *attribut
 	)
 	require.NoError(t, err)
 
-	machine.State.UpdateClusterPolicy(&ledgerpb.ClusterPolicy{
+	machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
 		Revision: 1, QueryCheckpointLimit: 10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
 		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
@@ -184,9 +184,9 @@ func applyTombstoneFSMProposal(
 	proposal := &raftcmdpb.Proposal{
 		Id:     index,
 		Orders: orders,
-		Date:   &ledgerpb.Timestamp{Data: 1700000000 + index},
-		CallerSnapshot: &ledgerpb.CallerSnapshot{
-			Principal: &ledgerpb.CallerSnapshot_AuthDisabled{AuthDisabled: &ledgerpb.AuthDisabledCaller{}},
+		Date:   &commonpb.Timestamp{Data: 1700000000 + index},
+		CallerSnapshot: &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
 		},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
 	}
@@ -217,9 +217,9 @@ func tombstoneFSMApplyOrder(apply *raftcmdpb.LedgerApplyOrder) *raftcmdpb.Order 
 func tombstoneFSMTransactionOrder(source, destination string, amount uint64) *raftcmdpb.Order {
 	return tombstoneFSMApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-			Postings: []*ledgerpb.Posting{{
+			Postings: []*commonpb.Posting{{
 				Source: source, Destination: destination,
-				Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(amount),
+				Asset: "USD", Amount: commonpb.NewUint256FromUint64(amount),
 			}},
 		}},
 	})
@@ -264,10 +264,10 @@ func TestCheckerFSMTransientDrainDeletesPersistedZeroRow(t *testing.T) {
 	applyTombstoneFSMProposal(t, machine, store, attrs, 3,
 		tombstoneFSMApplyOrder(&raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-				AccountType: &ledgerpb.AccountType{
+				AccountType: &commonpb.AccountType{
 					Name:        "t13",
 					Pattern:     "t-13:{sub}",
-					Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+					Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 				},
 			}},
 		}))

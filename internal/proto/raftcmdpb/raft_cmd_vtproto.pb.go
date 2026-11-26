@@ -11756,6 +11756,37 @@ func OrderFromVTPool() *Order {
 	return vtprotoPool_Order.Get().(*Order)
 }
 
+var vtprotoPool_ExecutionBatch = sync.Pool{
+	New: func() interface{} {
+		return &ExecutionBatch{}
+	},
+}
+
+func (m *ExecutionBatch) ResetVT() {
+	if m != nil {
+		for _, mm := range m.Orders {
+			mm.ResetVT()
+		}
+		f0 := m.Orders[:0]
+		for _, mm := range m.TechnicalUpdates {
+			mm.ResetVT()
+		}
+		f1 := m.TechnicalUpdates[:0]
+		m.Reset()
+		m.Orders = f0
+		m.TechnicalUpdates = f1
+	}
+}
+func (m *ExecutionBatch) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_ExecutionBatch.Put(m)
+	}
+}
+func ExecutionBatchFromVTPool() *ExecutionBatch {
+	return vtprotoPool_ExecutionBatch.Get().(*ExecutionBatch)
+}
+
 var vtprotoPool_Proposal = sync.Pool{
 	New: func() interface{} {
 		return &Proposal{}

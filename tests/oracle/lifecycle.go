@@ -1,13 +1,13 @@
 package oracle
 
-import "github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 // LedgerLifecycle tracks explicitly created names independently of their data.
 // Deletion removes the data projection but permanently reserves the name.
 type LedgerLifecycle struct {
 	Deleted      bool
-	Mode         ledgerpb.LedgerMode
-	MirrorSource *ledgerpb.MirrorSourceConfig
+	Mode         commonpb.LedgerMode
+	MirrorSource *commonpb.MirrorSourceConfig
 }
 
 func lifecycleTerm(name string, lc LedgerLifecycle) Digest {

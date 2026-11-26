@@ -6,8 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -92,7 +91,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:            1,
 				Orders:        ledgerOrders,
-				Date:          &ledgerpb.Timestamp{Data: 1000000},
+				Date:          &commonpb.Timestamp{Data: 1000000},
 				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
@@ -111,7 +110,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			makeEntry(t, 2, &raftcmdpb.Proposal{
 				Id:     2,
 				Orders: txOrders,
-				Date:   &ledgerpb.Timestamp{Data: 500000}, // Behind last applied
+				Date:   &commonpb.Timestamp{Data: 500000}, // Behind last applied
 				ExecutionPlan: &raftcmdpb.ExecutionPlan{
 					Attributes: append(buildVolumePreloads(txOrders), buildOrderDeclarations(txOrders)...),
 				},
@@ -146,7 +145,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:            1,
 				Orders:        ledgerOrders,
-				Date:          &ledgerpb.Timestamp{Data: 1000},
+				Date:          &commonpb.Timestamp{Data: 1000},
 				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
@@ -163,7 +162,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			makeEntry(t, 2, &raftcmdpb.Proposal{
 				Id:     2,
 				Orders: txOrders,
-				Date:   &ledgerpb.Timestamp{Data: 5000},
+				Date:   &commonpb.Timestamp{Data: 5000},
 				ExecutionPlan: &raftcmdpb.ExecutionPlan{
 					Attributes: append(buildVolumePreloads(txOrders), buildOrderDeclarations(txOrders)...),
 				},
@@ -195,7 +194,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:            1,
 				Orders:        ledgerOrders,
-				Date:          &ledgerpb.Timestamp{Data: 9999999},
+				Date:          &commonpb.Timestamp{Data: 9999999},
 				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
@@ -223,7 +222,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:            1,
 				Orders:        ledgerOrders,
-				Date:          &ledgerpb.Timestamp{Data: 1000},
+				Date:          &commonpb.Timestamp{Data: 1000},
 				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
@@ -245,7 +244,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 				makeEntry(t, uint64(i+2), &raftcmdpb.Proposal{
 					Id:     uint64(i + 2),
 					Orders: txOrders,
-					Date:   &ledgerpb.Timestamp{Data: date},
+					Date:   &commonpb.Timestamp{Data: date},
 					ExecutionPlan: &raftcmdpb.ExecutionPlan{
 						Attributes: append(buildVolumePreloads(txOrders), buildOrderDeclarations(txOrders)...),
 					},

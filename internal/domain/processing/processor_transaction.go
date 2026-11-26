@@ -5,15 +5,62 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*ledgerpb.LedgerLogPayload, domain.SerializableError) {
+func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	staged, err := stageLedgerExecution(ledger, order, order.GetPostings(), order.GetForce(), ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(staged.result.Postings) == 0 {
+		return nil, domain.ErrEmptyTransaction
+	}
+
+	return processProducedTransaction(ledger, order, ctx, staged)
+}
+
+func processExecuteNumscript(ledger string, execution *raftcmdpb.ExecuteNumscriptOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	staged, err := stageLedgerExecution(ledger, execution, nil, false, ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(staged.result.Postings) == 0 {
+		if (len(staged.result.TransactionMetadata) > 0 || len(execution.GetMetadata()) > 0) && (hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(execution.GetAccountMetadata())) {
+			return nil, domain.ErrMetadataOnlyTransactionMetadata
+		}
+		if hasScriptAccountMetadataUpdates(staged.result.AccountsMetadata) || hasAccountMetadataUpdates(execution.GetAccountMetadata()) {
+			return processMetadataOnly(ledger, execution, staged.result, ctx)
+		}
+
+		return nil, domain.ErrEmptyTransaction
+	}
+
+	return processProducedTransaction(ledger, execution, ctx, staged)
+}
+
+// The two orders share script, metadata and reference semantics. Postings and
+// force belong only to CreateTransactionOrder and are passed separately.
+type ledgerExecutionOrder interface {
+	GetScript() *commonpb.Script
+	GetNumscriptReference() *raftcmdpb.NumscriptReference
+	GetTimestamp() *commonpb.Timestamp
+	GetReference() string
+	GetMetadata() map[string]*commonpb.MetadataValue
+	GetAccountMetadata() map[string]*commonpb.MetadataMap
+}
+
+type stagedLedgerExecution struct {
+	result                *produceResult
+	nextTransactionID     uint64
+	advancedTransactionID uint64
+	metadataOnlyCandidate bool
+}
+
+func stageLedgerExecution(ledger string, order ledgerExecutionOrder, postings []*commonpb.Posting, force bool, ctx *Context) (*stagedLedgerExecution, domain.Describable) {
 	if len(order.GetReference()) > domain.MaxTransactionReferenceLength {
 		return nil, domain.ErrTransactionReferenceTooLong
 	}
@@ -46,7 +93,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// Resolve script reference: load content from the preloaded cache. The
 	// audited order keeps its selector ("latest" or an exact semver); "latest"
 	// is resolved here, at apply time, to the greatest stored semver.
-	var script *ledgerpb.Script
+	var script *commonpb.Script
 	if ref := order.GetNumscriptReference(); ref != nil {
 		name := ref.GetName()
 		version := ref.GetVersion()
@@ -81,7 +128,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			return nil, &domain.ErrNumscriptNotFound{Name: name, Version: version}
 		}
 
-		script = &ledgerpb.Script{
+		script = &commonpb.Script{
 			Plain: info.GetContent(),
 			Vars:  ref.GetVars(),
 		}
@@ -189,7 +236,7 @@ func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *
 	finalMetadata := order.GetMetadata()
 
 	if len(result.TransactionMetadata) > 0 {
-		merged := make(map[string]*ledgerpb.MetadataValue, len(finalMetadata)+len(result.TransactionMetadata))
+		merged := make(map[string]*commonpb.MetadataValue, len(finalMetadata)+len(result.TransactionMetadata))
 		maps.Copy(merged, result.TransactionMetadata)
 		maps.Copy(merged, finalMetadata)
 		finalMetadata = merged
@@ -217,27 +264,7 @@ func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *
 
 	// Merge account metadata from script output and order.
 	// Order metadata takes precedence over script metadata (same key → order wins).
-	var accountMetadata map[string]*ledgerpb.MetadataMap
-	if len(result.AccountsMetadata) > 0 {
-		accountMetadata = make(map[string]*ledgerpb.MetadataMap, len(result.AccountsMetadata))
-		for account, mdMap := range result.AccountsMetadata {
-			accountMetadata[account] = &ledgerpb.MetadataMap{Values: mdMap}
-		}
-	}
-
-	for account, mm := range order.GetAccountMetadata() {
-		if accountMetadata == nil {
-			accountMetadata = make(map[string]*ledgerpb.MetadataMap)
-		}
-
-		existing := accountMetadata[account]
-		if existing == nil {
-			accountMetadata[account] = mm
-		} else {
-			// Order keys take precedence: merge order entries into existing.
-			maps.Copy(existing.GetValues(), mm.GetValues())
-		}
-	}
+	accountMetadata := mergeAccountMetadata(result.AccountsMetadata, order.GetAccountMetadata())
 
 	// Same reasoning as the transaction map above, per account. Checked in its
 	// own pass — and reporting the lexicographically smallest offending account
@@ -300,10 +327,10 @@ func processProducedTransaction(ledger string, order ledgerExecutionOrder, ctx *
 
 	ctx.metadataBudget.bytes = total
 
-	return &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &ledgerpb.CreatedTransaction{
-				Transaction: &ledgerpb.Transaction{
+	return &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{
 					Postings:          result.Postings,
 					Metadata:          finalMetadata,
 					Timestamp:         timestamp,
@@ -410,7 +437,7 @@ func hasScriptAccountMetadataUpdates(accountMetadata map[string]map[string]*comm
 // still produce the identical error (invariant #2), and the failure is
 // hash-bound into the audit chain.
 func validateMergedAccountMetadata(
-	accountMetadata map[string]*ledgerpb.MetadataMap,
+	accountMetadata map[string]*commonpb.MetadataMap,
 	limits domain.MetadataLimits,
 ) domain.Describable {
 	var (
@@ -443,7 +470,7 @@ func validateMergedAccountMetadata(
 // validatePostings checks that all account addresses and assets in the postings
 // contain only allowed characters. This runs after Numscript resolution so it
 // covers both explicit and script-resolved values.
-func validatePostings(postings []*ledgerpb.Posting) domain.SerializableError {
+func validatePostings(postings []*commonpb.Posting) domain.SerializableError {
 	for _, p := range postings {
 		if err := domain.ValidateAccountAddress(p.GetSource()); err != nil {
 			return err
@@ -468,21 +495,17 @@ func validatePostings(postings []*ledgerpb.Posting) domain.SerializableError {
 // produceResult holds the result of producing postings from an order.
 // It includes the postings and any metadata set by the script.
 type produceResult struct {
-	Postings            []*ledgerpb.Posting
-	TransactionMetadata map[string]*ledgerpb.MetadataValue            // Metadata from set_tx_meta in Numscript
-	AccountsMetadata    map[string]map[string]*ledgerpb.MetadataValue // Metadata from set_account_meta in Numscript
-}
-
-type postingProducer interface {
-	produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, script *ledgerpb.Script) (*produceResult, domain.SerializableError)
+	Postings            []*commonpb.Posting
+	TransactionMetadata map[string]*commonpb.MetadataValue            // Metadata from set_tx_meta in Numscript
+	AccountsMetadata    map[string]map[string]*commonpb.MetadataValue // Metadata from set_account_meta in Numscript
 }
 
 type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, _ *ledgerpb.Script) (*produceResult, domain.SerializableError) {
-	for _, posting := range order.GetPostings() {
+func (p *stdPostingProducer) producePostings(s Scope, ledger string, postings []*commonpb.Posting, force bool) (*produceResult, domain.Describable) {
+	for _, posting := range postings {
 		// Skip balance check when Force is true
 		err := applyPosting(s, ledger, posting, force, p.assetCache)
 		if err != nil {
@@ -503,7 +526,7 @@ type commandMetadataBudget struct {
 	bytes uint64
 }
 
-func transactionMetadataSize(metadata map[string]*ledgerpb.MetadataValue, accounts map[string]*ledgerpb.MetadataMap) uint64 {
+func transactionMetadataSize(metadata map[string]*commonpb.MetadataValue, accounts map[string]*commonpb.MetadataMap) uint64 {
 	total := domain.MetadataMapSize(metadata)
 	for _, mm := range accounts {
 		total += domain.MetadataMapSize(mm.GetValues())

@@ -4900,7 +4900,7 @@ func (m *AccountMetadataUpdated) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.AccountMetadata) > 0 {
-		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerPkgProtoV3LedgerpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
@@ -4925,7 +4925,7 @@ func (m *AccountMetadataUpdated) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerPkgProtoV3LedgerpbCommonString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }

@@ -9,9 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -22,10 +21,10 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*ledgerpb.Index], error) {
+		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 			capturedScope = req.GetScope()
 
-			return cursor.NewSliceCursor([]*ledgerpb.Index{
+			return cursor.NewSliceCursor([]*commonpb.Index{
 				{ForwardEncodingVersion: 1},
 			}), nil
 		}).AnyTimes()
@@ -55,10 +54,10 @@ func TestHandleListBucketIndexes_ExplicitBucketScope(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*ledgerpb.Index], error) {
+		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 			capturedScope = req.GetScope()
 
-			return cursor.NewSliceCursor[*ledgerpb.Index](nil), nil
+			return cursor.NewSliceCursor[*commonpb.Index](nil), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

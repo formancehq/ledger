@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -37,11 +35,11 @@ func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVe
 // Returns nil if the numscript or version does not exist.
 func ReadNumscript(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
-	contentAttr *attributes.Attribute[*ledgerpb.NumscriptInfo],
+	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
 	ledgerName string, name string,
 	version string,
-) (*ledgerpb.NumscriptInfo, error) {
+) (*commonpb.NumscriptInfo, error) {
 	if version == "" || version == "latest" {
 		latestVersion, err := ReadNumscriptLatestVersion(versionAttr, reader, ledgerName, name)
 		if err != nil {
@@ -71,10 +69,10 @@ func ReadNumscript(
 // pointers, then fetching each script's greatest version content.
 func ReadAllNumscripts(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
-	contentAttr *attributes.Attribute[*ledgerpb.NumscriptInfo],
+	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
 	ledgerName string,
-) ([]*ledgerpb.NumscriptInfo, error) {
+) ([]*commonpb.NumscriptInfo, error) {
 	// Scan all latest pointers for this ledger.
 	// The canonical key prefix is [ledgerName padded 64B].
 	prefix := make([]byte, dal.LedgerNameFixedSize)
@@ -84,7 +82,7 @@ func ReadAllNumscripts(
 		return nil, fmt.Errorf("scanning numscript versions for ledger %q: %w", ledgerName, err)
 	}
 
-	var scripts []*ledgerpb.NumscriptInfo
+	var scripts []*commonpb.NumscriptInfo
 
 	for _, entry := range entries {
 		version := entry.Value.GetVersion()
@@ -112,10 +110,10 @@ func ReadAllNumscripts(
 // (greatest stored semver) and every stored version ordered highest-first.
 func ReadAllNumscriptVersions(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
-	contentAttr *attributes.Attribute[*ledgerpb.NumscriptInfo],
+	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
 	ledgerName string, name string,
-) (string, []*ledgerpb.NumscriptVersionEntry, error) {
+) (string, []*commonpb.NumscriptVersionEntry, error) {
 	latest, err := ReadNumscriptLatestVersion(versionAttr, reader, ledgerName, name)
 	if err != nil {
 		return "", nil, err
@@ -127,12 +125,13 @@ func ReadAllNumscriptVersions(
 		return "", nil, fmt.Errorf("scanning numscript versions for %q/%q: %w", ledgerName, name, err)
 	}
 
-	versions := make([]*ledgerpb.NumscriptVersionEntry, 0, len(entries))
+	versions := make([]*commonpb.NumscriptVersionEntry, 0, len(entries))
 	for _, entry := range entries {
 		info := entry.Value
-		versions = append(versions, &ledgerpb.NumscriptVersionEntry{
-			Version:   info.GetVersion(),
-			CreatedAt: info.GetCreatedAt(),
+		versions = append(versions, &commonpb.NumscriptVersionEntry{
+			Version:     info.GetVersion(),
+			CreatedAt:   info.GetCreatedAt(),
+			Description: info.GetDescription(),
 		})
 	}
 
@@ -143,7 +142,7 @@ func ReadAllNumscriptVersions(
 
 // sortNumscriptVersions orders stored versions highest-first by semver, with any
 // unparseable version ordered last (lexically) for a stable, total order.
-func sortNumscriptVersions(versions []*ledgerpb.NumscriptVersionEntry) {
+func sortNumscriptVersions(versions []*commonpb.NumscriptVersionEntry) {
 	sort.SliceStable(versions, func(i, j int) bool {
 		vi, ei := semver.Parse(versions[i].GetVersion())
 		vj, ej := semver.Parse(versions[j].GetVersion())
@@ -156,13 +155,13 @@ func sortNumscriptVersions(versions []*ledgerpb.NumscriptVersionEntry) {
 }
 
 // readNumscriptExact does a direct Get on the exact version key in the attributes zone.
-func readNumscriptExact(attr *attributes.Attribute[*ledgerpb.NumscriptInfo], reader dal.PebbleGetter, ledgerName string, name, version string) (*ledgerpb.NumscriptInfo, error) {
+func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleGetter, ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
 	return attr.Get(reader, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes())
 }
 
 // resolvePartialVersion scans all versions for (ledger, name) from the attributes zone
 // and finds the highest matching semver.
-func resolvePartialVersion(attr *attributes.Attribute[*ledgerpb.NumscriptInfo], reader dal.PebbleReader, ledgerName string, name string, targetMajor, targetMinor uint32, depth int) (*ledgerpb.NumscriptInfo, error) {
+func resolvePartialVersion(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledgerName string, name string, targetMajor, targetMinor uint32, depth int) (*commonpb.NumscriptInfo, error) {
 	// Scan all versions for this (ledger, name) by using the common prefix.
 	prefix := domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: ""}.Bytes()
 
@@ -172,7 +171,7 @@ func resolvePartialVersion(attr *attributes.Attribute[*ledgerpb.NumscriptInfo], 
 	}
 
 	var (
-		bestInfo             *ledgerpb.NumscriptInfo
+		bestInfo             *commonpb.NumscriptInfo
 		bestMajor, bestMinor uint32
 		bestPatch            uint32
 		found                bool

@@ -80,7 +80,7 @@ func (l signedApplyBatchListReadonly) Range(yield func(int, SignedApplyBatchRead
 
 // NewSignedApplyBatchListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSignedApplyBatchListReader(s []*SignedApplyBatch) SignedApplyBatchListReader {
+func NewSignedApplyBatchListReader(s []*SignedApplyBatch) signedApplyBatchListReadonly {
 	return signedApplyBatchListReadonly(s)
 }
 
@@ -157,4 +157,4 @@ func (l signedLogListReadonly) Range(yield func(int, SignedLogReader) bool) {
 
 // NewSignedLogListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSignedLogListReader(s []*SignedLog) SignedLogListReader { return signedLogListReadonly(s) }
+func NewSignedLogListReader(s []*SignedLog) signedLogListReadonly { return signedLogListReadonly(s) }

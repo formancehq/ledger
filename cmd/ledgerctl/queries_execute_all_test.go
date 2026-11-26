@@ -15,8 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -55,7 +54,7 @@ func (s *pagedPreparedQueryServer) ExecutePreparedQuery(_ context.Context, req *
 
 	end := min(start+int(pageSize), s.totalItems)
 
-	cursor := &ledgerpb.PreparedQueryCursor{
+	cursor := &commonpb.PreparedQueryCursor{
 		PageSize: pageSize,
 		HasMore:  end < s.totalItems,
 	}
@@ -64,7 +63,7 @@ func (s *pagedPreparedQueryServer) ExecutePreparedQuery(_ context.Context, req *
 	}
 
 	for id := start; id < end; id++ {
-		cursor.TransactionData = append(cursor.TransactionData, &ledgerpb.Transaction{Id: uint64(id)})
+		cursor.TransactionData = append(cursor.TransactionData, &commonpb.Transaction{Id: uint64(id)})
 	}
 
 	return &servicepb.ExecutePreparedQueryResponse{

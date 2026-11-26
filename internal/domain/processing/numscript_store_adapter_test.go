@@ -7,11 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -77,8 +77,8 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 
 	// Input=1000, Output=300, Balance=700
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(1000),
-		Output: ledgerpb.NewUint256FromUint64(300),
+		Input:  commonpb.NewUint256FromUint64(1000),
+		Output: commonpb.NewUint256FromUint64(300),
 	}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{{Account: "bank", Asset: "USD"}}
@@ -146,7 +146,7 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 		Key:        "status",
 	}
 
-	expectGetAccountMetadata(mockStore, metaKey, ledgerpb.NewStringValue("active"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("active").AsReader(), nil)
 
 	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"status"}}}
 
@@ -178,7 +178,7 @@ func TestGetAccountsMetadata_PresentEmptyString(t *testing.T) {
 		Key:        "note",
 	}
 
-	expectGetAccountMetadata(mockStore, metaKey, ledgerpb.NewStringValue(""), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("").AsReader(), nil)
 
 	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"note"}}}
 
@@ -229,7 +229,7 @@ func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 		Key:        "age",
 	}
 
-	expectGetAccountMetadata(mockStore, metaKey, ledgerpb.NewStringValue("030"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("030").AsReader(), nil)
 
 	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"age"}}}
 

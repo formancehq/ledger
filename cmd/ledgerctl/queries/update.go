@@ -8,10 +8,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -62,10 +61,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return errors.New("--filter must contain at least one condition; omit the flag to clear the filter")
 	}
 
-	var filter *ledgerpb.QueryFilter
-	var err error
+	var filter *commonpb.QueryFilter
 	if filterSet {
-		filter, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+		filter, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), target)
 		if err != nil {
 			return fmt.Errorf("invalid filter expression: %w", err)
 		}

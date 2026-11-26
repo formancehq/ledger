@@ -12,11 +12,11 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -287,7 +287,7 @@ func verifyVolumeUpdateMonotonicity(
 // deletions are lifecycle effects, not posting deltas.
 func verifyVolumeDeltasMatchPostings(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-	logs []*ledgerpb.Log,
+	logs []*commonpb.Log,
 ) error {
 	// Compute expected deltas from postings
 	type delta struct {
@@ -302,7 +302,7 @@ func verifyVolumeDeltasMatchPostings(
 			continue
 		}
 
-		apply, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
+		apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 		if !ok || apply.Apply == nil || apply.Apply.GetLog() == nil || apply.Apply.GetLog().GetData() == nil {
 			continue
 		}
@@ -310,14 +310,14 @@ func verifyVolumeDeltasMatchPostings(
 		ledgerName := apply.Apply.GetLedgerName()
 		data := apply.Apply.GetLog().GetData()
 
-		var postings []*ledgerpb.Posting
+		var postings []*commonpb.Posting
 
 		switch p := data.GetPayload().(type) {
-		case *ledgerpb.LedgerLogPayload_CreatedTransaction:
+		case *commonpb.LedgerLogPayload_CreatedTransaction:
 			if p.CreatedTransaction != nil && p.CreatedTransaction.GetTransaction() != nil {
 				postings = p.CreatedTransaction.GetTransaction().GetPostings()
 			}
-		case *ledgerpb.LedgerLogPayload_RevertedTransaction:
+		case *commonpb.LedgerLogPayload_RevertedTransaction:
 			if p.RevertedTransaction != nil && p.RevertedTransaction.GetRevertTransaction() != nil {
 				postings = p.RevertedTransaction.GetRevertTransaction().GetPostings()
 			}

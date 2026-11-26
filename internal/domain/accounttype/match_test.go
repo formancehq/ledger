@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestPatternsConflict(t *testing.T) {
@@ -70,7 +70,7 @@ func TestCompileTypesSorted(t *testing.T) {
 
 	// Insert keys in reverse alphabetical order to ensure the output is
 	// sorted regardless of map iteration order.
-	types := map[string]*ledgerpb.AccountType{
+	types := map[string]*commonpb.AccountType{
 		"zebra": {
 			Name:    "zebra",
 			Pattern: "zebra:{id}",

@@ -12,9 +12,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -135,7 +136,7 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 		stream = authStream
 
 		switch typed := policy.GetPolicy().(type) {
-		case *ledgerpb.MethodAuthPolicy_FixedScope:
+		case *commonpb.MethodAuthPolicy_FixedScope:
 			scope, err := authScope(typed.FixedScope)
 			if err != nil {
 				return err
@@ -143,8 +144,8 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 			if err := internalauth.AuthorizeGRPC(ctx, scope); err != nil {
 				return err
 			}
-		case *ledgerpb.MethodAuthPolicy_DynamicResolver:
-			if typed.DynamicResolver != ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES {
+		case *commonpb.MethodAuthPolicy_DynamicResolver:
+			if typed.DynamicResolver != commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES {
 				return status.Errorf(codes.Internal, "dynamic resolver %s is not valid for a streaming RPC", typed.DynamicResolver)
 			}
 			stream = &listIndexesAuthServerStream{authServerStream: authStream}
@@ -156,16 +157,104 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 	}
 }
 
-func protectedRPCPolicy(method string) (*ledgerpb.MethodAuthPolicy, bool, error) {
+func rejectDirectClusterSecret(ctx context.Context, cfg internalauth.AuthConfig) error {
+	if cfg.ClusterSecret == "" {
+		return nil
+	}
+	token, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return err
+	}
+	if presented && len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+		return status.Error(codes.Unauthenticated, "cluster secret is reserved for inter-node forwarding")
+	}
+
+	return nil
+}
+
+func requirePeerCredential(ctx context.Context, cfg internalauth.AuthConfig) error {
+	if !peerUsesTLS(ctx) && !cfg.Enabled {
+		// Plaintext exists only in disabled/optional modes. A rolling
+		// migration must accept older peers without exposing the secret.
+		return nil
+	}
+	// Auth-disabled clusters historically had no shared secret. They still get
+	// a dedicated peer listener, but there is no credential to validate in that
+	// mode. TLS peers with a configured secret must present it; a JWT is never
+	// accepted as a peer credential.
+	if cfg.ClusterSecret == "" && !cfg.Enabled {
+		return nil
+	}
+
+	if cfg.ClusterSecret == "" {
+		return status.Error(codes.Unauthenticated, "cluster secret is required on the peer service")
+	}
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "peer transport credential is required")
+	}
+	values := md.Get(transport.PeerAuthMetadataKey)
+	if len(values) == 1 && strings.HasPrefix(values[0], "Bearer ") {
+		token := strings.TrimPrefix(values[0], "Bearer ")
+		if token == "" || strings.ContainsAny(token, " \t\r\n") {
+			return status.Error(codes.Unauthenticated, "invalid peer transport credential")
+		}
+		if len(token) == len(cfg.ClusterSecret) && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
+			return nil
+		}
+	}
+
+	return status.Error(codes.Unauthenticated, "invalid peer transport credential")
+}
+
+func evaluatePeerOrUserCredentials(ctx context.Context, cfg internalauth.AuthConfig, peerOnly bool) (context.Context, error) {
+	if !peerOnly {
+		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+	}
+
+	// A peer transport is authenticated independently of the caller. Forwarded
+	// bearer and anonymous requests retain their caller identity; a peer call
+	// with neither is an internal node action.
+	_, presented, err := internalauth.BearerTokenFromGRPCContext(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	md, _ := metadata.FromIncomingContext(ctx)
+	anonymous := md.Get(transport.ForwardedAnonymousMetadataKey)
+	if len(anonymous) > 0 {
+		if len(anonymous) != 1 || anonymous[0] != "true" || presented || !internalauth.IsClusterInternal(ctx) {
+			return ctx, status.Error(codes.Unauthenticated, "invalid forwarded anonymous caller")
+		}
+		if cfg.Enabled {
+			return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+		}
+	}
+	if presented {
+		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+	}
+
+	if !cfg.Enabled {
+		return internalauth.EvaluateGRPCCredentials(ctx, cfg)
+	}
+
+	if !internalauth.IsClusterInternal(ctx) {
+		return ctx, status.Error(codes.Unauthenticated, "authenticated peer transport is required")
+	}
+
+	return internalauth.WithPeerSystemAuthentication(ctx), nil
+}
+
+func protectedRPCPolicy(method string) (*commonpb.MethodAuthPolicy, bool, error) {
 	if isInfrastructureRPCMethod(method) {
 		return nil, false, nil
 	}
 
-	policy, err := ledgerpb.RPCAuthPolicyForMethod(method)
+	policy, err := commonpb.RPCAuthPolicyForMethod(method)
 	if err != nil {
 		return nil, false, status.Error(codes.Internal, err.Error())
 	}
-	if public, ok := policy.GetPolicy().(*ledgerpb.MethodAuthPolicy_Public); ok {
+	if public, ok := policy.GetPolicy().(*commonpb.MethodAuthPolicy_Public); ok {
 		if !public.Public {
 			return nil, false, status.Error(codes.Internal, "invalid public RPC authentication policy")
 		}
@@ -176,25 +265,25 @@ func protectedRPCPolicy(method string) (*ledgerpb.MethodAuthPolicy, bool, error)
 	return policy, true, nil
 }
 
-func authorizeUnaryRPC(ctx context.Context, req any, policy *ledgerpb.MethodAuthPolicy) (context.Context, error) {
+func authorizeUnaryRPC(ctx context.Context, req any, policy *commonpb.MethodAuthPolicy) (context.Context, error) {
 	switch typed := policy.GetPolicy().(type) {
-	case *ledgerpb.MethodAuthPolicy_FixedScope:
+	case *commonpb.MethodAuthPolicy_FixedScope:
 		scope, err := authScope(typed.FixedScope)
 		if err != nil {
 			return ctx, err
 		}
 
 		return ctx, internalauth.AuthorizeGRPC(ctx, scope)
-	case *ledgerpb.MethodAuthPolicy_DynamicResolver:
+	case *commonpb.MethodAuthPolicy_DynamicResolver:
 		return authorizeDynamicUnaryRPC(ctx, req, typed.DynamicResolver)
 	default:
 		return ctx, status.Error(codes.Internal, "RPC authentication policy is missing")
 	}
 }
 
-func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver ledgerpb.DynamicAuthResolver) (context.Context, error) {
+func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.DynamicAuthResolver) (context.Context, error) {
 	switch resolver {
-	case ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY:
+	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY:
 		applyReq, ok := req.(*servicepb.ApplyRequest)
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
@@ -218,14 +307,14 @@ func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver ledgerpb.Dy
 		}
 
 		return context.WithValue(ctx, applyBatchSizeKey{}, len(batch.GetRequests())), nil
-	case ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX:
+	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX:
 		indexReq, ok := req.(*servicepb.GetIndexRequest)
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
 		}
 
 		return ctx, internalauth.AuthorizeGRPC(ctx, indexAuthScope(indexReq.GetLedger()))
-	case ledgerpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS:
+	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS:
 		entryReq, ok := req.(*servicepb.GetIndexEntryStatusRequest)
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
@@ -252,7 +341,7 @@ func distinctApplyScopes(requests []*servicepb.Request) []indexedScope {
 	return required
 }
 
-func unexpectedAuthRequest(resolver ledgerpb.DynamicAuthResolver, req any) error {
+func unexpectedAuthRequest(resolver commonpb.DynamicAuthResolver, req any) error {
 	return status.Errorf(codes.Internal, "dynamic resolver %s received %T", resolver, req)
 }
 
@@ -264,35 +353,35 @@ func indexAuthScope(ledger string) internalauth.Scope {
 	return internalauth.ScopeOpsRead
 }
 
-func authScope(scope ledgerpb.AuthScope) (internalauth.Scope, error) {
+func authScope(scope commonpb.AuthScope) (internalauth.Scope, error) {
 	switch scope {
-	case ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_LEDGER_READ:
 		return internalauth.ScopeLedgersRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_LEDGER_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_LEDGER_WRITE:
 		return internalauth.ScopeLedgersWrite, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_TRANSACTION_READ:
 		return internalauth.ScopeTransactionsRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_TRANSACTION_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_TRANSACTION_WRITE:
 		return internalauth.ScopeTransactionsWrite, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_ACCOUNT_READ:
 		return internalauth.ScopeAccountsRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_METADATA_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_METADATA_WRITE:
 		return internalauth.ScopeMetadataWrite, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_AUDIT_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_AUDIT_READ:
 		return internalauth.ScopeAuditRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_AUDIT_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_AUDIT_WRITE:
 		return internalauth.ScopeAuditWrite, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_OPS_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_OPS_READ:
 		return internalauth.ScopeOpsRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_OPS_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_OPS_WRITE:
 		return internalauth.ScopeOpsWrite, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_QUERY_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_QUERY_READ:
 		return internalauth.ScopeQueriesRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_QUERY_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_QUERY_WRITE:
 		return internalauth.ScopeQueriesWrite, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_READ:
+	case commonpb.AuthScope_AUTH_SCOPE_CLUSTER_READ:
 		return internalauth.ScopeClusterRead, nil
-	case ledgerpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE:
+	case commonpb.AuthScope_AUTH_SCOPE_CLUSTER_WRITE:
 		return internalauth.ScopeClusterWrite, nil
 	case commonpb.AuthScope_AUTH_SCOPE_EXECUTE_NUMSCRIPT:
 		return internalauth.ScopeExecuteNumscript, nil

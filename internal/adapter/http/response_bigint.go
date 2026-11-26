@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // HeaderBigIntAsString selects canonical decimal strings for all HTTP response
@@ -17,9 +17,9 @@ func bigIntegerEncoding(r *http.Request) jsonv2.Options {
 		// Match v2 exactly, including its lack of whitespace trimming.
 		switch strings.ToLower(r.Header.Get(HeaderBigIntAsString)) {
 		case "true", "yes", "y", "1":
-			return ledgerpb.BigIntegersAsStrings()
+			return commonpb.BigIntegersAsStrings()
 		}
 	}
 
-	return ledgerpb.BigIntegersAsNumbers()
+	return commonpb.BigIntegersAsNumbers()
 }

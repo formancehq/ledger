@@ -9,8 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -48,7 +47,7 @@ func TestHandleGetIndexEntryStatus_NotFound(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetIndexEntryStatus(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
-			return nil, ledgerpb.NewNotFoundError("not found")
+			return nil, commonpb.NewNotFoundError("not found")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

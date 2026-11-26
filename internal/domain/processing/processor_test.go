@@ -6,10 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -64,7 +62,7 @@ func TestHashOrders_ExcludesInputsResolutionHash(t *testing.T) {
 						Apply: &raftcmdpb.LedgerApplyOrder{
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script: &ledgerpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+									Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
 								},
 							},
 						},
@@ -98,7 +96,7 @@ func TestHashOrders_ExcludesPreloadUnavailable(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &ledgerpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+								Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
 							},
 						},
 					},
@@ -192,7 +190,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -245,23 +243,23 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 
 	// Track the ledger info stored by CreateLedger so GetLedger can return it.
-	var storedLedgerInfo *ledgerpb.LedgerInfo
+	var storedLedgerInfo *commonpb.LedgerInfo
 
 	// Shared Ledgers stub: Get returns storedLedgerInfo (or ErrNotFound
 	// before CreateLedger runs); Put captures the info written by
 	// CreateLedger so the subsequent CreateTransaction order sees it.
 	ledgers := setupLedgersStub(mockStore)
-	ledgers.onGet(func(_ domain.LedgerKey) (ledgerpb.LedgerInfoReader, error) {
+	ledgers.onGet(func(_ domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
 		if storedLedgerInfo == nil {
 			return nil, domain.ErrNotFound
 		}
 
 		return storedLedgerInfo.AsReader(), nil
 	})
-	ledgers.onPut(func(_ domain.LedgerKey, info *ledgerpb.LedgerInfo) {
+	ledgers.onPut(func(_ domain.LedgerKey, info *commonpb.LedgerInfo) {
 		storedLedgerInfo = info
 	})
 
@@ -287,8 +285,8 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	dstKey := domain.NewVolumeKey("myled", "users:bob", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(0),
-		Output: ledgerpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	volumes := setupVolumesStub(mockStore)
@@ -315,11 +313,11 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Postings: []*ledgerpb.Posting{
+							Postings: []*commonpb.Posting{
 								{
 									Source:      "world",
 									Destination: "users:bob",
-									Amount:      ledgerpb.NewUint256FromUint64(100),
+									Amount:      commonpb.NewUint256FromUint64(100),
 									Asset:       "USD",
 								},
 							},
@@ -368,7 +366,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1}
+	now := &commonpb.Timestamp{Data: 1}
 
 	// Two CreateLedger orders. Sequences assigned by IncrementNextSequenceID
 	// are 100 and 110 — chosen non-contiguous so the test catches a min/max
@@ -435,7 +433,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 42}
 
 	// Existing reference: the audit-bound claim recorded by an earlier
@@ -445,7 +443,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	// callers can correlate without a follow-up read.
 	existingRef := &commonpb.TransactionReferenceValue{TransactionId: 7}
 
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
 
 	// The overlay pre-wraps every accessor at construction; register the
@@ -456,8 +454,8 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	stubs.accountMetadataStubFor(mockStore)
 	stubs.transactionStatesStubFor(mockStore)
 	stubs.indexesStubFor(mockStore)
-	mockStore.EXPECT().LedgerMetadata().Return(&kindStub[domain.LedgerMetadataKey, *ledgerpb.MetadataValue, ledgerpb.MetadataValueReader]{}).AnyTimes()
-	mockStore.EXPECT().PreparedQueries().Return(&kindStub[domain.PreparedQueryKey, *ledgerpb.PreparedQuery, ledgerpb.PreparedQueryReader]{}).AnyTimes()
+	mockStore.EXPECT().LedgerMetadata().Return(&kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}).AnyTimes()
+	mockStore.EXPECT().PreparedQueries().Return(&kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{}).AnyTimes()
 
 	trStub, _ := stubs.transactionReferencesStubFor(mockStore)
 	trStub.expectGet(domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-x"}, existingRef.AsReader(), nil)
@@ -483,16 +481,16 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Postings: []*ledgerpb.Posting{{
+								Postings: []*commonpb.Posting{{
 									Source:      "bank",
 									Destination: "users:123",
-									Amount:      ledgerpb.NewUint256FromUint64(100),
+									Amount:      commonpb.NewUint256FromUint64(100),
 									Asset:       "USD",
 								}},
 								Reference: "ref-x",
 							},
 						},
-						SkippableReasons: []ledgerpb.ErrorReason{ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 					},
 				},
 			},
@@ -518,7 +516,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 
 	skipped := apply.GetLog().GetData().GetOrderSkipped()
 	require.NotNil(t, skipped, "the log payload must be OrderSkipped, not the failed CreateTransaction")
-	require.Equal(t, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 	require.Equal(t, "test-ledger", skipped.GetFacts()["ledger"])
 	require.Equal(t, "ref-x", skipped.GetFacts()["reference"])
 
@@ -576,7 +574,7 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 
 	// v2LogId 7 already applied.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 7}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil).AnyTimes()
@@ -613,4 +611,86 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 // assert a no-log order never reaches the sink.
 type countingSink struct{ count int }
 
-func (s *countingSink) Absorb(_ *raftcmdpb.Order, _ *ledgerpb.Log) { s.count++ }
+func (s *countingSink) Absorb(_ *raftcmdpb.Order, _ *commonpb.Log) { s.count++ }
+
+// TestProcessOrders_PreloadUnavailableFailsInSequence pins that a forwarded
+// (preload_unavailable) order fails the batch at its own position: the orders
+// before it execute, so their definitive rejection would win, and the forwarded
+// order itself never reaches a scope.
+func TestProcessOrders_PreloadUnavailableFailsInSequence(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	createLedger := func(name string) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger:  name,
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+				},
+			},
+		}
+	}
+	forwarded := createLedger("never-prepared")
+	forwarded.Technical = &raftcmdpb.OrderTechnical{PreloadUnavailable: true}
+
+	// Only the first order touches the scope; the strict mock rejects any
+	// read of "never-prepared".
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "prepared"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "prepared"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "prepared"}, nil)
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100), nil)
+
+	response, err := processor.ProcessOrders([]*raftcmdpb.Order{createLedger("prepared"), forwarded}, mockFactory(mockStore), noopSink{})
+	require.ErrorIs(t, err, domain.ErrPreloadUnavailable)
+	require.Nil(t, response)
+}
+
+// TestProcessOrders_PreloadUnavailableIsNeverSkipped pins that a
+// skippable_reasons whitelist naming PRELOAD_UNAVAILABLE does not turn a
+// forwarded order into a skip log: the order was never prepared, so there is
+// no executed outcome to skip over.
+func TestProcessOrders_PreloadUnavailableIsNeverSkipped(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	order := &raftcmdpb.Order{
+		Technical: &raftcmdpb.OrderTechnical{PreloadUnavailable: true},
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE},
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	response, err := processor.ProcessOrders([]*raftcmdpb.Order{order}, mockFactory(mockStore), noopSink{})
+	require.ErrorIs(t, err, domain.ErrPreloadUnavailable)
+	require.Nil(t, response)
+}

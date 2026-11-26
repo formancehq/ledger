@@ -7,10 +7,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -103,7 +102,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 // widened to match-all, mirroring `queries update`. Like the list commands, it
 // leaves the per-target validity gate to the server, which applies it on
 // create.
-func parseCreateFilter(expr string, set bool, target ledgerpb.QueryTarget) (*ledgerpb.QueryFilter, error) {
+func parseCreateFilter(expr string, set bool, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	if !set {
 		return nil, nil
 	}
@@ -120,14 +119,14 @@ func parseCreateFilter(expr string, set bool, target ledgerpb.QueryTarget) (*led
 	return filter, nil
 }
 
-func parseTarget(s string) (ledgerpb.QueryTarget, error) {
+func parseTarget(s string) (commonpb.QueryTarget, error) {
 	switch s {
 	case "accounts", "account":
-		return ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil
+		return commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil
 	case "transactions", "transaction", "txn":
-		return ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil
+		return commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil
 	case "logs", "log":
-		return ledgerpb.QueryTarget_QUERY_TARGET_LOGS, nil
+		return commonpb.QueryTarget_QUERY_TARGET_LOGS, nil
 	default:
 		return 0, fmt.Errorf("unknown target %q (use accounts, transactions, or logs)", s)
 	}

@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -29,15 +28,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-func bulkContractSuccess() *ledgerpb.Log {
-	return &ledgerpb.Log{Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-		Apply: &ledgerpb.ApplyLedgerLog{Log: &ledgerpb.LedgerLog{
+func bulkContractSuccess() *commonpb.Log {
+	return &commonpb.Log{Sequence: 101, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{
 			Id: 17,
-			Data: &ledgerpb.LedgerLogPayload{Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-				CreatedTransaction: &ledgerpb.CreatedTransaction{Transaction: &ledgerpb.Transaction{Id: 7}},
+			Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 7}},
 			}},
 		}},
 	}}}
@@ -110,34 +110,46 @@ func TestHandleBulk_ProcessingResponseContract(t *testing.T) {
 								return nil, &apierr.Remote{KindValue: tc.kind, ReasonValue: "PEER_FAILURE", Msg: "peer failure"}
 							}
 
-						return &domain.ApplyResult{Logs: []*ledgerpb.Log{bulkContractSuccess()}}, nil
-					}).Times(map[bool]int{false: 2, true: 3}[continuation])
-				handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-				body := "[" + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "]"
-				r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?continueOnFailure=%t", continuation), strings.NewReader(body))
-				w := httptest.NewRecorder()
-				handler.ServeHTTP(w, r)
-				wantStatus := tc.status
-				if continuation && tc.status < 429 {
-					wantStatus = 200
-				}
-				require.Equal(t, wantStatus, w.Code)
-				response := decodeResponse[bulkResponse](t, w)
-				require.Len(t, response.Data, 3)
-				require.Equal(t, "CREATE_TRANSACTION", response.Data[0].ResponseType)
-				require.Equal(t, uint64(17), response.Data[0].LogID)
-				require.NotNil(t, response.Data[0].Data)
-				require.Equal(t, "ERROR", response.Data[1].ResponseType)
-				require.Equal(t, "PEER_FAILURE", response.Data[1].ErrorCode)
-				require.Equal(t, "peer failure", response.Data[1].ErrorDescription)
-				if continuation {
-					require.Equal(t, "CREATE_TRANSACTION", response.Data[2].ResponseType)
-				} else {
-					require.Equal(t, "ERROR", response.Data[2].ResponseType)
-					require.Equal(t, "context canceled", response.Data[2].ErrorDescription)
-				}
-				requireBulkContract(t, fmt.Sprintf("%s-continue-%t", tc.name, continuation), w)
-			})
+							return &domain.ApplyResult{Logs: []*commonpb.Log{bulkContractSuccess()}}, nil
+						}).Times(map[bool]int{false: 2, true: 3}[continuation])
+					handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}, nil)
+					body := "[" + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "," + strings.Trim(bulkWriteBody, "[]") + "]"
+					r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v3/ledger1/bulk?continueOnFailure=%t&skipResponse=%t", continuation, compact), strings.NewReader(body))
+					w := httptest.NewRecorder()
+					handler.ServeHTTP(w, r)
+					wantStatus := tc.status
+					if continuation && tc.status < 429 && tc.status != http.StatusUnauthorized && tc.status != http.StatusForbidden {
+						wantStatus = 200
+					}
+					require.Equal(t, wantStatus, w.Code)
+					response := decodeResponse[bulkResponse](t, w)
+					require.Len(t, response.Data, 3)
+					require.Equal(t, "CREATE_TRANSACTION", response.Data[0].ResponseType)
+					require.Equal(t, uint64(17), response.Data[0].LogID)
+					if compact {
+						require.Nil(t, response.Data[0].Data)
+						require.Equal(t, uint64(101), response.Data[0].Sequence)
+					} else {
+						require.NotNil(t, response.Data[0].Data)
+						require.Zero(t, response.Data[0].Sequence)
+					}
+					require.Zero(t, response.Data[1].Sequence)
+					require.Equal(t, "ERROR", response.Data[1].ResponseType)
+					require.Equal(t, "PEER_FAILURE", response.Data[1].ErrorCode)
+					require.Equal(t, "peer failure", response.Data[1].ErrorDescription)
+					if continuation {
+						require.Equal(t, "CREATE_TRANSACTION", response.Data[2].ResponseType)
+					} else {
+						require.Equal(t, "ERROR", response.Data[2].ResponseType)
+						require.Equal(t, "context canceled", response.Data[2].ErrorDescription)
+					}
+					name := fmt.Sprintf("%s-continue-%t", tc.name, continuation)
+					if compact {
+						name += "-compact"
+					}
+					requireBulkContract(t, name, w)
+				})
+			}
 		}
 	}
 }
@@ -159,8 +171,8 @@ func TestHandleBulk_MatchesSingleRequestClassification(t *testing.T) {
 		{"idempotency-key-invalid-utf8", admission.ErrIdempotencyKeyInvalidUTF8, http.StatusBadRequest, "INVALID_REQUEST"},
 		{"classified-unavailable", classifiedOnly{domain.KindUnavailable}, http.StatusServiceUnavailable, "UNAVAILABLE"},
 		{"classified-internal", classifiedOnly{domain.KindInternal}, http.StatusInternalServerError, "INTERNAL_ERROR"},
-		{"typed-not-found", ledgerpb.NewNotFoundError("ledger %s not found", "ledger1"), http.StatusNotFound, "NOT_FOUND"},
-		{"typed-not-found-empty-message", ledgerpb.NewNotFoundError(""), http.StatusNotFound, "NOT_FOUND"},
+		{"typed-not-found", commonpb.NewNotFoundError("ledger %s not found", "ledger1"), http.StatusNotFound, "NOT_FOUND"},
+		{"typed-not-found-empty-message", commonpb.NewNotFoundError(""), http.StatusNotFound, "NOT_FOUND"},
 		{"not-found-sentinel", fmt.Errorf("reading ledger: %w", domain.ErrNotFound), http.StatusNotFound, "NOT_FOUND"},
 		{"grpc-invalid-argument", status.Error(codes.InvalidArgument, "bad filter"), http.StatusBadRequest, "INVALID_REQUEST"},
 		{"grpc-unavailable", status.Error(codes.Unavailable, "stream torn down"), http.StatusServiceUnavailable, "UNAVAILABLE"},
@@ -222,7 +234,7 @@ func TestHandleBulk_IdempotencyContract(t *testing.T) {
 						envelope := request.GetUnsigned()
 						keys = append(keys, envelope.GetIdempotencyKey())
 						batchSizes = append(batchSizes, len(envelope.GetRequests()))
-						logs := make([]*ledgerpb.Log, len(envelope.GetRequests()))
+						logs := make([]*commonpb.Log, len(envelope.GetRequests()))
 						for i, action := range envelope.GetRequests() {
 							require.Equal(t, "ledger1", action.GetApply().GetLedger())
 							logs[i] = bulkContractSuccess()
@@ -259,7 +271,7 @@ func TestHandleBulk_InfrastructureResponseContract(t *testing.T) {
 		err    error
 		status int
 	}{
-		{"no-leader", ledgerpb.ErrNoLeader, http.StatusServiceUnavailable},
+		{"no-leader", commonpb.ErrNoLeader, http.StatusServiceUnavailable},
 		{"cache-horizon", plan.ErrCacheHorizonExceeded, http.StatusServiceUnavailable},
 		{"unknown-error", errors.New("private storage failure"), http.StatusInternalServerError},
 	} {

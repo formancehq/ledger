@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestPublicErrorDetails(t *testing.T) {
@@ -104,7 +104,7 @@ func TestPublicErrorDetailsRejectMalformedFacts(t *testing.T) {
 
 	invalid := &ErrNumscriptExecution{
 		Detail:  "private diagnostic",
-		Details: ledgerpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil),
+		Details: commonpb.MustFailureDetails("NUMSCRIPT_COMPILE_INVALID_UNCAPPED_SOURCE", nil),
 	}
 	message, metadata, overridden := PublicErrorDetails(invalid)
 	require.True(t, overridden)

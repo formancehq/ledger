@@ -5,10 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -22,8 +21,8 @@ func TestWriteSetMergeRejectsUnbalancedVolumeUpdate(t *testing.T) {
 	buf, _, dataStore := newTestBuffer(t)
 	key := domain.NewVolumeKey("test", "destination", "USD", "")
 	buf.Volumes().Put(key, &raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(100),
-		Output: ledgerpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(0),
 	})
 	buf.gatedLedgerTypes = map[string]gatedLedgerType{
 		"test": {found: true},
@@ -54,7 +53,7 @@ func TestWriteSetMergeRejectsUnbalancedPersistedVolumeUpdate(t *testing.T) {
 	buf, machine, dataStore := newTestBuffer(t)
 	machine.sentinelMode = true
 	machine.sentinelTracer = NewSentinelTracer(machine.logger)
-	buf.gatedLedgerTypes = gatedTypesFor(&ledgerpb.LedgerInfo{Name: "test", AccountTypes: map[string]*ledgerpb.AccountType{"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}}})
+	buf.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}}})
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("transient:source", "USD", "", 0, 0, 0, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0)}
 	require.NoError(t, checkDoubleEntryInvariant(updates))
 	for _, update := range updates {

@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -189,11 +188,11 @@ func actionForField(name string) *servicepb.LedgerAction {
 		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{}}
 	case "add_metadata":
 		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-			AddMetadata: &ledgerpb.SaveMetadataCommand{},
+			AddMetadata: &commonpb.SaveMetadataCommand{},
 		}}
 	case "delete_metadata":
 		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
-			DeleteMetadata: &ledgerpb.DeleteMetadataCommand{},
+			DeleteMetadata: &commonpb.DeleteMetadataCommand{},
 		}}
 	case "add_account_type":
 		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{}}

@@ -79,7 +79,7 @@ func (l startDownloadBackupRequestListReadonly) Range(yield func(int, StartDownl
 
 // NewStartDownloadBackupRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewStartDownloadBackupRequestListReader(s []*StartDownloadBackupRequest) StartDownloadBackupRequestListReader {
+func NewStartDownloadBackupRequestListReader(s []*StartDownloadBackupRequest) startDownloadBackupRequestListReadonly {
 	return startDownloadBackupRequestListReadonly(s)
 }
 
@@ -146,7 +146,7 @@ func (l startDownloadBackupResponseListReadonly) Range(yield func(int, StartDown
 
 // NewStartDownloadBackupResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewStartDownloadBackupResponseListReader(s []*StartDownloadBackupResponse) StartDownloadBackupResponseListReader {
+func NewStartDownloadBackupResponseListReader(s []*StartDownloadBackupResponse) startDownloadBackupResponseListReadonly {
 	return startDownloadBackupResponseListReadonly(s)
 }
 
@@ -213,7 +213,7 @@ func (l getDownloadStatusRequestListReadonly) Range(yield func(int, GetDownloadS
 
 // NewGetDownloadStatusRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetDownloadStatusRequestListReader(s []*GetDownloadStatusRequest) GetDownloadStatusRequestListReader {
+func NewGetDownloadStatusRequestListReader(s []*GetDownloadStatusRequest) getDownloadStatusRequestListReadonly {
 	return getDownloadStatusRequestListReadonly(s)
 }
 
@@ -320,7 +320,7 @@ func (l getDownloadStatusResponseListReadonly) Range(yield func(int, GetDownload
 
 // NewGetDownloadStatusResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetDownloadStatusResponseListReader(s []*GetDownloadStatusResponse) GetDownloadStatusResponseListReader {
+func NewGetDownloadStatusResponseListReader(s []*GetDownloadStatusResponse) getDownloadStatusResponseListReadonly {
 	return getDownloadStatusResponseListReadonly(s)
 }
 
@@ -387,7 +387,7 @@ func (l cancelDownloadRequestListReadonly) Range(yield func(int, CancelDownloadR
 
 // NewCancelDownloadRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCancelDownloadRequestListReader(s []*CancelDownloadRequest) CancelDownloadRequestListReader {
+func NewCancelDownloadRequestListReader(s []*CancelDownloadRequest) cancelDownloadRequestListReadonly {
 	return cancelDownloadRequestListReadonly(s)
 }
 
@@ -449,7 +449,7 @@ func (l cancelDownloadResponseListReadonly) Range(yield func(int, CancelDownload
 
 // NewCancelDownloadResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCancelDownloadResponseListReader(s []*CancelDownloadResponse) CancelDownloadResponseListReader {
+func NewCancelDownloadResponseListReader(s []*CancelDownloadResponse) cancelDownloadResponseListReadonly {
 	return cancelDownloadResponseListReadonly(s)
 }
 
@@ -511,7 +511,7 @@ func (l validateRestoreRequestListReadonly) Range(yield func(int, ValidateRestor
 
 // NewValidateRestoreRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewValidateRestoreRequestListReader(s []*ValidateRestoreRequest) ValidateRestoreRequestListReader {
+func NewValidateRestoreRequestListReader(s []*ValidateRestoreRequest) validateRestoreRequestListReadonly {
 	return validateRestoreRequestListReadonly(s)
 }
 
@@ -612,7 +612,7 @@ func (l validateRestoreEventListReadonly) Range(yield func(int, ValidateRestoreE
 
 // NewValidateRestoreEventListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewValidateRestoreEventListReader(s []*ValidateRestoreEvent) ValidateRestoreEventListReader {
+func NewValidateRestoreEventListReader(s []*ValidateRestoreEvent) validateRestoreEventListReadonly {
 	return validateRestoreEventListReadonly(s)
 }
 
@@ -679,7 +679,7 @@ func (l validateRestoreErrorListReadonly) Range(yield func(int, ValidateRestoreE
 
 // NewValidateRestoreErrorListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewValidateRestoreErrorListReader(s []*ValidateRestoreError) ValidateRestoreErrorListReader {
+func NewValidateRestoreErrorListReader(s []*ValidateRestoreError) validateRestoreErrorListReadonly {
 	return validateRestoreErrorListReadonly(s)
 }
 
@@ -751,7 +751,7 @@ func (l validateRestoreProgressListReadonly) Range(yield func(int, ValidateResto
 
 // NewValidateRestoreProgressListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewValidateRestoreProgressListReader(s []*ValidateRestoreProgress) ValidateRestoreProgressListReader {
+func NewValidateRestoreProgressListReader(s []*ValidateRestoreProgress) validateRestoreProgressListReadonly {
 	return validateRestoreProgressListReadonly(s)
 }
 
@@ -813,7 +813,7 @@ func (l previewRestoreRequestListReadonly) Range(yield func(int, PreviewRestoreR
 
 // NewPreviewRestoreRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPreviewRestoreRequestListReader(s []*PreviewRestoreRequest) PreviewRestoreRequestListReader {
+func NewPreviewRestoreRequestListReader(s []*PreviewRestoreRequest) previewRestoreRequestListReadonly {
 	return previewRestoreRequestListReadonly(s)
 }
 
@@ -900,7 +900,7 @@ func (l previewRestoreResponseListReadonly) Range(yield func(int, PreviewRestore
 
 // NewPreviewRestoreResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPreviewRestoreResponseListReader(s []*PreviewRestoreResponse) PreviewRestoreResponseListReader {
+func NewPreviewRestoreResponseListReader(s []*PreviewRestoreResponse) previewRestoreResponseListReadonly {
 	return previewRestoreResponseListReadonly(s)
 }
 
@@ -962,7 +962,7 @@ func (l finalizeRestoreRequestListReadonly) Range(yield func(int, FinalizeRestor
 
 // NewFinalizeRestoreRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFinalizeRestoreRequestListReader(s []*FinalizeRestoreRequest) FinalizeRestoreRequestListReader {
+func NewFinalizeRestoreRequestListReader(s []*FinalizeRestoreRequest) finalizeRestoreRequestListReadonly {
 	return finalizeRestoreRequestListReadonly(s)
 }
 
@@ -1029,6 +1029,6 @@ func (l finalizeRestoreResponseListReadonly) Range(yield func(int, FinalizeResto
 
 // NewFinalizeRestoreResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFinalizeRestoreResponseListReader(s []*FinalizeRestoreResponse) FinalizeRestoreResponseListReader {
+func NewFinalizeRestoreResponseListReader(s []*FinalizeRestoreResponse) finalizeRestoreResponseListReadonly {
 	return finalizeRestoreResponseListReadonly(s)
 }

@@ -9,15 +9,13 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
 )
 
 var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
@@ -52,12 +50,12 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 	It("Should deliver events to ClickHouse when transactions are created", func() {
 		// Add ClickHouse sink via Apply
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&ledgerpb.SinkConfig{
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
 			Name:         "ch-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 50,
-			Type: &ledgerpb.SinkConfig_Clickhouse{
-				Clickhouse: &ledgerpb.ClickHouseSinkConfig{
+			Type: &commonpb.SinkConfig_Clickhouse{
+				Clickhouse: &commonpb.ClickHouseSinkConfig{
 					Dsn:   chDSN,
 					Table: table,
 				},
@@ -71,7 +69,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 		// Create a transaction (force=true to bypass balance checks)
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("ch-test",
-			[]*ledgerpb.Posting{
+			[]*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
 			nil,

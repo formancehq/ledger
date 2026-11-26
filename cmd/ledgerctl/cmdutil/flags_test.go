@@ -8,9 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestAddPaginationFlags(t *testing.T) {
@@ -115,7 +114,7 @@ func TestBuildListOptions(t *testing.T) {
 
 	t.Run("with filter", func(t *testing.T) {
 		t.Parallel()
-		f, err := cmdutil.BuildQueryFilter("", "users:", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		f, err := cmdutil.BuildQueryFilter("", "users:", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 
 		opts := cmdutil.BuildListOptions(cmdutil.PaginationFlags{}, cmdutil.ConsistencyFlags{}, f)
@@ -205,7 +204,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("empty inputs return nil", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter("", "", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		f, err := cmdutil.BuildQueryFilter("", "", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.Nil(t, f)
 	})
@@ -213,7 +212,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("prefix only", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter("", "users:", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		f, err := cmdutil.BuildQueryFilter("", "users:", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
@@ -225,7 +224,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("filter only", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 		// filterexpr.Parse produces a FieldCondition oneof variant for metadata.
@@ -235,7 +234,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("filter + prefix combined", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "users:", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "users:", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 		require.NotNil(t, f.GetAnd())
@@ -248,7 +247,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("invalid filter expression", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := cmdutil.BuildQueryFilter("@@invalid@@", "", ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+		_, err := cmdutil.BuildQueryFilter("@@invalid@@", "", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid filter expression")
 	})
@@ -261,13 +260,13 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("bare audit field resolves on the audit target", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter("outcome == failure", "", ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
+		f, err := cmdutil.BuildQueryFilter("outcome == failure", "", commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
 		ac := f.GetAudit()
 		require.NotNil(t, ac, "outcome must resolve to the audit arm on the audit target")
-		require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_OUTCOME, ac.GetField())
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, ac.GetField())
 		require.Equal(t, "failure", ac.GetStringCond().GetHardcoded())
 	})
 
@@ -276,19 +275,19 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("bare ledger resolves to the audit arm on the audit target", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter("ledger == main", "", ledgerpb.QueryTarget_QUERY_TARGET_AUDIT)
+		f, err := cmdutil.BuildQueryFilter("ledger == main", "", commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 		require.NotNil(t, f.GetAudit(), "ledger must resolve to the audit arm on the audit target")
-		require.Equal(t, ledgerpb.AuditField_AUDIT_FIELD_LEDGER, f.GetAudit().GetField())
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, f.GetAudit().GetField())
 	})
 }
 
 // Compile-time sanity: ensure the QueryFilter helpers return the same proto
 // shapes the existing transactions/accounts code already produces.
 var (
-	_ = ledgerpb.AddressMatch_HardcodedPrefix{}
-	_ = ledgerpb.AndFilter{}
+	_ = commonpb.AddressMatch_HardcodedPrefix{}
+	_ = commonpb.AndFilter{}
 )
 
 // fakePager hands DrainAllPages / FetchSinglePageOrAll a deterministic

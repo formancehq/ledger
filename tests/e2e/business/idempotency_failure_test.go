@@ -6,15 +6,13 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // Regression for the ambiguous-commit / exactly-once gap: idempotency must
@@ -38,7 +36,7 @@ var _ = Describe("Idempotency replays failures", Ordered, func() {
 	failingTx := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(
 			idemKey,
-			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank:1", big.NewInt(100), "USD"),
 			}, nil, nil),
 		)
@@ -111,7 +109,7 @@ var _ = Describe("Idempotency preserves committed outcomes", Ordered, func() {
 	okTx := func() *servicepb.ApplyRequest {
 		return actions.WithIdempotencyKey(
 			idemKey,
-			actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "wallet:1", big.NewInt(50), "USD"),
 			}, nil, nil),
 		)
@@ -121,7 +119,7 @@ var _ = Describe("Idempotency preserves committed outcomes", Ordered, func() {
 	// ErrIdempotencyKeyConflict (AlreadyExists).
 	conflictTx := actions.WithIdempotencyKey(
 		idemKey,
-		actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+		actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "wallet:1", big.NewInt(999), "USD"),
 		}, nil, nil),
 	)

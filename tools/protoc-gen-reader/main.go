@@ -514,7 +514,9 @@ func writeListReader(g *protogen.GeneratedFile, msg *protogen.Message) {
 	g.P()
 	g.P("// ", listReaderCtorName(msg), " wraps s for read-only iteration. The returned")
 	g.P("// view aliases the underlying slice; do not mutate s afterwards.")
-	g.P("func ", listReaderCtorName(msg), "(s []*", typeName, ") ", listReaderName, " { return ", listImplName, "(s) }")
+	// Returning the concrete view lets callers in another Go module inline the
+	// constructor before converting it to the read-only interface.
+	g.P("func ", listReaderCtorName(msg), "(s []*", typeName, ") ", listImplName, " { return ", listImplName, "(s) }")
 }
 
 // writeMapReader emits a <Outer>_<Field>MapReader interface and its

@@ -8,10 +8,9 @@ import (
 
 	"github.com/holiman/uint256"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -119,7 +118,12 @@ func (va *volumeAggregator) accumulateAsset(base string, precision uint8, color 
 	}
 }
 
-func (va *volumeAggregator) result() (*ledgerpb.AggregateResult, error) {
+func (va *volumeAggregator) result() (*commonpb.AggregateResult, error) {
+	buckets := make(map[assetKey]*exactVol, len(va.byAsset))
+	for key, agg := range va.byAsset {
+		buckets[key] = &exactVol{input: agg.input.toBig(), output: agg.output.toBig()}
+	}
+
 	if va.useMaxPrecision {
 		buckets = mergeAtMaxPrecision(buckets)
 	}
@@ -128,13 +132,22 @@ func (va *volumeAggregator) result() (*ledgerpb.AggregateResult, error) {
 		buckets = collapseColorBuckets(buckets)
 	}
 
-	volumes := make([]*ledgerpb.AggregatedVolume, 0, len(buckets))
-	for key, agg := range buckets {
-		volumes = append(volumes, &ledgerpb.AggregatedVolume{
+	volumes := make([]*commonpb.AggregatedVolume, 0, len(buckets))
+	for key, vol := range buckets {
+		input, err := commonpb.NewBigUint(vol.input)
+		if err != nil {
+			return nil, fmt.Errorf("encoding aggregate input: %w", err)
+		}
+		output, err := commonpb.NewBigUint(vol.output)
+		if err != nil {
+			return nil, fmt.Errorf("encoding aggregate output: %w", err)
+		}
+
+		volumes = append(volumes, &commonpb.AggregatedVolume{
 			Asset:  domain.FormatAsset(key.base, key.precision),
 			Color:  key.color,
-			Input:  ledgerpb.NewUint256(agg.input),
-			Output: ledgerpb.NewUint256(agg.output),
+			Input:  input,
+			Output: output,
 		})
 	}
 
@@ -142,7 +155,7 @@ func (va *volumeAggregator) result() (*ledgerpb.AggregateResult, error) {
 		return commonpb.LessByAssetColor(volumes[i], volumes[j])
 	})
 
-	return &ledgerpb.AggregateResult{Volumes: volumes}, nil
+	return &commonpb.AggregateResult{Volumes: volumes}, nil
 }
 
 // collapseColorBuckets sums all color buckets of the same (base, precision)
@@ -163,17 +176,10 @@ func collapseColorBuckets(in map[assetKey]*exactVol) map[assetKey]*exactVol {
 	return out
 }
 
-func sortAggregatedVolumes(volumes []*ledgerpb.AggregatedVolume) {
-	sort.Slice(volumes, func(i, j int) bool {
-		return ledgerpb.LessByAssetColor(volumes[i], volumes[j])
-	})
-}
-
-// resultWithMaxPrecision merges assets sharing the same base under the highest
+// mergeAtMaxPrecision merges buckets sharing the same base under the highest
 // precision observed, rescaling lower-precision amounts. Color is preserved as
-// part of the bucket key (and optionally collapsed afterwards).
-func (va *volumeAggregator) resultWithMaxPrecision() (*ledgerpb.AggregateResult, error) {
-	// First pass: find max precision per asset base.
+// part of the bucket key.
+func mergeAtMaxPrecision(in map[assetKey]*exactVol) map[assetKey]*exactVol {
 	maxPrec := make(map[string]uint8)
 	for key := range in {
 		if key.precision > maxPrec[key.base] {
@@ -198,27 +204,14 @@ func (va *volumeAggregator) resultWithMaxPrecision() (*ledgerpb.AggregateResult,
 			continue
 		}
 
-	if va.collapseColors {
-		var err error
-		merged, err = collapseColorBuckets(merged)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	volumes := make([]*ledgerpb.AggregatedVolume, 0, len(merged))
-	for key, agg := range merged {
-		volumes = append(volumes, &ledgerpb.AggregatedVolume{
-			Asset:  domain.FormatAsset(key.base, key.precision),
-			Color:  key.color,
-			Input:  ledgerpb.NewUint256(agg.input),
-			Output: ledgerpb.NewUint256(agg.output),
+		factor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(target-key.precision)), nil)
+		merged.add(&exactVol{
+			input:  new(big.Int).Mul(vol.input, factor),
+			output: new(big.Int).Mul(vol.output, factor),
 		})
 	}
 
-	sortAggregatedVolumes(volumes)
-
-	return &ledgerpb.AggregateResult{Volumes: volumes}, nil
+	return out
 }
 
 // AggregateOptions configures volume aggregation behavior.
@@ -276,20 +269,20 @@ func (ga *groupedAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdp
 	return nil
 }
 
-func (ga *groupedAggregator) result() (*ledgerpb.AggregateResult, error) {
-	groups := make([]*ledgerpb.GroupedAggregateResult, 0, len(ga.prefixes))
+func (ga *groupedAggregator) result() (*commonpb.AggregateResult, error) {
+	groups := make([]*commonpb.GroupedAggregateResult, 0, len(ga.prefixes))
 	for _, p := range ga.prefixes {
 		res, err := ga.aggregators[p].result()
 		if err != nil {
 			return nil, err
 		}
-		groups = append(groups, &ledgerpb.GroupedAggregateResult{
+		groups = append(groups, &commonpb.GroupedAggregateResult{
 			Prefix:  p,
 			Volumes: res.GetVolumes(),
 		})
 	}
 
-	return &ledgerpb.AggregateResult{Groups: groups}, nil
+	return &commonpb.AggregateResult{Groups: groups}, nil
 }
 
 // AggregateVolumes executes a cross-store merge-scan for filtered aggregation:
@@ -302,7 +295,7 @@ func AggregateVolumes(
 	ledgerName string,
 	accountIter readstore.EntityIterator,
 	opts AggregateOptions,
-) (*ledgerpb.AggregateResult, error) {
+) (*commonpb.AggregateResult, error) {
 	acc := newAccumulator(opts)
 
 	for accountIter.Next() {
@@ -364,7 +357,7 @@ func AggregateAllVolumes(
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerName string,
 	opts AggregateOptions,
-) (*ledgerpb.AggregateResult, error) {
+) (*commonpb.AggregateResult, error) {
 	acc := newAccumulator(opts)
 
 	// Single-pass: scan [ledgerName padded 64B] prefix which covers all accounts.
@@ -399,7 +392,7 @@ func AggregateAllVolumes(
 // accumulator is the common interface for flat and grouped aggregation.
 type accumulator interface {
 	accumulate(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error
-	result() (*ledgerpb.AggregateResult, error)
+	result() (*commonpb.AggregateResult, error)
 }
 
 func newAccumulator(opts AggregateOptions) accumulator {

@@ -6,8 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -53,10 +52,10 @@ type hourBucketJSON struct {
 
 type assetVolumeStatsJSON struct {
 	Asset            string            `json:"asset"`
-	TotalVolume      *ledgerpb.BigUint `json:"totalVolume"`
-	AverageVolume    *ledgerpb.BigUint `json:"averageVolume"`
-	MinVolume        *ledgerpb.BigUint `json:"minVolume"`
-	MaxVolume        *ledgerpb.BigUint `json:"maxVolume"`
+	TotalVolume      *commonpb.BigUint `json:"totalVolume"`
+	AverageVolume    *commonpb.BigUint `json:"averageVolume"`
+	MinVolume        *commonpb.BigUint `json:"minVolume"`
+	MaxVolume        *commonpb.BigUint `json:"maxVolume"`
 	TransactionCount uint64            `json:"transactionCount"`
 }
 
@@ -131,14 +130,14 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) (*flowPatternJSON, error) {
 		statistics := &assetVolumeStatsJSON{Asset: vs.GetAsset(), TransactionCount: vs.GetTransactionCount()}
 		for _, amount := range []struct {
 			decimal string
-			target  **ledgerpb.BigUint
+			target  **commonpb.BigUint
 		}{
 			{vs.GetTotalVolume(), &statistics.TotalVolume},
 			{vs.GetAverageVolume(), &statistics.AverageVolume},
 			{vs.GetMinVolume(), &statistics.MinVolume},
 			{vs.GetMaxVolume(), &statistics.MaxVolume},
 		} {
-			value, err := ledgerpb.ParseBigUint(amount.decimal)
+			value, err := commonpb.ParseBigUint(amount.decimal)
 			if err != nil {
 				return nil, fmt.Errorf("invalid analysis volume statistic: %w", err)
 			}

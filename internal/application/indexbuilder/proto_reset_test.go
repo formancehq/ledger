@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestResetLogForReuse_PreservesNestedAllocations(t *testing.T) {
@@ -16,11 +16,11 @@ func TestResetLogForReuse_PreservesNestedAllocations(t *testing.T) {
 
 	// Capture pointers to nested objects that should be preserved.
 	payload := log.GetPayload()
-	apply := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
+	apply := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	applyLog := apply.Apply
 	ledgerLog := applyLog.GetLog()
 	ledgerLogPayload := ledgerLog.GetData()
-	ct := ledgerLogPayload.GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction)
+	ct := ledgerLogPayload.GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	createdTx := ct.CreatedTransaction
 	txn := createdTx.GetTransaction()
 	timestamp := txn.GetTimestamp()
@@ -31,11 +31,11 @@ func TestResetLogForReuse_PreservesNestedAllocations(t *testing.T) {
 
 	// Verify the preserved chain is the SAME pointer (not reallocated).
 	assert.Same(t, payload, log.GetPayload(), "Payload pointer should be preserved")
-	assert.Same(t, apply, log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply), "Apply wrapper preserved")
+	assert.Same(t, apply, log.GetPayload().GetType().(*commonpb.LogPayload_Apply), "Apply wrapper preserved")
 	assert.Same(t, applyLog, apply.Apply, "ApplyLedgerLog preserved")
 	assert.Same(t, ledgerLog, applyLog.GetLog(), "LedgerLog preserved")
 	assert.Same(t, ledgerLogPayload, ledgerLog.GetData(), "LedgerLogPayload preserved")
-	assert.Same(t, ct, ledgerLogPayload.GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction), "CT wrapper preserved")
+	assert.Same(t, ct, ledgerLogPayload.GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction), "CT wrapper preserved")
 	assert.Same(t, createdTx, ct.CreatedTransaction, "CreatedTransaction preserved")
 	assert.Same(t, txn, createdTx.GetTransaction(), "Transaction preserved")
 	assert.Same(t, timestamp, txn.GetTimestamp(), "Timestamp preserved")
@@ -56,11 +56,11 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	// Optional fields must be nil'd.
 	assert.Nil(t, log.GetResponseSignature())
 
-	apply := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
+	apply := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	assert.Empty(t, apply.Apply.GetLedgerName())
 	assert.Equal(t, uint64(0), apply.Apply.GetLog().GetId())
 
-	ct := apply.Apply.GetLog().GetData().GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction)
+	ct := apply.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	createdTx := ct.CreatedTransaction
 
 	assert.Empty(t, createdTx.GetAccountMetadata())
@@ -81,13 +81,13 @@ func TestResetLogForReuse_PreservesSliceCapacity(t *testing.T) {
 
 	log := buildTestLog()
 
-	ct := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
+	ct := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
 	postingsCap := cap(ct.GetTransaction().GetPostings())
 	require.Greater(t, postingsCap, 0)
 
 	resetLogForReuse(log)
 
-	ct2 := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
+	ct2 := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
 	assert.Equal(t, 0, len(ct2.GetTransaction().GetPostings()))
 	assert.Equal(t, postingsCap, cap(ct2.GetTransaction().GetPostings()), "Postings capacity preserved")
 }
@@ -100,7 +100,7 @@ func TestResetLogForReuse_HandlesOneofTypeChange(t *testing.T) {
 	resetLogForReuse(log)
 
 	// The oneof wrapper should still be CreatedTransaction.
-	_, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*ledgerpb.LedgerLogPayload_CreatedTransaction)
+	_, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	assert.True(t, ok, "CreatedTransaction wrapper preserved after reset")
 
 	// Simulate UnmarshalVT changing the type to SavedMetadata:
@@ -113,10 +113,10 @@ func TestResetLogForReuse_HandlesOneofTypeChange(t *testing.T) {
 func TestResetLogForReuse_NonApplyLog(t *testing.T) {
 	t.Parallel()
 
-	log := &ledgerpb.Log{
+	log := &commonpb.Log{
 		Sequence: 42,
-		Payload: &ledgerpb.LogPayload{
-			Type: &ledgerpb.LogPayload_CreateLedger{},
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{},
 		},
 	}
 
@@ -130,7 +130,7 @@ func TestResetLogForReuse_NonApplyLog(t *testing.T) {
 func TestResetLogForReuse_NilPayload(t *testing.T) {
 	t.Parallel()
 
-	log := &ledgerpb.Log{Sequence: 42}
+	log := &commonpb.Log{Sequence: 42}
 	resetLogForReuse(log)
 
 	assert.Equal(t, uint64(0), log.GetSequence())
@@ -145,25 +145,25 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 	data1, err := log1.MarshalVT()
 	require.NoError(t, err)
 
-	log2 := &ledgerpb.Log{
+	log2 := &commonpb.Log{
 		Sequence: 99999,
-		Payload: &ledgerpb.LogPayload{
-			Type: &ledgerpb.LogPayload_Apply{
-				Apply: &ledgerpb.ApplyLedgerLog{
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: "other-ledger",
-					Log: &ledgerpb.LedgerLog{
+					Log: &commonpb.LedgerLog{
 						Id:   77,
-						Date: &ledgerpb.Timestamp{},
-						Data: &ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &ledgerpb.CreatedTransaction{
-									Transaction: &ledgerpb.Transaction{
+						Date: &commonpb.Timestamp{},
+						Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: &commonpb.Transaction{
 										Id: 500,
-										Postings: []*ledgerpb.Posting{
-											{Source: "bank", Destination: "treasury", Amount: &ledgerpb.Uint256{V0: 9999}, Asset: "GBP"},
+										Postings: []*commonpb.Posting{
+											{Source: "bank", Destination: "treasury", Amount: &commonpb.Uint256{V0: 9999}, Asset: "GBP"},
 										},
-										Timestamp:  &ledgerpb.Timestamp{},
-										InsertedAt: &ledgerpb.Timestamp{},
+										Timestamp:  &commonpb.Timestamp{},
+										InsertedAt: &commonpb.Timestamp{},
 									},
 								},
 							},
@@ -177,7 +177,7 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// Unmarshal log1 into reusable message.
-	m := &ledgerpb.Log{}
+	m := &commonpb.Log{}
 	require.NoError(t, m.UnmarshalVT(data1))
 	assert.Equal(t, uint64(12345), m.GetSequence())
 	assert.Equal(t, "default", m.GetPayload().GetApply().GetLedgerName())
@@ -213,7 +213,7 @@ func BenchmarkResetLog(b *testing.B) {
 	require.NoError(b, err)
 
 	b.Run("proto.Reset", func(b *testing.B) {
-		m := &ledgerpb.Log{}
+		m := &commonpb.Log{}
 		b.ReportAllocs()
 		for b.Loop() {
 			m.Reset()
@@ -224,7 +224,7 @@ func BenchmarkResetLog(b *testing.B) {
 	})
 
 	b.Run("resetLogForReuse", func(b *testing.B) {
-		m := &ledgerpb.Log{}
+		m := &commonpb.Log{}
 		b.ReportAllocs()
 		for b.Loop() {
 			resetLogForReuse(m)
@@ -235,42 +235,42 @@ func BenchmarkResetLog(b *testing.B) {
 	})
 }
 
-func buildTestLog() *ledgerpb.Log {
-	return &ledgerpb.Log{
+func buildTestLog() *commonpb.Log {
+	return &commonpb.Log{
 		Sequence: 12345,
-		Payload: &ledgerpb.LogPayload{
-			Type: &ledgerpb.LogPayload_Apply{
-				Apply: &ledgerpb.ApplyLedgerLog{
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: "default",
-					Log: &ledgerpb.LedgerLog{
+					Log: &commonpb.LedgerLog{
 						Id:   42,
-						Date: &ledgerpb.Timestamp{},
-						Data: &ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &ledgerpb.CreatedTransaction{
-									Transaction: &ledgerpb.Transaction{
+						Date: &commonpb.Timestamp{},
+						Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: &commonpb.Transaction{
 										Id:        100,
 										Reference: "ref-001",
 										Reverted:  true,
-										Postings: []*ledgerpb.Posting{
-											{Source: "world", Destination: "users:001", Amount: &ledgerpb.Uint256{V0: 100}, Asset: "USD"},
-											{Source: "world", Destination: "users:002", Amount: &ledgerpb.Uint256{V0: 200}, Asset: "EUR"},
+										Postings: []*commonpb.Posting{
+											{Source: "world", Destination: "users:001", Amount: &commonpb.Uint256{V0: 100}, Asset: "USD"},
+											{Source: "world", Destination: "users:002", Amount: &commonpb.Uint256{V0: 200}, Asset: "EUR"},
 										},
-										Metadata: map[string]*ledgerpb.MetadataValue{
+										Metadata: map[string]*commonpb.MetadataValue{
 											"type": {},
 										},
-										Timestamp:  &ledgerpb.Timestamp{},
-										InsertedAt: &ledgerpb.Timestamp{},
-										UpdatedAt:  &ledgerpb.Timestamp{},
-										RevertedAt: &ledgerpb.Timestamp{},
-										PostCommitVolumes: &ledgerpb.PostCommitVolumes{VolumesByAccount: map[string]*ledgerpb.VolumesByAssets{
-											"users:001": {Volumes: []*ledgerpb.VolumeEntry{
-												{Asset: "USD", Volumes: &ledgerpb.Volumes{Input: ledgerpb.MustBigUintFromDecimal("100"), Output: ledgerpb.MustBigUintFromDecimal("0")}},
+										Timestamp:  &commonpb.Timestamp{},
+										InsertedAt: &commonpb.Timestamp{},
+										UpdatedAt:  &commonpb.Timestamp{},
+										RevertedAt: &commonpb.Timestamp{},
+										PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
+											"users:001": {Volumes: []*commonpb.VolumeEntry{
+												{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("100"), Output: commonpb.MustBigUintFromDecimal("0")}},
 											}},
 										}},
 									},
-									AccountMetadata: map[string]*ledgerpb.MetadataMap{
-										"users:001": {Values: map[string]*ledgerpb.MetadataValue{"type": {}}},
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},
 									},
 								},
 							},
@@ -295,10 +295,10 @@ func TestResetLogForReuse_ClearsVolumeAnnotationLists(t *testing.T) {
 	t.Parallel()
 
 	log := buildTestLog()
-	ll := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply).Apply.GetLog()
-	ll.PurgedVolumes = []*ledgerpb.TouchedVolume{{Account: "t-20:99", Asset: "EUR/2"}}
-	ll.EphemeralVolumes = []*ledgerpb.TouchedVolume{{Account: "e:1", Asset: "USD"}}
-	ll.NewKeptVolumes = []*ledgerpb.TouchedVolume{{Account: "a:1", Asset: "USD"}}
+	ll := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog()
+	ll.PurgedVolumes = []*commonpb.TouchedVolume{{Account: "t-20:99", Asset: "EUR/2"}}
+	ll.EphemeralVolumes = []*commonpb.TouchedVolume{{Account: "e:1", Asset: "USD"}}
+	ll.NewKeptVolumes = []*commonpb.TouchedVolume{{Account: "a:1", Asset: "USD"}}
 
 	resetLogForReuse(log)
 

@@ -12,15 +12,14 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ledgerModeString returns a user-friendly string for a LedgerMode.
-func ledgerModeString(mode ledgerpb.LedgerMode) string {
+func ledgerModeString(mode commonpb.LedgerMode) string {
 	switch mode {
-	case ledgerpb.LedgerMode_LEDGER_MODE_MIRROR:
+	case commonpb.LedgerMode_LEDGER_MODE_MIRROR:
 		return "MIRROR"
 	default:
 		return "NORMAL"
@@ -28,9 +27,9 @@ func ledgerModeString(mode ledgerpb.LedgerMode) string {
 }
 
 // syncStateString returns a user-friendly string for a MirrorSyncState.
-func syncStateString(state ledgerpb.MirrorSyncState) string {
+func syncStateString(state commonpb.MirrorSyncState) string {
 	switch state {
-	case ledgerpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING:
+	case commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING:
 		return "FOLLOWING"
 	default:
 		return "SYNCING"
@@ -38,7 +37,7 @@ func syncStateString(state ledgerpb.MirrorSyncState) string {
 }
 
 // renderMirrorSource displays mirror source configuration.
-func renderMirrorSource(src *ledgerpb.MirrorSourceConfig) {
+func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	pterm.Println()
 	pterm.Println("Mirror Source:")
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
@@ -46,14 +45,14 @@ func renderMirrorSource(src *ledgerpb.MirrorSourceConfig) {
 	pterm.Printf("  Ledger:  %s\n", src.GetLedgerName())
 
 	switch s := src.GetType().(type) {
-	case *ledgerpb.MirrorSourceConfig_Http:
+	case *commonpb.MirrorSourceConfig_Http:
 		pterm.Printf("  Type:    HTTP\n")
 		pterm.Printf("  URL:     %s\n", s.Http.GetBaseUrl())
 
 		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
 			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.GetClientId(), cc.GetTokenEndpoint())
 		}
-	case *ledgerpb.MirrorSourceConfig_Postgres:
+	case *commonpb.MirrorSourceConfig_Postgres:
 		pterm.Printf("  Type:    PostgreSQL\n")
 		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.Postgres.GetDsn()))
 
@@ -94,17 +93,17 @@ func renderMirrorSource(src *ledgerpb.MirrorSourceConfig) {
 // describeRewriteRule renders a rule as `<scope> match=<expr> actions=<n>` for
 // the CLI display. It never inspects action payloads — that would double the
 // output; the scope and action count are enough to eyeball a config.
-func describeRewriteRule(rule *ledgerpb.MirrorRewriteRule) string {
+func describeRewriteRule(rule *commonpb.MirrorRewriteRule) string {
 	switch scope := rule.GetScope().(type) {
-	case *ledgerpb.MirrorRewriteRule_CreatedTransaction:
+	case *commonpb.MirrorRewriteRule_CreatedTransaction:
 		return fmt.Sprintf("scope=created_transaction match=%q actions=%d", matchOrTrue(scope.CreatedTransaction.GetMatch()), len(scope.CreatedTransaction.GetActions()))
-	case *ledgerpb.MirrorRewriteRule_RevertedTransaction:
+	case *commonpb.MirrorRewriteRule_RevertedTransaction:
 		return fmt.Sprintf("scope=reverted_transaction match=%q actions=%d", matchOrTrue(scope.RevertedTransaction.GetMatch()), len(scope.RevertedTransaction.GetActions()))
-	case *ledgerpb.MirrorRewriteRule_SavedMetadata:
+	case *commonpb.MirrorRewriteRule_SavedMetadata:
 		return fmt.Sprintf("scope=saved_metadata match=%q actions=%d", matchOrTrue(scope.SavedMetadata.GetMatch()), len(scope.SavedMetadata.GetActions()))
-	case *ledgerpb.MirrorRewriteRule_DeletedMetadata:
+	case *commonpb.MirrorRewriteRule_DeletedMetadata:
 		return fmt.Sprintf("scope=deleted_metadata match=%q actions=%d", matchOrTrue(scope.DeletedMetadata.GetMatch()), len(scope.DeletedMetadata.GetActions()))
-	case *ledgerpb.MirrorRewriteRule_AnyVariant:
+	case *commonpb.MirrorRewriteRule_AnyVariant:
 		return fmt.Sprintf("scope=any_variant match=%q actions=%d", matchOrTrue(scope.AnyVariant.GetMatch()), len(scope.AnyVariant.GetActions()))
 	default:
 		return "scope=<unset>"
@@ -120,7 +119,7 @@ func matchOrTrue(m string) string {
 }
 
 // renderMirrorSyncProgress displays mirror sync progress information.
-func renderMirrorSyncProgress(progress *ledgerpb.MirrorSyncProgress) {
+func renderMirrorSyncProgress(progress *commonpb.MirrorSyncProgress) {
 	pterm.Println()
 	pterm.Println("Sync Progress:")
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
@@ -153,7 +152,7 @@ func renderMirrorSyncProgress(progress *ledgerpb.MirrorSyncProgress) {
 
 // parseMirrorFlags parses mirror-related flags and returns the mode and source config.
 // If any --mirror-* flag is explicitly set, mode is inferred as "mirror".
-func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMode, *ledgerpb.MirrorSourceConfig, error) {
+func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMode, *commonpb.MirrorSourceConfig, error) {
 	modeStr, _ := cmd.Flags().GetString("mode")
 
 	// Auto-infer mirror mode when mirror flags are explicitly provided
@@ -183,7 +182,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 			return 0, nil, errors.New("mirror flags provided but --mode is set to 'normal'; use --mode=mirror")
 		}
 
-		return ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, nil, nil
+		return commonpb.LedgerMode_LEDGER_MODE_NORMAL, nil, nil
 	case "mirror":
 		// Continue to build mirror source config
 	default:
@@ -204,10 +203,16 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 		return 0, nil, err
 	}
 
-	cfg := &ledgerpb.MirrorSourceConfig{
-		LedgerName:   sourceLedgerName,
-		BatchSize:    batchSize,
-		RewriteRules: rewriteRules,
+	assetMappings, err := parseAssetMappings(cmd)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	cfg := &commonpb.MirrorSourceConfig{
+		LedgerName:    sourceLedgerName,
+		BatchSize:     batchSize,
+		RewriteRules:  rewriteRules,
+		AssetMappings: assetMappings,
 	}
 
 	switch sourceType {
@@ -217,7 +222,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 			return 0, nil, errors.New("--mirror-base-url is required for http mirror source")
 		}
 
-		httpCfg := &ledgerpb.HttpMirrorSourceConfig{
+		httpCfg := &commonpb.HttpMirrorSourceConfig{
 			BaseUrl: baseURL,
 		}
 		oauth2ClientID, _ := cmd.Flags().GetString("mirror-oauth2-client-id")
@@ -226,7 +231,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 		if oauth2ClientID != "" || oauth2TokenEndpoint != "" {
 			oauth2ClientSecret, _ := cmd.Flags().GetString("mirror-oauth2-client-secret")
 			oauth2Scopes, _ := cmd.Flags().GetStringArray("mirror-oauth2-scopes")
-			httpCfg.Oauth2ClientCredentials = &ledgerpb.OAuth2ClientCredentials{
+			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{
 				ClientId:      oauth2ClientID,
 				ClientSecret:  oauth2ClientSecret,
 				TokenEndpoint: oauth2TokenEndpoint,
@@ -234,7 +239,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 			}
 		}
 
-		cfg.Type = &ledgerpb.MirrorSourceConfig_Http{
+		cfg.Type = &commonpb.MirrorSourceConfig_Http{
 			Http: httpCfg,
 		}
 	case "postgres":
@@ -243,7 +248,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 			return 0, nil, errors.New("--mirror-dsn is required for postgres mirror source")
 		}
 
-		pgCfg := &ledgerpb.PostgresMirrorSourceConfig{
+		pgCfg := &commonpb.PostgresMirrorSourceConfig{
 			Dsn: dsn,
 		}
 
@@ -252,7 +257,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 			if iamRegion == "" {
 				return 0, nil, errors.New("--mirror-aws-iam-region must be a non-empty region when set (got empty value)")
 			}
-			pgCfg.AwsIamAuth = &ledgerpb.PostgresAwsIamAuth{
+			pgCfg.AwsIamAuth = &commonpb.PostgresAwsIamAuth{
 				Region: iamRegion,
 			}
 		}
@@ -268,14 +273,14 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 			pgCfg.AwsIamAuth.AssumeRoleArn = assumeRoleArn
 		}
 
-		cfg.Type = &ledgerpb.MirrorSourceConfig_Postgres{
+		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
 			Postgres: pgCfg,
 		}
 	default:
 		return 0, nil, fmt.Errorf("invalid mirror source type %q: must be 'http' or 'postgres'", sourceType)
 	}
 
-	return ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, cfg, nil
+	return commonpb.LedgerMode_LEDGER_MODE_MIRROR, cfg, nil
 }
 
 // parseRewriteRules assembles the mirror rewrite rules from
@@ -284,8 +289,8 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (ledgerpb.LedgerMod
 // routed through protojson so proto oneof variants (`scope`, `action`)
 // dispatch correctly; the default JSON decoder cannot do that. Rules are
 // validated server-side at admission — here we only decode.
-func parseRewriteRules(cmd *cobra.Command) ([]*ledgerpb.MirrorRewriteRule, error) {
-	var rules []*ledgerpb.MirrorRewriteRule
+func parseRewriteRules(cmd *cobra.Command) ([]*commonpb.MirrorRewriteRule, error) {
+	var rules []*commonpb.MirrorRewriteRule
 
 	if path, _ := cmd.Flags().GetString("mirror-rewrite-file"); path != "" {
 		data, err := os.ReadFile(path)
@@ -367,13 +372,13 @@ func parseAssetMappings(cmd *cobra.Command) ([]*commonpb.MirrorAssetMapping, err
 // decodeRewriteRuleList decodes a YAML/JSON list into MirrorRewriteRule
 // protos. YAML is bridged to JSON first because protojson is the only
 // decoder that understands the proto oneof dispatch.
-func decodeRewriteRuleList(data []byte) ([]*ledgerpb.MirrorRewriteRule, error) {
+func decodeRewriteRuleList(data []byte) ([]*commonpb.MirrorRewriteRule, error) {
 	var raw []any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
-	out := make([]*ledgerpb.MirrorRewriteRule, 0, len(raw))
+	out := make([]*commonpb.MirrorRewriteRule, 0, len(raw))
 
 	for i, item := range raw {
 		jsonBytes, err := yamlToJSON(item)
@@ -381,7 +386,7 @@ func decodeRewriteRuleList(data []byte) ([]*ledgerpb.MirrorRewriteRule, error) {
 			return nil, fmt.Errorf("rule %d: %w", i, err)
 		}
 
-		rule := &ledgerpb.MirrorRewriteRule{}
+		rule := &commonpb.MirrorRewriteRule{}
 		if err := protojson.Unmarshal(jsonBytes, rule); err != nil {
 			return nil, fmt.Errorf("rule %d: %w", i, err)
 		}
@@ -393,7 +398,7 @@ func decodeRewriteRuleList(data []byte) ([]*ledgerpb.MirrorRewriteRule, error) {
 }
 
 // decodeRewriteRule decodes a single YAML/JSON rule the same way.
-func decodeRewriteRule(data []byte) (*ledgerpb.MirrorRewriteRule, error) {
+func decodeRewriteRule(data []byte) (*commonpb.MirrorRewriteRule, error) {
 	var raw any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -404,7 +409,7 @@ func decodeRewriteRule(data []byte) (*ledgerpb.MirrorRewriteRule, error) {
 		return nil, err
 	}
 
-	rule := &ledgerpb.MirrorRewriteRule{}
+	rule := &commonpb.MirrorRewriteRule{}
 	if err := protojson.Unmarshal(jsonBytes, rule); err != nil {
 		return nil, err
 	}

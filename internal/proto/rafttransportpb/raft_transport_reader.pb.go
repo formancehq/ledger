@@ -80,7 +80,7 @@ func (l getRangeDigestRequestListReadonly) Range(yield func(int, GetRangeDigestR
 
 // NewGetRangeDigestRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetRangeDigestRequestListReader(s []*GetRangeDigestRequest) GetRangeDigestRequestListReader {
+func NewGetRangeDigestRequestListReader(s []*GetRangeDigestRequest) getRangeDigestRequestListReadonly {
 	return getRangeDigestRequestListReadonly(s)
 }
 
@@ -172,7 +172,7 @@ func (l getRangeDigestResponseListReadonly) Range(yield func(int, GetRangeDigest
 
 // NewGetRangeDigestResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetRangeDigestResponseListReader(s []*GetRangeDigestResponse) GetRangeDigestResponseListReader {
+func NewGetRangeDigestResponseListReader(s []*GetRangeDigestResponse) getRangeDigestResponseListReadonly {
 	return getRangeDigestResponseListReadonly(s)
 }
 
@@ -244,7 +244,7 @@ func (l raftRequestMessageListReadonly) Range(yield func(int, RaftRequestMessage
 
 // NewRaftRequestMessageListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRaftRequestMessageListReader(s []*RaftRequestMessage) RaftRequestMessageListReader {
+func NewRaftRequestMessageListReader(s []*RaftRequestMessage) raftRequestMessageListReadonly {
 	return raftRequestMessageListReadonly(s)
 }
 
@@ -311,7 +311,7 @@ func (l raftRequestBatchListReadonly) Range(yield func(int, RaftRequestBatchRead
 
 // NewRaftRequestBatchListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRaftRequestBatchListReader(s []*RaftRequestBatch) RaftRequestBatchListReader {
+func NewRaftRequestBatchListReader(s []*RaftRequestBatch) raftRequestBatchListReadonly {
 	return raftRequestBatchListReadonly(s)
 }
 
@@ -388,7 +388,7 @@ func (l raftResponseMessageListReadonly) Range(yield func(int, RaftResponseMessa
 
 // NewRaftResponseMessageListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRaftResponseMessageListReader(s []*RaftResponseMessage) RaftResponseMessageListReader {
+func NewRaftResponseMessageListReader(s []*RaftResponseMessage) raftResponseMessageListReadonly {
 	return raftResponseMessageListReadonly(s)
 }
 
@@ -455,7 +455,7 @@ func (l raftResponseBatchListReadonly) Range(yield func(int, RaftResponseBatchRe
 
 // NewRaftResponseBatchListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRaftResponseBatchListReader(s []*RaftResponseBatch) RaftResponseBatchListReader {
+func NewRaftResponseBatchListReader(s []*RaftResponseBatch) raftResponseBatchListReadonly {
 	return raftResponseBatchListReadonly(s)
 }
 
@@ -522,7 +522,7 @@ func (l pingMessageListReadonly) Range(yield func(int, PingMessageReader) bool) 
 
 // NewPingMessageListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPingMessageListReader(s []*PingMessage) PingMessageListReader {
+func NewPingMessageListReader(s []*PingMessage) pingMessageListReadonly {
 	return pingMessageListReadonly(s)
 }
 
@@ -589,7 +589,7 @@ func (l pongResponseListReadonly) Range(yield func(int, PongResponseReader) bool
 
 // NewPongResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPongResponseListReader(s []*PongResponse) PongResponseListReader {
+func NewPongResponseListReader(s []*PongResponse) pongResponseListReadonly {
 	return pongResponseListReadonly(s)
 }
 
@@ -690,7 +690,7 @@ func (l sendMessageRequestListReadonly) Range(yield func(int, SendMessageRequest
 
 // NewSendMessageRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSendMessageRequestListReader(s []*SendMessageRequest) SendMessageRequestListReader {
+func NewSendMessageRequestListReader(s []*SendMessageRequest) sendMessageRequestListReadonly {
 	return sendMessageRequestListReadonly(s)
 }
 
@@ -791,6 +791,6 @@ func (l sendMessageResponseListReadonly) Range(yield func(int, SendMessageRespon
 
 // NewSendMessageResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSendMessageResponseListReader(s []*SendMessageResponse) SendMessageResponseListReader {
+func NewSendMessageResponseListReader(s []*SendMessageResponse) sendMessageResponseListReadonly {
 	return sendMessageResponseListReadonly(s)
 }

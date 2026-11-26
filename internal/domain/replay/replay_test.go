@@ -7,18 +7,19 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // writerStub satisfies replay.Writer with no-ops; the index hooks are
 // overridable so the dispatch tests can observe calls and inject failures.
 type writerStub struct {
-	createIndex func(ledger string, id *ledgerpb.IndexID, createdAt *ledgerpb.Timestamp) error
-	dropIndex   func(ledger string, id *ledgerpb.IndexID) error
+	createIndex func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
+	dropIndex   func(ledger string, id *commonpb.IndexID) error
+	setMetadata func(key []byte, value *commonpb.MetadataValue) error
 
 	removedFieldTypes int
 }
@@ -27,33 +28,37 @@ func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return n
 func (w *writerStub) GetVolume([]byte) (*raftcmdpb.VolumePair, error) { return nil, nil }
 func (w *writerStub) DeleteVolume([]byte) error                       { return nil }
 func (w *writerStub) MoveVolume([]byte, []byte) error                 { return nil }
-func (w *writerStub) SetMetadata([]byte, *ledgerpb.MetadataValue) error {
+func (w *writerStub) SetMetadata(key []byte, value *commonpb.MetadataValue) error {
+	if w.setMetadata != nil {
+		return w.setMetadata(key, value)
+	}
+
 	return nil
 }
 func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
 func (w *writerStub) MoveMetadata([]byte, []byte) error { return nil }
-func (w *writerStub) CreateTransaction([]byte, uint64, *ledgerpb.Timestamp, map[string]*ledgerpb.MetadataValue, []*ledgerpb.Posting, uint64) error {
+func (w *writerStub) CreateTransaction([]byte, uint64, *commonpb.Timestamp, map[string]*commonpb.MetadataValue, []*commonpb.Posting, uint64) error {
 	return nil
 }
 func (w *writerStub) SetTransactionReference(string, string, uint64) error { return nil }
-func (w *writerStub) SetRevertedBy([]byte, uint64, *ledgerpb.Timestamp) error {
+func (w *writerStub) SetRevertedBy([]byte, uint64, *commonpb.Timestamp) error {
 	return nil
 }
-func (w *writerStub) SaveTxMetadata([]byte, map[string]*ledgerpb.MetadataValue) error {
+func (w *writerStub) SaveTxMetadata([]byte, map[string]*commonpb.MetadataValue) error {
 	return nil
 }
 func (w *writerStub) DeleteTxMetadata([]byte, string) error { return nil }
-func (w *writerStub) SetMetadataFieldType(string, ledgerpb.TargetType, string, ledgerpb.MetadataType) error {
+func (w *writerStub) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
 	return nil
 }
 
-func (w *writerStub) RemoveMetadataFieldType(string, ledgerpb.TargetType, string) error {
+func (w *writerStub) RemoveMetadataFieldType(string, commonpb.TargetType, string) error {
 	w.removedFieldTypes++
 
 	return nil
 }
 
-func (w *writerStub) CreateIndex(ledger string, id *ledgerpb.IndexID, createdAt *ledgerpb.Timestamp) error {
+func (w *writerStub) CreateIndex(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error {
 	if w.createIndex != nil {
 		return w.createIndex(ledger, id, createdAt)
 	}
@@ -61,7 +66,7 @@ func (w *writerStub) CreateIndex(ledger string, id *ledgerpb.IndexID, createdAt 
 	return nil
 }
 
-func (w *writerStub) DropIndex(ledger string, id *ledgerpb.IndexID) error {
+func (w *writerStub) DropIndex(ledger string, id *commonpb.IndexID) error {
 	if w.dropIndex != nil {
 		return w.dropIndex(ledger, id)
 	}
@@ -69,28 +74,28 @@ func (w *writerStub) DropIndex(ledger string, id *ledgerpb.IndexID) error {
 	return nil
 }
 
-func (w *writerStub) AddAccountType(string, *ledgerpb.AccountType) error { return nil }
+func (w *writerStub) AddAccountType(string, *commonpb.AccountType) error { return nil }
 func (w *writerStub) RemoveAccountType(string, string) error             { return nil }
-func (w *writerStub) SetDefaultEnforcementMode(string, ledgerpb.ChartEnforcementMode) error {
+func (w *writerStub) SetDefaultEnforcementMode(string, commonpb.ChartEnforcementMode) error {
 	return nil
 }
 
-func metaIndexID(key string) *ledgerpb.IndexID {
-	return &ledgerpb.IndexID{
-		Kind: &ledgerpb.IndexID_Metadata{
-			Metadata: &ledgerpb.MetadataIndexID{
-				Target: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+func metaIndexID(key string) *commonpb.IndexID {
+	return &commonpb.IndexID{
+		Kind: &commonpb.IndexID_Metadata{
+			Metadata: &commonpb.MetadataIndexID{
+				Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:    key,
 			},
 		},
 	}
 }
 
-func replayOne(t *testing.T, w replay.Writer, date *ledgerpb.Timestamp, payload *ledgerpb.LedgerLogPayload) error {
+func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {
 	t.Helper()
 
 	return replay.ReplayLedgerLog("ledger", 1, payload, date, w,
-		map[string]map[string]*ledgerpb.AccountType{},
+		map[string]map[string]*commonpb.AccountType{},
 		map[string][]accounttype.CompiledType{}, nil)
 }
 
@@ -116,21 +121,21 @@ func TestReplayLedgerLog_CreateIndexDispatch(t *testing.T) {
 	t.Parallel()
 
 	id := metaIndexID("k0")
-	date := &ledgerpb.Timestamp{Data: 42}
+	date := &commonpb.Timestamp{Data: 42}
 
 	var gotLedger string
-	var gotID *ledgerpb.IndexID
-	var gotDate *ledgerpb.Timestamp
+	var gotID *commonpb.IndexID
+	var gotDate *commonpb.Timestamp
 
-	w := &writerStub{createIndex: func(ledger string, id *ledgerpb.IndexID, createdAt *ledgerpb.Timestamp) error {
+	w := &writerStub{createIndex: func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error {
 		gotLedger, gotID, gotDate = ledger, id, createdAt
 
 		return nil
 	}}
 
-	require.NoError(t, replayOne(t, w, date, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
+	require.NoError(t, replayOne(t, w, date, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &commonpb.CreatedIndexLog{Id: id},
 		},
 	}))
 	require.Equal(t, "ledger", gotLedger)
@@ -139,22 +144,22 @@ func TestReplayLedgerLog_CreateIndexDispatch(t *testing.T) {
 
 	// A malformed log with no id is skipped, not dispatched.
 	called := false
-	w = &writerStub{createIndex: func(string, *ledgerpb.IndexID, *ledgerpb.Timestamp) error {
+	w = &writerStub{createIndex: func(string, *commonpb.IndexID, *commonpb.Timestamp) error {
 		called = true
 
 		return nil
 	}}
-	require.NoError(t, replayOne(t, w, date, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreateIndex{CreateIndex: &ledgerpb.CreatedIndexLog{}},
+	require.NoError(t, replayOne(t, w, date, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{}},
 	}))
 	require.False(t, called)
 
 	// A writer failure surfaces.
 	boom := errors.New("boom")
-	w = &writerStub{createIndex: func(string, *ledgerpb.IndexID, *ledgerpb.Timestamp) error { return boom }}
-	require.ErrorIs(t, replayOne(t, w, date, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &ledgerpb.CreatedIndexLog{Id: id},
+	w = &writerStub{createIndex: func(string, *commonpb.IndexID, *commonpb.Timestamp) error { return boom }}
+	require.ErrorIs(t, replayOne(t, w, date, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &commonpb.CreatedIndexLog{Id: id},
 		},
 	}), boom)
 }
@@ -164,36 +169,36 @@ func TestReplayLedgerLog_DropIndexDispatch(t *testing.T) {
 
 	id := metaIndexID("k0")
 
-	var gotID *ledgerpb.IndexID
-	w := &writerStub{dropIndex: func(_ string, id *ledgerpb.IndexID) error {
+	var gotID *commonpb.IndexID
+	w := &writerStub{dropIndex: func(_ string, id *commonpb.IndexID) error {
 		gotID = id
 
 		return nil
 	}}
 
-	require.NoError(t, replayOne(t, w, nil, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_DropIndex{
-			DropIndex: &ledgerpb.DroppedIndexLog{Id: id},
+	require.NoError(t, replayOne(t, w, nil, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_DropIndex{
+			DropIndex: &commonpb.DroppedIndexLog{Id: id},
 		},
 	}))
 	require.Same(t, id, gotID)
 
 	called := false
-	w = &writerStub{dropIndex: func(string, *ledgerpb.IndexID) error {
+	w = &writerStub{dropIndex: func(string, *commonpb.IndexID) error {
 		called = true
 
 		return nil
 	}}
-	require.NoError(t, replayOne(t, w, nil, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_DropIndex{DropIndex: &ledgerpb.DroppedIndexLog{}},
+	require.NoError(t, replayOne(t, w, nil, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_DropIndex{DropIndex: &commonpb.DroppedIndexLog{}},
 	}))
 	require.False(t, called)
 
 	boom := errors.New("boom")
-	w = &writerStub{dropIndex: func(string, *ledgerpb.IndexID) error { return boom }}
-	require.ErrorIs(t, replayOne(t, w, nil, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_DropIndex{
-			DropIndex: &ledgerpb.DroppedIndexLog{Id: id},
+	w = &writerStub{dropIndex: func(string, *commonpb.IndexID) error { return boom }}
+	require.ErrorIs(t, replayOne(t, w, nil, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_DropIndex{
+			DropIndex: &commonpb.DroppedIndexLog{Id: id},
 		},
 	}), boom)
 }
@@ -204,17 +209,17 @@ func TestReplayLedgerLog_RemovedFieldTypeCascade(t *testing.T) {
 	id := metaIndexID("k0")
 
 	// The cascade drops exactly the index the log names.
-	var gotID *ledgerpb.IndexID
-	w := &writerStub{dropIndex: func(_ string, id *ledgerpb.IndexID) error {
+	var gotID *commonpb.IndexID
+	w := &writerStub{dropIndex: func(_ string, id *commonpb.IndexID) error {
 		gotID = id
 
 		return nil
 	}}
 
-	require.NoError(t, replayOne(t, w, nil, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{
-			RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{
-				TargetType:   ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, replayOne(t, w, nil, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
+			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
+				TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:          "k0",
 				DroppedIndex: id,
 			},
@@ -225,15 +230,15 @@ func TestReplayLedgerLog_RemovedFieldTypeCascade(t *testing.T) {
 
 	// A removal that dropped nothing leaves the registry untouched.
 	called := false
-	w = &writerStub{dropIndex: func(string, *ledgerpb.IndexID) error {
+	w = &writerStub{dropIndex: func(string, *commonpb.IndexID) error {
 		called = true
 
 		return nil
 	}}
-	require.NoError(t, replayOne(t, w, nil, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{
-			RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{
-				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, replayOne(t, w, nil, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
+			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
 			},
 		},
@@ -243,11 +248,11 @@ func TestReplayLedgerLog_RemovedFieldTypeCascade(t *testing.T) {
 
 	// A cascade failure surfaces.
 	boom := errors.New("boom")
-	w = &writerStub{dropIndex: func(string, *ledgerpb.IndexID) error { return boom }}
-	require.ErrorIs(t, replayOne(t, w, nil, &ledgerpb.LedgerLogPayload{
-		Payload: &ledgerpb.LedgerLogPayload_RemovedMetadataFieldType{
-			RemovedMetadataFieldType: &ledgerpb.RemovedMetadataFieldTypeLog{
-				TargetType:   ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
+	w = &writerStub{dropIndex: func(string, *commonpb.IndexID) error { return boom }}
+	require.ErrorIs(t, replayOne(t, w, nil, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
+			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
+				TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:          "k0",
 				DroppedIndex: id,
 			},

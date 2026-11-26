@@ -7,10 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -30,15 +28,15 @@ func TestMirrorIngestRejectsExhaustedTransactionIDWithoutMutation(t *testing.T) 
 		NextLogId:         1,
 		LastMirrorV2LogId: 41,
 	}
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
 	ledgerTouched := false
 	ledgers := setupLedgersStub(mockStore)
 	ledgers.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
-	ledgers.onPut(func(domain.LedgerKey, *ledgerpb.LedgerInfo) { ledgerTouched = true })
+	ledgers.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) { ledgerTouched = true })
 
 	boundaryWritten := false
 	boundariesStub := setupBoundariesStub(mockStore)
@@ -76,15 +74,15 @@ func TestMirrorIngestRejectsExhaustedLedgerLogIDWithoutMutation(t *testing.T) {
 		NextTransactionId: 1,
 		NextLogId:         math.MaxUint64,
 	}
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
 	ledgerTouched := false
 	ledgers := setupLedgersStub(mockStore)
 	ledgers.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
-	ledgers.onPut(func(domain.LedgerKey, *ledgerpb.LedgerInfo) { ledgerTouched = true })
+	ledgers.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) { ledgerTouched = true })
 
 	boundaryWritten := false
 	boundariesStub := setupBoundariesStub(mockStore)
@@ -137,9 +135,9 @@ func TestMirrorIngestAllowsLastTransactionAndLedgerLogIDs(t *testing.T) {
 		NextLogId:         math.MaxUint64 - 1,
 		LastMirrorV2LogId: 41,
 	}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1}).AsReader()).AnyTimes()
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
 
 	var persisted *raftcmdpb.LedgerBoundaries
@@ -148,8 +146,8 @@ func TestMirrorIngestAllowsLastTransactionAndLedgerLogIDs(t *testing.T) {
 	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { persisted = b })
 
 	zeroVol := (&raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(0),
-		Output: ledgerpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}).AsReader()
 	volumes := setupVolumesStub(mockStore)
 	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), zeroVol, nil)
@@ -193,7 +191,7 @@ func TestMirrorTransactionVariantsRejectMaxIDBeforeMutation(t *testing.T) {
 		payload, err := processMirrorRevertedTransaction(
 			"mirror-ledger",
 			&raftcmdpb.MirrorRevertedTransaction{NewTransactionId: math.MaxUint64},
-			&ledgerpb.Timestamp{Data: 1},
+			&commonpb.Timestamp{Data: 1},
 			&Context{Boundaries: boundaries},
 		)
 		require.Nil(t, payload)
@@ -220,9 +218,9 @@ func TestMirrorIngestAcceptsTerminalV2HighWaterWithoutContiguityWrap(t *testing.
 		NextLogId:         1,
 		LastMirrorV2LogId: math.MaxUint64 - 1,
 	}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return((&ledgerpb.Timestamp{Data: 1}).AsReader())
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
 
 	var persisted *raftcmdpb.LedgerBoundaries
 	boundariesStub := setupBoundariesStub(mockStore)
@@ -261,7 +259,7 @@ func TestMirrorIngestTerminalV2HighWaterReplayIsNoOp(t *testing.T) {
 		NextLogId:         5,
 		LastMirrorV2LogId: math.MaxUint64,
 	}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	boundariesStub := setupBoundariesStub(mockStore)
 	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
@@ -269,7 +267,7 @@ func TestMirrorIngestTerminalV2HighWaterReplayIsNoOp(t *testing.T) {
 		t.Fatal("terminal mirror replay must not write boundaries")
 	})
 	ledgersStub := setupLedgersStub(mockStore)
-	ledgersStub.onPut(func(domain.LedgerKey, *ledgerpb.LedgerInfo) {
+	ledgersStub.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) {
 		t.Fatal("terminal mirror replay must not touch the ledger")
 	})
 
@@ -293,12 +291,12 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	// Contiguous prefix: v2LogId 5 requires the applied prefix to be at 4.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 4}
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
@@ -307,7 +305,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	reader := countingLedgerReader{LedgerInfoReader: ledgerInfo.AsReader(), mutateCalls: &mutateCalls}
 	ledgers := setupLedgersStub(mockStore)
 	ledgers.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, reader, nil)
-	ledgers.onPut(func(_ domain.LedgerKey, _ *ledgerpb.LedgerInfo) {
+	ledgers.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
 		t.Fatal("mirror ingest must not rewrite unchanged ledger configuration")
 	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
@@ -366,12 +364,12 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
-	sourceDate := &ledgerpb.Timestamp{Data: 1699990000}
+	now := &commonpb.Timestamp{Data: 1234567890}
+	sourceDate := &commonpb.Timestamp{Data: 1699990000}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
@@ -386,8 +384,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	// Expect volume operations for source and destination (force=true, no balance checks)
 	zeroVol := &raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(0),
-		Output: ledgerpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 	volumes := setupVolumesStub(mockStore)
 	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), zeroVol.AsReader(), nil)
@@ -401,10 +399,10 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	expectPutTransactionReference(t, mockStore,
 		domain.TransactionReferenceKey{LedgerName: "mirror-ledger", Reference: "tx-ref-v2"}, nil)
 
-	postings := []*ledgerpb.Posting{{
+	postings := []*commonpb.Posting{{
 		Source:      "world",
 		Destination: "users:001",
-		Amount:      ledgerpb.NewUint256FromUint64(500),
+		Amount:      commonpb.NewUint256FromUint64(500),
 		Asset:       "USD/2",
 	}}
 
@@ -421,7 +419,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 								TransactionId: 42,
 								Postings:      postings,
 								Reference:     "tx-ref-v2",
-								Timestamp:     &ledgerpb.Timestamp{Data: 1700000000},
+								Timestamp:     &commonpb.Timestamp{Data: 1700000000},
 							},
 						},
 					},
@@ -468,14 +466,14 @@ func mirrorCreatedTxOrder(ledger string, v2LogID, txID uint64) *raftcmdpb.Order 
 				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
 					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 						V2LogId: v2LogID,
-						Date:    &ledgerpb.Timestamp{Data: 1},
+						Date:    &commonpb.Timestamp{Data: 1},
 						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 								TransactionId: txID,
-								Postings: []*ledgerpb.Posting{{
+								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: "users:001",
-									Amount:      ledgerpb.NewUint256FromUint64(500),
+									Amount:      commonpb.NewUint256FromUint64(500),
 									Asset:       "USD/2",
 								}},
 							},
@@ -505,7 +503,7 @@ func TestMirrorIngest_ReplayIsNoOp(t *testing.T) {
 
 	// v2LogId 7 was already applied: LastMirrorV2LogId == 7.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 7}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 
@@ -517,7 +515,7 @@ func TestMirrorIngest_ReplayIsNoOp(t *testing.T) {
 	})
 	// No ledger re-touch on replay (guarded before s.Ledgers().Put).
 	ledgersStub := setupLedgersStub(mockStore)
-	ledgersStub.onPut(func(_ domain.LedgerKey, _ *ledgerpb.LedgerInfo) {
+	ledgersStub.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
 		t.Errorf("Ledgers().Put must not be called on an idempotent replay")
 	})
 	// No posting applied → no volume writes → balances cannot double.
@@ -546,7 +544,7 @@ func TestMirrorIngest_LowerV2LogIdSkipped(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 10}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 
@@ -579,10 +577,10 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	// Previously applied up to v2LogId 3; the new entry (4) is strictly greater.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 3}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
 
@@ -595,8 +593,8 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b })
 
 	zeroVol := &raftcmdpb.VolumePair{
-		Input:  ledgerpb.NewUint256FromUint64(0),
-		Output: ledgerpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 	volumes := setupVolumesStub(mockStore)
 	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), zeroVol.AsReader(), nil)
@@ -628,7 +626,7 @@ func TestMirrorIngest_GapRejected(t *testing.T) {
 
 	// Applied prefix at 3, so the next contiguous slot is 4; v2LogId 6 is a gap.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 3}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 
@@ -639,7 +637,7 @@ func TestMirrorIngest_GapRejected(t *testing.T) {
 		t.Errorf("Boundaries().Put must not be called on a gap rejection")
 	})
 	ledgersStub := setupLedgersStub(mockStore)
-	ledgersStub.onPut(func(_ domain.LedgerKey, _ *ledgerpb.LedgerInfo) {
+	ledgersStub.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
 		t.Errorf("Ledgers().Put must not be called on a gap rejection")
 	})
 	volumesStub := setupVolumesStub(mockStore)
@@ -675,7 +673,7 @@ func TestMirrorIngest_ZeroV2LogIdRejected(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 5}
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 
@@ -688,7 +686,7 @@ func TestMirrorIngest_ZeroV2LogIdRejected(t *testing.T) {
 		t.Errorf("Boundaries().Put must not be called on a zero v2LogId rejection")
 	})
 	ledgersStub := setupLedgersStub(mockStore)
-	ledgersStub.onPut(func(_ domain.LedgerKey, _ *ledgerpb.LedgerInfo) {
+	ledgersStub.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
 		t.Errorf("Ledgers().Put must not be called on a zero v2LogId rejection")
 	})
 	volumesStub := setupVolumesStub(mockStore)
@@ -722,7 +720,7 @@ func TestMirrorIngest_TransactionWithoutSourceDateRejected(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{Name: "mirror-ledger", Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
@@ -730,7 +728,7 @@ func TestMirrorIngest_TransactionWithoutSourceDateRejected(t *testing.T) {
 	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
 	ledgers := setupLedgersStub(mockStore)
-	ledgers.onPut(func(_ domain.LedgerKey, _ *ledgerpb.LedgerInfo) {
+	ledgers.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
 		t.Errorf("Ledgers().Put must not be called when the source date is missing")
 	})
 	boundariesStub.onPut(func(_ domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
@@ -758,9 +756,9 @@ func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "normal-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_NORMAL,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
 	}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "normal-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
@@ -837,13 +835,13 @@ func TestPromoteLedger_Success(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
-		MirrorSource: &ledgerpb.MirrorSourceConfig{
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &commonpb.MirrorSourceConfig{
 			LedgerName: "default",
-			Type: &ledgerpb.MirrorSourceConfig_Http{
-				Http: &ledgerpb.HttpMirrorSourceConfig{
+			Type: &commonpb.MirrorSourceConfig_Http{
+				Http: &commonpb.HttpMirrorSourceConfig{
 					BaseUrl: "http://v2:3068",
 				},
 			},
@@ -851,8 +849,8 @@ func TestPromoteLedger_Success(t *testing.T) {
 	}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
-	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil, func(_ string, info *ledgerpb.LedgerInfo) {
-		require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
 		require.Nil(t, info.GetMirrorSource())
 	})
 
@@ -886,9 +884,9 @@ func TestPromoteLedger_NotMirrorMode(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "normal-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_NORMAL,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
 	}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "normal-ledger"}, ledgerInfo.AsReader(), nil)
@@ -966,16 +964,16 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 
 	// Both source (world) and destination volumes are absent — admission
 	// emitted Declare for both, the cache has nothing, Volumes().Get
@@ -992,10 +990,10 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
-	postings := []*ledgerpb.Posting{{
+	postings := []*commonpb.Posting{{
 		Source:      "world",
 		Destination: "users:rare-account",
-		Amount:      ledgerpb.NewUint256FromUint64(500),
+		Amount:      commonpb.NewUint256FromUint64(500),
 		Asset:       "USD/2",
 	}}
 
@@ -1040,9 +1038,9 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 	// Contiguous prefix: v2LogId 2 requires the applied prefix to be at 1.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1, LastMirrorV2LogId: 1}
@@ -1050,7 +1048,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 
 	mockStore.EXPECT().PutReverted(domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, true)
 	expectGetTransactionState(mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, nil, domain.ErrNotFound)
@@ -1064,10 +1062,10 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
-	reversePostings := []*ledgerpb.Posting{{
+	reversePostings := []*commonpb.Posting{{
 		Source:      "users:rare-account",
 		Destination: "world",
-		Amount:      ledgerpb.NewUint256FromUint64(500),
+		Amount:      commonpb.NewUint256FromUint64(500),
 		Asset:       "USD/2",
 	}}
 
@@ -1111,9 +1109,9 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 	// Contiguous prefix: v2LogId 2 requires the applied prefix to be at 1.
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1, LastMirrorV2LogId: 1}
@@ -1121,8 +1119,8 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	revertTimestamp := &ledgerpb.Timestamp{Data: 1234567890}
-	sourceDate := &ledgerpb.Timestamp{Data: 1200000000}
+	revertTimestamp := &commonpb.Timestamp{Data: 1234567890}
+	sourceDate := &commonpb.Timestamp{Data: 1200000000}
 
 	origKey := domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}
 
@@ -1142,10 +1140,10 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(revertTimestamp.AsReader()).AnyTimes()
 
-	reversePostings := []*ledgerpb.Posting{{
+	reversePostings := []*commonpb.Posting{{
 		Source:      "users:rare-account",
 		Destination: "world",
-		Amount:      ledgerpb.NewUint256FromUint64(500),
+		Amount:      commonpb.NewUint256FromUint64(500),
 		Asset:       "USD/2",
 	}}
 
@@ -1198,9 +1196,9 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &ledgerpb.LedgerInfo{
+	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
-		Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
@@ -1213,10 +1211,10 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Postings: []*ledgerpb.Posting{{
+							Postings: []*commonpb.Posting{{
 								Source:      "world",
 								Destination: "users:001",
-								Amount:      ledgerpb.NewUint256FromUint64(100),
+								Amount:      commonpb.NewUint256FromUint64(100),
 								Asset:       "USD/2",
 							}},
 						},

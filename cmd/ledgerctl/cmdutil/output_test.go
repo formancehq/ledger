@@ -13,22 +13,21 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Sequential because captureStdout mutates os.Stdout.
 func TestEncodeStructured_ExactNumbers(t *testing.T) {
-	response := &servicepb.GetTransactionResponse{Transaction: &ledgerpb.Transaction{
+	response := &servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{
 		Id: 9007199254740993,
-		Metadata: map[string]*ledgerpb.MetadataValue{
-			"positive":      ledgerpb.NewUintValue(9007199254740993),
-			"negative":      ledgerpb.NewIntValue(-9007199254740993),
-			"maxUint":       ledgerpb.NewUintValue(math.MaxUint64),
-			"minInt":        ledgerpb.NewIntValue(math.MinInt64),
-			"numericString": ledgerpb.NewStringValue("9007199254740993"),
+		Metadata: map[string]*commonpb.MetadataValue{
+			"positive":      commonpb.NewUintValue(9007199254740993),
+			"negative":      commonpb.NewIntValue(-9007199254740993),
+			"maxUint":       commonpb.NewUintValue(math.MaxUint64),
+			"minInt":        commonpb.NewIntValue(math.MinInt64),
+			"numericString": commonpb.NewStringValue("9007199254740993"),
 		},
 	}}
 	for _, format := range []string{"json", "yaml"} {
@@ -106,7 +105,7 @@ func TestEncodeStructured_YAMLScalarKinds(t *testing.T) {
 		tag   string
 		value string
 	}{
-		{name: "uint256", data: &ledgerpb.Uint256{V3: 256}, tag: "!!int", value: "1606938044258990275541962092341162602522202993782792835301376"},
+		{name: "uint256", data: &commonpb.Uint256{V3: 256}, tag: "!!int", value: "1606938044258990275541962092341162602522202993782792835301376"},
 		{name: "fraction", data: json.Number("1.25"), tag: "!!float", value: "1.25"},
 		{name: "exponent", data: json.Number("1e+30"), tag: "!!float", value: "1e+30"},
 		{name: "string", data: "9007199254740993", tag: "!!str", value: "9007199254740993"},
@@ -221,10 +220,10 @@ func TestEncodeStructured(t *testing.T) {
 	})
 
 	t.Run("proto message json uses camelCase", func(t *testing.T) {
-		msg := &ledgerpb.NumscriptInfo{
+		msg := &commonpb.NumscriptInfo{
 			Name:      "myscript",
 			Version:   "v1",
-			CreatedAt: &ledgerpb.Timestamp{Data: 1000},
+			CreatedAt: &commonpb.Timestamp{Data: 1000},
 		}
 
 		cmd := &cobra.Command{}
@@ -244,10 +243,10 @@ func TestEncodeStructured(t *testing.T) {
 	})
 
 	t.Run("proto message yaml uses camelCase", func(t *testing.T) {
-		msg := &ledgerpb.NumscriptInfo{
+		msg := &commonpb.NumscriptInfo{
 			Name:      "myscript",
 			Version:   "v1",
-			CreatedAt: &ledgerpb.Timestamp{Data: 1000},
+			CreatedAt: &commonpb.Timestamp{Data: 1000},
 		}
 
 		cmd := &cobra.Command{}
@@ -265,8 +264,8 @@ func TestEncodeStructured(t *testing.T) {
 	})
 
 	t.Run("proto slice json uses camelCase", func(t *testing.T) {
-		msgs := []*ledgerpb.NumscriptInfo{
-			{Name: "a", Version: "v1", CreatedAt: &ledgerpb.Timestamp{Data: 1000}},
+		msgs := []*commonpb.NumscriptInfo{
+			{Name: "a", Version: "v1", CreatedAt: &commonpb.Timestamp{Data: 1000}},
 			{Name: "b", Version: "v2"},
 		}
 
@@ -285,17 +284,17 @@ func TestEncodeStructured(t *testing.T) {
 	})
 
 	t.Run("transaction json renders uint256 as number and timestamp as ISO string", func(t *testing.T) {
-		tx := &ledgerpb.Transaction{
+		tx := &commonpb.Transaction{
 			Id: 42,
-			Postings: []*ledgerpb.Posting{
+			Postings: []*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "users:001",
-					Amount:      ledgerpb.NewUint256FromUint64(5_000_000_000),
+					Amount:      commonpb.NewUint256FromUint64(5_000_000_000),
 					Asset:       "USD",
 				},
 			},
-			Timestamp: &ledgerpb.Timestamp{Data: 1_776_864_120_966_130},
+			Timestamp: &commonpb.Timestamp{Data: 1_776_864_120_966_130},
 		}
 
 		cmd := &cobra.Command{}
@@ -320,18 +319,18 @@ func TestEncodeStructured(t *testing.T) {
 	})
 
 	t.Run("transaction slice json renders properly", func(t *testing.T) {
-		txs := []*ledgerpb.Transaction{
+		txs := []*commonpb.Transaction{
 			{
 				Id: 1,
-				Postings: []*ledgerpb.Posting{
+				Postings: []*commonpb.Posting{
 					{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      ledgerpb.NewUint256FromUint64(100),
+						Amount:      commonpb.NewUint256FromUint64(100),
 						Asset:       "EUR",
 					},
 				},
-				Timestamp: &ledgerpb.Timestamp{Data: 1_000_000_000_000},
+				Timestamp: &commonpb.Timestamp{Data: 1_000_000_000_000},
 			},
 		}
 
@@ -351,11 +350,11 @@ func TestEncodeStructured(t *testing.T) {
 
 	t.Run("map string any with proto values", func(t *testing.T) {
 		data := map[string]any{
-			"info": &ledgerpb.NumscriptInfo{
+			"info": &commonpb.NumscriptInfo{
 				Name:      "x",
-				CreatedAt: &ledgerpb.Timestamp{Data: 1000},
+				CreatedAt: &commonpb.Timestamp{Data: 1000},
 			},
-			"items": []*ledgerpb.NumscriptInfo{
+			"items": []*commonpb.NumscriptInfo{
 				{Name: "y", Version: "v1"},
 			},
 		}
@@ -379,14 +378,14 @@ func TestEncodeStructured(t *testing.T) {
 func TestEncodeStructured_LedgerLog(t *testing.T) {
 	for _, format := range []string{"json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
-			log := &ledgerpb.Log{
+			log := &commonpb.Log{
 				Sequence: 7,
-				Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: &ledgerpb.LedgerLog{Id: 3, Data: &ledgerpb.LedgerLogPayload{
-							Payload: &ledgerpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &ledgerpb.DeletedMetadata{
-								Target: &ledgerpb.Target{Target: &ledgerpb.Target_TransactionId{TransactionId: 0}},
+						Log: &commonpb.LedgerLog{Id: 3, Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{
+								Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 0}},
 								Key:    "note",
 							}},
 						}},

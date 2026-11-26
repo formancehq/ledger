@@ -11,9 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -27,12 +26,12 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_CreateLedger{
-						CreateLedger: &ledgerpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name: "mirror-ledger",
-							Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},
@@ -53,7 +52,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	require.NotNil(t, capturedReq)
 
 	createReq := capturedReq.GetCreateLedger()
-	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
 	require.NotNil(t, createReq.GetMirrorSource())
 	require.Equal(t, "default", createReq.GetMirrorSource().GetLedgerName())
 
@@ -78,12 +77,12 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_CreateLedger{
-						CreateLedger: &ledgerpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name: "mirror-pg",
-							Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},
@@ -104,7 +103,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	require.NotNil(t, capturedReq)
 
 	createReq := capturedReq.GetCreateLedger()
-	require.Equal(t, ledgerpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
 
 	pgCfg := createReq.GetMirrorSource().GetPostgres()
 	require.NotNil(t, pgCfg)
@@ -121,10 +120,10 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_CreateLedger{
-						CreateLedger: &ledgerpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name: "mirror-default",
 						},
 					},
@@ -264,12 +263,12 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return &domain.ApplyResult{Logs: []*ledgerpb.Log{{
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_CreateLedger{
-						CreateLedger: &ledgerpb.CreatedLedgerLog{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name: "mirror-rw",
-							Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},

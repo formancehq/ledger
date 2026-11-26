@@ -5,10 +5,9 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -80,7 +79,7 @@ func (o *overlay[K, V]) Range(fn func(K, V) bool) {
 type bulkOverlay struct {
 	numscriptEntries *overlay[numscriptEntryKey, string]
 	numscriptLatest  *overlay[numscriptNameKey, string]
-	sinks            *overlay[string, *ledgerpb.SinkConfig]
+	sinks            *overlay[string, *commonpb.SinkConfig]
 	// What admission observed of each revert target, resolved once at
 	// order-build time from the transaction attribute and reused by the preload
 	// and intra-bulk effect passes. The postings stay off the wire order: the
@@ -125,7 +124,7 @@ const (
 // on the overlay map reads correctly without a second return value.
 type revertTargetObservation struct {
 	state    revertTargetState
-	postings []*ledgerpb.Posting
+	postings []*commonpb.Posting
 }
 
 // absentRevertTarget records that admission looked and the transaction was not
@@ -135,7 +134,7 @@ func absentRevertTarget() revertTargetObservation {
 }
 
 // presentRevertTarget records the postings admission read for the target.
-func presentRevertTarget(postings []*ledgerpb.Posting) revertTargetObservation {
+func presentRevertTarget(postings []*commonpb.Posting) revertTargetObservation {
 	return revertTargetObservation{state: revertTargetPresent, postings: postings}
 }
 
@@ -194,7 +193,7 @@ func newBulkOverlay() *bulkOverlay {
 	return &bulkOverlay{
 		numscriptEntries: newOverlay[numscriptEntryKey, string](),
 		numscriptLatest:  newOverlay[numscriptNameKey, string](),
-		sinks:            newOverlay[string, *ledgerpb.SinkConfig](),
+		sinks:            newOverlay[string, *commonpb.SinkConfig](),
 		revertTargets:    make(map[domain.TransactionKey]revertTargetObservation),
 	}
 }

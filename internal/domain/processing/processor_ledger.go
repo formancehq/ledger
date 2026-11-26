@@ -5,14 +5,13 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
+func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	existing, err := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -44,12 +43,15 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// an embedded Name here would make the audited order diverge from what
 	// was accepted — and, with an idempotency key, make the pre-processing
 	// frozen outcome hash disagree with the checker's hash re-derived from
-	// the audited order (EN-1533). A nil map value has GetPattern()=="" and
-	// is rejected by ValidatePattern ("pattern must not be empty") before the
-	// clone, so every entry cloned below is guaranteed non-nil.
-	var canonicalAccountTypes map[string]*ledgerpb.AccountType
+	// the audited order (EN-1533). Nil map values are rejected by the pattern
+	// parser before cloning, so every entry cloned below is guaranteed non-nil.
+	var canonicalAccountTypes map[string]*commonpb.AccountType
+	var parsedAccountTypes map[string][]accounttype.PatternSegment
 	if src := order.GetAccountTypes(); len(src) > 0 {
-		canonicalAccountTypes = make(map[string]*ledgerpb.AccountType, len(src))
+		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
+		if ctx.strictCreateLedgerAccountTypes {
+			parsedAccountTypes = make(map[string][]accounttype.PatternSegment, len(src))
+		}
 	}
 	names := slices.Sorted(maps.Keys(order.GetAccountTypes()))
 	for i, name := range names {
@@ -99,7 +101,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	createdAt := s.GetDate().Mutate()
 	ledgerID := s.IncrementNextLedgerID()
 
-	info := &ledgerpb.LedgerInfo{
+	info := &commonpb.LedgerInfo{
 		Name:                   ledger,
 		Id:                     ledgerID,
 		CreatedAt:              createdAt,
@@ -129,17 +131,17 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// shares no mutable map or message with either the store or the order. The
 	// clones carry the same map-key canonical Name, so CreatedLedgerLog.
 	// ToLedgerInfo() reconstructs a LedgerInfo identical to the FSM-built one.
-	var logAccountTypes map[string]*ledgerpb.AccountType
+	var logAccountTypes map[string]*commonpb.AccountType
 	if len(canonicalAccountTypes) > 0 {
-		logAccountTypes = make(map[string]*ledgerpb.AccountType, len(canonicalAccountTypes))
+		logAccountTypes = make(map[string]*commonpb.AccountType, len(canonicalAccountTypes))
 		for k, v := range canonicalAccountTypes {
 			logAccountTypes[k] = v.CloneVT()
 		}
 	}
 
-	return &ledgerpb.LogPayload{
-		Type: &ledgerpb.LogPayload_CreateLedger{
-			CreateLedger: &ledgerpb.CreatedLedgerLog{
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{
 				Name:                   ledger,
 				Metadata:               order.GetMetadata(),
 				Id:                     ledgerID,
@@ -154,7 +156,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	}, nil
 }
 
-func processDeleteLedger(ledger string, ctx *Context) (*ledgerpb.LogPayload, domain.SerializableError) {
+func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 	l, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
@@ -195,9 +197,9 @@ func processDeleteLedger(ledger string, ctx *Context) (*ledgerpb.LogPayload, dom
 	// iter has no preload declaration). Dropping the loop keeps the
 	// coverage invariant intact.
 
-	return &ledgerpb.LogPayload{
-		Type: &ledgerpb.LogPayload_DeleteLedger{
-			DeleteLedger: &ledgerpb.DeletedLedgerLog{
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_DeleteLedger{
+			DeleteLedger: &commonpb.DeletedLedgerLog{
 				Name:      ledger,
 				DeletedAt: l.GetDeletedAt(),
 			},

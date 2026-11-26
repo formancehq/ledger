@@ -4,31 +4,31 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type accountTypeJSON struct {
 	Name         string                               `json:"name"`
 	Pattern      string                               `json:"pattern"`
 	Persistence  string                               `json:"persistence"`
-	SegmentTypes map[string]*ledgerpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
+	SegmentTypes map[string]*commonpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
 }
 
 type listAccountTypesResponse struct {
 	Types []accountTypeJSON `json:"types"`
 }
 
-func toAccountTypeJSON(at *ledgerpb.AccountType) accountTypeJSON {
+func toAccountTypeJSON(at *commonpb.AccountType) accountTypeJSON {
 	out := accountTypeJSON{
 		Name:        at.GetName(),
 		Pattern:     at.GetPattern(),
-		Persistence: ledgerpb.PersistenceToString(at.GetPersistence()),
+		Persistence: commonpb.PersistenceToString(at.GetPersistence()),
 	}
 
 	if len(at.GetSegmentTypes()) > 0 {
-		out.SegmentTypes = make(map[string]*ledgerpb.SegmentTypeJSON, len(at.GetSegmentTypes()))
+		out.SegmentTypes = make(map[string]*commonpb.SegmentTypeJSON, len(at.GetSegmentTypes()))
 		for name, st := range at.GetSegmentTypes() {
-			out.SegmentTypes[name] = ledgerpb.SegmentTypeToJSON(st)
+			out.SegmentTypes[name] = commonpb.SegmentTypeToJSON(st)
 		}
 	}
 

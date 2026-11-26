@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -227,30 +227,30 @@ func TestReadLogsSince(t *testing.T) {
 		defer func() { _ = handle.Close() }()
 
 		// Create logs with different payload types
-		mixedLogs := []*ledgerpb.Log{
+		mixedLogs := []*commonpb.Log{
 			{
 				Sequence: 1,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_CreateLedger{
-						CreateLedger: &ledgerpb.CreatedLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name:      "new-ledger",
-							CreatedAt: ledgerpb.NewTimestamp(now),
+							CreatedAt: commonpb.NewTimestamp(now),
 						},
 					},
 				},
 			},
 			{
 				Sequence: 2,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_Apply{
-						Apply: &ledgerpb.ApplyLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "test-ledger",
-							Log: ledgerpb.NewLedgerLog(&ledgerpb.LedgerLogPayload{
-								Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-									CreatedTransaction: &ledgerpb.CreatedTransaction{
-										Transaction: ledgerpb.NewTransaction().
+							Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+									CreatedTransaction: &commonpb.CreatedTransaction{
+										Transaction: commonpb.NewTransaction().
 											WithPostings(
-												ledgerpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
+												commonpb.NewPosting("world", "bank", "USD", big.NewInt(100)),
 											).
 											WithID(1).
 											WithTimestamp(now),
@@ -263,11 +263,11 @@ func TestReadLogsSince(t *testing.T) {
 			},
 			{
 				Sequence: 3,
-				Payload: &ledgerpb.LogPayload{
-					Type: &ledgerpb.LogPayload_DeleteLedger{
-						DeleteLedger: &ledgerpb.DeletedLedgerLog{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_DeleteLedger{
+						DeleteLedger: &commonpb.DeletedLedgerLog{
 							Name:      "new-ledger",
-							DeletedAt: ledgerpb.NewTimestamp(now),
+							DeletedAt: commonpb.NewTimestamp(now),
 						},
 					},
 				},

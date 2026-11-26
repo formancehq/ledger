@@ -1276,7 +1276,7 @@ func (m *ExecuteNumscriptPayload) MarshalToSizedBufferDeterministicVT(dAtA []byt
 		dAtA[i] = 0x32
 	}
 	if len(m.AccountMetadata) > 0 {
-		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerPkgProtoV3LedgerpbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
@@ -1301,10 +1301,10 @@ func (m *ExecuteNumscriptPayload) MarshalToSizedBufferDeterministicVT(dAtA []byt
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerPkgProtoV3LedgerpbBucketString.Put(keysPtr)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerPkgProtoV3LedgerpbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1329,7 +1329,7 @@ func (m *ExecuteNumscriptPayload) MarshalToSizedBufferDeterministicVT(dAtA []byt
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerPkgProtoV3LedgerpbBucketString.Put(keysPtr)
 	}
 	if m.Timestamp != nil {
 		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])

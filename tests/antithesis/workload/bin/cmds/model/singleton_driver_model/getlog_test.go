@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"hegel.dev/go/hegel"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -16,11 +16,11 @@ import (
 
 // topLevelLog builds a response log with no Apply arm — the shape ledger
 // metadata takes, which carries a sequence but no ledger-local id.
-func topLevelLog(seq uint64) *ledgerpb.Log {
-	return &ledgerpb.Log{
+func topLevelLog(seq uint64) *commonpb.Log {
+	return &commonpb.Log{
 		Sequence: seq,
-		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_SavedLedgerMetadata{
-			SavedLedgerMetadata: &ledgerpb.SavedLedgerMetadataLog{},
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedLedgerMetadata{
+			SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{},
 		}},
 	}
 }
@@ -117,14 +117,14 @@ func TestServerLogKindMatchesModelVocabulary(t *testing.T) {
 	require.Len(t, rows, 2)
 	modelKind := rows[1].Kind
 
-	served := &ledgerpb.Log{
+	served := &commonpb.Log{
 		Sequence: 2,
-		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{
-			Apply: &ledgerpb.ApplyLedgerLog{
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "L",
-				Log: &ledgerpb.LedgerLog{Id: 2, Data: &ledgerpb.LedgerLogPayload{
-					Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{
-						CreatedTransaction: &ledgerpb.CreatedTransaction{},
+				Log: &commonpb.LedgerLog{Id: 2, Data: &commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &commonpb.CreatedTransaction{},
 					},
 				}},
 			},
@@ -146,14 +146,14 @@ func TestCommittedLogComparesTheLearnedStamps(t *testing.T) {
 	require.True(t, res.OK, res.Reason)
 
 	gs := res.State
-	stamp := &ledgerpb.Timestamp{Data: 1_700_000_000_000_000}
-	learnTxStamps(&gs, bulk, []*ledgerpb.Log{{
+	stamp := &commonpb.Timestamp{Data: 1_700_000_000_000_000}
+	learnTxStamps(&gs, bulk, []*commonpb.Log{{
 		Sequence: 9,
-		Payload: &ledgerpb.LogPayload{Type: &ledgerpb.LogPayload_Apply{Apply: &ledgerpb.ApplyLedgerLog{
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 			LedgerName: "L",
-			Log: &ledgerpb.LedgerLog{Id: 1, Data: &ledgerpb.LedgerLogPayload{
-				Payload: &ledgerpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &ledgerpb.CreatedTransaction{
-					Transaction: &ledgerpb.Transaction{Id: 1, Timestamp: stamp, InsertedAt: stamp},
+			Log: &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+					Transaction: &commonpb.Transaction{Id: 1, Timestamp: stamp, InsertedAt: stamp},
 				}},
 			}},
 		}}},
@@ -163,7 +163,7 @@ func TestCommittedLogComparesTheLearnedStamps(t *testing.T) {
 	served := servedRows(gs.Ledger("L"), "L", 1)[0]
 	corrupted := served
 	corrupted.tx = served.tx.CloneVT()
-	corrupted.tx.Timestamp = &ledgerpb.Timestamp{Data: stamp.GetData() + 1}
+	corrupted.tx.Timestamp = &commonpb.Timestamp{Data: stamp.GetData() + 1}
 
 	deleted := gs.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
 		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},

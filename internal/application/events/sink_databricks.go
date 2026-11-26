@@ -13,14 +13,13 @@ import (
 
 	dbsql "github.com/databricks/databricks-sql-go"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func init() {
-	registerSinkFactory("databricks", func(ctx context.Context, sc *ledgerpb.SinkConfig, _ Format) (Sink, error) {
-		s := sc.GetType().(*ledgerpb.SinkConfig_Databricks)
+	registerSinkFactory("databricks", func(ctx context.Context, sc *commonpb.SinkConfig, _ Format) (Sink, error) {
+		s := sc.GetType().(*commonpb.SinkConfig_Databricks)
 
 		cfg, err := databricksConfigFromProto(s.Databricks)
 		if err != nil {
@@ -37,7 +36,7 @@ func init() {
 // silently fall back to a "no auth configured" error further down the stack.
 // The port default (443) is applied by newDatabricksConnector to keep a single
 // source of truth.
-func databricksConfigFromProto(pb *ledgerpb.DatabricksSinkConfig) (DatabricksSinkConfig, error) {
+func databricksConfigFromProto(pb *commonpb.DatabricksSinkConfig) (DatabricksSinkConfig, error) {
 	cfg := DatabricksSinkConfig{
 		ServerHostname: pb.GetServerHostname(),
 		HTTPPath:       pb.GetHttpPath(),
@@ -48,9 +47,9 @@ func databricksConfigFromProto(pb *ledgerpb.DatabricksSinkConfig) (DatabricksSin
 	}
 
 	switch a := pb.GetAuth().(type) {
-	case *ledgerpb.DatabricksSinkConfig_Token:
+	case *commonpb.DatabricksSinkConfig_Token:
 		cfg.Token = a.Token
-	case *ledgerpb.DatabricksSinkConfig_OauthM2M:
+	case *commonpb.DatabricksSinkConfig_OauthM2M:
 		m2m := a.OauthM2M
 		if m2m == nil || (m2m.GetClientId() == "" && m2m.GetClientSecret() == "") {
 			return DatabricksSinkConfig{}, errors.New("databricks: oauth_m2m is set but client_id and client_secret are both empty — provide both")

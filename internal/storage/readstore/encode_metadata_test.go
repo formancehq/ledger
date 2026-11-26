@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestEncodeMetadataValue_RoundtripDecodeValue locks in the contract that
@@ -22,72 +22,72 @@ func TestEncodeMetadataValue_RoundtripDecodeValue(t *testing.T) {
 
 	tests := []struct {
 		name string
-		mv   *ledgerpb.MetadataValue
+		mv   *commonpb.MetadataValue
 	}{
 		{
 			name: "string",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_StringValue{StringValue: "admin"},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_StringValue{StringValue: "admin"},
 			},
 		},
 		{
 			name: "empty string",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_StringValue{StringValue: ""},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_StringValue{StringValue: ""},
 			},
 		},
 		{
 			name: "int64 positive",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_IntValue{IntValue: 12345},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_IntValue{IntValue: 12345},
 			},
 		},
 		{
 			name: "int64 negative",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_IntValue{IntValue: -42},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_IntValue{IntValue: -42},
 			},
 		},
 		{
 			name: "int64 max",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_IntValue{IntValue: 9223372036854775807},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_IntValue{IntValue: 9223372036854775807},
 			},
 		},
 		{
 			name: "uint64",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_UintValue{UintValue: 12345},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_UintValue{UintValue: 12345},
 			},
 		},
 		{
 			name: "uint64 max",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_UintValue{UintValue: 18446744073709551615},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_UintValue{UintValue: 18446744073709551615},
 			},
 		},
 		{
 			name: "bool true",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_BoolValue{BoolValue: true},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_BoolValue{BoolValue: true},
 			},
 		},
 		{
 			name: "bool false",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_BoolValue{BoolValue: false},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_BoolValue{BoolValue: false},
 			},
 		},
 		{
 			name: "null with original",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_NullValue{NullValue: &ledgerpb.NullValue{Original: "not-a-number"}},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{Original: "not-a-number"}},
 			},
 		},
 		{
 			name: "null without original",
-			mv: &ledgerpb.MetadataValue{
-				Type: &ledgerpb.MetadataValue_NullValue{NullValue: &ledgerpb.NullValue{Original: ""}},
+			mv: &commonpb.MetadataValue{
+				Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{Original: ""}},
 			},
 		},
 	}
@@ -112,8 +112,8 @@ func TestEncodeMetadataValue_RoundtripDecodeValue(t *testing.T) {
 func TestEncodeMetadataValue_ProtobufBytesAreNotDecodable(t *testing.T) {
 	t.Parallel()
 
-	mv := &ledgerpb.MetadataValue{
-		Type: &ledgerpb.MetadataValue_StringValue{StringValue: "admin"},
+	mv := &commonpb.MetadataValue{
+		Type: &commonpb.MetadataValue_StringValue{StringValue: "admin"},
 	}
 
 	protoBytes, err := mv.MarshalVT()
@@ -125,7 +125,7 @@ func TestEncodeMetadataValue_ProtobufBytesAreNotDecodable(t *testing.T) {
 	// VT decoder against those bytes returns an error (or empty value)
 	// because there's no protobuf tag at byte 0.
 	sortableBytes := EncodeMetadataValue(nil, mv)
-	decodedAsProto := &ledgerpb.MetadataValue{}
+	decodedAsProto := &commonpb.MetadataValue{}
 	err = decodedAsProto.UnmarshalVT(sortableBytes)
 	if err == nil {
 		// Some inputs may happen to be parse-survivable but produce a value

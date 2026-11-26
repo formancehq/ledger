@@ -85,7 +85,7 @@ func (l appliedProposalListReadonly) Range(yield func(int, AppliedProposalReader
 
 // NewAppliedProposalListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAppliedProposalListReader(s []*AppliedProposal) AppliedProposalListReader {
+func NewAppliedProposalListReader(s []*AppliedProposal) appliedProposalListReadonly {
 	return appliedProposalListReadonly(s)
 }
 
@@ -183,6 +183,6 @@ func (l touchedVolumeListListReadonly) Range(yield func(int, TouchedVolumeListRe
 
 // NewTouchedVolumeListListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewTouchedVolumeListListReader(s []*TouchedVolumeList) TouchedVolumeListListReader {
+func NewTouchedVolumeListListReader(s []*TouchedVolumeList) touchedVolumeListListReadonly {
 	return touchedVolumeListListReadonly(s)
 }

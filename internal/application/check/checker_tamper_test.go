@@ -7,14 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -46,7 +45,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		// AuditEntry header — top-level scalar fields.
 		{"sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Sequence = 999 }},
 		{"timestamp", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Timestamp = &ledgerpb.Timestamp{Data: 1999999999}
+			e.Timestamp = &commonpb.Timestamp{Data: 1999999999}
 		}},
 		{"proposal_id", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.ProposalId++ }},
 		{"order_count", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.OrderCount++ }},
@@ -59,7 +58,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Details: ledgerpb.MustFailureDetails("TARGET_REQUIRED", nil)}}
+			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Details: commonpb.MustFailureDetails("TARGET_REQUIRED", nil)}}
 		}},
 		{"outcome_flip_failure_to_success", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.Outcome = &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1}}
@@ -70,7 +69,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"success_max_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MaxLogSequence++ }},
 		// AuditFailure sub-fields.
 		{"failure_details", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetFailure().Details = ledgerpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
+			e.GetFailure().Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 		}},
 		{"failure_context_add", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			color := "red"
@@ -86,7 +85,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 			e.CallerSnapshot.GetAuthenticated().Identity.Subject = "attacker"
 		}},
 		{"caller_source_swap_to_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.GetAuthenticated().Identity.Source = &ledgerpb.CallerIdentity_Issuer{Issuer: "https://evil.example.com"}
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: "https://evil.example.com"}
 		}},
 		// Empty-string oneof variants must be distinguishable from
 		// absent. These two cases pin that the source TAG (not just
@@ -95,7 +94,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 			e.CallerSnapshot.GetAuthenticated().Identity.Source = nil
 		}},
 		{"caller_source_swap_to_empty_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.GetAuthenticated().Identity.Source = &ledgerpb.CallerIdentity_Issuer{Issuer: ""}
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: ""}
 		}},
 		{"caller_superuser", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			caller := e.GetCallerSnapshot().GetAuthenticated()
@@ -106,8 +105,8 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 			caller.Scopes = append(caller.GetScopes(), "admin")
 		}},
 		{"caller_principal_swap", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.Principal = &ledgerpb.CallerSnapshot_Anonymous{
-				Anonymous: &ledgerpb.AnonymousCaller{Scopes: []string{"read", "write"}},
+			e.CallerSnapshot.Principal = &commonpb.CallerSnapshot_Anonymous{
+				Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"read", "write"}},
 			}
 		}},
 
@@ -178,7 +177,7 @@ func TestVerifyAuditHashChain_RejectsValidHashWithInvalidAttribution(t *testing.
 	const clusterID = "invalid-attribution-cluster"
 
 	entry, items := newRichAuditEntry("success")
-	entry.CallerSnapshot = &ledgerpb.CallerSnapshot{}
+	entry.CallerSnapshot = &commonpb.CallerSnapshot{}
 	// Compute a legitimate hash over the malformed replicated value. This pins
 	// the semantic validation used by restore/check independently of tamper
 	// detection: possession of a matching hash cannot legitimize attribution.
@@ -196,7 +195,7 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 	const clusterID = "invalid-attribution-chain-cluster"
 
 	first, firstItems := newRichAuditEntry("success")
-	first.CallerSnapshot = &ledgerpb.CallerSnapshot{}
+	first.CallerSnapshot = &commonpb.CallerSnapshot{}
 	persistAuditEntry(t, store, first, firstItems, clusterID)
 
 	second, secondItems := newRichAuditEntry("success")
@@ -222,24 +221,24 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &ledgerpb.Timestamp{Data: 1700000000},
+		Timestamp:   &commonpb.Timestamp{Data: 1700000000},
 		ProposalId:  77,
 		OrderCount:  2,
 		Ledgers:     []string{"ledger-a", "ledger-b"},
-		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		CallerSnapshot: &ledgerpb.CallerSnapshot{
-			Principal: &ledgerpb.CallerSnapshot_Authenticated{
-				Authenticated: &ledgerpb.AuthenticatedCaller{
-					Identity: &ledgerpb.CallerIdentity{
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_Authenticated{
+				Authenticated: &commonpb.AuthenticatedCaller{
+					Identity: &commonpb.CallerIdentity{
 						Subject: "alice",
-						Source:  &ledgerpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
 					},
 					Scopes:    []string{"read", "write"},
 					Superuser: false,
 				},
 			},
 		},
-		Idempotency: &ledgerpb.Idempotency{Key: "batch-key-1"},
+		Idempotency: &commonpb.Idempotency{Key: "batch-key-1"},
 		Signature: &signaturepb.SignedApplyBatch{
 			KeyId:     "sign-kid",
 			Signature: []byte("sig-bytes"),
@@ -265,7 +264,7 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 		entry.Outcome = &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 
-				Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		}
 	default:
@@ -318,7 +317,7 @@ func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.Audit
 		entry.CallerSnapshot = testCallerSnapshot()
 	}
 
-	gen := processing.NewHashGenerator(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	headerPayload, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
@@ -335,7 +334,7 @@ func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.Audit
 	rewriteAuditEntry(t, store, entry, items)
 }
 
-func testCallerSnapshot() *ledgerpb.CallerSnapshot {
+func testCallerSnapshot() *commonpb.CallerSnapshot {
 	return commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
 }
 
@@ -409,15 +408,15 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &ledgerpb.Timestamp{Data: createdAt},
+		Timestamp:   &commonpb.Timestamp{Data: createdAt},
 		ProposalId:  7,
 		OrderCount:  1,
-		HashVersion: uint32(ledgerpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		Idempotency: &ledgerpb.Idempotency{Key: idemKey},
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &commonpb.Idempotency{Key: idemKey},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 
-				Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
+				Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 			},
 		},
 	}
@@ -429,7 +428,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		Hash:      proposalHash,
 		Failure: &commonpb.IdempotencyFailure{
 
-			Details: ledgerpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
+			Details: commonpb.MustFailureDetails("INSUFFICIENT_FUNDS", map[string]string{"account": "bank", "asset": "USD", "amount": "10", "balance": "0", "color": ""}),
 		},
 	}
 
@@ -438,7 +437,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		"a frozen outcome matching its audit entry must not be flagged")
 
 	tampered := faithful.CloneVT()
-	tampered.Failure.Details = ledgerpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
+	tampered.Failure.Details = commonpb.MustFailureDetails("LEDGER_NOT_FOUND", map[string]string{"name": "L"})
 	writeIdempotencyEntry(t, store, idemKey, tampered)
 	require.NotEmpty(t, collectIdempotencyMismatches(store),
 		"a tampered frozen failure reason must be flagged")

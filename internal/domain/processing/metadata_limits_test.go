@@ -7,9 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -17,8 +16,8 @@ import (
 // tightMetadataPolicy is a committed policy whose entity ceiling is small
 // enough that a caller-plus-Numscript merge can cross it while each half stays
 // legal on its own.
-func tightMetadataPolicy(maxEntityBytes uint64) *ledgerpb.ClusterPolicy {
-	return &ledgerpb.ClusterPolicy{
+func tightMetadataPolicy(maxEntityBytes uint64) *commonpb.ClusterPolicy {
+	return &commonpb.ClusterPolicy{
 		Revision:                    1,
 		QueryCheckpointLimit:        1,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -47,11 +46,11 @@ func TestProcessCreateTransaction_NumscriptMergedMetadataOverEntityCeiling(t *te
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
@@ -62,10 +61,10 @@ func TestProcessCreateTransaction_NumscriptMergedMetadataOverEntityCeiling(t *te
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Metadata: map[string]*ledgerpb.MetadataValue{
-							"caller": ledgerpb.NewStringValue(strings.Repeat("v", 20)),
+						Metadata: map[string]*commonpb.MetadataValue{
+							"caller": commonpb.NewStringValue(strings.Repeat("v", 20)),
 						},
-						Script: &ledgerpb.Script{
+						Script: &commonpb.Script{
 							Plain: `
 								set_tx_meta("s", "abcd")
 								send [USD/2 100] (
@@ -101,11 +100,11 @@ func TestProcessCreateTransaction_NumscriptAccountMetadataOverCeiling(t *testing
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &ledgerpb.Timestamp{Data: 1234567890}
+	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&ledgerpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
@@ -122,7 +121,7 @@ func TestProcessCreateTransaction_NumscriptAccountMetadataOverCeiling(t *testing
 				Ledger: "test-ledger",
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &ledgerpb.Script{
+						Script: &commonpb.Script{
 							Plain: `
 								set_account_meta(@users:alice, "tier", "premium")
 								send [USD/2 100] (
@@ -151,20 +150,20 @@ func TestProcessSetClusterPolicy_RejectsMissingMetadataLimits(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		mutate func(*ledgerpb.ClusterPolicy)
+		mutate func(*commonpb.ClusterPolicy)
 	}{
-		{"no metadata limits at all", func(p *ledgerpb.ClusterPolicy) {
+		{"no metadata limits at all", func(p *commonpb.ClusterPolicy) {
 			p.MetadataMaxEntriesPerEntity = 0
 			p.MetadataMaxKeyBytes = 0
 			p.MetadataMaxValueBytes = 0
 			p.MetadataMaxEntityBytes = 0
 			p.MetadataMaxCommandBytes = 0
 		}},
-		{"zero entries", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxEntriesPerEntity = 0 }},
-		{"zero key bytes", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxKeyBytes = 0 }},
-		{"zero value bytes", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxValueBytes = 0 }},
-		{"zero entity bytes", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxEntityBytes = 0 }},
-		{"zero command bytes", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxCommandBytes = 0 }},
+		{"zero entries", func(p *commonpb.ClusterPolicy) { p.MetadataMaxEntriesPerEntity = 0 }},
+		{"zero key bytes", func(p *commonpb.ClusterPolicy) { p.MetadataMaxKeyBytes = 0 }},
+		{"zero value bytes", func(p *commonpb.ClusterPolicy) { p.MetadataMaxValueBytes = 0 }},
+		{"zero entity bytes", func(p *commonpb.ClusterPolicy) { p.MetadataMaxEntityBytes = 0 }},
+		{"zero command bytes", func(p *commonpb.ClusterPolicy) { p.MetadataMaxCommandBytes = 0 }},
 	}
 
 	for _, tc := range tests {
@@ -176,7 +175,7 @@ func TestProcessSetClusterPolicy_RejectsMissingMetadataLimits(t *testing.T) {
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
-			policy := withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1})
+			policy := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1})
 			tc.mutate(policy)
 
 			_, procErr := processor.ProcessOrder(clusterPolicyOrder(policy), mockStore)
@@ -194,11 +193,11 @@ func TestProcessSetClusterPolicy_RejectsInconsistentMetadataLimits(t *testing.T)
 
 	tests := []struct {
 		name   string
-		mutate func(*ledgerpb.ClusterPolicy)
+		mutate func(*commonpb.ClusterPolicy)
 	}{
-		{"key above entity", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxKeyBytes = p.GetMetadataMaxEntityBytes() + 1 }},
-		{"value above entity", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxValueBytes = p.GetMetadataMaxEntityBytes() + 1 }},
-		{"entity above command", func(p *ledgerpb.ClusterPolicy) { p.MetadataMaxEntityBytes = p.GetMetadataMaxCommandBytes() + 1 }},
+		{"key above entity", func(p *commonpb.ClusterPolicy) { p.MetadataMaxKeyBytes = p.GetMetadataMaxEntityBytes() + 1 }},
+		{"value above entity", func(p *commonpb.ClusterPolicy) { p.MetadataMaxValueBytes = p.GetMetadataMaxEntityBytes() + 1 }},
+		{"entity above command", func(p *commonpb.ClusterPolicy) { p.MetadataMaxEntityBytes = p.GetMetadataMaxCommandBytes() + 1 }},
 	}
 
 	for _, tc := range tests {
@@ -210,7 +209,7 @@ func TestProcessSetClusterPolicy_RejectsInconsistentMetadataLimits(t *testing.T)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
-			policy := withMetadataLimits(&ledgerpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1})
+			policy := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1})
 			tc.mutate(policy)
 
 			_, procErr := processor.ProcessOrder(clusterPolicyOrder(policy), mockStore)
@@ -235,10 +234,10 @@ func TestValidateMergedAccountMetadataIsDeterministic(t *testing.T) {
 		MaxTotalBytesPerCommand: 1 << 20,
 	}
 
-	tooBig := &ledgerpb.MetadataMap{Values: map[string]*ledgerpb.MetadataValue{
-		"k": ledgerpb.NewStringValue(strings.Repeat("v", 5)),
+	tooBig := &commonpb.MetadataMap{Values: map[string]*commonpb.MetadataValue{
+		"k": commonpb.NewStringValue(strings.Repeat("v", 5)),
 	}}
-	accountMetadata := map[string]*ledgerpb.MetadataMap{
+	accountMetadata := map[string]*commonpb.MetadataMap{
 		"users:zoe":   tooBig,
 		"users:alice": tooBig,
 		"users:mia":   tooBig,
@@ -265,7 +264,7 @@ func TestValidateMergedAccountMetadataAcceptsEmpty(t *testing.T) {
 	limits := domain.MetadataLimitsFromPolicy(defaultTestClusterPolicy())
 
 	require.Nil(t, validateMergedAccountMetadata(nil, limits))
-	require.Nil(t, validateMergedAccountMetadata(map[string]*ledgerpb.MetadataMap{"users:alice": nil}, limits))
+	require.Nil(t, validateMergedAccountMetadata(map[string]*commonpb.MetadataMap{"users:alice": nil}, limits))
 	require.Nil(t, validateMergedAccountMetadata(
-		map[string]*ledgerpb.MetadataMap{"users:alice": {Values: map[string]*ledgerpb.MetadataValue{}}}, limits))
+		map[string]*commonpb.MetadataMap{"users:alice": {Values: map[string]*commonpb.MetadataValue{}}}, limits))
 }

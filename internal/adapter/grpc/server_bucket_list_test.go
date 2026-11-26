@@ -10,12 +10,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/pagecursor"
 )
@@ -52,12 +51,12 @@ func TestListLedgers(t *testing.T) {
 
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(
-			page(&ledgerpb.LedgerInfo{Name: "a"}, &ledgerpb.LedgerInfo{Name: "b"}, &ledgerpb.LedgerInfo{Name: "c"}, &ledgerpb.LedgerInfo{Name: "d"}),
+			page(&commonpb.LedgerInfo{Name: "a"}, &commonpb.LedgerInfo{Name: "b"}, &commonpb.LedgerInfo{Name: "c"}, &commonpb.LedgerInfo{Name: "d"}),
 			nil,
 		)
 
-		stream := newFakeServerStream[ledgerpb.LedgerInfo](t)
-		req := &servicepb.ListLedgersRequest{Options: &ledgerpb.ListOptions{PageSize: 3}}
+		stream := newFakeServerStream[commonpb.LedgerInfo](t)
+		req := &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 3}}
 
 		require.NoError(t, impl.ListLedgers(req, stream))
 		require.Equal(t, []string{"a", "b", "c"}, sentLedgerNames(stream))
@@ -69,12 +68,12 @@ func TestListLedgers(t *testing.T) {
 
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(
-			page(&ledgerpb.LedgerInfo{Name: "a"}, &ledgerpb.LedgerInfo{Name: "b"}, &ledgerpb.LedgerInfo{Name: "c"}),
+			page(&commonpb.LedgerInfo{Name: "a"}, &commonpb.LedgerInfo{Name: "b"}, &commonpb.LedgerInfo{Name: "c"}),
 			nil,
 		)
 
-		stream := newFakeServerStream[ledgerpb.LedgerInfo](t)
-		req := &servicepb.ListLedgersRequest{Options: &ledgerpb.ListOptions{PageSize: 3}}
+		stream := newFakeServerStream[commonpb.LedgerInfo](t)
+		req := &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 3}}
 
 		require.NoError(t, impl.ListLedgers(req, stream))
 		require.Empty(t, stream.trailerCursor())
@@ -87,7 +86,7 @@ func TestListLedgers(t *testing.T) {
 		boom := errors.New("ctrl blew up")
 		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(nil, boom)
 
-		stream := newFakeServerStream[ledgerpb.LedgerInfo](t)
+		stream := newFakeServerStream[commonpb.LedgerInfo](t)
 		err := impl.ListLedgers(&servicepb.ListLedgersRequest{}, stream)
 		require.ErrorIs(t, err, boom)
 	})
@@ -99,8 +98,8 @@ func TestListLedgers(t *testing.T) {
 		// handler opens the storage-backed cursor it would then have to close.
 		impl, _ := newListHandlerHarness(t)
 
-		stream := newFakeServerStream[ledgerpb.LedgerInfo](t)
-		err := impl.ListLedgers(&servicepb.ListLedgersRequest{Options: &ledgerpb.ListOptions{Cursor: "not-a-token"}}, stream)
+		stream := newFakeServerStream[commonpb.LedgerInfo](t)
+		err := impl.ListLedgers(&servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{Cursor: "not-a-token"}}, stream)
 		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
 		require.Empty(t, stream.sent)
 	})
@@ -144,15 +143,15 @@ func TestListTransactions(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), nil, gomock.Any(), false).
 			Return(page(
-				&ledgerpb.Transaction{Id: 1},
-				&ledgerpb.Transaction{Id: 2},
-				&ledgerpb.Transaction{Id: 3},
+				&commonpb.Transaction{Id: 1},
+				&commonpb.Transaction{Id: 2},
+				&commonpb.Transaction{Id: 3},
 			), nil)
 
-		stream := newFakeServerStream[ledgerpb.Transaction](t)
+		stream := newFakeServerStream[commonpb.Transaction](t)
 		req := &servicepb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{PageSize: 2},
+			Options: &commonpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListTransactions(req, stream))
@@ -164,7 +163,7 @@ func TestListTransactions(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		err := impl.ListTransactions(&servicepb.ListTransactionsRequest{}, newFakeServerStream[ledgerpb.Transaction](t))
+		err := impl.ListTransactions(&servicepb.ListTransactionsRequest{}, newFakeServerStream[commonpb.Transaction](t))
 		require.ErrorContains(t, err, "ledger name is required")
 	})
 
@@ -174,9 +173,9 @@ func TestListTransactions(t *testing.T) {
 		impl, _ := newListHandlerHarness(t)
 		req := &servicepb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{Cursor: "not-a-uint"},
+			Options: &commonpb.ListOptions{Cursor: "not-a-uint"},
 		}
-		err := impl.ListTransactions(req, newFakeServerStream[ledgerpb.Transaction](t))
+		err := impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t))
 		require.Error(t, err)
 		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
 	})
@@ -187,9 +186,9 @@ func TestListTransactions(t *testing.T) {
 		impl, _ := newListHandlerHarness(t)
 		req := &servicepb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{Cursor: pagecursor.Cursor{Key: "users:1"}.Encode()},
+			Options: &commonpb.ListOptions{Cursor: pagecursor.Cursor{Key: "users:1"}.Encode()},
 		}
-		err := impl.ListTransactions(req, newFakeServerStream[ledgerpb.Transaction](t))
+		err := impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t))
 		require.Error(t, err)
 		require.Equal(t, codes.InvalidArgument, status.Code(convertToGRPCError(err, testLogger())))
 	})
@@ -200,13 +199,13 @@ func TestListTransactions(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		// The default transaction order is reverse=false at the API; a back
 		// page reads it the other way, then returns the rows flipped back.
-		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), uint64(10), gomock.Any(), true).
-			Return(page(&ledgerpb.Transaction{Id: 9}, &ledgerpb.Transaction{Id: 8}, &ledgerpb.Transaction{Id: 7}), nil)
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), gomock.Any(), gomock.Any(), true).
+			Return(page(&commonpb.Transaction{Id: 9}, &commonpb.Transaction{Id: 8}, &commonpb.Transaction{Id: 7}), nil)
 
-		stream := newFakeServerStream[ledgerpb.Transaction](t)
+		stream := newFakeServerStream[commonpb.Transaction](t)
 		req := &servicepb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{PageSize: 2, Cursor: pagecursor.Cursor{Key: "10", Back: true}.Encode()},
+			Options: &commonpb.ListOptions{PageSize: 2, Cursor: pagecursor.Cursor{Key: "10", Back: true}.Encode()},
 		}
 		require.NoError(t, impl.ListTransactions(req, stream))
 		require.Equal(t, []uint64{8, 9}, []uint64{stream.sent[0].GetId(), stream.sent[1].GetId()})
@@ -221,14 +220,14 @@ func TestListTransactions(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", gomock.Any(), uint64(42), gomock.Any(), gomock.Any()).
-			Return(page[ledgerpb.Transaction](), nil)
+		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(page[commonpb.Transaction](), nil)
 
 		req := &servicepb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{Cursor: pagecursor.Cursor{Key: "42"}.Encode()},
+			Options: &commonpb.ListOptions{Cursor: pagecursor.Cursor{Key: "42"}.Encode()},
 		}
-		require.NoError(t, impl.ListTransactions(req, newFakeServerStream[ledgerpb.Transaction](t)))
+		require.NoError(t, impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t)))
 	})
 }
 
@@ -244,15 +243,15 @@ func TestListAccounts(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListAccounts(gomock.Any(), "main", uint32(3), "", gomock.Any(), false).
 			Return(page(
-				&ledgerpb.Account{Address: "alpha"},
-				&ledgerpb.Account{Address: "beta"},
-				&ledgerpb.Account{Address: "gamma"},
+				&commonpb.Account{Address: "alpha"},
+				&commonpb.Account{Address: "beta"},
+				&commonpb.Account{Address: "gamma"},
 			), nil)
 
-		stream := newFakeServerStream[ledgerpb.Account](t)
+		stream := newFakeServerStream[commonpb.Account](t)
 		req := &servicepb.ListAccountsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{PageSize: 2},
+			Options: &commonpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListAccounts(req, stream))
@@ -264,7 +263,7 @@ func TestListAccounts(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		err := impl.ListAccounts(&servicepb.ListAccountsRequest{}, newFakeServerStream[ledgerpb.Account](t))
+		err := impl.ListAccounts(&servicepb.ListAccountsRequest{}, newFakeServerStream[commonpb.Account](t))
 		require.ErrorContains(t, err, "ledger name is required")
 	})
 }
@@ -275,12 +274,12 @@ func TestListAccounts(t *testing.T) {
 func TestListLogs(t *testing.T) {
 	t.Parallel()
 
-	applyLog := func(id uint64) *ledgerpb.Log {
-		return &ledgerpb.Log{
-			Payload: &ledgerpb.LogPayload{
-				Type: &ledgerpb.LogPayload_Apply{
-					Apply: &ledgerpb.ApplyLedgerLog{
-						Log: &ledgerpb.LedgerLog{Id: id},
+	applyLog := func(id uint64) *commonpb.Log {
+		return &commonpb.Log{
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						Log: &commonpb.LedgerLog{Id: id},
 					},
 				},
 			},
@@ -294,10 +293,10 @@ func TestListLogs(t *testing.T) {
 		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", uint64(0), uint32(3), gomock.Any(), false).
 			Return(page(applyLog(1), applyLog(2), applyLog(3)), nil)
 
-		stream := newFakeServerStream[ledgerpb.Log](t)
+		stream := newFakeServerStream[commonpb.Log](t)
 		req := &servicepb.ListLogsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{PageSize: 2},
+			Options: &commonpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListLogs(req, stream))
@@ -308,14 +307,14 @@ func TestListLogs(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		nonApply := &ledgerpb.Log{Payload: &ledgerpb.LogPayload{}} // no Apply oneof set
+		nonApply := &commonpb.Log{Payload: &commonpb.LogPayload{}} // no Apply oneof set
 		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(page(applyLog(1), nonApply, applyLog(3)), nil)
 
-		stream := newFakeServerStream[ledgerpb.Log](t)
+		stream := newFakeServerStream[commonpb.Log](t)
 		req := &servicepb.ListLogsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{PageSize: 2},
+			Options: &commonpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListLogs(req, stream))
@@ -329,7 +328,7 @@ func TestListLogs(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		err := impl.ListLogs(&servicepb.ListLogsRequest{}, newFakeServerStream[ledgerpb.Log](t))
+		err := impl.ListLogs(&servicepb.ListLogsRequest{}, newFakeServerStream[commonpb.Log](t))
 		require.ErrorContains(t, err, "ledger name is required")
 	})
 }
@@ -351,7 +350,7 @@ func TestListAuditEntries(t *testing.T) {
 			), nil)
 
 		stream := newFakeServerStream[auditpb.AuditEntry](t)
-		req := &servicepb.ListAuditEntriesRequest{Options: &ledgerpb.ListOptions{PageSize: 2}}
+		req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{PageSize: 2}}
 
 		require.NoError(t, impl.ListAuditEntries(req, stream))
 		require.Equal(t, "2", stream.trailerCursor())
@@ -369,15 +368,15 @@ func TestListSigningKeys(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListSigningKeys(gomock.Any()).Return(
 			page(
-				&ledgerpb.SigningKey{KeyId: "kms-1"},
-				&ledgerpb.SigningKey{KeyId: "kms-2"},
-				&ledgerpb.SigningKey{KeyId: "kms-3"},
+				&commonpb.SigningKey{KeyId: "kms-1"},
+				&commonpb.SigningKey{KeyId: "kms-2"},
+				&commonpb.SigningKey{KeyId: "kms-3"},
 			),
 			nil,
 		)
 
-		stream := newFakeServerStream[ledgerpb.SigningKey](t)
-		req := &servicepb.ListSigningKeysRequest{Options: &ledgerpb.ListOptions{PageSize: 2}}
+		stream := newFakeServerStream[commonpb.SigningKey](t)
+		req := &servicepb.ListSigningKeysRequest{Options: &commonpb.ListOptions{PageSize: 2}}
 
 		require.NoError(t, impl.ListSigningKeys(req, stream))
 		require.Equal(t, "kms-2", stream.trailerCursor())
@@ -395,7 +394,7 @@ func TestListNumscripts(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		// Returned unordered — the handler sorts by name and then paginates.
 		mockCtrl.EXPECT().ListNumscripts(gomock.Any(), "main").Return(
-			[]*ledgerpb.NumscriptInfo{
+			[]*commonpb.NumscriptInfo{
 				{Name: "z-last"},
 				{Name: "a-first"},
 				{Name: "m-mid"},
@@ -403,10 +402,10 @@ func TestListNumscripts(t *testing.T) {
 			nil,
 		)
 
-		stream := newFakeServerStream[ledgerpb.NumscriptInfo](t)
+		stream := newFakeServerStream[commonpb.NumscriptInfo](t)
 		req := &servicepb.ListNumscriptsRequest{
 			Ledger:  "main",
-			Options: &ledgerpb.ListOptions{PageSize: 2},
+			Options: &commonpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListNumscripts(req, stream))
@@ -418,7 +417,7 @@ func TestListNumscripts(t *testing.T) {
 
 // Sent-item helpers; keep the test bodies readable.
 
-func sentLedgerNames(s *fakeServerStream[ledgerpb.LedgerInfo]) []string {
+func sentLedgerNames(s *fakeServerStream[commonpb.LedgerInfo]) []string {
 	out := make([]string, len(s.sent))
 	for i, l := range s.sent {
 		out[i] = l.GetName()
@@ -427,7 +426,7 @@ func sentLedgerNames(s *fakeServerStream[ledgerpb.LedgerInfo]) []string {
 	return out
 }
 
-func sentTxIDs(s *fakeServerStream[ledgerpb.Transaction]) []uint64 {
+func sentTxIDs(s *fakeServerStream[commonpb.Transaction]) []uint64 {
 	out := make([]uint64, len(s.sent))
 	for i, tx := range s.sent {
 		out[i] = tx.GetId()
@@ -436,7 +435,7 @@ func sentTxIDs(s *fakeServerStream[ledgerpb.Transaction]) []uint64 {
 	return out
 }
 
-func sentAccountAddrs(s *fakeServerStream[ledgerpb.Account]) []string {
+func sentAccountAddrs(s *fakeServerStream[commonpb.Account]) []string {
 	out := make([]string, len(s.sent))
 	for i, a := range s.sent {
 		out[i] = a.GetAddress()

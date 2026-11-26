@@ -9,15 +9,14 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // Capability is proof that a caller snapshot passed the deterministic
 // attribution checks. Its zero value is invalid.
 type Capability struct {
-	snapshot *ledgerpb.CallerSnapshot
+	snapshot *commonpb.CallerSnapshot
 }
 
 // SystemActor identifies an allowlisted internal producer.
@@ -25,7 +24,7 @@ type SystemActor string
 
 // New validates and freezes a snapshot obtained from authenticated request
 // state, a trusted peer forward, or an allowlisted system producer.
-func New(snapshot *ledgerpb.CallerSnapshot) (Capability, error) {
+func New(snapshot *commonpb.CallerSnapshot) (Capability, error) {
 	if err := Validate(snapshot); err != nil {
 		return Capability{}, err
 	}
@@ -35,15 +34,15 @@ func New(snapshot *ledgerpb.CallerSnapshot) (Capability, error) {
 
 // NewSystem constructs attribution for an allowlisted internal producer.
 func NewSystem(component SystemActor) (Capability, error) {
-	return New(&ledgerpb.CallerSnapshot{
-		Principal: &ledgerpb.CallerSnapshot_System{
-			System: &ledgerpb.SystemCaller{Component: string(component)},
+	return New(&commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_System{
+			System: &commonpb.SystemCaller{Component: string(component)},
 		},
 	})
 }
 
 // Snapshot returns an isolated copy suitable for attaching to a proposal.
-func (c Capability) Snapshot() *ledgerpb.CallerSnapshot {
+func (c Capability) Snapshot() *commonpb.CallerSnapshot {
 	if c.snapshot == nil {
 		return nil
 	}
@@ -53,7 +52,7 @@ func (c Capability) Snapshot() *ledgerpb.CallerSnapshot {
 
 // Validate checks only replicated data and is therefore safe to run both at
 // admission and in the FSM on every replica.
-func Validate(snapshot *ledgerpb.CallerSnapshot) error {
+func Validate(snapshot *commonpb.CallerSnapshot) error {
 	invalid := func(detail string) error {
 		return &domain.ErrInvalidCallerAttribution{Detail: detail}
 	}
@@ -63,17 +62,17 @@ func Validate(snapshot *ledgerpb.CallerSnapshot) error {
 	}
 
 	switch principal := snapshot.GetPrincipal().(type) {
-	case *ledgerpb.CallerSnapshot_Authenticated:
+	case *commonpb.CallerSnapshot_Authenticated:
 		caller := principal.Authenticated
 		if caller == nil || caller.GetIdentity() == nil {
 			return invalid("authenticated principal has no identity")
 		}
 		switch source := caller.GetIdentity().GetSource().(type) {
-		case *ledgerpb.CallerIdentity_Issuer:
+		case *commonpb.CallerIdentity_Issuer:
 			if source.Issuer == "" {
 				return invalid("authenticated issuer is empty")
 			}
-		case *ledgerpb.CallerIdentity_KeyId:
+		case *commonpb.CallerIdentity_KeyId:
 			if source.KeyId == "" {
 				return invalid("authenticated key id is empty")
 			}
@@ -83,18 +82,18 @@ func Validate(snapshot *ledgerpb.CallerSnapshot) error {
 		if err := validateScopes(caller.GetScopes()); err != nil {
 			return invalid(err.Error())
 		}
-	case *ledgerpb.CallerSnapshot_Anonymous:
+	case *commonpb.CallerSnapshot_Anonymous:
 		if principal.Anonymous == nil {
 			return invalid("anonymous principal is missing")
 		}
 		if err := validateScopes(principal.Anonymous.GetScopes()); err != nil {
 			return invalid(err.Error())
 		}
-	case *ledgerpb.CallerSnapshot_System:
+	case *commonpb.CallerSnapshot_System:
 		if principal.System == nil || !isAllowedSystemComponent(principal.System.GetComponent()) {
 			return invalid("system component is missing or not allowlisted")
 		}
-	case *ledgerpb.CallerSnapshot_AuthDisabled:
+	case *commonpb.CallerSnapshot_AuthDisabled:
 		if principal.AuthDisabled == nil {
 			return invalid("authentication-disabled principal is missing")
 		}

@@ -4,10 +4,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -80,13 +79,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func formatTarget(t ledgerpb.QueryTarget) string {
+func formatTarget(t commonpb.QueryTarget) string {
 	switch t {
-	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return "accounts"
-	case ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
-	case ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		return "logs"
 	default:
 		return t.String()

@@ -3,18 +3,16 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 var _ = Describe("Ledger", Ordered, func() {
@@ -26,7 +24,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -45,10 +43,10 @@ var _ = Describe("Ledger", Ordered, func() {
 		})
 
 		It("Should merge metadata with existing account metadata", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "merge-account", big.NewInt(50), "USD"),
-			}, nil, map[string]*ledgerpb.MetadataMap{
-				"merge-account": ledgerpb.MetadataMapFromGoMap(map[string]string{
+			}, nil, map[string]*commonpb.MetadataMap{
+				"merge-account": commonpb.MetadataMapFromGoMap(map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 				}),
@@ -89,7 +87,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bulk-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -106,7 +104,7 @@ var _ = Describe("Ledger", Ordered, func() {
 		})
 
 		It("Should handle multiple metadata operations in bulk", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bulk-account-2", big.NewInt(50), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -173,7 +171,7 @@ var _ = Describe("Ledger", Ordered, func() {
 		})
 
 		It("Should save transaction metadata successfully", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -197,7 +195,7 @@ var _ = Describe("Ledger", Ordered, func() {
 		})
 
 		It("Should delete transaction metadata successfully", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
 			}, map[string]string{"to_delete": "value"}, nil)))
 			Expect(err).To(Succeed())
@@ -225,7 +223,7 @@ var _ = Describe("Ledger", Ordered, func() {
 		})
 
 		It("Should save transaction metadata via bulk endpoint", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -246,7 +244,7 @@ var _ = Describe("Ledger", Ordered, func() {
 		})
 
 		It("Should delete transaction metadata via bulk endpoint", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())

@@ -24,7 +24,8 @@ type AuditEntryReader interface {
 	GetCallerSnapshot() CallerSnapshotReader
 	GetIdempotency() IdempotencyReader
 	GetSignature() SignedApplyBatchReader
-	GetOutcome() isAuditEntry_Outcome
+	GetRequiredCapabilities() []uint32
+	WhichOutcome() AuditEntry_OutcomeReaderCase
 	Mutate() *AuditEntry
 }
 
@@ -180,7 +181,9 @@ func (l auditEntryListReadonly) Range(yield func(int, AuditEntryReader) bool) {
 
 // NewAuditEntryListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAuditEntryListReader(s []*AuditEntry) AuditEntryListReader { return auditEntryListReadonly(s) }
+func NewAuditEntryListReader(s []*AuditEntry) auditEntryListReadonly {
+	return auditEntryListReadonly(s)
+}
 
 // AuditItemReader provides read-only access to AuditItem.
 // Call Mutate() to obtain a mutable clone.
@@ -255,7 +258,7 @@ func (l auditItemListReadonly) Range(yield func(int, AuditItemReader) bool) {
 
 // NewAuditItemListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAuditItemListReader(s []*AuditItem) AuditItemListReader { return auditItemListReadonly(s) }
+func NewAuditItemListReader(s []*AuditItem) auditItemListReadonly { return auditItemListReadonly(s) }
 
 // AuditSuccessReader provides read-only access to AuditSuccess.
 // Call Mutate() to obtain a mutable clone.
@@ -325,7 +328,7 @@ func (l auditSuccessListReadonly) Range(yield func(int, AuditSuccessReader) bool
 
 // NewAuditSuccessListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
+func NewAuditSuccessListReader(s []*AuditSuccess) auditSuccessListReadonly {
 	return auditSuccessListReadonly(s)
 }
 
@@ -396,6 +399,6 @@ func (l auditFailureListReadonly) Range(yield func(int, AuditFailureReader) bool
 
 // NewAuditFailureListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAuditFailureListReader(s []*AuditFailure) AuditFailureListReader {
+func NewAuditFailureListReader(s []*AuditFailure) auditFailureListReadonly {
 	return auditFailureListReadonly(s)
 }

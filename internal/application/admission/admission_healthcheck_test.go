@@ -7,10 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -66,11 +65,11 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 							Action: &servicepb.LedgerAction{
 								Data: &servicepb.LedgerAction_CreateTransaction{
 									CreateTransaction: &servicepb.CreateTransactionPayload{
-										Postings: []*ledgerpb.Posting{
+										Postings: []*commonpb.Posting{
 											{
 												Source:      "world",
 												Destination: "user:alice",
-												Amount:      ledgerpb.NewUint256FromUint64(0),
+												Amount:      commonpb.NewUint256FromUint64(0),
 												Asset:       "USD",
 											},
 										},
@@ -104,11 +103,11 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*ledgerpb.Posting{
+								Postings: []*commonpb.Posting{
 									{
 										Source:      "world",
 										Destination: "user:bob",
-										Amount:      ledgerpb.NewUint256FromUint64(0),
+										Amount:      commonpb.NewUint256FromUint64(0),
 										Asset:       "EUR",
 									},
 								},

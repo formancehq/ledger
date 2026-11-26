@@ -7,14 +7,12 @@ import (
 	"net/http"
 	"runtime/pprof"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/plan"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -136,8 +134,9 @@ type bulkOptions struct {
 
 // bulkResult represents the result of a single bulk element.
 type bulkResult struct {
-	log *ledgerpb.LedgerLog
-	err error
+	log      *commonpb.LedgerLog
+	sequence uint64 // Global log sequence, distinct from the ledger-local log ID.
+	err      error
 }
 
 // convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request.
@@ -317,9 +316,15 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 			apiResults[i].LogID = log.GetId()
 			if payload := log.GetData(); payload != nil {
 				switch p := payload.GetPayload().(type) {
-				case *ledgerpb.LedgerLogPayload_CreatedTransaction:
-					data = p.CreatedTransaction.GetTransaction()
-				case *ledgerpb.LedgerLogPayload_OrderSkipped:
+				case *commonpb.LedgerLogPayload_CreatedTransaction:
+					if !skipResponse {
+						data = p.CreatedTransaction.GetTransaction()
+					}
+				case *commonpb.LedgerLogPayload_AccountMetadataUpdated:
+					if !skipResponse {
+						data = commonpb.AccountMetadataToAnyMap(p.AccountMetadataUpdated.GetAccountMetadata())
+					}
+				case *commonpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,
 						Reason:  domain.ReasonString(p.OrderSkipped.GetReason()),
@@ -365,12 +370,6 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 func bulkElementError(r *http.Request, err error) (status int, code, description string) {
 	if errors.Is(err, context.Canceled) {
 		return 0, "ERROR", err.Error()
-	}
-
-	// Retryable infra sentinels handled before Describable dispatch,
-	// mirroring handleError.
-	if errors.Is(err, ledgerpb.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
-		return http.StatusServiceUnavailable, "ERROR", err.Error()
 	}
 
 	c := classifyError(err)

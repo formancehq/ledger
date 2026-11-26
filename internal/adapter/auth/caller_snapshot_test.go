@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestResolveCallerSnapshot_Unauthenticated(t *testing.T) {
@@ -124,12 +124,12 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 	claims := &oidc.AccessTokenClaims{
 		TokenClaims: oidc.TokenClaims{Subject: "peer-node"},
 	}
-	forwarded := &ledgerpb.CallerSnapshot{
-		Principal: &ledgerpb.CallerSnapshot_Authenticated{
-			Authenticated: &ledgerpb.AuthenticatedCaller{
-				Identity: &ledgerpb.CallerIdentity{
+	forwarded := &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{
 					Subject: "original-user",
-					Source:  &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 				},
 				Scopes: []string{"ledger:WriteTransaction"},
 			},
@@ -178,12 +178,12 @@ func TestResolveCallerSnapshot_SystemActorWinsOverForwardedAndClaims(t *testing.
 	ctx := WithClaims(context.Background(), &oidc.AccessTokenClaims{
 		TokenClaims: oidc.TokenClaims{Subject: "user-1"},
 	})
-	capability, err := attribution.New(&ledgerpb.CallerSnapshot{
-		Principal: &ledgerpb.CallerSnapshot_Authenticated{
-			Authenticated: &ledgerpb.AuthenticatedCaller{
-				Identity: &ledgerpb.CallerIdentity{
+	capability, err := attribution.New(&commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{
 					Subject: "forwarded-user",
-					Source:  &ledgerpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 				},
 			},
 		},
@@ -246,12 +246,12 @@ func TestForwardedSnapshotFromContext_DefaultsNil(t *testing.T) {
 func TestWithForwardedAttribution_RoundTripIsIsolated(t *testing.T) {
 	t.Parallel()
 
-	snapshot := &ledgerpb.CallerSnapshot{
-		Principal: &ledgerpb.CallerSnapshot_Authenticated{
-			Authenticated: &ledgerpb.AuthenticatedCaller{
-				Identity: &ledgerpb.CallerIdentity{
+	snapshot := &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{
 					Subject: "abc",
-					Source:  &ledgerpb.CallerIdentity_KeyId{KeyId: "key-1"},
+					Source:  &commonpb.CallerIdentity_KeyId{KeyId: "key-1"},
 				},
 			},
 		},
@@ -271,7 +271,7 @@ func TestWithForwardedAttribution_RoundTripIsIsolated(t *testing.T) {
 func TestCallerIdentity_DoesNotCarryAuthorizationFields(t *testing.T) {
 	t.Parallel()
 
-	id := &ledgerpb.CallerIdentity{}
+	id := &commonpb.CallerIdentity{}
 	desc := id.ProtoReflect().Descriptor()
 
 	for i := range desc.Fields().Len() {

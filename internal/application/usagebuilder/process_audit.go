@@ -9,8 +9,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -26,7 +25,7 @@ type templateKey struct {
 // templateDelta accumulates a per-batch increment for one template.
 type templateDelta struct {
 	count    uint64
-	lastUsed *ledgerpb.Timestamp // most recent timestamp seen this batch
+	lastUsed *commonpb.Timestamp // most recent timestamp seen this batch
 }
 
 // counterDelta is a signed delta for a per-ledger event counter. Deltas are
@@ -91,7 +90,7 @@ func (s *batchState) addCounter(ledger string, counterID byte, delta counterDelt
 // addTemplateUsage bumps the template usage aggregation. When multiple
 // invocations of the same template land in one batch the max timestamp wins
 // (matches the "lastUsed = most recent invocation" semantics).
-func (s *batchState) addTemplateUsage(ledger, template string, ts *ledgerpb.Timestamp) {
+func (s *batchState) addTemplateUsage(ledger, template string, ts *commonpb.Timestamp) {
 	k := templateKey{ledger: ledger, template: template}
 	cur := s.templates[k]
 	cur.count++
@@ -104,9 +103,9 @@ func (s *batchState) addTemplateUsage(ledger, template string, ts *ledgerpb.Time
 }
 
 // timestampGreater reports whether a > b in wall-clock ordering. Both
-// operands are non-nil. ledgerpb.Timestamp encodes microseconds-since-epoch
+// operands are non-nil. commonpb.Timestamp encodes microseconds-since-epoch
 // as a single uint64 field (data), so ordering is direct integer compare.
-func timestampGreater(a, b *ledgerpb.Timestamp) bool {
+func timestampGreater(a, b *commonpb.Timestamp) bool {
 	return a.GetData() > b.GetData()
 }
 
@@ -582,10 +581,10 @@ func (b *Builder) dispatchRevertTransaction(
 // proposal date). Nil for non-transaction logs.
 type logVolumeAnnotations struct {
 	postings    int
-	purged      []*ledgerpb.TouchedVolume // len — draining only
-	newKept     []*ledgerpb.TouchedVolume // new + kept
-	ephemeral   []*ledgerpb.TouchedVolume // new + purged (pure ephemeral)
-	txTimestamp *ledgerpb.Timestamp       // Transaction.Timestamp on Created/Reverted logs
+	purged      []*commonpb.TouchedVolume // len — draining only
+	newKept     []*commonpb.TouchedVolume // new + kept
+	ephemeral   []*commonpb.TouchedVolume // new + purged (pure ephemeral)
+	txTimestamp *commonpb.Timestamp       // Transaction.Timestamp on Created/Reverted logs
 
 	// Kind of the produced log. All false when the order was skipped.
 	isCreatedTx    bool
@@ -606,7 +605,7 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 		return logVolumeAnnotations{}, nil
 	}
 
-	apply, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply)
+	apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok || apply.Apply == nil {
 		return logVolumeAnnotations{}, nil
 	}
@@ -633,12 +632,12 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 	}
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
-	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		tx := p.CreatedTransaction.GetTransaction()
 		result.postings = len(tx.GetPostings())
 		result.txTimestamp = tx.GetTimestamp()
 		result.isCreatedTx = true
-	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		tx := p.RevertedTransaction.GetRevertTransaction()
 		result.postings = len(tx.GetPostings())
 		result.txTimestamp = tx.GetTimestamp()
@@ -715,7 +714,7 @@ func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 		// ledger this batch deleted, the DeleteRange zeroes the recycled
 		// name, so ignore the persisted (old incarnation) value and start
 		// from a nil baseline.
-		var current *ledgerpb.TemplateUsage
+		var current *commonpb.TemplateUsage
 		if _, deleted := state.deletedLedgers[k.ledger]; !deleted {
 			var err error
 			current, err = b.usageStore.GetTemplateUsage(k.ledger, k.template)
@@ -768,8 +767,8 @@ func applyDelta(current uint64, delta counterDelta) uint64 {
 
 // mergeTemplateUsage folds a per-batch delta into the persisted TemplateUsage.
 // A nil `current` (no persisted entry yet) is treated as {count: 0, lastUsed: nil}.
-func mergeTemplateUsage(current *ledgerpb.TemplateUsage, delta templateDelta) *ledgerpb.TemplateUsage {
-	next := &ledgerpb.TemplateUsage{}
+func mergeTemplateUsage(current *commonpb.TemplateUsage, delta templateDelta) *commonpb.TemplateUsage {
+	next := &commonpb.TemplateUsage{}
 	if current != nil {
 		next.Count = current.GetCount() + delta.count
 		next.LastUsed = current.GetLastUsed()

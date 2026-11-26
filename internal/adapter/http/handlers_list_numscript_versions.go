@@ -3,14 +3,15 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // numscriptVersionEntryDTO renders one stored version for the REST API.
 // createdAt reuses the proto Timestamp, whose MarshalJSON emits RFC3339.
 type numscriptVersionEntryDTO struct {
-	Version   string              `json:"version"`
-	CreatedAt *ledgerpb.Timestamp `json:"createdAt,omitempty"`
+	Version     string              `json:"version"`
+	CreatedAt   *commonpb.Timestamp `json:"createdAt,omitempty"`
+	Description string              `json:"description,omitempty"`
 }
 
 // numscriptVersionsDTO is the numscript history response: the current latest

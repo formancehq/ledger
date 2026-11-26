@@ -10,11 +10,10 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
 	domainindexes "github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -115,7 +114,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse default enforcement mode
-	var defaultEnforcementMode ledgerpb.ChartEnforcementMode
+	var defaultEnforcementMode commonpb.ChartEnforcementMode
 	if enforcementStr, _ := cmd.Flags().GetString("default-enforcement-mode"); enforcementStr != "" {
 		defaultEnforcementMode, err = parseEnforcementModeProtoStrict(enforcementStr)
 		if err != nil {
@@ -134,7 +133,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	modeStr := "normal"
-	if mode == ledgerpb.LedgerMode_LEDGER_MODE_MIRROR {
+	if mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		modeStr = "mirror"
 	}
 
@@ -258,8 +257,8 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
-	var schema []*ledgerpb.SetMetadataFieldTypeCommand
+func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*commonpb.SetMetadataFieldTypeCommand, error) {
+	var schema []*commonpb.SetMetadataFieldTypeCommand
 
 	for _, entry := range entries {
 		target, key, mdType, err := cmdutil.ParseSchemaEntry(entry)
@@ -267,7 +266,7 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*ledgerpb.SetMe
 			return nil, err
 		}
 
-		schema = append(schema, &ledgerpb.SetMetadataFieldTypeCommand{
+		schema = append(schema, &commonpb.SetMetadataFieldTypeCommand{
 			TargetType: target,
 			Key:        key,
 			Type:       mdType,
@@ -287,7 +286,7 @@ func parseSchemaEntries(cmd *cobra.Command, entries []string) ([]*ledgerpb.SetMe
 	return schema, nil
 }
 
-func schemaWizard() ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
+func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 	addSchema, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 		WithDefaultText("Add metadata schema?").
 		WithDefaultValue(false))
@@ -299,7 +298,7 @@ func schemaWizard() ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
 		return nil, nil
 	}
 
-	var schema []*ledgerpb.SetMetadataFieldTypeCommand
+	var schema []*commonpb.SetMetadataFieldTypeCommand
 
 	for {
 		targetStr, err := cmdutil.PromptSelect(pterm.DefaultInteractiveSelect.
@@ -338,7 +337,7 @@ func schemaWizard() ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
 			return nil, err
 		}
 
-		schema = append(schema, &ledgerpb.SetMetadataFieldTypeCommand{
+		schema = append(schema, &commonpb.SetMetadataFieldTypeCommand{
 			TargetType: target,
 			Key:        key,
 			Type:       mdType,
@@ -359,8 +358,8 @@ func schemaWizard() ([]*ledgerpb.SetMetadataFieldTypeCommand, error) {
 	return schema, nil
 }
 
-func parseInitialIndexes(entries []string) ([]*ledgerpb.IndexID, error) {
-	var ids []*ledgerpb.IndexID
+func parseInitialIndexes(entries []string) ([]*commonpb.IndexID, error) {
+	var ids []*commonpb.IndexID
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
 		id, err := indexes.ParseDefinition(entry)

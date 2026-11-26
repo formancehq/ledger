@@ -8,10 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -24,7 +23,7 @@ func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
 	}
 	add := order()
 	add.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-		AccountType: &ledgerpb.AccountType{Name: strings.Repeat("a", 257), Pattern: "wallet:{id}"},
+		AccountType: &commonpb.AccountType{Name: strings.Repeat("a", 257), Pattern: "wallet:{id}"},
 	}}
 	require.ErrorIs(t, validateOrder(add), domain.ErrAccountTypeNameTooLong)
 
@@ -38,12 +37,12 @@ func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
 
 	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
-			AccountTypes: map[string]*ledgerpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}},
+			AccountTypes: map[string]*commonpb.AccountType{strings.Repeat("a", 257): {Pattern: "wallet:{id}"}},
 		}},
 	}}}
 	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypeNameTooLong)
 
-	create.GetLedgerScoped().GetCreateLedger().AccountTypes = map[string]*ledgerpb.AccountType{
+	create.GetLedgerScoped().GetCreateLedger().AccountTypes = map[string]*commonpb.AccountType{
 		"wallet": {Pattern: strings.Repeat("a", 4097)},
 	}
 	require.ErrorIs(t, validateOrder(create), domain.ErrAccountTypePatternTooLong)
@@ -72,25 +71,25 @@ func TestValidateOrderRejectsInvalidUTF8BeforeProposal(t *testing.T) {
 
 	order.GetLedgerScoped().GetApply().Data = nil
 	order.GetLedgerScoped().Payload = &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
-		AccountTypes: map[string]*ledgerpb.AccountType{string([]byte{0xff}): {Pattern: "wallet:{id}"}},
+		AccountTypes: map[string]*commonpb.AccountType{string([]byte{0xff}): {Pattern: "wallet:{id}"}},
 	}}
 	require.Error(t, validateOrder(order), "map keys must also be validated")
 }
 
 func TestValidateOrderUTF8HandlesDeeplyNestedMessages(t *testing.T) {
 	t.Parallel()
-	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
-		LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{}},
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 	}}
 	for range 1000 {
-		filter = &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{
-			And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{filter}},
+		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
 		}}
 	}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
-				Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
 			}},
 		},
 	}}}
@@ -100,18 +99,18 @@ func TestValidateOrderUTF8HandlesDeeplyNestedMessages(t *testing.T) {
 
 func TestValidateOrderUTF8PreservesSupportedFilterDepth(t *testing.T) {
 	t.Parallel()
-	filter := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{
-		LogId: &ledgerpb.LogIdCondition{Cond: &ledgerpb.UintCondition{}},
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 	}}
 	for range domain.MaxFilterDepth - 1 {
-		filter = &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_And{
-			And: &ledgerpb.AndFilter{Filters: []*ledgerpb.QueryFilter{filter}},
+		filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter}},
 		}}
 	}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
-				Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
 			}},
 		},
 	}}}
@@ -331,7 +330,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 func TestValidateOrder_CreateIndexTarget(t *testing.T) {
 	t.Parallel()
 
-	createIndexOrder := func(id *ledgerpb.IndexID) *raftcmdpb.Order {
+	createIndexOrder := func(id *commonpb.IndexID) *raftcmdpb.Order {
 		return &raftcmdpb.Order{
 			Type: &raftcmdpb.Order_LedgerScoped{
 				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -350,42 +349,42 @@ func TestValidateOrder_CreateIndexTarget(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		id      *ledgerpb.IndexID
+		id      *commonpb.IndexID
 		wantErr error
 	}{
 		{
 			name: "metadata index on ACCOUNT is valid",
-			id:   indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+			id:   indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
 		},
 		{
 			name: "metadata index on TRANSACTION is valid",
-			id:   indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_TRANSACTION, "color"),
+			id:   indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "color"),
 		},
 		{
 			name:    "metadata index on LEDGER is rejected",
-			id:      indexes.MetadataID(ledgerpb.TargetType_TARGET_TYPE_LEDGER, "color"),
+			id:      indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "color"),
 			wantErr: ErrIndexTargetUnsupported,
 		},
 		{
 			name: "tx builtin index is valid",
-			id:   indexes.TxBuiltinID(ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			id:   indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		},
 		{
 			name: "account builtin ASSET is valid",
-			id:   indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+			id:   indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 		},
 		{
 			name:    "account builtin UNSPECIFIED is rejected",
-			id:      indexes.AccountBuiltinID(ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
+			id:      indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
 			wantErr: ErrIndexTargetUnsupported,
 		},
 		{
 			name: "log builtin DATE is valid",
-			id:   indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+			id:   indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 		},
 		{
 			name:    "log builtin UNSPECIFIED is rejected",
-			id:      indexes.LogBuiltinID(ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED),
+			id:      indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED),
 			wantErr: ErrIndexTargetUnsupported,
 		},
 	}
@@ -437,7 +436,7 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 					Ledger: "l",
 					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-							Query: &ledgerpb.PreparedQuery{}, // empty name
+							Query: &commonpb.PreparedQuery{}, // empty name
 						},
 					},
 				}},
@@ -454,9 +453,9 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 					Ledger: "l",
 					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-							Query: &ledgerpb.PreparedQuery{
+							Query: &commonpb.PreparedQuery{
 								Name:   "q",
-								Target: ledgerpb.QueryTarget_QUERY_TARGET_AUDIT,
+								Target: commonpb.QueryTarget_QUERY_TARGET_AUDIT,
 							},
 						},
 					},
@@ -495,7 +494,7 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 					Ledger: "l",
 					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-							Query: &ledgerpb.PreparedQuery{Name: "bad\nname"},
+							Query: &commonpb.PreparedQuery{Name: "bad\nname"},
 						},
 					},
 				}},
@@ -509,7 +508,7 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 					Ledger: "l",
 					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-							Query: &ledgerpb.PreparedQuery{Name: "ok", Target: ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+							Query: &commonpb.PreparedQuery{Name: "ok", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 						},
 					},
 				}},
@@ -551,14 +550,14 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 									// Content source required so the structural gate
 									// (validateOrderContent) doesn't reject the order
 									// before metadata is even looked at.
-									Postings: []*ledgerpb.Posting{{
+									Postings: []*commonpb.Posting{{
 										Source:      "world",
 										Destination: "users:alice",
-										Amount:      ledgerpb.NewUint256FromUint64(1),
+										Amount:      commonpb.NewUint256FromUint64(1),
 										Asset:       "USD",
 									}},
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"category": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "test"}},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"category": {Type: &commonpb.MetadataValue_StringValue{StringValue: "test"}},
 									},
 								},
 							},
@@ -577,8 +576,8 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"bad\x00key": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "v"}},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
 									},
 								},
 							},
@@ -596,8 +595,8 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
 						Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
-							SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*ledgerpb.MetadataValue{
-								"bad\x00key": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "v"}},
+							SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{
+								"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
 							},
 							},
 						},
@@ -632,10 +631,10 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									AccountMetadata: map[string]*ledgerpb.MetadataMap{
+									AccountMetadata: map[string]*commonpb.MetadataMap{
 										"users:001": {
-											Values: map[string]*ledgerpb.MetadataValue{
-												"bad\x00key": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "v"}},
+											Values: map[string]*commonpb.MetadataValue{
+												"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
 											},
 										},
 									},
@@ -662,8 +661,8 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"bad\x00key": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "v"}},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
 									},
 								},
 							},
@@ -684,8 +683,8 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "v"}},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
 									},
 								},
 							},
@@ -706,8 +705,8 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"reason": {Type: &ledgerpb.MetadataValue_StringValue{StringValue: "wrong amount"}},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"reason": {Type: &commonpb.MetadataValue_StringValue{StringValue: "wrong amount"}},
 									},
 								},
 							},
@@ -750,8 +749,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"category": ledgerpb.NewStringValue("safe\x00poison"),
+									Metadata: map[string]*commonpb.MetadataValue{
+										"category": commonpb.NewStringValue("safe\x00poison"),
 									},
 								},
 							},
@@ -771,10 +770,10 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									AccountMetadata: map[string]*ledgerpb.MetadataMap{
+									AccountMetadata: map[string]*commonpb.MetadataMap{
 										"users:001": {
-											Values: map[string]*ledgerpb.MetadataValue{
-												"role": ledgerpb.NewStringValue("admin\x00poison"),
+											Values: map[string]*commonpb.MetadataValue{
+												"role": commonpb.NewStringValue("admin\x00poison"),
 											},
 										},
 									},
@@ -796,8 +795,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 								AddMetadata: &raftcmdpb.SaveMetadataOrder{
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"score": ledgerpb.NewNullValue("not\x00numeric"),
+									Metadata: map[string]*commonpb.MetadataValue{
+										"score": commonpb.NewNullValue("not\x00numeric"),
 									},
 								},
 							},
@@ -818,8 +817,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"reason": ledgerpb.NewStringValue("bad\x00reason"),
+									Metadata: map[string]*commonpb.MetadataValue{
+										"reason": commonpb.NewStringValue("bad\x00reason"),
 									},
 								},
 							},
@@ -837,8 +836,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
 						Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
-							SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*ledgerpb.MetadataValue{
-								"region": ledgerpb.NewStringValue("eu\x00west"),
+							SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{
+								"region": commonpb.NewStringValue("eu\x00west"),
 							},
 							},
 						},
@@ -857,8 +856,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 								Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 									CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-										Metadata: map[string]*ledgerpb.MetadataValue{
-											"category": ledgerpb.NewStringValue("safe\x00poison"),
+										Metadata: map[string]*commonpb.MetadataValue{
+											"category": commonpb.NewStringValue("safe\x00poison"),
 										},
 									},
 								},
@@ -880,10 +879,10 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 								Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 									CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-										AccountMetadata: map[string]*ledgerpb.MetadataMap{
+										AccountMetadata: map[string]*commonpb.MetadataMap{
 											"users:001": {
-												Values: map[string]*ledgerpb.MetadataValue{
-													"role": ledgerpb.NewStringValue("admin\x00poison"),
+												Values: map[string]*commonpb.MetadataValue{
+													"role": commonpb.NewStringValue("admin\x00poison"),
 												},
 											},
 										},
@@ -907,8 +906,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 								Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 									SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-										Metadata: map[string]*ledgerpb.MetadataValue{
-											"status": ledgerpb.NewStringValue("active\x00poison"),
+										Metadata: map[string]*commonpb.MetadataValue{
+											"status": commonpb.NewStringValue("active\x00poison"),
 										},
 									},
 								},
@@ -930,8 +929,8 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 								Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
 									RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
-										Metadata: map[string]*ledgerpb.MetadataValue{
-											"reason": ledgerpb.NewStringValue("bad\x00reason"),
+										Metadata: map[string]*commonpb.MetadataValue{
+											"reason": commonpb.NewStringValue("bad\x00reason"),
 										},
 									},
 								},
@@ -952,10 +951,10 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 								AddMetadata: &raftcmdpb.SaveMetadataOrder{
-									Metadata: map[string]*ledgerpb.MetadataValue{
-										"name":   ledgerpb.NewStringValue("alice"),
-										"age":    ledgerpb.NewIntValue(42),
-										"active": ledgerpb.NewBoolValue(true),
+									Metadata: map[string]*commonpb.MetadataValue{
+										"name":   commonpb.NewStringValue("alice"),
+										"age":    commonpb.NewIntValue(42),
+										"active": commonpb.NewBoolValue(true),
 									},
 								},
 							},
@@ -987,10 +986,10 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 func TestValidateOrderContent(t *testing.T) {
 	t.Parallel()
 
-	posting := &ledgerpb.Posting{
+	posting := &commonpb.Posting{
 		Source:      "world",
 		Destination: "users:alice",
-		Amount:      ledgerpb.NewUint256FromUint64(1),
+		Amount:      commonpb.NewUint256FromUint64(1),
 		Asset:       "USD",
 	}
 
@@ -1007,29 +1006,29 @@ func TestValidateOrderContent(t *testing.T) {
 		{
 			name: "empty inline script",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Script: &ledgerpb.Script{Plain: ""},
+				Script: &commonpb.Script{Plain: ""},
 			},
 			wantErr: domain.ErrEmptyTransaction,
 		},
 		{
 			name: "metadata only, no content source",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Metadata: map[string]*ledgerpb.MetadataValue{"k": ledgerpb.NewStringValue("v")},
+				Metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")},
 			},
 			wantErr: domain.ErrEmptyTransaction,
 		},
 		{
 			name: "postings + inline script",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings: []*ledgerpb.Posting{posting},
-				Script:   &ledgerpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},
+				Postings: []*commonpb.Posting{posting},
+				Script:   &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},
 			},
 			wantErr: domain.ErrPostingsAndScriptConflict,
 		},
 		{
 			name: "postings + scriptReference",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings:           []*ledgerpb.Posting{posting},
+				Postings:           []*commonpb.Posting{posting},
 				NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payment", Version: "1.0.0"},
 			},
 			wantErr: domain.ErrPostingsAndScriptConflict,
@@ -1037,7 +1036,7 @@ func TestValidateOrderContent(t *testing.T) {
 		{
 			name: "postings only",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings: []*ledgerpb.Posting{posting},
+				Postings: []*commonpb.Posting{posting},
 			},
 		},
 		{
@@ -1063,7 +1062,7 @@ func TestValidateOrderContent(t *testing.T) {
 		{
 			name: "inline script only",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Script: &ledgerpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},
+				Script: &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},
 			},
 		},
 		{
@@ -1089,7 +1088,7 @@ func TestValidateOrderContent(t *testing.T) {
 		{
 			name: "postings + empty scriptReference (nameless)",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings:           []*ledgerpb.Posting{posting},
+				Postings:           []*commonpb.Posting{posting},
 				NumscriptReference: &raftcmdpb.NumscriptReference{},
 			},
 			wantErr: domain.ErrPostingsAndScriptConflict,
@@ -1097,7 +1096,7 @@ func TestValidateOrderContent(t *testing.T) {
 		{
 			name: "postings + scriptReference with vars but no name",
 			ct: &raftcmdpb.CreateTransactionOrder{
-				Postings:           []*ledgerpb.Posting{posting},
+				Postings:           []*commonpb.Posting{posting},
 				NumscriptReference: &raftcmdpb.NumscriptReference{Vars: map[string]string{"k": "v"}},
 			},
 			wantErr: domain.ErrPostingsAndScriptConflict,
@@ -1137,7 +1136,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		src     *ledgerpb.MirrorSourceConfig
+		src     *commonpb.MirrorSourceConfig
 		wantErr error
 		wantMsg string
 	}{
@@ -1147,8 +1146,8 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "postgres mirror without IAM auth",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-				Postgres: &ledgerpb.PostgresMirrorSourceConfig{Dsn: "postgres://user:pass@host:5432/db"},
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: "postgres://user:pass@host:5432/db"},
 			}},
 		},
 		{
@@ -1161,64 +1160,64 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "postgres mirror with IAM auth and region",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-				Postgres: &ledgerpb.PostgresMirrorSourceConfig{
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
-					AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
 		},
 		{
 			name: "postgres mirror with IAM auth missing region rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-				Postgres: &ledgerpb.PostgresMirrorSourceConfig{
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
-					AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: ""},
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
 				},
 			}},
 			wantErr: ErrMirrorIAMRegionRequired,
 		},
 		{
-			name: "postgres mirror with IAM auth on non-TLS sslmode rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-				Postgres: &ledgerpb.PostgresMirrorSourceConfig{
+			name: "postgres mirror IAM TLS policy belongs to source construction",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        "postgres://iam-user@host:5432/db?sslmode=disable",
-					AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
 		},
 		{
-			name: "postgres mirror with IAM auth on unset sslmode rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-				Postgres: &ledgerpb.PostgresMirrorSourceConfig{
+			name: "postgres mirror IAM missing sslmode reaches source construction",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        "postgres://iam-user@host:5432/db",
-					AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
 		},
 		{
 			name: "postgres mirror with IAM auth on libpq keyword=value DSN rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-				Postgres: &ledgerpb.PostgresMirrorSourceConfig{
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
 					Dsn:        `host=db.example.com user=iam-user dbname=ledger sslmode=require`,
-					AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
 			wantErr: ErrMirrorPostgresURLInvalid,
 		},
 		{
 			name: "http mirror source unaffected",
-			src: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Http{
-				Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Http{
+				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 			}},
 		},
 		{
 			name: "valid rewrite rules accepted",
-			src: &ledgerpb.MirrorSourceConfig{
-				Type: &ledgerpb.MirrorSourceConfig_Http{
-					Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				RewriteRules: []*ledgerpb.MirrorRewriteRule{
+				RewriteRules: []*commonpb.MirrorRewriteRule{
 					anyRuleRewriteAddress(":worker:\\d+", ""),
 					createdRuleSetMetadata(`log.metadata["type"].string_value == "payout"`, "category", "external", true),
 				},
@@ -1226,11 +1225,11 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "unset scope rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{
-				Type: &ledgerpb.MirrorSourceConfig_Http{
-					Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				RewriteRules: []*ledgerpb.MirrorRewriteRule{
+				RewriteRules: []*commonpb.MirrorRewriteRule{
 					{Stop: true},
 				},
 			},
@@ -1238,11 +1237,11 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "invalid cel expression rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{
-				Type: &ledgerpb.MirrorSourceConfig_Http{
-					Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				RewriteRules: []*ledgerpb.MirrorRewriteRule{
+				RewriteRules: []*commonpb.MirrorRewriteRule{
 					anyRuleWithMatch(`this is not valid cel`),
 				},
 			},
@@ -1250,11 +1249,11 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "non-boolean match rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{
-				Type: &ledgerpb.MirrorSourceConfig_Http{
-					Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				RewriteRules: []*ledgerpb.MirrorRewriteRule{
+				RewriteRules: []*commonpb.MirrorRewriteRule{
 					anyRuleWithMatch(`"a string"`),
 				},
 			},
@@ -1262,11 +1261,11 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "invalid literal regex pattern rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{
-				Type: &ledgerpb.MirrorSourceConfig_Http{
-					Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				RewriteRules: []*ledgerpb.MirrorRewriteRule{
+				RewriteRules: []*commonpb.MirrorRewriteRule{
 					anyRuleRewriteAddress("(", ""),
 				},
 			},
@@ -1274,11 +1273,11 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 		},
 		{
 			name: "invalid literal metadata key rejected at admission",
-			src: &ledgerpb.MirrorSourceConfig{
-				Type: &ledgerpb.MirrorSourceConfig_Http{
-					Http: &ledgerpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				RewriteRules: []*ledgerpb.MirrorRewriteRule{
+				RewriteRules: []*commonpb.MirrorRewriteRule{
 					createdRuleSetMetadata("", "bad key", "v", false),
 				},
 			},
@@ -1347,7 +1346,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 						Ledger: "default",
 						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
 							CreateLedger: &raftcmdpb.CreateLedgerOrder{
-								Mode:         ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
+								Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 								MirrorSource: tt.src,
 							},
 						},
@@ -1403,8 +1402,8 @@ func TestValidateOrder_RejectsInvalidPostingColor(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{
 								Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 									CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-										Postings: []*ledgerpb.Posting{
-											ledgerpb.NewColoredPosting("world", "users:alice", "USD/2", tt.color, big.NewInt(100)),
+										Postings: []*commonpb.Posting{
+											commonpb.NewColoredPosting("world", "users:alice", "USD/2", tt.color, big.NewInt(100)),
 										},
 									},
 								},
@@ -1424,34 +1423,17 @@ func TestValidateOrder_RejectsInvalidPostingColor(t *testing.T) {
 	}
 }
 
-// TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass reproduces the exact
-// bypass NumaryBot reported: pgxpool.ParseConfig folds PGSSLMODE from the
-// process env, so a DSN without sslmode= would inherit that env var and
-// pass a naive TLSConfig check. The admission gate must anchor the TLS
-// requirement in the raw DSN, independent of pod env.
-//
-// This test cannot share a t.Parallel outer with the table above because
-// t.Setenv forbids parallel siblings mutating the process env.
-func TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass(t *testing.T) {
-	t.Setenv("PGSSLMODE", "require")
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "default",
-				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{
-						Mode: ledgerpb.LedgerMode_LEDGER_MODE_MIRROR,
-						MirrorSource: &ledgerpb.MirrorSourceConfig{Type: &ledgerpb.MirrorSourceConfig_Postgres{
-							Postgres: &ledgerpb.PostgresMirrorSourceConfig{
-								Dsn:        "postgres://iam-user@host:5432/db",
-								AwsIamAuth: &ledgerpb.PostgresAwsIamAuth{Region: "eu-west-1"},
-							},
-						}},
-					},
-				},
-			},
-		},
+// Admission never resolves driver defaults from the local environment; the
+// runtime regression TestBuildPgxPoolConfig_IAMRejectsDSNWithoutExplicitSSLMode
+// independently guards the IAM TLS boundary before credentials are installed.
+func TestValidateOrder_MirrorIAMDoesNotReadPGSSLMODE(t *testing.T) {
+	for _, mode := range []string{"require", "disable", "invalid"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("PGSSLMODE", mode)
+			order := postgresURLOrder("postgres://iam-user@host:5432/db")
+			order.GetLedgerScoped().GetCreateLedger().GetMirrorSource().GetPostgres().AwsIamAuth = &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"}
+			require.NoError(t, validateOrder(order))
+		})
 	}
 }
 
@@ -1531,18 +1513,18 @@ func TestValidateOrderSigningKey(t *testing.T) {
 func TestValidateOrder_PreparedQueryRejectsLogIdWithoutCondition(t *testing.T) {
 	t.Parallel()
 
-	bare := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_LogId{LogId: &ledgerpb.LogIdCondition{}}}
-	nested := &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Not{Not: &ledgerpb.NotFilter{
-		Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Or{Or: &ledgerpb.OrFilter{
-			Filters: []*ledgerpb.QueryFilter{bare},
+	bare := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{LogId: &commonpb.LogIdCondition{}}}
+	nested := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
+		Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{
+			Filters: []*commonpb.QueryFilter{bare},
 		}}},
 	}}}
 
-	for name, filter := range map[string]*ledgerpb.QueryFilter{"bare": bare, "nested": nested} {
+	for name, filter := range map[string]*commonpb.QueryFilter{"bare": bare, "nested": nested} {
 		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
-					Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+					Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
 				}},
 			},
 		}}}
@@ -1564,34 +1546,34 @@ func TestValidateOrder_PreparedQueryRejectsNonTextualParamName(t *testing.T) {
 	t.Parallel()
 
 	bad := "n or reverted == true"
-	filters := map[string]*ledgerpb.QueryFilter{
-		"uint range": {Filter: &ledgerpb.QueryFilter_BuiltinUint{BuiltinUint: &ledgerpb.BuiltinUintCondition{
-			Field: ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-			Cond:  &ledgerpb.UintCondition{ParamMin: bad},
+	filters := map[string]*commonpb.QueryFilter{
+		"uint range": {Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &commonpb.UintCondition{ParamMin: bad},
 		}}},
-		"reference": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
-			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: bad}},
+		"reference": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: bad}},
 		}}},
-		"keyword": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
-			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: "true"}},
+		"keyword": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: "true"}},
 		}}},
-		"empty string param": {Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
-			Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: ""}},
+		"empty string param": {Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+			Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: ""}},
 		}}},
-		"empty bool param": {Filter: &ledgerpb.QueryFilter_Field{Field: &ledgerpb.FieldCondition{
-			Field:     &ledgerpb.FieldRef{Metadata: "k"},
-			Condition: &ledgerpb.FieldCondition_BoolCond{BoolCond: &ledgerpb.BoolCondition{Value: &ledgerpb.BoolCondition_Param{Param: ""}}},
+		"empty bool param": {Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{
+			Field:     &commonpb.FieldRef{Metadata: "k"},
+			Condition: &commonpb.FieldCondition_BoolCond{BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Param{Param: ""}}},
 		}}},
-		"empty address param": {Filter: &ledgerpb.QueryFilter_Address{Address: &ledgerpb.AddressMatch{
-			Match: &ledgerpb.AddressMatch_ParamExact{ParamExact: ""},
+		"empty address param": {Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
+			Match: &commonpb.AddressMatch_ParamExact{ParamExact: ""},
 		}}},
 	}
 
 	for name, filter := range filters {
 		create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
-					Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filter,
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+					Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filter,
 				}},
 			},
 		}}}
@@ -1607,10 +1589,10 @@ func TestValidateOrder_PreparedQueryRejectsNonTextualParamName(t *testing.T) {
 
 	ok := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &ledgerpb.PreparedQuery{
-				Name: "q", Target: ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-				Filter: &ledgerpb.QueryFilter{Filter: &ledgerpb.QueryFilter_Reference{Reference: &ledgerpb.ReferenceCondition{
-					Cond: &ledgerpb.StringCondition{Value: &ledgerpb.StringCondition_Param{Param: "ref_1"}},
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{
+				Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+				Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{Reference: &commonpb.ReferenceCondition{
+					Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: "ref_1"}},
 				}}},
 			}},
 		},

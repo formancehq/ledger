@@ -6,7 +6,8 @@ import (
 	"math"
 
 	"github.com/formancehq/invariants"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // maxNumscriptNameLength caps numscript identifiers. Numscript is a
@@ -83,7 +84,7 @@ func (e *errValidation) Error() string { return e.err.Error() }
 func (e *errValidation) Unwrap() error { return e.err }
 func (*errValidation) Kind() ErrorKind { return KindValidation }
 func (*errValidation) Reason() string  { return ErrReasonValidation }
-func (e *errValidation) FailureDetails() *ledgerpb.FailureDetails {
+func (e *errValidation) FailureDetails() *commonpb.FailureDetails {
 	return mustFailureDetails(e.code, nil)
 }
 
@@ -238,11 +239,11 @@ func ValidatePreparedQueryName(name string) SerializableError {
 // target JSON mapping — so a prepared query stored on AUDIT would fail later at
 // execute/marshal time. Enforced at write time (admission + FSM) across gRPC and
 // HTTP so a persisted prepared query is always executable.
-func IsPreparedQueryExecutableTarget(target ledgerpb.QueryTarget) bool {
+func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 	switch target {
-	case ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledgerpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerpb.QueryTarget_QUERY_TARGET_LOGS:
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		return true
 	default:
 		return false
@@ -251,7 +252,7 @@ func IsPreparedQueryExecutableTarget(target ledgerpb.QueryTarget) bool {
 
 // ValidateFilterForTarget walks a QueryFilter tree and returns the first leaf
 // condition that is not valid on `target`, per the generated per-target
-// validity table (ledgerpb.ConditionValidForTarget) — the same gate
+// validity table (commonpb.ConditionValidForTarget) — the same gate
 // query.compile applies per-condition at execute time. Combinators
 // ($and/$or/$not) are structural and always valid; the walk recurses into their
 // children. Used at prepared-query write time so a stored filter is always
@@ -264,7 +265,7 @@ func IsPreparedQueryExecutableTarget(target ledgerpb.QueryTarget) bool {
 // enforces at execute time — so a maliciously (or accidentally) deep tree is
 // rejected at write time with ErrFilterTooDeep instead of being persisted (only
 // to fail every execution) or overflowing the Go stack on the write path (#341).
-func ValidateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget) SerializableError {
+func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) Describable {
 	return validateFilterForTarget(f, target, 0)
 }
 
@@ -278,7 +279,7 @@ func ValidateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarge
 // unexecutable prepared query be persisted; a deeper one would overflow the
 // stack here before Compile's guard is ever reached — the exact fatal DoS,
 // invariant #7).
-func validateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarget, depth int) SerializableError {
+func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) Describable {
 	if f == nil {
 		return nil
 	}
@@ -288,7 +289,7 @@ func validateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarge
 	}
 
 	switch v := f.GetFilter().(type) {
-	case *ledgerpb.QueryFilter_And:
+	case *commonpb.QueryFilter_And:
 		for _, sub := range v.And.GetFilters() {
 			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
@@ -296,7 +297,7 @@ func validateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarge
 		}
 
 		return nil
-	case *ledgerpb.QueryFilter_Or:
+	case *commonpb.QueryFilter_Or:
 		for _, sub := range v.Or.GetFilters() {
 			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
@@ -304,15 +305,15 @@ func validateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarge
 		}
 
 		return nil
-	case *ledgerpb.QueryFilter_Not:
+	case *commonpb.QueryFilter_Not:
 		return validateFilterForTarget(v.Not.GetFilter(), target, depth+1)
 	}
 
-	kind := ledgerpb.ConditionKindOf(f)
-	if !ledgerpb.ConditionValidForTarget(target, kind) {
+	kind := commonpb.ConditionKindOf(f)
+	if !commonpb.ConditionValidForTarget(target, kind) {
 		return &ErrFilterCompilation{
 			Detail: fmt.Sprintf("condition %q is not valid on %s queries",
-				kind.String(), ledgerpb.TargetHumanName(target)),
+				kind.String(), commonpb.TargetHumanName(target)),
 		}
 	}
 
@@ -325,48 +326,48 @@ func validateFilterForTarget(f *ledgerpb.QueryFilter, target ledgerpb.QueryTarge
 // MaxHasAssetPrecision. query.Compile and query.CompileReverse apply it to every
 // node they dispatch and ValidateFilterForTarget to every leaf it walks, so a
 // stored prepared query never fails on its own shape. Combinators pass.
-func ValidateFilterLeaf(f *ledgerpb.QueryFilter) SerializableError {
+func ValidateFilterLeaf(f *commonpb.QueryFilter) Describable {
 	switch v := f.GetFilter().(type) {
-	case *ledgerpb.QueryFilter_Field:
+	case *commonpb.QueryFilter_Field:
 		return validateFieldConditionShape(v.Field)
-	case *ledgerpb.QueryFilter_Address:
+	case *commonpb.QueryFilter_Address:
 		if v.Address.GetMatch() == nil {
 			return filterShapeError("address condition has no match")
 		}
-	case *ledgerpb.QueryFilter_Reference:
+	case *commonpb.QueryFilter_Reference:
 		if v.Reference.GetCond() == nil {
 			return filterShapeError("reference condition has no value")
 		}
 
 		return validateStringConditionValue(v.Reference.GetCond())
-	case *ledgerpb.QueryFilter_Ledger:
+	case *commonpb.QueryFilter_Ledger:
 		if v.Ledger.GetCond() == nil {
 			return filterShapeError("ledger condition has no value")
 		}
 
 		return validateStringConditionValue(v.Ledger.GetCond())
-	case *ledgerpb.QueryFilter_BuiltinUint:
+	case *commonpb.QueryFilter_BuiltinUint:
 		if v.BuiltinUint.GetCond() == nil {
 			return filterShapeError("builtin uint condition has no value")
 		}
 
 		switch field := v.BuiltinUint.GetField(); field {
-		case ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
-			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-			ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 		default:
 			return filterShapeError(fmt.Sprintf("unsupported builtin uint field: %v", field))
 		}
-	case *ledgerpb.QueryFilter_LogBuiltinUint:
+	case *commonpb.QueryFilter_LogBuiltinUint:
 		if v.LogBuiltinUint.GetCond() == nil {
 			return filterShapeError("log builtin uint condition has no value")
 		}
 
-		if field := v.LogBuiltinUint.GetField(); field != ledgerpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
+		if field := v.LogBuiltinUint.GetField(); field != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 			return filterShapeError(fmt.Sprintf("unsupported log builtin uint field: %v", field))
 		}
-	case *ledgerpb.QueryFilter_AccountHasAsset:
+	case *commonpb.QueryFilter_AccountHasAsset:
 		if precision := v.AccountHasAsset.GetPrecision(); precision > MaxHasAssetPrecision {
 			return filterShapeError(fmt.Sprintf("has asset precision %d exceeds maximum %d", precision, MaxHasAssetPrecision))
 		}
@@ -389,15 +390,15 @@ func ValidateFilterLeaf(f *ledgerpb.QueryFilter) SerializableError {
 //     reverted transaction);
 //   - a parameter name, including an empty one, that the textual grammar
 //     cannot read back as a single `$name` reference
-//     (ledgerpb.IsTextualFilterParamName), which would export to text that
+//     (commonpb.IsTextualFilterParamName), which would export to text that
 //     re-parses as different conditions.
 //
 // The walk is bounded by MaxFilterDepth like ValidateFilterForTarget.
-func ValidateFilterAdmissionShape(f *ledgerpb.QueryFilter) SerializableError {
+func ValidateFilterAdmissionShape(f *commonpb.QueryFilter) Describable {
 	return validateFilterAdmissionShape(f, 0)
 }
 
-func validateFilterAdmissionShape(f *ledgerpb.QueryFilter, depth int) SerializableError {
+func validateFilterAdmissionShape(f *commonpb.QueryFilter, depth int) Describable {
 	if f == nil {
 		return nil
 	}
@@ -407,28 +408,28 @@ func validateFilterAdmissionShape(f *ledgerpb.QueryFilter, depth int) Serializab
 	}
 
 	switch v := f.GetFilter().(type) {
-	case *ledgerpb.QueryFilter_And:
+	case *commonpb.QueryFilter_And:
 		for _, sub := range v.And.GetFilters() {
 			if err := validateFilterAdmissionShape(sub, depth+1); err != nil {
 				return err
 			}
 		}
-	case *ledgerpb.QueryFilter_Or:
+	case *commonpb.QueryFilter_Or:
 		for _, sub := range v.Or.GetFilters() {
 			if err := validateFilterAdmissionShape(sub, depth+1); err != nil {
 				return err
 			}
 		}
-	case *ledgerpb.QueryFilter_Not:
+	case *commonpb.QueryFilter_Not:
 		return validateFilterAdmissionShape(v.Not.GetFilter(), depth+1)
-	case *ledgerpb.QueryFilter_LogId:
+	case *commonpb.QueryFilter_LogId:
 		if v.LogId.GetCond() == nil {
 			return filterShapeError("logId condition has no value")
 		}
 	}
 
-	for _, name := range ledgerpb.FilterLeafParamNames(f) {
-		if !ledgerpb.IsTextualFilterParamName(name) {
+	for _, name := range commonpb.FilterLeafParamNames(f) {
+		if !commonpb.IsTextualFilterParamName(name) {
 			return filterShapeError(fmt.Sprintf("parameter name %q must be an identifier ([a-zA-Z_][a-zA-Z0-9_]*) and not a filter keyword", name))
 		}
 	}
@@ -436,19 +437,19 @@ func validateFilterAdmissionShape(f *ledgerpb.QueryFilter, depth int) Serializab
 	return nil
 }
 
-func validateFieldConditionShape(fc *ledgerpb.FieldCondition) SerializableError {
+func validateFieldConditionShape(fc *commonpb.FieldCondition) Describable {
 	if fc.GetField() == nil {
 		return filterShapeError("field condition has no field reference")
 	}
 
 	switch c := fc.GetCondition().(type) {
-	case *ledgerpb.FieldCondition_StringCond:
+	case *commonpb.FieldCondition_StringCond:
 		return validateStringConditionValue(c.StringCond)
-	case *ledgerpb.FieldCondition_BoolCond:
+	case *commonpb.FieldCondition_BoolCond:
 		if c.BoolCond.GetValue() == nil {
 			return filterShapeError("bool condition has no value")
 		}
-	case *ledgerpb.FieldCondition_IntCond, *ledgerpb.FieldCondition_UintCond, *ledgerpb.FieldCondition_ExistsCond:
+	case *commonpb.FieldCondition_IntCond, *commonpb.FieldCondition_UintCond, *commonpb.FieldCondition_ExistsCond:
 	default:
 		return filterShapeError("field condition has no condition")
 	}
@@ -456,7 +457,7 @@ func validateFieldConditionShape(fc *ledgerpb.FieldCondition) SerializableError 
 	return nil
 }
 
-func validateStringConditionValue(cond *ledgerpb.StringCondition) SerializableError {
+func validateStringConditionValue(cond *commonpb.StringCondition) Describable {
 	if cond.GetValue() == nil {
 		return filterShapeError("string condition has no value")
 	}
@@ -514,7 +515,7 @@ func ValidateAccountAddress(address string) SerializableError {
 // ValidateAccountMetadataAddresses selects the lexicographically smallest
 // invalid address. The selected typed failure is audit-bound during apply and
 // must be independent of Go map iteration, including when the address is empty.
-func ValidateAccountMetadataAddresses(metadata map[string]*ledgerpb.MetadataMap) SerializableError {
+func ValidateAccountMetadataAddresses(metadata map[string]*commonpb.MetadataMap) SerializableError {
 	var selected string
 	var selectedErr SerializableError
 	for address := range metadata {
@@ -543,15 +544,15 @@ func (e *metadataFactFailure) Is(target error) bool {
 }
 func (*metadataFactFailure) Kind() ErrorKind { return KindValidation }
 func (*metadataFactFailure) Reason() string  { return ErrReasonValidation }
-func (e *metadataFactFailure) FailureDetails() *ledgerpb.FailureDetails {
+func (e *metadataFactFailure) FailureDetails() *commonpb.FailureDetails {
 	switch {
 	case errors.Is(e.cause, ErrMetadataKeyInvalidChar):
-		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataKeyInvalidChar{
-			MetadataKeyInvalidChar: &ledgerpb.MetadataKeyInvalidCharDetails{Key: new(e.key)},
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataKeyInvalidChar{
+			MetadataKeyInvalidChar: &commonpb.MetadataKeyInvalidCharDetails{Key: new(e.key)},
 		}}
 	case errors.Is(e.cause, ErrMetadataValueContainsNullByte):
-		return &ledgerpb.FailureDetails{Kind: &ledgerpb.FailureDetails_MetadataValueContainsNullByte{
-			MetadataValueContainsNullByte: &ledgerpb.MetadataValueContainsNullByteDetails{Key: new(e.key)},
+		return &commonpb.FailureDetails{Kind: &commonpb.FailureDetails_MetadataValueContainsNullByte{
+			MetadataValueContainsNullByte: &commonpb.MetadataValueContainsNullByteDetails{Key: new(e.key)},
 		}}
 	default:
 		panic(fmt.Errorf("unsupported metadata validation error: %w", e.cause))
@@ -584,11 +585,11 @@ func ValidateMetadataString(key, value string) SerializableError {
 // ValidateMetadataValue inspects the proto MetadataValue and validates the
 // string-bearing variants against the same null-byte rule as keys. Non-string
 // variants are accepted unchanged.
-func ValidateMetadataValue(key string, value *ledgerpb.MetadataValue) SerializableError {
+func ValidateMetadataValue(key string, value *commonpb.MetadataValue) SerializableError {
 	switch v := value.GetType().(type) {
-	case *ledgerpb.MetadataValue_StringValue:
+	case *commonpb.MetadataValue_StringValue:
 		return ValidateMetadataString(key, v.StringValue)
-	case *ledgerpb.MetadataValue_NullValue:
+	case *commonpb.MetadataValue_NullValue:
 		if v.NullValue == nil {
 			return nil
 		}

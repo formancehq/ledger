@@ -5,11 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -23,8 +21,8 @@ func scriptOrderWithReference(ledger, plain, reference string, skippable bool) *
 	ct.Reference = reference
 
 	if skippable {
-		order.GetLedgerScoped().GetApply().SkippableReasons = []ledgerpb.ErrorReason{
-			ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		}
 	}
 
@@ -97,11 +95,11 @@ func postingsOrderWithReference(ledger, source, destination, asset string, amoun
 		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 				Reference: reference,
-				Postings: []*ledgerpb.Posting{
+				Postings: []*commonpb.Posting{
 					{
 						Source:      source,
 						Destination: destination,
-						Amount:      ledgerpb.NewUint256FromUint64(amount),
+						Amount:      commonpb.NewUint256FromUint64(amount),
 						Asset:       asset,
 					},
 				},
@@ -110,8 +108,8 @@ func postingsOrderWithReference(ledger, source, destination, asset string, amoun
 	})
 
 	if skippable {
-		order.GetLedgerScoped().GetApply().SkippableReasons = []ledgerpb.ErrorReason{
-			ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		}
 	}
 
@@ -120,10 +118,10 @@ func postingsOrderWithReference(ledger, source, destination, asset string, amoun
 
 // revertOrderSkippable builds a revert order opting into the
 // TRANSACTION_ALREADY_REVERTED skippable reason.
-func revertOrderSkippable(overlay *bulkOverlay, ledger string, txID uint64, original ...*ledgerpb.Posting) *raftcmdpb.Order {
+func revertOrderSkippable(overlay *bulkOverlay, ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
 	order := revertOrder(overlay, ledger, txID, original...)
-	order.GetLedgerScoped().GetApply().SkippableReasons = []ledgerpb.ErrorReason{
-		ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
+	order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{
+		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
 	}
 
 	return order

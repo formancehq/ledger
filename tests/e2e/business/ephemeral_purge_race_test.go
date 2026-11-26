@@ -8,13 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 // EphemeralPurgeRace exercises the admission/apply race where two concurrent
@@ -51,7 +49,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 
 			// Seed the ephemeral account with a non-zero balance so the leader's
 			// cache holds it at the moment admission inspects CheckCache.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", account, big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -68,7 +66,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errA = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*ledgerpb.Posting{
+				_, errA = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting(account, "world", big.NewInt(100), "USD"),
 				}, nil, nil)))
 			}()
@@ -76,7 +74,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errB = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*ledgerpb.Posting{
+				_, errB = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting(account, "world", big.NewInt(50), "USD"),
 				}, nil)))
 			}()

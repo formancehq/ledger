@@ -14,8 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -53,10 +52,10 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 
 	fixture := &eventsURLRedactionServer{
 		response: &servicepb.GetEventsSinksResponse{
-			Sinks: []*ledgerpb.SinkConfig{
+			Sinks: []*commonpb.SinkConfig{
 				{
 					Name: "stream",
-					Type: &ledgerpb.SinkConfig_Nats{Nats: &ledgerpb.NatsSinkConfig{
+					Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{
 						Url: "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222," +
 							"operator:" + natsNoSchemePass + "@three:4222," + natsNoSchemeToken + "@four:4222",
 						Topic: "events",
@@ -64,19 +63,19 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				},
 				{
 					Name: "webhook",
-					Type: &ledgerpb.SinkConfig_Http{Http: &ledgerpb.HttpSinkConfig{
+					Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{
 						Endpoint: "https://operator:" + httpPassword + "@hooks.example/events",
 					}},
 				},
 				{
 					Name: "analytics",
-					Type: &ledgerpb.SinkConfig_Clickhouse{Clickhouse: &ledgerpb.ClickHouseSinkConfig{
+					Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{
 						Dsn: "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
 					}},
 				},
 				{
 					Name: "kafka-empty-secret",
-					Type: &ledgerpb.SinkConfig_Kafka{Kafka: &ledgerpb.KafkaSinkConfig{
+					Type: &commonpb.SinkConfig_Kafka{Kafka: &commonpb.KafkaSinkConfig{
 						Brokers:       []string{"kafka.example:9092"},
 						Topic:         "events",
 						SaslMechanism: "PLAIN",
@@ -84,16 +83,16 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				},
 				{
 					Name: "databricks-empty-token",
-					Type: &ledgerpb.SinkConfig_Databricks{Databricks: &ledgerpb.DatabricksSinkConfig{
+					Type: &commonpb.SinkConfig_Databricks{Databricks: &commonpb.DatabricksSinkConfig{
 						ServerHostname: "databricks.example",
-						Auth:           &ledgerpb.DatabricksSinkConfig_Token{},
+						Auth:           &commonpb.DatabricksSinkConfig_Token{},
 					}},
 				},
 				{
 					Name: "databricks-empty-client-secret",
-					Type: &ledgerpb.SinkConfig_Databricks{Databricks: &ledgerpb.DatabricksSinkConfig{
+					Type: &commonpb.SinkConfig_Databricks{Databricks: &commonpb.DatabricksSinkConfig{
 						ServerHostname: "databricks.example",
-						Auth: &ledgerpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &ledgerpb.DatabricksOAuthM2M{
+						Auth: &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &commonpb.DatabricksOAuthM2M{
 							ClientId: "client-id",
 						}},
 					}},

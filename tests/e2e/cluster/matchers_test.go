@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/onsi/gomega/types"
-
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/onsi/gomega/types"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 

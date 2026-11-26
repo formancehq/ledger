@@ -18,7 +18,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -31,7 +30,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -98,7 +97,7 @@ func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
 // excluded from AuditItem.serialized_order, so audit replay has no trustworthy
 // value to compare it with. Its consistency with the checkpoint projection is
 // checked separately by compareQueryCheckpoints.
-func auditComparableLog(log *ledgerpb.Log, sequence uint64) *ledgerpb.Log {
+func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 	ret := log.CloneVT()
 	ret.Sequence = sequence
 	if apply := ret.GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
@@ -117,7 +116,7 @@ func auditComparableLog(log *ledgerpb.Log, sequence uint64) *ledgerpb.Log {
 // while carrying forward execution metadata that the audit order does not bind.
 // This makes downstream projection checks compare the stored checkpoint row to
 // its source Log row instead of to the audit replayer's necessarily-zero value.
-func auditReplayLogWithExecutionMetadata(expected, stored *ledgerpb.Log) *ledgerpb.Log {
+func auditReplayLogWithExecutionMetadata(expected, stored *commonpb.Log) *commonpb.Log {
 	ret := expected.CloneVT()
 	if expectedCP := ret.GetPayload().GetCreatedQueryCheckpoint(); expectedCP != nil {
 		if storedCP := stored.GetPayload().GetCreatedQueryCheckpoint(); storedCP != nil {
@@ -187,18 +186,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 // checkReplayState contains the audit-derived projections produced by the single
 // forward log scan. Its fields are private to the checker phases.
 type checkReplayState struct {
-	replay                   *replayStore
-	observed                 storedLogObservations
-	excluded                 excludedVolumesSet
-	knownLedgers             map[string]struct{}
-	ledgerRevertedTxIDs      map[string]*bitset.Bitset
-	expectedIndexes          map[domain.IndexKey]*commonpb.Index
-	deletedInReplay          map[string]struct{}
-	expectedSchemas          map[string]*commonpb.MetadataSchema
-	boundaries               auditBoundaryExpectation
-	expectedNumscriptContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo
-	expectedNumscriptLatest  map[domain.NumscriptVersionKey]string
-	derivedLiveCheckpoints   map[uint64]*ledgerpb.CreatedQueryCheckpointLog
+	replay                  *replayStore
+	observed                storedLogObservations
+	excluded                excludedVolumesSet
+	knownLedgers            map[string]struct{}
+	ledgerRevertedTxIDs     map[string]*bitset.Bitset
+	expectedIndexes         map[domain.IndexKey]*commonpb.Index
+	deletedInReplay         map[string]struct{}
+	boundaries              auditBoundaryExpectation
+	numscripts              *numscriptProjection
+	derivedLiveCheckpoints  map[uint64]*commonpb.CreatedQueryCheckpointLog
+	nextQueryCheckpointID   uint64
+	queryCheckpointSchedule string
 }
 
 // pinCheckSnapshot reads the log head and all subsequent checker inputs from
@@ -299,36 +298,28 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		// logs replay. Drives the
 		// ephemeral-purge simulation and is verified against the stored
 		// LedgerInfo.AccountTypes in compareAccountTypes.
-		rawLedgerTypes     = make(map[string]map[string]*ledgerpb.AccountType)
+		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 		// Expected SubAttrIndex registry state: advanced by the replayed
 		// CreateIndex / DropIndex / RemovedMetadataFieldType / DeleteLedger
 		// logs. The checker compares this against the stored projection in
 		// compareIndexes. Presence + identity (Ledger, Id) are the fields we
 		// can re-derive.
-		expectedIndexes = make(map[domain.IndexKey]*ledgerpb.Index)
+		expectedIndexes = make(map[domain.IndexKey]*commonpb.Index)
 		// Ledgers that had a DeleteLedger log replayed in the verified
 		// range. Lets compareIndexes / compareNumscripts / compareMirrorV2LogID
 		// name the cause when a stored row survives a replayed deletion.
 		deletedInReplay = make(map[string]struct{})
-		// Expected metadata schema per ledger, derived from
-		// CreateLedger.initial_schema + SetMetadataFieldType /
-		// RemovedMetadataFieldType logs. Compared against the stored
-		// schema-dependent reverse-map diagnostics.
-		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Expected numscript library projections derived from SavedNumscript /
-		// DeleteLedger logs. compareNumscripts diffs these against the stored
-		// SubAttrNumscriptContent (immutable version entries) and
-		// SubAttrNumscriptVersion (latest pointer = greatest stored semver).
-		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*ledgerpb.NumscriptInfo)
-		expectedNumscriptLatest  = make(map[domain.NumscriptVersionKey]string)
+		numscripts      = newNumscriptProjection()
 
 		// derivedLiveCheckpoints is the audit-derived set of live query checkpoints
 		// (cluster-global), keyed by id with the CreatedQueryCheckpoint log as the
 		// value so max_sequence / created_at can be verified. A create sets the
 		// entry, a later delete removes it. compareQueryCheckpoints diffs it
 		// against the stored rows both ways, contents included.
-		derivedLiveCheckpoints = make(map[uint64]*ledgerpb.CreatedQueryCheckpointLog)
+		derivedLiveCheckpoints  = make(map[uint64]*commonpb.CreatedQueryCheckpointLog)
+		nextQueryCheckpointID   = uint64(1)
+		queryCheckpointSchedule string
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -514,7 +505,7 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 			return nil, fmt.Errorf("reading log %d value: %w", seq, err)
 		}
 
-		log := &ledgerpb.Log{}
+		log := &commonpb.Log{}
 		if err := log.UnmarshalVT(value); err != nil {
 			return nil, fmt.Errorf("unmarshaling log %d: %w", seq, err)
 		}
@@ -573,13 +564,13 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 		numscripts.observe(log)
 		if log.GetPayload() != nil {
 			switch payload := log.GetPayload().GetType().(type) {
-			case *ledgerpb.LogPayload_CreateLedger:
+			case *commonpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil {
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
 					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
-			case *ledgerpb.LogPayload_DeleteLedger:
+			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
@@ -605,47 +596,23 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 							delete(expectedIndexes, key)
 						}
 					}
-
-					// DeleteLedger also range-deletes SubAttrNumscriptVersion /
-					// SubAttrNumscriptContent for the ledger (deleteLedgerData),
-					// so mirror the cascade on the expected numscript projections.
-					for key := range expectedNumscriptContent {
-						if key.LedgerName == name {
-							delete(expectedNumscriptContent, key)
-						}
-					}
-
-					for key := range expectedNumscriptLatest {
-						if key.LedgerName == name {
-							delete(expectedNumscriptLatest, key)
-						}
-					}
 				}
-			case *ledgerpb.LogPayload_SavedNumscript:
-				// A save writes an immutable content entry and advances the latest
-				// pointer to the greatest stored semver (versions may be saved out
-				// of order).
-				if info := payload.SavedNumscript.GetInfo(); info != nil {
-					ck := domain.NumscriptEntryKey{LedgerName: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}
-					expectedNumscriptContent[ck] = info
-
-					vk := domain.NumscriptVersionKey{LedgerName: info.GetLedger(), Name: info.GetName()}
-					if cur, ok := expectedNumscriptLatest[vk]; !ok || numscriptVersionGreater(info.GetVersion(), cur) {
-						expectedNumscriptLatest[vk] = info.GetVersion()
-					}
-				}
-			case *ledgerpb.LogPayload_CreatedQueryCheckpoint:
+			case *commonpb.LogPayload_CreatedQueryCheckpoint:
 				if cp := payload.CreatedQueryCheckpoint; cp != nil {
 					derivedLiveCheckpoints[cp.GetCheckpointId()] = cp
 					if cp.GetCheckpointId() >= nextQueryCheckpointID {
 						nextQueryCheckpointID = cp.GetCheckpointId() + 1
 					}
 				}
-			case *ledgerpb.LogPayload_DeletedQueryCheckpoint:
+			case *commonpb.LogPayload_DeletedQueryCheckpoint:
 				if cp := payload.DeletedQueryCheckpoint; cp != nil {
 					delete(derivedLiveCheckpoints, cp.GetCheckpointId())
 				}
-			case *ledgerpb.LogPayload_Apply:
+			case *commonpb.LogPayload_SetQueryCheckpointSchedule:
+				queryCheckpointSchedule = payload.SetQueryCheckpointSchedule.GetCron()
+			case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
+				queryCheckpointSchedule = ""
+			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
 					ledgerName := payload.Apply.GetLedgerName()
 
@@ -693,15 +660,15 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 						// no index type has content verification today; adding it is
 						// a cross-cutting invariant-#8 effort tracked separately.
 						switch d := payload.Apply.GetLog().GetData().GetPayload().(type) {
-						case *ledgerpb.LedgerLogPayload_CreateIndex:
+						case *commonpb.LedgerLogPayload_CreateIndex:
 							if id := d.CreateIndex.GetId(); id != nil {
 								key := domain.IndexKey{
 									LedgerName: ledgerName,
 									Canonical:  indexes.Canonical(id),
 								}
-								expectedIndexes[key] = &ledgerpb.Index{Id: id, Ledger: ledgerName}
+								expectedIndexes[key] = &commonpb.Index{Id: id, Ledger: ledgerName}
 							}
-						case *ledgerpb.LedgerLogPayload_DropIndex:
+						case *commonpb.LedgerLogPayload_DropIndex:
 							if id := d.DropIndex.GetId(); id != nil {
 								key := domain.IndexKey{
 									LedgerName: ledgerName,
@@ -709,15 +676,7 @@ func (c *Checker) replayLogs(ctx context.Context, snap dal.PebbleReader, replay 
 								}
 								delete(expectedIndexes, key)
 							}
-						case *ledgerpb.LedgerLogPayload_SetMetadataFieldType:
-							if l := d.SetMetadataFieldType; l != nil {
-								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType())
-							}
-						case *ledgerpb.LedgerLogPayload_RemovedMetadataFieldType:
-							if l := d.RemovedMetadataFieldType; l != nil {
-								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
-							}
-
+						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 							// processRemoveMetadataFieldType cascades into a
 							// DropIndex when an index was attached to the
 							// removed field; the dropped id rides on the log
@@ -1040,7 +999,7 @@ type compareIndexesScope struct {
 	reader dal.PebbleReader
 	// expected is the audit-derived registry state: the replayed CreateIndex /
 	// DropIndex / RemovedMetadataFieldType / DeleteLedger delta.
-	expected map[domain.IndexKey]*ledgerpb.Index
+	expected map[domain.IndexKey]*commonpb.Index
 	// deletedInReplay names ledgers whose DeleteLedger log was replayed in the
 	// verified range. Only used to give a surviving entry a more precise message
 	// than the generic unmatched one.
@@ -1340,7 +1299,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 // created_at, and applied_index)
 // from the logs, so a missing row is corruption, never a legitimate restore
 // artifact. Stored rows are keyed by the Pebble key id, not the payload.
-func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*ledgerpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
 	stored, err := query.ReadQueryCheckpointRows(reader)
 	if err != nil {
 		return fmt.Errorf("reading stored query checkpoints: %w", err)
@@ -1401,7 +1360,7 @@ func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[u
 // explicit expectations. Check carries the composed owner through replay.
 func (c *Checker) compareNumscripts(
 	reader dal.PebbleReader,
-	expectedContent map[domain.NumscriptEntryKey]*ledgerpb.NumscriptInfo,
+	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
 	expectedLatest map[domain.NumscriptVersionKey]string,
 	deletedInReplay map[string]struct{},
 	callback func(*servicepb.CheckStoreEvent),
@@ -1596,27 +1555,27 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 // metaValueDisplay renders a metadata value with its type for check events, so
 // a type-only divergence (bool false vs string "false") is visible in the
 // message.
-func metaValueDisplay(v *ledgerpb.MetadataValue) string {
+func metaValueDisplay(v *commonpb.MetadataValue) string {
 	var kind string
 
 	switch v.GetType().(type) {
-	case *ledgerpb.MetadataValue_StringValue:
+	case *commonpb.MetadataValue_StringValue:
 		kind = "string"
-	case *ledgerpb.MetadataValue_IntValue:
+	case *commonpb.MetadataValue_IntValue:
 		kind = "int"
-	case *ledgerpb.MetadataValue_UintValue:
+	case *commonpb.MetadataValue_UintValue:
 		kind = "uint"
-	case *ledgerpb.MetadataValue_BoolValue:
+	case *commonpb.MetadataValue_BoolValue:
 		kind = "bool"
-	case *ledgerpb.MetadataValue_DatetimeValue:
+	case *commonpb.MetadataValue_DatetimeValue:
 		kind = "datetime"
-	case *ledgerpb.MetadataValue_NullValue:
+	case *commonpb.MetadataValue_NullValue:
 		kind = "null"
 	default:
 		kind = "unset"
 	}
 
-	return fmt.Sprintf("%q (%s)", ledgerpb.MetadataValueToString(v), kind)
+	return fmt.Sprintf("%q (%s)", commonpb.MetadataValueToString(v), kind)
 }
 
 // compareMetadata compares replayed account metadata against the live rows.
@@ -1629,7 +1588,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	errorCount := 0
 
 	// Collect live metadata
-	liveMetadata := make(map[string]*ledgerpb.MetadataValue)
+	liveMetadata := make(map[string]*commonpb.MetadataValue)
 
 	liveIter, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
 	if err != nil {
@@ -1661,7 +1620,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	// Collect replay metadata state
 	type replayMeta struct {
 		deleted bool
-		value   *ledgerpb.MetadataValue // only valid when !deleted
+		value   *commonpb.MetadataValue // only valid when !deleted
 	}
 
 	replayEntries := make(map[string]replayMeta)
@@ -1694,7 +1653,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if valBytes[0] == metaFlagDeleted {
 			replayEntries[string(canonicalKey)] = replayMeta{deleted: true}
 		} else {
-			mv := &ledgerpb.MetadataValue{}
+			mv := &commonpb.MetadataValue{}
 			if err := mv.UnmarshalVT(valBytes[1:]); err != nil {
 				_ = replayIter.Close()
 
@@ -1743,7 +1702,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		}
 
 		// Compute expected value
-		var expectedValue *ledgerpb.MetadataValue
+		var expectedValue *commonpb.MetadataValue
 		expectedExists := false
 
 		if rm, hasReplay := replayEntries[key]; hasReplay && !rm.deleted {
@@ -1963,16 +1922,16 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 func compareTransactionPostCommitVolumes(
 	ledgerName string,
 	seq uint64,
-	data *ledgerpb.LedgerLogPayload,
+	data *commonpb.LedgerLogPayload,
 	replay *replayStore,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
-	var tx *ledgerpb.Transaction
+	var tx *commonpb.Transaction
 
 	switch p := data.GetPayload().(type) {
-	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		tx = p.CreatedTransaction.GetTransaction()
-	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		tx = p.RevertedTransaction.GetRevertTransaction()
 	default:
 		return nil
@@ -1991,7 +1950,7 @@ func compareTransactionPostCommitVolumes(
 	}
 
 	// Index the stored snapshot, flagging duplicate rows for the same tuple.
-	storedByTuple := make(map[tupleKey]*ledgerpb.Volumes)
+	storedByTuple := make(map[tupleKey]*commonpb.Volumes)
 
 	for account, byAssets := range tx.GetPostCommitVolumes().GetVolumesByAccount() {
 		for _, entry := range byAssets.GetVolumes() {
@@ -2185,11 +2144,12 @@ func (c *Checker) verifyAuditHashChain(
 		// re-derived from the chain-bound Order. Consumed by
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
-		expectedLogs      = make(map[uint64]*ledgerpb.Log)
-		// hasVerifiedRange records whether any entry was verified — the gate
-		// for the idempotency comparison, whose expectation is only complete
-		// once the audit range has been folded.
-		hasVerifiedRange bool
+		expectedLogs      = make(map[uint64]*commonpb.Log)
+		// hasVerifiedRange records whether the audit range is usable for the
+		// idempotency comparison. An empty audit history is a complete,
+		// verified range too: it legitimately has no expected outcomes, so
+		// every stored outcome is fabricated and must be reported.
+		hasVerifiedRange = true
 	)
 	result := &auditVerification{skippable: expectedSkippable, logs: expectedLogs}
 
@@ -2298,7 +2258,7 @@ func (c *Checker) verifyAuditHashChain(
 
 		gen, ok := generators[version]
 		if !ok {
-			gen = processing.NewHashGenerator(ledgerpb.HashAlgorithm(version), auditKey)
+			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), auditKey)
 			generators[version] = gen
 		}
 
@@ -2719,7 +2679,7 @@ type chainBoundState struct {
 
 type chainBoundSavedMetadata struct {
 	ledger  string
-	payload *ledgerpb.SavedMetadata
+	payload *commonpb.SavedMetadata
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -2761,7 +2721,7 @@ func newChainBoundState() *chainBoundState {
 func verifySavedMetadataAgainstAuditedOrder(
 	ledger string,
 	seq uint64,
-	payload *ledgerpb.LedgerLogPayload,
+	payload *commonpb.LedgerLogPayload,
 	chainBound *chainBoundState,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
@@ -2815,7 +2775,7 @@ func mutationStateWithWitness(muts []chainBoundMutation, seq uint64) (state, wit
 // per-reason branches in verifySkippedOrder pick the field they need and
 // ignore the others.
 type expectedSkippableOrder struct {
-	reasons []ledgerpb.ErrorReason
+	reasons []commonpb.ErrorReason
 	ledger  string
 	// TRANSACTION_REFERENCE_CONFLICT correlator: reference the order declared.
 	reference string
@@ -2985,7 +2945,7 @@ func collectExpectedSkippable(
 		if am := apply.GetAddMetadata(); am != nil {
 			chainBound.savedMetadata[logSeq] = chainBoundSavedMetadata{
 				ledger: ledger,
-				payload: &ledgerpb.SavedMetadata{
+				payload: &commonpb.SavedMetadata{
 					Target:   am.GetTarget(),
 					Metadata: am.GetMetadata(),
 				},
@@ -2994,7 +2954,7 @@ func collectExpectedSkippable(
 			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 				chainBound.savedMetadata[logSeq] = chainBoundSavedMetadata{
 					ledger: ledger,
-					payload: &ledgerpb.SavedMetadata{
+					payload: &commonpb.SavedMetadata{
 						Target:   sm.GetTarget(),
 						Metadata: sm.GetMetadata(),
 					},
@@ -3060,7 +3020,7 @@ func collectExpectedSkippable(
 		if dm := apply.GetDeleteMetadata(); dm != nil {
 			exp.metadataKey = dm.GetKey()
 			exp.metadataTarget = formatTargetForSkipContext(dm.GetTarget())
-			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*ledgerpb.Target_TransactionId)
+			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*commonpb.Target_TransactionId)
 		}
 
 		if aa := apply.GetAddAccountType(); aa != nil {
@@ -3203,7 +3163,7 @@ func recordChainBoundMutations(
 		// would drop a real presence and let a later forged
 		// METADATA_NOT_FOUND slip through (finding checker.go:2295). Gate the
 		// suppression on conflict-whitelist membership.
-		conflictSkippable := slices.Contains(apply.GetSkippableReasons(), ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+		conflictSkippable := slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 		createApplied := !conflictSkippable ||
 			(!chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) &&
 				!chainBoundCreateTxApplicationUncertain(ledger, ct, logSeq, chainBound))
@@ -3593,11 +3553,11 @@ func appendAccountTypeMutation(
 // transaction targets carry the id as a decimal string. Kept in lockstep
 // with the sub-processor's formatting so the checker's context-tampering
 // check compares apples-to-apples.
-func formatTargetForSkipContext(target *ledgerpb.Target) string {
+func formatTargetForSkipContext(target *commonpb.Target) string {
 	switch t := target.GetTarget().(type) {
-	case *ledgerpb.Target_Account:
+	case *commonpb.Target_Account:
 		return t.Account.GetAddr()
-	case *ledgerpb.Target_TransactionId:
+	case *commonpb.Target_TransactionId:
 		return strconv.FormatUint(t.TransactionId, 10)
 	default:
 		return ""
@@ -3624,14 +3584,14 @@ func metadataTimelineTarget(isTx bool, target string) string {
 }
 
 // metadataTimelineTargetFromProto is metadataTimelineTarget for a
-// *ledgerpb.Target whose kind lives in the oneof (AddMetadata / DeleteMetadata
+// *commonpb.Target whose kind lives in the oneof (AddMetadata / DeleteMetadata
 // / mirror Saved/Deleted metadata). Returns "" when the target is unset so
 // callers keep their existing empty-target guard.
-func metadataTimelineTargetFromProto(target *ledgerpb.Target) string {
+func metadataTimelineTargetFromProto(target *commonpb.Target) string {
 	switch t := target.GetTarget().(type) {
-	case *ledgerpb.Target_Account:
+	case *commonpb.Target_Account:
 		return metadataTimelineTarget(false, t.Account.GetAddr())
-	case *ledgerpb.Target_TransactionId:
+	case *commonpb.Target_TransactionId:
 		return metadataTimelineTarget(true, strconv.FormatUint(t.TransactionId, 10))
 	default:
 		return ""
@@ -3708,12 +3668,12 @@ func rememberReferenceTxID(
 func verifySkippedOrder(
 	ledger string,
 	seq uint64,
-	payload *ledgerpb.LedgerLogPayload,
+	payload *commonpb.LedgerLogPayload,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
-	skipped, ok := payload.GetPayload().(*ledgerpb.LedgerLogPayload_OrderSkipped)
+	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
 	if !ok {
 		// The projection at `seq` is NOT an OrderSkippedLog. The elision
 		// check (inverse direction) is dispatched at the outer log
@@ -3752,7 +3712,7 @@ func verifySkippedOrder(
 		return
 	}
 
-	if reason == ledgerpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records an OrderSkipped projection with UNSPECIFIED reason in ledger %q", seq, ledger),
@@ -3821,7 +3781,7 @@ func verifySkippedOrder(
 	// be replayed against the audit chain. The `default` branch is the
 	// tripwire.
 	switch reason {
-	case ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT:
+	case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT:
 		// Empty reference means the original order had no reference set —
 		// TRANSACTION_REFERENCE_CONFLICT is structurally impossible.
 		if expected.reference == "" {
@@ -3930,7 +3890,7 @@ func verifySkippedOrder(
 			return
 		}
 
-	case ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED:
+	case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED:
 		// Chain-bound Order was a RevertTransactionOrder targeting
 		// transactionID. Two-layer verification:
 		//
@@ -3981,7 +3941,7 @@ func verifySkippedOrder(
 			return
 		}
 
-	case ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND:
+	case commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND:
 		// Chain-bound Order was a DeleteMetadataOrder with (target, key).
 		// Two-layer verification:
 		//
@@ -4050,8 +4010,8 @@ func verifySkippedOrder(
 			return
 		}
 
-	case ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
-		ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
+	case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
 		// Chain-bound Order was an AddAccountType (for ALREADY_EXISTS)
 		// or RemoveAccountType (for NOT_FOUND) targeting `name`.
 		// Two-layer verification:
@@ -4096,7 +4056,7 @@ func verifySkippedOrder(
 
 		present, _ := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
-		mustBePresent := reason == ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+		mustBePresent := reason == commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 		if present != mustBePresent {
 			// The chain-bound timeline contradicts the skipped reason: the
 			// audit chain covers the whole history, so the timeline is
@@ -4144,7 +4104,7 @@ func verifySkippedOrder(
 // the elision check entirely.
 func dispatchElisionCheck(
 	seq uint64,
-	log *ledgerpb.Log,
+	log *commonpb.Log,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 	callback func(*servicepb.CheckStoreEvent),
@@ -4154,11 +4114,11 @@ func dispatchElisionCheck(
 		return
 	}
 
-	if apl, ok := log.GetPayload().GetType().(*ledgerpb.LogPayload_Apply); ok &&
+	if apl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply); ok &&
 		apl.Apply != nil &&
 		apl.Apply.GetLog() != nil &&
 		apl.Apply.GetLog().GetData() != nil {
-		if _, isSkip := apl.Apply.GetLog().GetData().GetPayload().(*ledgerpb.LedgerLogPayload_OrderSkipped); isSkip {
+		if _, isSkip := apl.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped); isSkip {
 			// Well-formed OrderSkipped projection: verifySkippedOrder
 			// (called from the Apply branch of the iteration) already
 			// validated the forward direction.
@@ -4212,7 +4172,7 @@ func verifyExpectedSkipNotElided(
 	// skipped" (no correlator on expected, no state timeline) are left
 	// to the forward direction, which catches forged OrderSkipped logs.
 	switch {
-	case slices.Contains(expected.reasons, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) && expected.reference != "":
+	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) && expected.reference != "":
 		firstSeenSeq, claimed := chainBound.references[ledger][expected.reference]
 		if !claimed || firstSeenSeq >= seq {
 			return
@@ -4224,7 +4184,7 @@ func verifyExpectedSkipNotElided(
 			seq, ledger, "", "",
 		))
 
-	case slices.Contains(expected.reasons, ledgerpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) && expected.transactionID != 0:
+	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) && expected.transactionID != 0:
 		firstRevertSeq, seen := chainBound.reverted[ledger][expected.transactionID]
 		if !seen || firstRevertSeq >= seq {
 			return
@@ -4236,7 +4196,10 @@ func verifyExpectedSkipNotElided(
 			seq, ledger, "", "",
 		))
 
-	case slices.Contains(expected.reasons, ledgerpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
+	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
+		if metadataStateUncertain(chainBound, ledger, metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget), expected.metadataKey, seq) {
+			return
+		}
 		present, _ := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 		if present {
 			// Chain shows PRESENT → a Delete would have succeeded, not
@@ -4250,11 +4213,11 @@ func verifyExpectedSkipNotElided(
 			seq, ledger, "", "",
 		))
 
-	case (slices.Contains(expected.reasons, ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
-		slices.Contains(expected.reasons, ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.isAccountTypeOrder:
+	case (slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
+		slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.isAccountTypeOrder:
 		present, _ := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
-		mustBePresent := slices.Contains(expected.reasons, ledgerpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)
+		mustBePresent := slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)
 		if present != mustBePresent {
 			// Chain-bound state contradicts the reason that would
 			// have been skipped: no elision to prove.
@@ -4295,7 +4258,7 @@ type expectedIdempotency struct {
 	proposalHash []byte
 	expiresAt    uint64
 	failure      bool
-	reason       ledgerpb.ErrorReason
+	reason       commonpb.ErrorReason
 	code         string
 	facts        map[string]string
 	firstLog     uint64
@@ -4554,7 +4517,7 @@ func logSequenceFromAuditEntry(entry *auditpb.AuditEntry) uint64 {
 // from the audit. The schema is a projection of CreateLedger.initial_schema +
 // SetMetadataFieldType / RemovedMetadataFieldType orders; a stored schema that
 // diverges from the replay is tampering or a restore-rebuild gap.
-func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*ledgerpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*commonpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for schema verification: %w", err)
@@ -4590,12 +4553,12 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 // compiled map (drives the ephemeral-purge simulation). The raw map is copied
 // so the replay's add/remove mutations don't touch the source. Serves the types
 // carried by CreateLedger.
-func seedAccountTypes(raw map[string]map[string]*ledgerpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*ledgerpb.AccountType) {
+func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) {
 	if len(types) == 0 {
 		return
 	}
 
-	cloned := make(map[string]*ledgerpb.AccountType, len(types))
+	cloned := make(map[string]*commonpb.AccountType, len(types))
 	maps.Copy(cloned, types)
 
 	raw[ledger] = cloned
@@ -4607,7 +4570,7 @@ func seedAccountTypes(raw map[string]map[string]*ledgerpb.AccountType, compiled 
 // (AddAccountType / RemoveAccountType). The logged AccountType is the exact
 // object stored on LedgerInfo (processAddAccountType), so a proto.Equal
 // divergence is tampering or a restore-rebuild gap.
-func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*ledgerpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*commonpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for account-type verification: %w", err)
@@ -4700,7 +4663,7 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 
 // accountTypesEqual compares two account-type sets by content, treating a nil
 // map and an empty one as equal.
-func accountTypesEqual(a, b map[string]*ledgerpb.AccountType) bool {
+func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -4715,68 +4678,16 @@ func accountTypesEqual(a, b map[string]*ledgerpb.AccountType) bool {
 	return true
 }
 
-// setExpectedSchemaField records a field-type declaration on the ledger's
-// expected schema during replay, lazily creating it. Mirrors
-// processSetMetadataFieldType.
-func setExpectedSchemaField(schemas map[string]*ledgerpb.MetadataSchema, ledger string, target ledgerpb.TargetType, key string, typ ledgerpb.MetadataType) {
-	schema := schemas[ledger]
-	if schema == nil {
-		schema = &ledgerpb.MetadataSchema{}
-		schemas[ledger] = schema
-	}
-
-	field := &ledgerpb.MetadataFieldSchema{Type: typ}
-
-	switch target {
-	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
-		if schema.AccountFields == nil {
-			schema.AccountFields = make(map[string]*ledgerpb.MetadataFieldSchema)
-		}
-
-		schema.AccountFields[key] = field
-	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
-		if schema.TransactionFields == nil {
-			schema.TransactionFields = make(map[string]*ledgerpb.MetadataFieldSchema)
-		}
-
-		schema.TransactionFields[key] = field
-	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
-		if schema.LedgerFields == nil {
-			schema.LedgerFields = make(map[string]*ledgerpb.MetadataFieldSchema)
-		}
-
-		schema.LedgerFields[key] = field
-	}
-}
-
-// removeExpectedSchemaField drops a field-type declaration during replay.
-// Mirrors processRemoveMetadataFieldType.
-func removeExpectedSchemaField(schemas map[string]*ledgerpb.MetadataSchema, ledger string, target ledgerpb.TargetType, key string) {
-	schema := schemas[ledger]
-	if schema == nil {
-		return
-	}
-
-	switch target {
-	case ledgerpb.TargetType_TARGET_TYPE_ACCOUNT:
-		delete(schema.GetAccountFields(), key)
-	case ledgerpb.TargetType_TARGET_TYPE_TRANSACTION:
-		delete(schema.GetTransactionFields(), key)
-	case ledgerpb.TargetType_TARGET_TYPE_LEDGER:
-		delete(schema.GetLedgerFields(), key)
-	}
-}
-
 // schemaEqual compares two metadata schemas by field-type content, treating a
 // nil schema and one with no fields as equal (nil vs empty maps must not read
 // as a divergence).
-func schemaEqual(a, b *ledgerpb.MetadataSchema) bool {
+func schemaEqual(a, b *commonpb.MetadataSchema) bool {
 	return fieldTypesEqual(a.GetAccountFields(), b.GetAccountFields()) &&
 		fieldTypesEqual(a.GetTransactionFields(), b.GetTransactionFields()) &&
 		fieldTypesEqual(a.GetLedgerFields(), b.GetLedgerFields())
 }
 
-func fieldTypesEqual(a, b map[string]*ledgerpb.MetadataFieldSchema) bool {
+func fieldTypesEqual(a, b map[string]*commonpb.MetadataFieldSchema) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -4900,18 +4811,18 @@ func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]
 func checkReversionInvariants(
 	ledgerName string,
 	seq uint64,
-	payload *ledgerpb.LedgerLogPayload,
+	payload *commonpb.LedgerLogPayload,
 	knownTxIDs map[string]*bitset.Bitset,
 	revertedTxIDs map[string]*bitset.Bitset,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	switch p := payload.GetPayload().(type) {
-	case *ledgerpb.LedgerLogPayload_CreatedTransaction:
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if p.CreatedTransaction != nil && p.CreatedTransaction.GetTransaction() != nil {
 			trackTxID(knownTxIDs, ledgerName, p.CreatedTransaction.GetTransaction().GetId())
 		}
 
-	case *ledgerpb.LedgerLogPayload_RevertedTransaction:
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		if p.RevertedTransaction == nil {
 			return
 		}

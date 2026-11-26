@@ -7,8 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -473,13 +472,13 @@ func cloneSegments(segs []*servicepb.PatternSegment) []*servicepb.PatternSegment
 // SuggestAccountTypes converts discovered patterns from an analysis result into
 // a slice of AccountType suggestions. Each pattern becomes an account type with
 // an auto-generated name derived from its fixed segments.
-func SuggestAccountTypes(resp *servicepb.AnalyzeAccountsResponse) []*ledgerpb.AccountType {
+func SuggestAccountTypes(resp *servicepb.AnalyzeAccountsResponse) []*commonpb.AccountType {
 	if resp == nil || len(resp.GetPatterns()) == 0 {
 		return nil
 	}
 
 	seen := make(map[string]int) // track name collisions
-	types := make([]*ledgerpb.AccountType, 0, len(resp.GetPatterns()))
+	types := make([]*commonpb.AccountType, 0, len(resp.GetPatterns()))
 
 	for _, p := range resp.GetPatterns() {
 		name := deriveTypeName(p)
@@ -492,7 +491,7 @@ func SuggestAccountTypes(resp *servicepb.AnalyzeAccountsResponse) []*ledgerpb.Ac
 			seen[name] = 1
 		}
 
-		types = append(types, &ledgerpb.AccountType{
+		types = append(types, &commonpb.AccountType{
 			Name:    name,
 			Pattern: p.GetPattern(),
 		})

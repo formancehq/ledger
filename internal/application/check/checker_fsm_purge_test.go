@@ -10,7 +10,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -18,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -74,7 +74,7 @@ func newFSMPurgeMachine(t *testing.T) (*state.Machine, *dal.Store, *attributes.A
 	)
 	require.NoError(t, err)
 
-	machine.State.UpdateClusterPolicy(&ledgerpb.ClusterPolicy{
+	machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
 		Revision: 1, QueryCheckpointLimit: 10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
 		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
@@ -191,7 +191,7 @@ func applyFSMPurgeProposalResult(
 			value, getErr := attrs.Volume.Get(handle, item.key)
 			require.NoError(t, getErr)
 			if value == nil {
-				value = &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)}
+				value = &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
 			}
 			raw, err = value.MarshalVT()
 		case dal.SubAttrMetadata:
@@ -237,9 +237,9 @@ func applyFSMPurgeProposalResult(
 	proposal := &raftcmdpb.Proposal{
 		Id:     index,
 		Orders: orders,
-		Date:   &ledgerpb.Timestamp{Data: 1700000000 + index},
-		CallerSnapshot: &ledgerpb.CallerSnapshot{
-			Principal: &ledgerpb.CallerSnapshot_AuthDisabled{AuthDisabled: &ledgerpb.AuthDisabledCaller{}},
+		Date:   &commonpb.Timestamp{Data: 1700000000 + index},
+		CallerSnapshot: &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
 		},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
 	}
@@ -258,12 +258,12 @@ func applyFSMPurgeProposalResult(
 	return result
 }
 
-func fsmPurgeCreateLedgerOrder(persistence ledgerpb.AccountTypePersistence) *raftcmdpb.Order {
+func fsmPurgeCreateLedgerOrder(persistence commonpb.AccountTypePersistence) *raftcmdpb.Order {
 	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "ledger",
 			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				AccountTypes: map[string]*ledgerpb.AccountType{
+				AccountTypes: map[string]*commonpb.AccountType{
 					"t13": {Name: "t13", Pattern: "t-13:{sub}", Persistence: persistence},
 				},
 			}},
@@ -278,9 +278,9 @@ func fsmPurgeTransactionOrder(source, destination, reference string) *raftcmdpb.
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 					Reference: reference,
-					Postings: []*ledgerpb.Posting{{
+					Postings: []*commonpb.Posting{{
 						Source: source, Destination: destination,
-						Asset: "USD", Amount: ledgerpb.NewUint256FromUint64(5),
+						Asset: "USD", Amount: commonpb.NewUint256FromUint64(5),
 					}},
 				}},
 			}},
@@ -310,7 +310,7 @@ func setupPurgedTransientCell(t *testing.T) (*dal.Store, *attributes.Attributes)
 
 	machine, store, attrs := newFSMPurgeMachine(t)
 	applyFSMPurgeProposal(t, machine, store, attrs, 1,
-		fsmPurgeCreateLedgerOrder(ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))
+		fsmPurgeCreateLedgerOrder(commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT))
 	applyFSMPurgeProposal(t, machine, store, attrs, 2,
 		fsmPurgeTransactionOrder("world", "t-13:98", "fund"),
 		fsmPurgeTransactionOrder("t-13:98", "world", "drain"))
@@ -340,8 +340,8 @@ func TestCheckerFSMRejectsStrandedTransientVolume(t *testing.T) {
 	t.Parallel()
 
 	for name, stranded := range map[string]*raftcmdpb.VolumePair{
-		"balanced": {Input: ledgerpb.NewUint256FromUint64(5), Output: ledgerpb.NewUint256FromUint64(5)},
-		"zero":     {Input: ledgerpb.NewUint256FromUint64(0), Output: ledgerpb.NewUint256FromUint64(0)},
+		"balanced": {Input: commonpb.NewUint256FromUint64(5), Output: commonpb.NewUint256FromUint64(5)},
+		"zero":     {Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -383,7 +383,7 @@ func TestCheckerFSMRejectsForgedMetadataOnPurgedTransientAccount(t *testing.T) {
 		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "t-13:98"},
 		Key:        "injected",
 	}
-	_, err := attrs.Metadata.Set(batch, metadataKey.Bytes(), ledgerpb.NewStringValue("forged"))
+	_, err := attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("forged"))
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 	require.NoError(t, store.Flush())
@@ -410,7 +410,7 @@ func TestCheckerFSMEphemeralCellPurgeKeepsAuditedMetadataClean(t *testing.T) {
 
 	machine, store, attrs := newFSMPurgeMachine(t)
 	applyFSMPurgeProposal(t, machine, store, attrs, 1,
-		fsmPurgeCreateLedgerOrder(ledgerpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
+		fsmPurgeCreateLedgerOrder(commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
 	applyFSMPurgeProposal(t, machine, store, attrs, 2,
 		fsmPurgeTransactionOrder("world", "t-13:98", "fund"))
 	applyFSMPurgeProposal(t, machine, store, attrs, 3,
@@ -428,10 +428,10 @@ func fsmPurgeSaveMetadataOrder(account, key, value string) *raftcmdpb.Order {
 			Ledger: "ledger",
 			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{
-					Target: &ledgerpb.Target{Target: &ledgerpb.Target_Account{
-						Account: &ledgerpb.TargetAccount{Addr: account},
+					Target: &commonpb.Target{Target: &commonpb.Target_Account{
+						Account: &commonpb.TargetAccount{Addr: account},
 					}},
-					Metadata: map[string]*ledgerpb.MetadataValue{key: ledgerpb.NewStringValue(value)},
+					Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue(value)},
 				}},
 			}},
 		},

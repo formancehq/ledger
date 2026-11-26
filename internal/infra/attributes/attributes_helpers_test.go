@@ -6,9 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
-
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -146,13 +144,13 @@ func TestAccumulator(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(1000),
+		Input: commonpb.NewUint256FromUint64(1000),
 	})))
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(500),
+		Input: commonpb.NewUint256FromUint64(500),
 	})))
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(2000),
+		Input: commonpb.NewUint256FromUint64(2000),
 	})))
 	require.NoError(t, batch.Commit())
 
@@ -186,8 +184,8 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00field1")
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyA, ledgerpb.NewStringValue("alice-val"))))
-	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyB, ledgerpb.NewStringValue("bob-val"))))
+	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyA, commonpb.NewStringValue("alice-val"))))
+	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyB, commonpb.NewStringValue("bob-val"))))
 	require.NoError(t, batch.Commit())
 
 	// Use ComputeAllForPrefix to get all entries under the ledger prefix
@@ -208,13 +206,13 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 		if canonical == string(keyA) {
 			foundAlice = true
 
-			require.Equal(t, "alice-val", ledgerpb.MetadataValueToString(entry.Value))
+			require.Equal(t, "alice-val", commonpb.MetadataValueToString(entry.Value))
 		}
 
 		if canonical == string(keyB) {
 			foundBob = true
 
-			require.Equal(t, "bob-val", ledgerpb.MetadataValueToString(entry.Value))
+			require.Equal(t, "bob-val", commonpb.MetadataValueToString(entry.Value))
 		}
 	}
 
@@ -255,13 +253,13 @@ func TestGetReturnsLatestSet(t *testing.T) {
 	// Multiple Sets overwrite in place — last Set wins
 	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(100),
+		Input: commonpb.NewUint256FromUint64(100),
 	})))
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(200),
+		Input: commonpb.NewUint256FromUint64(200),
 	})))
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(300),
+		Input: commonpb.NewUint256FromUint64(300),
 	})))
 	require.NoError(t, batch.Commit())
 
@@ -283,10 +281,10 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	// Each Set overwrites in place, so only the last Set per key survives.
 	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(500),
+		Input: commonpb.NewUint256FromUint64(500),
 	})))
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
-		Input: ledgerpb.NewUint256FromUint64(200),
+		Input: commonpb.NewUint256FromUint64(200),
 	})))
 	require.NoError(t, batch.Commit())
 
@@ -370,7 +368,7 @@ func TestLedgerAttribute(t *testing.T) {
 
 	// Set a value
 	batch := store.OpenWriteSession()
-	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &ledgerpb.LedgerInfo{
+	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger",
 	})))
 	require.NoError(t, batch.Commit())
@@ -381,7 +379,7 @@ func TestLedgerAttribute(t *testing.T) {
 
 	// Overwrite with a later Set — latest wins
 	batch = store.OpenWriteSession()
-	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &ledgerpb.LedgerInfo{
+	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger-renamed",
 	})))
 	require.NoError(t, batch.Commit())
@@ -432,7 +430,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	canonical := []byte("ledger\x00account\x00field")
 
 	// Feed a base entry
-	baseValue := ledgerpb.NewStringValue("base-val")
+	baseValue := commonpb.NewStringValue("base-val")
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
@@ -444,7 +442,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 
 	// Feed a different canonical key
 	canonical2 := []byte("ledger\x00account2\x00field")
-	base2Value := ledgerpb.NewStringValue("base2-val")
+	base2Value := commonpb.NewStringValue("base2-val")
 	base2Bytes, err := proto.Marshal(base2Value)
 	require.NoError(t, err)
 
@@ -467,7 +465,7 @@ func TestAccumulatorFeedNonMatchingPrefix(t *testing.T) {
 
 	// Build a key with a different attribute prefix (volume instead of metadata)
 	canonical := []byte("ledger\x00account\x00USD")
-	baseValue := &raftcmdpb.VolumePair{Input: ledgerpb.NewUint256FromUint64(100)}
+	baseValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 

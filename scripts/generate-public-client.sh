@@ -61,7 +61,7 @@ protoc \
 	-I pkg/client/v3/proto \
 	"${proto_files[@]}"
 
-for plugin in dethash reader skippable queryfilter-validity ledger-log-category rpcauth; do
+for plugin in dethash reader skippable queryfilter-validity ledger-log-category ledger-json rpcauth; do
 	go -C "tools/protoc-gen-${plugin}" build -o "../../build/protoc-gen-${plugin}"
 done
 
@@ -71,6 +71,7 @@ protoc \
 	--go-vtproto_out=pkg/proto/v3 \
 	--go-vtproto_opt=module="${proto_module}" \
 	--go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
+	--go-vtproto_opt=pool=github.com/formancehq/ledger/pkg/proto/v3/ledgerpb.AuditEntry \
 	--plugin=protoc-gen-dethash=build/protoc-gen-dethash \
 	--dethash_out=pkg/proto/v3 --dethash_opt=module="${proto_module}" \
 	--plugin=protoc-gen-reader=build/protoc-gen-reader \
@@ -81,10 +82,14 @@ protoc \
 	--queryfilter-validity_out=pkg/proto/v3 --queryfilter-validity_opt=module="${proto_module}" \
 	--plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
 	--ledger-log-category_out=pkg/proto/v3 --ledger-log-category_opt=module="${proto_module}" \
+	--plugin=protoc-gen-ledger-json=build/protoc-gen-ledger-json \
+	--ledger-json_out=pkg/proto/v3 --ledger-json_opt=module="${proto_module}" \
 	--plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
 	--rpcauth_out=pkg/proto/v3 --rpcauth_opt=module="${proto_module}" \
 	-I pkg/proto/v3/proto \
 	"${shared_proto_files[@]}"
+
+go run ./scripts/fix-vtproto-capability-length.go -- pkg/proto/v3/ledgerpb/audit_vtproto.pb.go
 
 go -C pkg/client/v3 mod tidy
 go -C pkg/proto/v3 mod tidy
