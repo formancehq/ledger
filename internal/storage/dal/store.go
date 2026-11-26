@@ -152,6 +152,7 @@ type Store struct {
 	maxCheckpoints    int
 	stallState        *WriteStallState
 	iopsCounters      *IOPSCounters
+	beforeBatchCommit func() error
 
 	queryCheckpointMu       sync.Mutex
 	queryCheckpointReaders  map[uint64]uint64
@@ -602,6 +603,7 @@ func NewStore(
 	}
 
 	store := &Store{
+		beforeBatchCommit:       cfg.BeforeBatchCommit,
 		opts:                    opts,
 		logger:                  logger.WithField("cmp", "pebble"),
 		dataDir:                 dataDir,

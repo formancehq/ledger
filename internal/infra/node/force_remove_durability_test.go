@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -26,6 +27,20 @@ import (
 )
 
 type forceRemoveFailureStage int
+
+type batchWriteFailure struct {
+	armed atomic.Bool
+	count atomic.Int32
+	err   error
+}
+
+func (f *batchWriteFailure) beforeCommit() error {
+	if f.armed.CompareAndSwap(true, false) {
+		f.count.Add(1)
+		return f.err
+	}
+	return nil
+}
 
 const (
 	forceRemoveNoFailure forceRemoveFailureStage = iota
@@ -162,6 +177,14 @@ func newForceRemoveHarness(
 	blockUpdate bool,
 	peerTransports ...membership.Transport,
 ) *forceRemoveHarness {
+	return newForceRemoveHarnessWithCommitFailure(t, voters, failureStage, updateErr, blockUpdate, nil, peerTransports...)
+}
+
+func newForceRemoveHarnessWithCommitFailure(
+	t *testing.T, voters []uint64, failureStage forceRemoveFailureStage,
+	updateErr error, blockUpdate bool, beforeCommit func() error,
+	peerTransports ...membership.Transport,
+) *forceRemoveHarness {
 	t.Helper()
 
 	setup := newTestApplierSetup(t)
@@ -228,7 +251,7 @@ func newForceRemoveHarness(
 			"two acknowledgements are not a quorum of four")
 	}
 
-	m, membershipStore, membershipPath := newTestMembershipWithStore(t, peerTransports...)
+	m, membershipStore, membershipPath := newTestMembershipWithCommitFailure(t, beforeCommit, peerTransports...)
 	for _, id := range voters {
 		require.NoError(t, m.Register(
 			id,
@@ -417,12 +440,15 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 	t.Run("tombstone batch failure stops admission after ConfState persistence", func(t *testing.T) {
 		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
-			h := newForceRemoveHarness(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false)
 			injected := errors.New("injected tombstone batch failure")
-			h.n.forceRemovePeerCleanup = func(uint64, []byte, uint64) error { return injected }
+			failure := &batchWriteFailure{err: injected}
+			h := newForceRemoveHarnessWithCommitFailure(t, []uint64{1, 2, 3}, forceRemoveNoFailure, nil, false,
+				failure.beforeCommit)
+			failure.armed.Store(true)
 
 			err := h.n.ForceRemoveNode(context.Background(), 3)
 			require.ErrorIs(t, err, injected)
+			require.Equal(t, int32(1), failure.count.Load())
 			require.ErrorContains(t, err, "force-remove atomic batch")
 			require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
 			_, voters := walState(t, h.durableWAL)

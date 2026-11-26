@@ -407,9 +407,6 @@ type Node struct {
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
 	membership *membership.Membership
-	// forceRemovePeerCleanup is an optional failure seam for durability tests.
-	// Production uses Membership.UnregisterAndBlacklist directly.
-	forceRemovePeerCleanup func(uint64, []byte, uint64) error
 	// pendingConfChanges is keyed by the proposal-specific ID committed in
 	// ConfChangeContext, never by node ID. A canceled proposal may commit late;
 	// its entry must not resolve a newer, different operation for the same node.
@@ -3888,11 +3885,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		// row delete in a single Pebble batch.
 		node.proposalAdmissionMu.Lock()
 		defer node.proposalAdmissionMu.Unlock()
-		cleanup := node.membership.UnregisterAndBlacklist
-		if node.forceRemovePeerCleanup != nil {
-			cleanup = node.forceRemovePeerCleanup
-		}
-		if err := cleanup(nodeID, instanceID, removedAt); err != nil {
+		if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt); err != nil {
 			// ConfState is already durable and the removed identity has no
 			// tombstone. Stop admission until startup can repair the stale row.
 			return &terminalNodeError{cause: fmt.Errorf("force-remove atomic batch: %w", err)}

@@ -42,6 +42,8 @@ type ValueSeparationConfig struct {
 // All sizes are in bytes unless otherwise specified.
 type Config struct {
 	pebblecfg.Config `yaml:",inline"`
+	// BeforeBatchCommit is a test-only fault injection point at the batch boundary.
+	BeforeBatchCommit func() error `yaml:"-"`
 
 	// WALBytesPerSync is the number of bytes written to the WAL before syncing.
 	// Default: 1MB (1 << 20)
