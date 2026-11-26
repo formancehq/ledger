@@ -83,7 +83,7 @@ func TestCreateLedgerOwnershipAfterLostResponse(t *testing.T) {
 				return "[]", nil // The initial multi-order batch is not a singleton create.
 			}
 
-			return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"},"ledger":"L","createdAt":{"data":"1234"}},{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"},"ledger":"L","createdAt":{"data":"1234"}}]`, nil
+			return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"},"ledger":"L","createdAt":"1970-01-01T00:00:00.001234Z"},{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"},"ledger":"L","createdAt":"1970-01-01T00:00:00.001234Z"}]`, nil
 		}
 		dropped = append(dropped, args[len(args)-1])
 
@@ -94,7 +94,7 @@ func TestCreateLedgerOwnershipAfterLostResponse(t *testing.T) {
 	require.Empty(t, ledger.Status.AppliedIndexes)
 }
 
-const initialAuditFixture = `[{"entry":{"timestamp":{"data":"1234"},"idempotency":{"key":"operator-ledger-create:creation-uid:1"},"success":{"minLogSequence":"8","maxLogSequence":"10"},"orderCount":3,"items":[{"orderIndex":0,"logSequence":"8"},{"orderIndex":1,"logSequence":"9"},{"orderIndex":2,"logSequence":"10"}]},"orders":[{"ledgerScoped":{"ledger":"L","createLedger":{}}},{"ledgerScoped":{"ledger":"L","apply":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}},{"ledgerScoped":{"ledger":"L","apply":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"}}}}}]}]`
+const initialAuditFixture = `[{"entry":{"timestamp":{"data":"1234"},"idempotency":{"key":"operator-ledger-create:creation-uid:1"},"success":{"minLogSequence":"8","maxLogSequence":"10"},"orderCount":3,"items":[{"logSequence":"8"},{"orderIndex":1,"logSequence":"9"},{"orderIndex":2,"logSequence":"10"}]},"orders":[{"ledgerScoped":{"ledger":"L","createLedger":{}}},{"ledgerScoped":{"ledger":"L","apply":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}},{"ledgerScoped":{"ledger":"L","apply":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"}}}}}]}]`
 
 func TestInitialIndexesFromAuditRejectsUnownedBatches(t *testing.T) {
 	t.Parallel()

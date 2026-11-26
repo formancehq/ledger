@@ -102,6 +102,7 @@ func TestDecodeAuditEntries(t *testing.T) {
 	require.Contains(t, string(body), `"timestamp":{"data":"1234"}`)
 	require.Contains(t, string(body), `"minLogSequence":"8"`)
 	require.Contains(t, string(body), `"logSequence":"8"`)
+	require.NotContains(t, string(body), `"orderIndex":0`)
 	require.Contains(t, string(body), `"ledgerScoped":{"ledger":"L","createLedger":{}}`)
 	require.Contains(t, string(body), `"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}`)
 }

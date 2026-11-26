@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The audit command returns generic, decoded orders. The operator alone decides
@@ -72,12 +73,16 @@ func currentIndexCreationDates(stdout, ledger string) (map[string]string, error)
 	}
 	current := make(map[string]string)
 	for _, entry := range entries {
-		if entry.Ledger != ledger || entry.CreatedAt == nil {
+		if entry.Ledger != ledger || entry.CreatedAt == "" {
 			continue
+		}
+		createdAt, err := time.Parse(time.RFC3339Nano, entry.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parsing index creation time %q: %w", entry.CreatedAt, err)
 		}
 		id := listedIndexID{TxBuiltin: entry.ID.TxBuiltin, AccountBuiltin: entry.ID.AccountBuiltin, Metadata: entry.ID.Metadata}
 		if canonical := canonicalAuditIndex(id); canonical != "" {
-			current[canonical] = entry.CreatedAt.Data.String()
+			current[canonical] = strconv.FormatInt(createdAt.UnixMicro(), 10)
 		}
 	}
 
@@ -110,7 +115,10 @@ func initialIndexesFromAudit(stdout, ledger, prefix string, current map[string]s
 		batch := make(map[string]bool)
 		valid := true
 		for i, item := range e.Items {
-			position, err := strconv.Atoi(item.OrderIndex.String())
+			position := 0 // protojson omits the first item's zero-valued orderIndex.
+			if item.OrderIndex != "" {
+				position, err = strconv.Atoi(item.OrderIndex.String())
+			}
 			if err != nil || position != i {
 				valid = false
 

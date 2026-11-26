@@ -110,7 +110,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	fetchPage := func(cursor string) ([]*auditpb.AuditEntry, metadata.MD, error) {
 		options := cmdutil.BuildListOptions(pgn, cns, filter)
-		options.Cursor = cursor
+		if cursor != "" {
+			if options == nil {
+				options = &commonpb.ListOptions{}
+			}
+			options.Cursor = cursor
+		}
 		stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{Options: options})
 		if err != nil {
 			return nil, nil, cmdutil.FormatGRPCError("failed to list audit entries", err)
