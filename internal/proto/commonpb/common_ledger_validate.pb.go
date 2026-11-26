@@ -12,3 +12,27 @@ func (m *Posting) ValidateInput() error {
 	}
 	return nil
 }
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *SinkConfig) ValidateInput() error {
+	if m == nil || m.Name == "" {
+		return &inputvalidation.FieldError{Path: "name"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *PostgresAwsIamAuth) ValidateInput() error {
+	if m == nil || m.Region == "" {
+		return &inputvalidation.FieldError{Path: "region"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *PreparedQuery) ValidateInput() error {
+	if m == nil || m.Name == "" {
+		return &inputvalidation.FieldError{Path: "name"}
+	}
+	return nil
+}

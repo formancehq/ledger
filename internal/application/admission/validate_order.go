@@ -392,6 +392,9 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		if q == nil {
 			return domain.ErrPreparedQueryRequired
 		}
+		if err := q.ValidateInput(); err != nil {
+			return domain.ErrPreparedQueryNameRequired
+		}
 
 		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
 			return err
@@ -504,7 +507,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	if iam.GetRegion() == "" {
+	if err := iam.ValidateInput(); err != nil {
 		return ErrMirrorIAMRegionRequired
 	}
 

@@ -170,14 +170,14 @@ also serves non-FSM reads. For example, the exact aggregate totals change
 stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
 order, proposal, or apply rule changes.
 
-The `common.required_for_input` field option on `Posting.amount` and
-`UpdatePreparedQueryRequest.target` changes descriptor metadata and adds Go
-`ValidateInput` methods without changing field numbers, wire types, or
-serialized message bytes. Admission invokes these methods for new input and
-maps missing fields to the existing validation errors. Raft apply and
-historical replay do not invoke them. Old and new voters therefore apply every
-committed order identically, including historical postings with nil amounts.
-No capability, migration, or stopped-upgrade boundary is needed.
+The `common.required_for_input` and `common.non_zero_for_input` field options
+change descriptor metadata and add Go `ValidateInput` methods without changing
+field numbers, wire types, or serialized message bytes. Admission invokes the
+annotated checks for new input and maps failures to the existing validation
+errors. Raft apply and historical replay do not invoke them. Old and new voters
+therefore apply every committed order identically, including historical
+postings with nil amounts. No capability, migration, or stopped-upgrade
+boundary is needed.
 
 Removing `FailureDetails()` from uncommitted failures changes only Go types in
 order processing. Every committed entry applies identically on old and new

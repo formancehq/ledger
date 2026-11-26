@@ -1,6 +1,28 @@
 # Generated protobuf validation annotations
 
-Status: design kickoff. This document is a proposal, not the current validation contract.
+Status: historical design proposal with implementation progress recorded below.
+The current contract lives in the technical protobuf and admission documentation.
+
+## Input-rule inventory update
+
+The implemented direct-field generator now distinguishes explicit presence
+(`required_for_input`) from an annotated scalar's non-zero value
+(`non_zero_for_input`). Admission invokes the generated checks for posting
+amounts, prepared-query update targets and names, sink names, and mirror IAM
+regions, preserving the existing errors. The HTTP sink handler retains its
+existing `INVALID_REQUEST` response. Raft apply and replay do not invoke the
+generated methods.
+
+| Existing check | Classification | Decision |
+| --- | --- | --- |
+| Prepared-query creation `query` | Message presence | Remains at the converted-order gate to preserve validation precedence. |
+| Prepared-query name, sink name, mirror IAM region | Non-zero string | Generated check replaces the empty-value branch at the existing boundary. |
+| Sink `type` | Oneof selection | Remains manual; a direct scalar rule cannot express oneof selection. |
+| Ledger and account names, metadata keys, signing key IDs | Value shape and context | Existing domain validators also enforce characters, length or scope and retain their error order. |
+| Posting amount, update target | Explicit presence | Generated check accepts a present zero value. |
+| Sink batch size and query target enum | Valid zero/default | Must not use a non-zero rule. |
+| Cluster IDs, epochs and bootstrap fields | Protocol and lifecycle invariants | Remain at their transport and lifecycle boundaries. |
+| Persisted order and audit fields | Committed/replay contract | Do not run input-only methods during apply or replay. |
 
 ## Goal
 

@@ -1,4 +1,4 @@
-// protoc-gen-ledger-validate generates explicit-presence input checks.
+// protoc-gen-ledger-validate generates declared input presence and value checks.
 package main
 
 import (
@@ -13,30 +13,44 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
-const extensionName = "common.required_for_input"
+const (
+	requiredExtensionName = "common.required_for_input"
+	nonZeroExtensionName  = "common.non_zero_for_input"
+)
+
+type fieldRule struct {
+	field   *protogen.Field
+	nonZero bool
+}
 
 type messageRules struct {
 	message *protogen.Message
-	fields  []*protogen.Field
+	fields  []fieldRule
 }
 
 func main() { protogen.Options{}.Run(generate) }
 
 func generate(gen *protogen.Plugin) error {
 	gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
-	var extension protoreflect.ExtensionDescriptor
+	var requiredExtension, nonZeroExtension protoreflect.ExtensionDescriptor
 	for _, file := range gen.Files {
 		for _, candidate := range file.Extensions {
-			if string(candidate.Desc.FullName()) == extensionName {
-				extension = candidate.Desc
+			switch string(candidate.Desc.FullName()) {
+			case requiredExtensionName:
+				requiredExtension = candidate.Desc
+			case nonZeroExtensionName:
+				nonZeroExtension = candidate.Desc
 			}
 		}
 	}
-	if extension == nil {
-		return fmt.Errorf("extension %s not found", extensionName)
+	if requiredExtension == nil || nonZeroExtension == nil {
+		return fmt.Errorf("input validation extensions not found")
 	}
 	resolver := &protoregistry.Types{}
-	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(extension)); err != nil {
+	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(requiredExtension)); err != nil {
+		return fmt.Errorf("register extension: %w", err)
+	}
+	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(nonZeroExtension)); err != nil {
 		return fmt.Errorf("register extension: %w", err)
 	}
 	for _, file := range gen.Files {
@@ -49,22 +63,38 @@ func generate(gen *protogen.Plugin) error {
 			if message.Desc.IsMapEntry() {
 				return nil
 			}
-			var fields []*protogen.Field
+			var fields []fieldRule
 			for _, field := range message.Fields {
-				present, required, err := readRule(field, extension, resolver)
+				present, required, err := readRule(field, requiredExtension, resolver)
 				if err != nil {
 					return err
 				}
-				if !present {
-					continue
+				nonZeroPresent, nonZero, err := readRule(field, nonZeroExtension, resolver)
+				if err != nil {
+					return err
 				}
-				if !required {
+				if present && !required {
 					return fmt.Errorf("%s: required_for_input=false is invalid; remove the annotation", field.Desc.FullName())
 				}
-				if field.Desc.IsList() || field.Desc.IsMap() || field.Desc.ContainingOneof() != nil && !field.Desc.ContainingOneof().IsSynthetic() || !field.Desc.HasPresence() {
+				if nonZeroPresent && !nonZero {
+					return fmt.Errorf("%s: non_zero_for_input=false is invalid; remove the annotation", field.Desc.FullName())
+				}
+				if present && nonZeroPresent {
+					return fmt.Errorf("%s: required_for_input and non_zero_for_input cannot be combined", field.Desc.FullName())
+				}
+				if !present && !nonZeroPresent {
+					continue
+				}
+				if field.Desc.IsList() || field.Desc.IsMap() || field.Desc.ContainingOneof() != nil && !field.Desc.ContainingOneof().IsSynthetic() {
+					return fmt.Errorf("%s: input validation requires a singular field outside a oneof", field.Desc.FullName())
+				}
+				if present && !field.Desc.HasPresence() {
 					return fmt.Errorf("%s: required_for_input requires a singular field with explicit presence outside a oneof (use optional or a message)", field.Desc.FullName())
 				}
-				fields = append(fields, field)
+				if nonZeroPresent && (field.Desc.Kind() == protoreflect.MessageKind || field.Desc.Kind() == protoreflect.GroupKind) {
+					return fmt.Errorf("%s: non_zero_for_input requires a scalar field", field.Desc.FullName())
+				}
+				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent})
 			}
 			if len(fields) > 0 {
 				for _, field := range message.Fields {
@@ -72,7 +102,7 @@ func generate(gen *protogen.Plugin) error {
 						return fmt.Errorf("%s: field name collides with generated ValidateInput method", field.Desc.FullName())
 					}
 				}
-				slices.SortFunc(fields, func(a, b *protogen.Field) int { return int(a.Desc.Number() - b.Desc.Number()) })
+				slices.SortFunc(fields, func(a, b fieldRule) int { return int(a.field.Desc.Number() - b.field.Desc.Number()) })
 				messages = append(messages, messageRules{message, fields})
 			}
 			for _, nested := range message.Messages {
@@ -96,9 +126,13 @@ func generate(gen *protogen.Plugin) error {
 		for _, item := range messages {
 			g.P("// ValidateInput checks declared direct-field input requirements.")
 			g.P("func (m *", item.message.GoIdent.GoName, ") ValidateInput() error {")
-			for _, field := range item.fields {
-				g.P("if m == nil || m.", field.GoName, " == nil {")
-				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Path: ", fmt.Sprintf("%q", field.Desc.Name()), "}")
+			for _, rule := range item.fields {
+				condition := "m." + rule.field.GoName + " == nil"
+				if rule.nonZero {
+					condition = nonZeroCondition(rule.field)
+				}
+				g.P("if m == nil || ", condition, " {")
+				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), "}")
 				g.P("}")
 			}
 			g.P("return nil")
@@ -106,6 +140,36 @@ func generate(gen *protogen.Plugin) error {
 		}
 	}
 	return nil
+}
+
+func nonZeroCondition(field *protogen.Field) string {
+	value := "m." + field.GoName
+	missing := ""
+	switch field.Desc.Kind() {
+	case protoreflect.StringKind:
+		missing = value + ` == ""`
+	case protoreflect.BytesKind:
+		missing = "len(" + value + ") == 0"
+	case protoreflect.BoolKind:
+		missing = "!" + value
+	default:
+		missing = value + " == 0"
+	}
+	if field.Desc.HasPresence() && field.Desc.Kind() != protoreflect.BytesKind {
+		return value + " == nil || " + nonZeroConditionValue(field, "*"+value)
+	}
+	return missing
+}
+
+func nonZeroConditionValue(field *protogen.Field, value string) string {
+	switch field.Desc.Kind() {
+	case protoreflect.StringKind:
+		return value + ` == ""`
+	case protoreflect.BoolKind:
+		return "!" + value
+	default:
+		return value + " == 0"
+	}
 }
 
 func readRule(field *protogen.Field, extension protoreflect.ExtensionDescriptor, resolver *protoregistry.Types) (bool, bool, error) {
