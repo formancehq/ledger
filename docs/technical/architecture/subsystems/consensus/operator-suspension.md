@@ -34,16 +34,18 @@ gate reports `SuspensionBlocked` and retries; before the zero update it leaves
 all Pods in place.
 
 `Starting` checks each original PVC is still bound and refreshes the retained
-auth-key ConfigMap from current Credentials. It reconciles the stopped
-StatefulSet's static-key boot setting and mount in both directions before
-restoring replicas, so a removed last key cannot make OIDC-backed Pods crash
-and a newly available key is loaded at boot. Auth-enabled clusters without an
-OIDC issuer remain blocked until a key is available. The image, spec hash and
-original voter count stay pinned. `Verifying` waits
-for all replicas and the original voter set with an elected leader. It clears
-maintenance only if this suspension enabled it; `Opening` confirms every
-member has observed the reopened write gate before reporting `Running`. A new
-suspend request during resume returns to quiescing. Image, replica and storage
+auth-key ConfigMap from current Credentials. Before restoring replicas, it
+removes the stopped StatefulSet's static-key boot setting when no keys remain,
+while retaining any existing auth-key mount and volume. If keys appear, it
+restores the boot setting and adds the mount and volume if absent. This keeps
+OIDC-backed Pods bootable after the last key is removed and loads newly
+available keys at boot. Auth-enabled clusters without an OIDC issuer remain
+blocked until a key is available. The image, spec hash and original voter count
+stay pinned. `Verifying` waits for all replicas and the original voter set with
+an elected leader. It clears maintenance only if this suspension enabled it;
+`Opening` confirms every member has observed the reopened write gate before
+reporting `Running`. A new suspend request during resume returns to quiescing.
+Image, replica and storage
 configuration changes are deferred until `Running`.
 
 The Raft WAL synchronizes entries before they are applied. Pebble's apply
