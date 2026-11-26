@@ -130,13 +130,13 @@ func TestSuspensionResumeRevokesKeysBeforeStartingPods(t *testing.T) {
 	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "ledger-test", Namespace: "default", UID: "sts-original"},
 		Spec: appsv1.StatefulSetSpec{Replicas: &zero,
 			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{annotationSpecHash: computeSpecHash(&cluster.Spec)}},
-				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:pinned", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}, {Name: "AUTH_ED25519_KEYS", Value: "/auth-keys/auth-keys.json"}}}}}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:pinned", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeRequired}, {Name: "AUTH_ED25519_KEYS", Value: "/auth-keys/auth-keys.json"}}}}}},
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}}}}
 	staleKeys := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}},
 		Data: map[string]string{"revoked": "old-key"}}
 	c := clientfake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, sts, wal, data, boundSuspensionPV(wal), boundSuspensionPV(data), staleKeys).
-		WithStatusSubresource(&ledgerv1alpha1.Cluster{}, &appsv1.StatefulSet{}).Build()
+		WithStatusSubresource(&ledgerv1alpha1.Cluster{}, &ledgerv1alpha1.Credentials{}, &appsv1.StatefulSet{}).Build()
 	credential := matchingCredentials("revoked-credential", nil, true, cluster.Namespace, "revoked-secret")
 	require.NoError(t, c.Create(ctx, credential))
 	require.NoError(t, c.Delete(ctx, credential)) // Revoked while the original Pods are stopped.
@@ -150,6 +150,21 @@ func TestSuspensionResumeRevokesKeysBeforeStartingPods(t *testing.T) {
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, updatedSTS))
 	require.Equal(t, zero, *updatedSTS.Spec.Replicas, "remove stale static-key boot wiring before restoring replicas")
 	require.NotContains(t, updatedSTS.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{Name: "AUTH_ED25519_KEYS", Value: "/auth-keys/auth-keys.json"})
+	replacement := matchingCredentials("replacement-credential", nil, true, cluster.Namespace, "replacement-secret")
+	require.NoError(t, c.Create(ctx, replacement))
+	require.NoError(t, c.Status().Update(ctx, replacement))
+	require.NoError(t, c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "replacement-secret", Namespace: cluster.Namespace},
+		Data: map[string][]byte{"key-id": []byte("replacement-key"), "pubkey.hex": []byte("replacement-public-key")}}))
+	_, err = r.reconcileSuspension(ctx, cluster, nil)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, updatedSTS))
+	require.Equal(t, zero, *updatedSTS.Spec.Replicas, "restore static-key wiring before starting when credentials reappear")
+	require.Contains(t, updatedSTS.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{Name: "AUTH_ED25519_KEYS", Value: "/auth-keys/auth-keys.json"})
+	require.Contains(t, updatedSTS.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "auth-keys", MountPath: "/auth-keys", ReadOnly: true})
+	require.Contains(t, updatedSTS.Spec.Template.Spec.Volumes, corev1.Volume{Name: "auth-keys", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: authKeysConfigMapName(cluster.Name)}}}})
+	require.NoError(t, c.Delete(ctx, replacement))
+	_, err = r.reconcileSuspension(ctx, cluster, nil)
+	require.NoError(t, err)
 	_, err = r.reconcileSuspension(ctx, cluster, nil)
 	require.NoError(t, err)
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, updatedSTS))

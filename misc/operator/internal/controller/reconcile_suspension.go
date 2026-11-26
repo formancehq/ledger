@@ -269,28 +269,18 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, ledger *led
 
 			return retry, nil
 		}
-		if len(keys) == 0 {
-			changed := false
-			for i := range sts.Spec.Template.Spec.Containers {
-				if sts.Spec.Template.Spec.Containers[i].Name != "ledger" {
-					continue
-				}
-				envs := sts.Spec.Template.Spec.Containers[i].Env[:0]
-				for _, env := range sts.Spec.Template.Spec.Containers[i].Env {
-					if env.Name == "AUTH_ED25519_KEYS" {
-						changed = true
+		if *sts.Spec.Replicas == 0 {
+			useStaticKeys := len(keys) > 0 && tlsMode == tlsModeRequired &&
+				(ledger.Spec.Auth == nil || ledger.Spec.Auth.Enabled == nil || *ledger.Spec.Auth.Enabled)
+			changed, err := suspensionReconcileStaticKeyWiring(sts, ledger, useStaticKeys)
+			if err != nil {
+				r.suspensionBlocked(ledger, err.Error())
 
-						continue
-					}
-					envs = append(envs, env)
-				}
-				sts.Spec.Template.Spec.Containers[i].Env = envs
+				return retry, nil
 			}
 			if changed {
-				// The retained empty ConfigMap remains mounted, but boot must
-				// not ask LoadEd25519KeySet to parse its empty key set.
 				if err := r.Update(ctx, sts); err != nil {
-					r.suspensionBlocked(ledger, fmt.Sprintf("dropping empty static-key wiring before restart: %v", err))
+					r.suspensionBlocked(ledger, fmt.Sprintf("updating static-key boot wiring before restart: %v", err))
 
 					return retry, nil
 				}
@@ -412,6 +402,87 @@ func suspensionTemplatePinned(sts *appsv1.StatefulSet, status *ledgerv1alpha1.Su
 	}
 
 	return nil
+}
+
+// suspensionReconcileStaticKeyWiring changes only the stopped Pod template's
+// static-key boot wiring. A ConfigMap update alone cannot change keys already
+// loaded by a Pod, so this runs before restoring replicas in either direction.
+func suspensionReconcileStaticKeyWiring(sts *appsv1.StatefulSet, ledger *ledgerv1alpha1.Cluster, enabled bool) (bool, error) {
+	var container *corev1.Container
+	for i := range sts.Spec.Template.Spec.Containers {
+		if sts.Spec.Template.Spec.Containers[i].Name == "ledger" {
+			container = &sts.Spec.Template.Spec.Containers[i]
+
+			break
+		}
+	}
+	if container == nil {
+		return false, errors.New("original StatefulSet has no ledger container")
+	}
+	changed := false
+	const keyPath = "/auth-keys/auth-keys.json"
+	if !enabled {
+		envs := container.Env[:0]
+		for _, env := range container.Env {
+			if env.Name == "AUTH_ED25519_KEYS" {
+				changed = true
+
+				continue
+			}
+			envs = append(envs, env)
+		}
+		container.Env = envs
+
+		return changed, nil
+	}
+	volumeFound := false
+	for _, volume := range sts.Spec.Template.Spec.Volumes {
+		if volume.Name != "auth-keys" {
+			continue
+		}
+		if volume.ConfigMap == nil || volume.ConfigMap.Name != authKeysConfigMapName(ledger.Name) {
+			return false, errors.New("auth-keys volume no longer references the original ConfigMap")
+		}
+		volumeFound = true
+	}
+	if !volumeFound {
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "auth-keys", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: authKeysConfigMapName(ledger.Name)},
+			}},
+		})
+		changed = true
+	}
+	mountFound := false
+	for _, mount := range container.VolumeMounts {
+		if mount.Name != "auth-keys" {
+			continue
+		}
+		if mount.MountPath != "/auth-keys" || !mount.ReadOnly {
+			return false, errors.New("auth-keys mount changed from its original path")
+		}
+		mountFound = true
+	}
+	if !mountFound {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "auth-keys", MountPath: "/auth-keys", ReadOnly: true})
+		changed = true
+	}
+	envFound := false
+	for _, env := range container.Env {
+		if env.Name != "AUTH_ED25519_KEYS" {
+			continue
+		}
+		if env.Value != keyPath {
+			return false, errors.New("AUTH_ED25519_KEYS changed from its original path")
+		}
+		envFound = true
+	}
+	if !envFound {
+		container.Env = append(container.Env, corev1.EnvVar{Name: "AUTH_ED25519_KEYS", Value: keyPath})
+		changed = true
+	}
+
+	return changed, nil
 }
 
 func suspensionImage(ledger *ledgerv1alpha1.Cluster) string {

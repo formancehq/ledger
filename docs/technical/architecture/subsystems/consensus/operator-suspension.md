@@ -34,11 +34,12 @@ gate reports `SuspensionBlocked` and retries; before the zero update it leaves
 all Pods in place.
 
 `Starting` checks each original PVC is still bound and refreshes the retained
-auth-key ConfigMap from current Credentials. If no static keys remain, it
-removes the stale `AUTH_ED25519_KEYS` boot setting from the stopped StatefulSet
-before restoring replicas; auth-enabled clusters without an OIDC issuer remain
-blocked until a key is available. The image, spec hash and original voter
-count stay pinned. `Verifying` waits
+auth-key ConfigMap from current Credentials. It reconciles the stopped
+StatefulSet's static-key boot setting and mount in both directions before
+restoring replicas, so a removed last key cannot make OIDC-backed Pods crash
+and a newly available key is loaded at boot. Auth-enabled clusters without an
+OIDC issuer remain blocked until a key is available. The image, spec hash and
+original voter count stay pinned. `Verifying` waits
 for all replicas and the original voter set with an elected leader. It clears
 maintenance only if this suspension enabled it; `Opening` confirms every
 member has observed the reopened write gate before reporting `Running`. A new
