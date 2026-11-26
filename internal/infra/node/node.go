@@ -1065,9 +1065,11 @@ func (node *Node) doMaintenance() error {
 	// unapplied configuration changes during an election.
 	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
 	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
-		compactIdx := node.retainForFollowers(acknowledgedApplied - node.applier.CompactionMargin())
-		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+		compactIdx, ok := node.retainForFollowers(acknowledgedApplied - node.applier.CompactionMargin())
+		if ok {
+			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+			}
 		}
 	}
 
@@ -1089,24 +1091,51 @@ func (node *Node) doMaintenance() error {
 	return nil
 }
 
+// retentionRefreshTimeout bounds how long maintenance waits for the
+// orchestrate goroutine to refresh the follower positions.
+const retentionRefreshTimeout = 10 * time.Second
+
 // retainForFollowers lowers a compaction target to keep the entries that
-// followers still catching up need (EN-3429). A failure to size the hold
-// keeps the requested target: the margin still applies, and a follower that
-// falls behind it receives a snapshot as before.
-func (node *Node) retainForFollowers(target uint64) uint64 {
+// followers still catching up need (EN-3429). It returns false when
+// maintenance must skip compaction this tick.
+//
+// Call it after the tick's WAL snapshot is published. RawNode chooses the
+// snapshot it sends while the orchestrate goroutine steps a message, and
+// records it in the peer's Progress at once. Refreshing the positions on that
+// goroutine after the new snapshot is published therefore sees every older
+// snapshot already chosen; a snapshot chosen later is the new one, which is
+// past the target. Positions sampled on the previous Raft tick could miss a
+// snapshot chosen since, so a failed refresh skips compaction rather than
+// using them.
+//
+// A failure to size the hold keeps the requested target: the margin still
+// applies, and a follower that falls behind it receives a snapshot as before.
+func (node *Node) retainForFollowers(target uint64) (uint64, bool) {
 	if node.followerRetention == nil {
-		return target
+		return target, true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), retentionRefreshTimeout)
+	defer cancel()
+	if err := node.execClusterCommand(ctx, true, func() error {
+		node.observeFollowerRetention(time.Now())
+
+		return nil
+	}); err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to refresh follower positions, skipping WAL compaction")
+
+		return 0, false
 	}
 
 	held, decision, err := node.followerRetention.compactionTarget(target, node.wal)
 	if err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to size follower log retention")
 
-		return target
+		return target, true
 	}
 
 	if !decision.held && !decision.capped {
-		return target
+		return target, true
 	}
 
 	fields := map[string]any{
@@ -1122,7 +1151,7 @@ func (node *Node) retainForFollowers(target uint64) uint64 {
 		node.logger.WithFields(fields).Infof("Background maintenance: retaining Raft log for a follower that is catching up")
 	}
 
-	return held
+	return held, true
 }
 
 // observeFollowerRetention feeds the followers' Raft progress to the
@@ -1141,7 +1170,7 @@ func (node *Node) observeFollowerRetention(now time.Time) {
 				return
 			}
 
-			progress = append(progress, followerProgress{id: id, need: followerNeed(pr)})
+			progress = append(progress, followerProgress{id: id, state: pr.State, need: followerNeed(pr)})
 		})
 	}
 	node.retentionProgress = progress

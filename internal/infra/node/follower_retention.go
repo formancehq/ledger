@@ -25,14 +25,14 @@ import (
 // shorter than one download.
 //
 // The leader therefore keeps every entry after the lowest position a follower
-// still needs, among followers whose position advanced within idleTimeout and
-// is still in the leader's log. Two bounds keep a slow or dead follower from
-// growing the WAL without limit:
-//   - a follower whose position stopped advancing for idleTimeout no longer
+// still needs, among followers whose position or replication state changed
+// within idleTimeout and whose position is still in the leader's log. Two
+// bounds keep a slow or dead follower from growing the WAL without limit:
+//   - a follower whose progress has not changed for idleTimeout no longer
 //     counts;
-//   - the entries retained beyond the normal compaction target never exceed
-//     maxBytes of encoded entries. The WAL keeps retained entries in memory,
-//     so this bounds memory as well as disk.
+//   - the encoded entries retained beyond the normal compaction target stay
+//     within maxBytes, plus at most the WAL's boundary entry. The WAL keeps
+//     retained entries in memory, so this bounds memory as well as disk.
 //
 // The hold is node-local, leader-only policy outside the FSM apply path: it
 // only decides how much log the leader keeps, never how an entry applies.
@@ -50,25 +50,30 @@ type followerRetention struct {
 }
 
 type followerPosition struct {
+	state      tracker.StateType
 	need       uint64
 	advancedAt time.Time
 }
 
 // followerProgress is a follower's position as the leader tracks it: the
-// index of the last entry the follower is known or about to have. The leader
-// sends it the entries after that index.
+// index of the last entry the follower is known or about to have, and the
+// replication state that index comes from. The leader sends the follower the
+// entries after that index.
 type followerProgress struct {
-	id   uint64
-	need uint64
+	id    uint64
+	state tracker.StateType
+	need  uint64
 }
 
 // followerNeed returns the last entry index the leader expects pr's follower
 // to hold:
 //   - StateReplicate: Match, the follower acknowledged it.
-//   - StateProbe: Next-1, the entry the leader probes from. After a snapshot
-//     is reported sent, raft probes from the snapshot index while Match is
-//     still the follower's pre-snapshot position, which the leader's log
-//     no longer holds.
+//   - StateProbe: Next-1, the entry the leader probes from. It can be
+//     speculative: a new leader probes every follower from its own log tail.
+//     After a snapshot is reported sent, raft probes from the snapshot index
+//     while Match is still the follower's pre-snapshot position, which the
+//     leader's log no longer holds. A probe the follower rejects lowers Next,
+//     and a position below the leader's log no longer holds.
 //   - StateSnapshot: the snapshot index being sent; the follower resumes
 //     after it.
 func followerNeed(pr tracker.Progress) uint64 {
@@ -132,9 +137,12 @@ func (r *followerRetention) observe(now time.Time, isLeader bool, followers []fo
 
 	var needs []uint64
 	for _, f := range followers {
+		// Any change of position or of replication state is activity: a
+		// speculative probe cursor can equal the snapshot index sent after
+		// it, and only the state change shows the follower is reachable.
 		prev, ok := r.positions[f.id]
-		if !ok || f.need != prev.need {
-			prev = followerPosition{need: f.need, advancedAt: now}
+		if !ok || f.need != prev.need || f.state != prev.state {
+			prev = followerPosition{state: f.state, need: f.need, advancedAt: now}
 			r.positions[f.id] = prev
 		}
 
@@ -179,8 +187,10 @@ func (r *followerRetention) compactionTarget(target uint64, walLog retentionEntr
 	need := (*published)[i]
 
 	// Compacting at C keeps entries [C, last] in memory; the normal target T
-	// keeps [T, last]. The hold therefore costs entries [C, T-1], minus the
-	// entry at firstIndex-1 that the WAL keeps already.
+	// keeps [T, last]. The hold therefore costs entries [C, T-1]. When C is
+	// the current boundary firstIndex-1, raft.Storage cannot read that entry,
+	// so it goes uncharged: the hold can exceed maxBytes by that one entry,
+	// which the WAL holds already.
 	lo := max(need, firstIndex)
 	if lo >= target {
 		return need, retentionDecision{held: true, need: need}, nil
