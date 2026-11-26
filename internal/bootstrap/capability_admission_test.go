@@ -31,7 +31,7 @@ func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 
 func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
 	t.Parallel()
-	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}}}}}}})
+	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{capabilityTransactionOrder("l")}})
 	require.NoError(t, err)
 	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes), Active: true}}}
 	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
@@ -76,9 +76,7 @@ func TestProposalCapabilityAdmissionRejectsActivationBeforeRaft(t *testing.T) {
 func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 	t.Parallel()
 	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
-		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-			Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
-		}}}},
+		Orders: []*raftcmdpb.Order{capabilityTransactionOrder("ledger")},
 	}}}
 	proposal, err := node.NewProposal(1, command)
 	require.NoError(t, err)
@@ -108,4 +106,13 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		inactive.CapabilityActivations[0].Active = true
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported))
 	}
+}
+
+func capabilityTransactionOrder(ledger string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+		}},
+	}}}
 }
