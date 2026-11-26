@@ -51,11 +51,11 @@ func runGetConfig(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	state := "disabled"
 	if resp.GetRequireSignatures() {
-		pterm.Info.Println("Mandatory signatures: enabled")
-	} else {
-		pterm.Info.Println("Mandatory signatures: disabled")
+		state = "enabled"
 	}
+	pterm.Printfln("Mandatory signatures: %s", state)
 
 	return nil
 }
