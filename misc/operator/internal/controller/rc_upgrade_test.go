@@ -17,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -387,6 +388,89 @@ func TestOrphanPodRecreationRejectsDeletingClaim(t *testing.T) {
 	r = &ClusterReconciler{Client: blocked, Scheme: scheme}
 	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster),
 		fmt.Sprintf("PVC %q is being deleted", deleting.Name))
+}
+
+// PVCs are not watched, so the deleting-claim gate must requeue itself: the
+// recreation proceeds once the deletion finishes, without a Cluster edit.
+func TestReconcileRequeuesUntilDeletingClaimIsGone(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	orphan := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name) + "-0", Namespace: cluster.Namespace},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.4",
+		}}},
+	}
+	deleting := recordedClaim(cluster, "data", 1, "")
+	now := metav1.Now()
+	deleting.DeletionTimestamp = &now
+	deleting.Finalizers = []string{"kubernetes.io/pvc-protection"}
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
+		WithObjects(cluster, orphan, deleting).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
+	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	stsKey := types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}
+
+	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+	require.Equal(t, rcClaimDeletionRequeueInterval, result.RequeueAfter)
+	require.NoError(t, c.Get(ctx, key, cluster))
+	condition := meta.FindStatusCondition(cluster.Status.Conditions, "ConfigValid")
+	require.NotNil(t, condition)
+	require.Equal(t, metav1.ConditionFalse, condition.Status)
+	require.Contains(t, condition.Message, fmt.Sprintf("PVC %q is being deleted", deleting.Name))
+	require.True(t, apierrors.IsNotFound(c.Get(ctx, stsKey, &appsv1.StatefulSet{})))
+
+	// The deletion finishes once the finalizer is released.
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(deleting), deleting))
+	deleting.Finalizers = nil
+	require.NoError(t, c.Update(ctx, deleting))
+	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+	require.NoError(t, c.Get(ctx, stsKey, &appsv1.StatefulSet{}))
+}
+
+// An API failure while reading the RC evidence is not a verdict on the spec:
+// Reconcile returns it for controller backoff instead of parking the Cluster
+// in Error without a requeue.
+func TestReconcileRetriesRCEvidenceLookupFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	for _, failing := range []client.ObjectList{&corev1.PodList{}, &corev1.PersistentVolumeClaimList{}} {
+		c := fake.NewClientBuilder().WithScheme(scheme).
+			WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
+			WithObjects(cluster.DeepCopy()).
+			WithInterceptorFuncs(interceptor.Funcs{List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if fmt.Sprintf("%T", list) == fmt.Sprintf("%T", failing) {
+					return apierrors.NewServiceUnavailable("injected")
+				}
+
+				return c.List(ctx, list, opts...)
+			}}).Build()
+		r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
+		key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		require.ErrorIs(t, err, errRCValidationUnavailable, "%T", failing)
+		require.True(t, apierrors.IsServiceUnavailable(err), "%T", failing)
+		stored := &ledgerv1alpha1.Cluster{}
+		require.NoError(t, c.Get(ctx, key, stored))
+		require.Nil(t, meta.FindStatusCondition(stored.Status.Conditions, "ConfigValid"), "%T", failing)
+		require.True(t, apierrors.IsNotFound(c.Get(ctx, types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}, &appsv1.StatefulSet{})))
+	}
 }
 
 // The record is read through the uncached API reader: a stale cache must not

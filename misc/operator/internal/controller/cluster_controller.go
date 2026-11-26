@@ -231,6 +231,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		}
 	case existingStatefulSet == nil:
 		rcUpgradeError = r.validateRCUpgradeWithoutStatefulSet(ctx, ledger)
+		if errors.Is(rcUpgradeError, errRCValidationUnavailable) {
+			return ctrl.Result{}, rcUpgradeError
+		}
 	default:
 		rcUpgradeError = validateRCUpgrade(ledger.Spec.Image.Tag, existingStatefulSet)
 	}
@@ -249,6 +252,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			})
 		}
 		ledger.Status.Phase = "Error"
+		if errors.Is(rcUpgradeError, errRCClaimDeletionPending) {
+			return ctrl.Result{RequeueAfter: rcClaimDeletionRequeueInterval}, nil
+		}
 
 		return ctrl.Result{}, nil
 	}

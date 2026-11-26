@@ -244,7 +244,7 @@ func claimOrdinalBelow(claimName, stsName string, replicas int32) bool {
 func rejectDeletingClaims(stsName string, claims []corev1.PersistentVolumeClaim) error {
 	for _, claim := range claims {
 		if !claim.DeletionTimestamp.IsZero() {
-			return fmt.Errorf("cannot recreate StatefulSet %q while PVC %q is being deleted; wait for the deletion to finish, which requires that no Pod still mounts the claim", stsName, claim.Name)
+			return fmt.Errorf("%w: cannot recreate StatefulSet %q while PVC %q is being deleted; wait for the deletion to finish, which requires that no Pod still mounts the claim", errRCClaimDeletionPending, stsName, claim.Name)
 		}
 	}
 

@@ -256,7 +256,11 @@ The RC predecessor gate reads the running source tag from the owned
 StatefulSet template. When the StatefulSet is absent, orphan Pods prove the
 source image. They do not prove the data: whether or not orphan Pods match, the
 gate first rejects the recreation while any WAL/data ordinal claim is being
-deleted, because the recreated Pod would mount its empty replacement. A Cluster deleted with retained claims leaves neither, so the operator
+deleted, because the recreated Pod would mount its empty replacement. The
+operator does not watch PVCs, so this rejection requeues the Cluster every
+10 seconds and the recreation resumes once the deletion finishes. A failure to
+list the Pods or claims is not a verdict: Reconcile returns it for controller
+backoff and leaves `ConfigValid` unchanged. A Cluster deleted with retained claims leaves neither, so the operator
 keeps the source on the claims themselves in the
 `ledger.formance.com/data-source-tag` annotation
 (`misc/operator/internal/controller/rc_source_claims.go`).

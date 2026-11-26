@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	appsv1 "k8s.io/api/apps/v1"
@@ -14,6 +15,18 @@ import (
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+var (
+	// errRCValidationUnavailable marks an API failure while reading the
+	// evidence for the RC gate. It is not a verdict on the spec: the caller
+	// returns it so that controller backoff retries the reconcile.
+	errRCValidationUnavailable = errors.New("RC source validation unavailable")
+	// errRCClaimDeletionPending marks a rejection that clears by itself once a
+	// claim deletion finishes. PVCs are not watched, so the caller requeues.
+	errRCClaimDeletionPending = errors.New("RC source claim deletion pending")
+)
+
+const rcClaimDeletionRequeueInterval = 10 * time.Second
 
 type rcVersion struct {
 	version *semver.Version
@@ -84,7 +97,7 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 	name := resourceName(ledger.Name)
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
-		return fmt.Errorf("listing Pods for RC upgrade validation: %w", err)
+		return fmt.Errorf("%w: listing Pods: %w", errRCValidationUnavailable, err)
 	}
 	matchingPod := false
 	for _, pod := range pods.Items {
@@ -100,7 +113,7 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 	// listOrdinalClaims reads uncached: the operator has no PVC watch RBAC.
 	claims, err := r.listOrdinalClaims(ctx, ledger)
 	if err != nil {
-		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
+		return fmt.Errorf("%w: %w", errRCValidationUnavailable, err)
 	}
 	// Checked before the orphan-Pod branch: a matching Pod proves the image,
 	// not the data a recreated Pod would mount.
