@@ -170,6 +170,13 @@ also serves non-FSM reads. For example, the exact aggregate totals change
 stored-asset inventory also reads through `plan.Builder.AggregateVolumes`. No
 order, proposal, or apply rule changes.
 
+The `common.required_for_input` field option on `Posting.amount` changes only
+the protobuf descriptor and adds a Go `ValidateInput` method. The option does
+not change the Posting field number, wire type, or serialized message bytes.
+No runtime path invokes the method yet. Old and new voters therefore apply
+every committed posting identically, including historical nil amounts. No
+capability, migration, or stopped-upgrade boundary is needed for this stage.
+
 Removing `FailureDetails()` from uncommitted failures changes only Go types in
 order processing. Every committed entry applies identically on old and new
 voters: the same order fails with the same reason, an uncommitted failure still

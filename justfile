@@ -398,6 +398,7 @@ generate-proto:
     @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
     @cd tools/protoc-gen-ledger-json && go build -o ../../build/protoc-gen-ledger-json .
     @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
+    @cd tools/protoc-gen-ledger-validate && go build -o ../../build/protoc-gen-ledger-validate .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
@@ -436,6 +437,9 @@ generate-proto:
         --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
         --rpcauth_out=. \
         --rpcauth_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-ledger-validate=build/protoc-gen-ledger-validate \
+        --ledger-validate_out=. \
+        --ledger-validate_opt=module=github.com/formancehq/ledger/v3 \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \

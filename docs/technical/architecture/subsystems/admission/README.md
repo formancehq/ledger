@@ -4,6 +4,11 @@ Admission (`internal/application/admission`) prepares Raft proposals. Client `Ap
 
 ## Documents
 
+`Posting.amount` has a generated `ValidateInput` presence check, but admission
+does not invoke it yet. The existing admission and FSM behavior remains in
+force until a separate boundary migration proves parity across entry points.
+Generated validators must only run on new input, never on replayed orders.
+
 | Document | Description |
 |----------|-------------|
 | [pipeline.md](pipeline.md) | End-to-end pipeline from gRPC request to Raft proposal: gate, signature, order conversion, numscript, preload, proposal guard, predicted-index trick. |

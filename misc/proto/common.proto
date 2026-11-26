@@ -72,6 +72,11 @@ extend google.protobuf.MessageOptions {
   bool ledger_json_manual = 71005;
 }
 
+// Input-only presence rule. Decoding historical records never invokes it.
+extend google.protobuf.FieldOptions {
+  bool required_for_input = 71006;
+}
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
@@ -127,7 +132,7 @@ message Uint256 {
 message Posting {
   string source = 1;
   string destination = 2;
-  Uint256 amount = 3;
+  Uint256 amount = 3 [(common.required_for_input) = true];
   string asset = 4;
   // Color of the funds being moved. The empty string is the "uncolored" bucket
   // and is treated as just another color from a segregation standpoint.
