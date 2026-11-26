@@ -787,9 +787,11 @@ still replicating:
    log until the follower acknowledges or is sent a snapshot. A new term, or
    losing leadership, discards the positions but not the liveness. A
    configuration change that ends or starts an incarnation discards both
-   for that node: a removal, an identity update (`ConfChangeUpdateNode`), or
-   the addition of a node that was not a member. Promoting or demoting a
-   member keeps the same replica and its hold.
+   for that node: a removal, a `ConfChangeUpdateNode` whose instance ID
+   differs from the registered one, or the addition of a node that was not
+   a member. Promoting or demoting a member, or refreshing its endpoints or
+   capabilities under the same instance ID, keeps the same replica and its
+   hold.
 3. **Fresh positions before compaction.** The positions are published on
    every Raft tick. Maintenance creates its WAL snapshot, then has the
    orchestrate goroutine publish them again and waits for it. RawNode
@@ -827,6 +829,8 @@ leader keeps, never how an entry applies, and it persists nothing. Its limits:
   snapshot, as it would without the hold.
 - A follower that keeps answering heartbeats without acknowledging entries
   keeps holding, up to the byte cap.
+- A maintenance tick whose refresh times out skips compaction entirely, even
+  when no follower needs a hold; the next successful tick compacts.
 - RawNode can choose a snapshot while an earlier Ready is in flight; the
   index then reaches the hold only through `Progress` until the next Ready
   is taken. If an acknowledgement still in the log clears it first, the hold

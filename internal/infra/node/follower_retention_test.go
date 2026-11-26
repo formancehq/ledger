@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math"
@@ -14,6 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 )
 
 func TestNewFollowerRetentionZeroMaxBytesDisablesTheHold(t *testing.T) {
@@ -268,6 +271,58 @@ func TestForgetRetainedFollowersOnConfChange(t *testing.T) {
 	(&Node{}).forgetRetainedFollowers(prior, &raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
 		{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
 	}})
+}
+
+// TestForgetRetainedFollowersOnUpdateNode separates the two uses of
+// ConfChangeUpdateNode: refreshing a member's endpoints or capabilities keeps
+// the same replica and its hold, while a new identity starts afresh.
+func TestForgetRetainedFollowersOnUpdateNode(t *testing.T) {
+	t.Parallel()
+
+	t0 := time.Unix(1_000, 0)
+	registered := bytes.Repeat([]byte{0xA}, membership.InstanceIDLen)
+	replacement := bytes.Repeat([]byte{0xB}, membership.InstanceIDLen)
+
+	update := func(t *testing.T, instanceID []byte) *raftpb.ConfChangeV2 {
+		t.Helper()
+		ctx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
+			RaftAddress: "node-2:7000", ServiceAddress: "node-2:8000", InstanceID: instanceID,
+		})
+		require.NoError(t, err)
+
+		return &raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeUpdateNode), NodeId: proto.Uint64(2)}},
+			Context: ctx,
+		}
+	}
+
+	for name, tc := range map[string]struct {
+		instanceID []byte
+		kept       bool
+	}{
+		"same instance refresh keeps the hold": {instanceID: registered, kept: true},
+		"new identity forgets the hold":        {instanceID: replacement, kept: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			node := &Node{
+				membership:        newTestMembership(t),
+				followerRetention: newFollowerRetention(1<<20, time.Minute),
+			}
+			require.NoError(t, node.membership.Set(2, "node-2:7000", "node-2:8000", registered, nil))
+			node.followerRetention.heard(2, t0)
+			node.followerRetention.observe(t0, 3, []followerProgress{
+				{id: 2, state: tracker.StateSnapshot, match: 80, pendingSnapshot: 100},
+			})
+
+			prior := &raftpb.ConfState{Voters: []uint64{1}, Learners: []uint64{2}}
+			node.forgetRetainedFollowers(prior, update(t, tc.instanceID))
+			_, hasPeer := node.followerRetention.peers[2]
+			require.Equal(t, tc.kept, hasPeer)
+			require.Equal(t, tc.kept, node.followerRetention.lastHeard[2] == t0)
+		})
+	}
 }
 
 func TestConfStateHasMember(t *testing.T) {

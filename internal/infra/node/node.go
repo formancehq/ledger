@@ -1209,9 +1209,23 @@ func (node *Node) recordSentSnapshots(msgs []*raftpb.Message) {
 // forgetRetainedFollowers drops the compaction hold's history for every node
 // an applied configuration change touches. Must be called from the
 // orchestrate goroutine, right after rawNode.ApplyConfChange.
+//
+// It must run before the membership mirror records the change: an update is
+// compared with the identity registered before it.
 func (node *Node) forgetRetainedFollowers(prior *raftpb.ConfState, cc *raftpb.ConfChangeV2) {
 	if node.followerRetention == nil {
 		return
+	}
+
+	contexts := make(map[uint64]*membership.ConfChangeContext, len(cc.GetChanges()))
+	if err := membership.WalkConfChangeContexts(cc, func(_ raftpb.ConfChangeType, id uint64, ctx *membership.ConfChangeContext) error {
+		contexts[id] = ctx
+
+		return nil
+	}); err != nil {
+		// The membership mirror that follows rejects a malformed change;
+		// without identities, every touched node is forgotten.
+		clear(contexts)
 	}
 
 	for _, change := range cc.GetChanges() {
@@ -1223,12 +1237,29 @@ func (node *Node) forgetRetainedFollowers(prior *raftpb.ConfState, cc *raftpb.Co
 			if confStateHasMember(prior, id) {
 				continue
 			}
-		case raftpb.ConfChangeRemoveNode, raftpb.ConfChangeUpdateNode:
-			// A removal ends the incarnation; an update installs a new
-			// identity under the same ID.
+		case raftpb.ConfChangeUpdateNode:
+			// An endpoint or capability refresh keeps the same replica; a new
+			// identity is a new incarnation.
+			if node.isRegisteredInstance(id, contexts[id]) {
+				continue
+			}
+		case raftpb.ConfChangeRemoveNode:
+			// A removal ends the incarnation.
 		}
 		node.followerRetention.forget(id)
 	}
+}
+
+// isRegisteredInstance reports whether ctx names the instance currently
+// registered for id.
+func (node *Node) isRegisteredInstance(id uint64, ctx *membership.ConfChangeContext) bool {
+	if ctx == nil || node.membership == nil {
+		return false
+	}
+
+	registered, ok := node.membership.GetInstanceID(id)
+
+	return ok && bytes.Equal(registered, ctx.InstanceID)
 }
 
 // confStateHasMember reports whether id is a voter or learner of cs,
