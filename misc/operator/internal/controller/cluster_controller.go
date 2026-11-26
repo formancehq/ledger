@@ -186,6 +186,29 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, nil
 	}
 
+	// Suspension owns the workload before validation, auth-key rollout and
+	// ordinary scale-down can touch it. A resumed cluster uses the existing
+	// template until all old members have recovered.
+	activeSuspension := ledger.Status.Suspension != nil && ledger.Status.Suspension.Phase != suspensionPhaseRunning
+	readyForSuspension := ledger.Spec.Disabled && ledger.Status.Upgrade == nil
+	if readyForSuspension && !activeSuspension {
+		// A TLS toggle must finish through its ordinary rolling update before
+		// suspension freezes the workload. TLSRollout is also retained in a
+		// healthy required-TLS cluster, so its presence is not a transition.
+		sts, err := r.fetchExistingStatefulSet(ctx, ledger)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for suspension TLS gate: %w", err)
+		}
+		if sts != nil && currentTLSModeFromStatefulSet(sts) != desiredTLSMode(ledger) {
+			readyForSuspension = false
+		}
+	}
+	if activeSuspension || readyForSuspension {
+		result, err := r.reconcileSuspension(ctx, ledger, podExecWithTimeout)
+
+		return result, err
+	}
+
 	// Validate spec — report errors via status condition instead of retrying.
 	if err := validateSpec(ledger); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -727,8 +750,8 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 		// (invalid spec, selector drift). Keep it visible — recomputing
 		// from StatefulSet readiness would mask the blocked state for
 		// users and automation that key off .status.phase.
-		case reconciledPhase == "Error":
-			latest.Status.Phase = "Error"
+		case reconciledPhase == "Error" || reconciledPhase == "Suspended" || reconciledPhase == "SuspensionBlocked" || reconciledPhase == "Quiescing" || reconciledPhase == "Stopping" || reconciledPhase == "Starting" || reconciledPhase == "Verifying" || reconciledPhase == "Opening":
+			latest.Status.Phase = reconciledPhase
 		case latest.Status.Upgrade != nil:
 			latest.Status.Phase = "Pending"
 		case sts.Status.ReadyReplicas == replicas:
@@ -744,6 +767,7 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	latest.Status.Endpoints = ledger.Status.Endpoints
 	latest.Status.TLSMigrationPhase = ledger.Status.TLSMigrationPhase
 	latest.Status.Upgrade = ledger.Status.Upgrade
+	latest.Status.Suspension = ledger.Status.Suspension
 
 	// Set condition
 	condition := metav1.Condition{

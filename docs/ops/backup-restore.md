@@ -44,6 +44,12 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 
 ### Scheduling with the Kubernetes Operator
 
+When `Cluster.spec.disabled` is requested, scheduled BackupRuns and new manual
+runs wait until the original cluster is Running again. A run already marked
+Running is allowed to finish; the Cluster operator will not stop Ledger Pods
+while such a run is active. Existing backup objects and completion cursors are
+retained across suspension.
+
 The operator schedules Pebble checkpoints using the optional cron expression
 `spec.schedule`. A Backup without a schedule is a template for manual runs.
 Configure a scheduled Backup as follows:

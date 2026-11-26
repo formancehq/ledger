@@ -1,0 +1,138 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: reversible-suspension
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Start three voters
+      try:
+        - apply:
+            file: cluster.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: suspend-cycle
+              status:
+                phase: Running
+    - name: Write and record identity
+      try:
+        - script:
+            content: |
+              set -eu
+              ID=$(kubectl get cluster suspend-cycle -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
+              [ -n "$ID" ]
+              kubectl annotate namespace "$NAMESPACE" "suspend-cycle-id=$ID" --overwrite
+              for i in 0 1 2; do
+                for volume in wal data; do
+                  pvc="$volume-ledger-suspend-cycle-$i"
+                  uid=$(kubectl get pvc "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                  [ -n "$uid" ]
+                  kubectl annotate namespace "$NAMESPACE" "suspend-cycle-$volume-$i=$uid" --overwrite
+                done
+              done
+              kubectl exec ledger-suspend-cycle-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create suspend-e2e --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+    - name: Request suspension and restart operator
+      try:
+        - script:
+            content: |
+              kubectl patch cluster suspend-cycle -n "$NAMESPACE" --type merge -p '{"spec":{"disabled":true}}'
+              kubectl rollout restart deployment/ledger-operator -n default
+              kubectl rollout status deployment/ledger-operator -n default --timeout=120s
+            timeout: 150s
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: suspend-cycle
+              status:
+                phase: Suspended
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-suspend-cycle
+              spec:
+                replicas: 0
+    - name: Verify retained volumes and identity while stopped
+      try:
+        - script:
+            content: |
+              set -eu
+              before=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.suspend-cycle-id}')
+              after=$(kubectl get cluster suspend-cycle -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
+              [ "$before" = "$after" ]
+              [ "$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/instance=suspend-cycle -o name | wc -l | tr -d ' ')" = 0 ]
+              for i in 0 1 2; do
+                for volume in wal data; do
+                  pvc="$volume-ledger-suspend-cycle-$i"
+                  old=$(kubectl get namespace "$NAMESPACE" -o jsonpath="{.metadata.annotations.suspend-cycle-$volume-$i}")
+                  new=$(kubectl get pvc "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                  [ "$old" = "$new" ]
+                done
+              done
+            timeout: 45s
+    - name: Resume the original voters
+      try:
+        - script:
+            content: |
+              kubectl patch cluster suspend-cycle -n "$NAMESPACE" --type merge -p '{"spec":{"disabled":false}}'
+            timeout: 30s
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: suspend-cycle
+              status:
+                phase: Running
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-suspend-cycle
+              status:
+                readyReplicas: 3
+    - name: Verify data and voter set after restart
+      try:
+        - script:
+            content: |
+              set -eu
+              before=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.suspend-cycle-id}')
+              after=$(kubectl get cluster suspend-cycle -n "$NAMESPACE" -o jsonpath='{.spec.clusterID}')
+              [ "$before" = "$after" ]
+              for i in 0 1 2; do
+                for volume in wal data; do
+                  pvc="$volume-ledger-suspend-cycle-$i"
+                  old=$(kubectl get namespace "$NAMESPACE" -o jsonpath="{.metadata.annotations.suspend-cycle-$volume-$i}")
+                  new=$(kubectl get pvc "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                  [ "$old" = "$new" ]
+                done
+              done
+              kubectl exec ledger-suspend-cycle-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | grep suspend-e2e
+              kubectl exec ledger-suspend-cycle-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl cluster status --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' | jq -e '[.nodes[] | select(.suffrage == "Voter")] | length == 3'
+            timeout: 120s
+    - name: Release protected fixture volumes
+      try:
+        - script:
+            content: |
+              set -eu
+              for i in 0 1 2; do
+                for volume in wal data; do
+                  pvc="$volume-ledger-suspend-cycle-$i"
+                  pv=$(kubectl get pvc "$pvc" -n "$NAMESPACE" -o jsonpath='{.spec.volumeName}')
+                  kubectl annotate pvc "$pvc" -n "$NAMESPACE" formance.com/allow-deletion=true --overwrite
+                  kubectl annotate pv "$pv" formance.com/allow-deletion=true --overwrite
+                done
+              done
+            timeout: 45s

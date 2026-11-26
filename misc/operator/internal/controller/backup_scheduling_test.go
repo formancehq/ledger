@@ -300,7 +300,7 @@ func TestBackupScheduling_APIReadFailureDoesNotSchedule(t *testing.T) {
 	require.Empty(t, f.runs(t), "must not fall back to cached state on an API read failure")
 	_, err = r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now)
 	require.NoError(t, err)
-	require.Equal(t, 2, attempts)
+	require.Equal(t, 3, attempts, "the scheduler re-reads the Cluster directly before creating a run")
 	require.Len(t, f.runs(t), 1)
 }
 

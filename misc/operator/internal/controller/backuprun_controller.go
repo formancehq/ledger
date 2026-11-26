@@ -86,7 +86,11 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var cluster ledgerv1alpha1.Cluster
-	if err := r.Get(ctx, types.NamespacedName{
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	if err := reader.Get(ctx, types.NamespacedName{
 		Name:      backup.Spec.ClusterRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
@@ -95,6 +99,17 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
+	}
+	if suspensionActive(&cluster) && run.Status.Phase != ledgerv1alpha1.BackupRunPhaseRunning {
+		if run.Status.Phase != ledgerv1alpha1.BackupRunPhasePending || run.Status.Message != "waiting for Cluster resume" {
+			run.Status.Phase = ledgerv1alpha1.BackupRunPhasePending
+			run.Status.Message = "waiting for Cluster resume"
+			if err := r.Status().Update(ctx, &run); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
 	}
 
 	// Forbid concurrency: any sibling already Running blocks this one.

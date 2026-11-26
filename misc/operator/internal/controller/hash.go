@@ -28,6 +28,7 @@ func computePodSpecHash(spec *ledgerv1alpha1.ClusterSpec, omitClaimSettings bool
 
 	// Replicas: changing count only adds/removes pods; existing pods don't need restart.
 	cp.Replicas = nil
+	cp.Disabled = false
 
 	// Networking resources (reconciled as separate K8s objects).
 	cp.Service = ledgerv1alpha1.ServiceSpec{}

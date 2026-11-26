@@ -44,6 +44,9 @@ type ClusterList struct {
 // +kubebuilder:validation:XValidation:rule="(has(self.idempotencyTTL) == has(oldSelf.idempotencyTTL) && (!has(self.idempotencyTTL) || self.idempotencyTTL == oldSelf.idempotencyTTL) && has(self.metadataMaxEntries) == has(oldSelf.metadataMaxEntries) && (!has(self.metadataMaxEntries) || self.metadataMaxEntries == oldSelf.metadataMaxEntries) && has(self.metadataMaxKeyBytes) == has(oldSelf.metadataMaxKeyBytes) && (!has(self.metadataMaxKeyBytes) || self.metadataMaxKeyBytes == oldSelf.metadataMaxKeyBytes) && has(self.metadataMaxValueBytes) == has(oldSelf.metadataMaxValueBytes) && (!has(self.metadataMaxValueBytes) || self.metadataMaxValueBytes == oldSelf.metadataMaxValueBytes) && has(self.metadataMaxEntityBytes) == has(oldSelf.metadataMaxEntityBytes) && (!has(self.metadataMaxEntityBytes) || self.metadataMaxEntityBytes == oldSelf.metadataMaxEntityBytes) && has(self.metadataMaxCommandBytes) == has(oldSelf.metadataMaxCommandBytes) && (!has(self.metadataMaxCommandBytes) || self.metadataMaxCommandBytes == oldSelf.metadataMaxCommandBytes)) || (has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) > (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)",message="changing idempotencyTTL or a metadata limit requires increasing clusterPolicyRevision"
 // +kubebuilder:validation:XValidation:rule="(has(self.clusterPolicyRevision) ? self.clusterPolicyRevision : 1) >= (has(oldSelf.clusterPolicyRevision) ? oldSelf.clusterPolicyRevision : 1)",message="clusterPolicyRevision must not decrease"
 type ClusterSpec struct {
+	// Disabled requests a reversible stop. Identity, Raft membership and PVCs remain.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
 	// Image configuration for the ledger container.
 	// +optional
 	Image ImageSpec `json:"image,omitempty"`
@@ -1431,6 +1434,10 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
+
+	// Suspension is the restartable stop/start operation checkpoint.
+	// +optional
+	Suspension *SuspensionStatus `json:"suspension,omitempty"`
 }
 
 // ClaimTemplateRecoveryStatus authorizes exact journal bytes before creation.
@@ -1454,6 +1461,20 @@ type ClaimTemplateRecoveryStatus struct {
 type DrainStatus struct {
 	Epoch string `json:"epoch"`
 	Phase string `json:"phase"`
+}
+
+type SuspensionStatus struct {
+	Phase            string `json:"phase,omitempty"`
+	ExpectedReplicas int32  `json:"expectedReplicas,omitempty"`
+	PinnedSpecHash   string `json:"pinnedSpecHash,omitempty"`
+	PinnedImage      string `json:"pinnedImage,omitempty"`
+	StatefulSetUID   string `json:"statefulSetUID,omitempty"`
+	// PVCUIDs and PVUIDs pin the original backing volumes across stop/start.
+	PVCUIDs                      map[string]string `json:"pvcUIDs,omitempty"`
+	PVUIDs                       map[string]string `json:"pvUIDs,omitempty"`
+	BarrierIndex                 uint64            `json:"barrierIndex,omitempty"`
+	MaintenancePreviouslyEnabled bool              `json:"maintenancePreviouslyEnabled,omitempty"`
+	Error                        string            `json:"error,omitempty"`
 }
 
 // ClusterUpgradeStatus fences recreation until the old workload is fully gone.

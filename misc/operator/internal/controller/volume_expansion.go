@@ -155,6 +155,9 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}()
 
 	applyDefaults(&ledger)
+	if suspensionActive(&ledger) {
+		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, nil
+	}
 	definitions := enabledVolumeExpansionDefinitions(&ledger)
 	removeDisabledVolumeExpansionConditions(&ledger, definitions)
 	if len(definitions) == 0 {

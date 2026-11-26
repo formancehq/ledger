@@ -12,11 +12,13 @@ import (
 	"strings"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -70,6 +72,8 @@ var clusterGVR = schema.GroupVersionResource{
 type LedgerReconciler struct {
 	client.Client
 
+	APIReader client.Reader
+
 	Scheme    *runtime.Scheme
 	Dynamic   dynamic.Interface
 	Config    *rest.Config
@@ -114,6 +118,18 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	// If already ready, check for spec drift only.
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	var referencedCluster ledgerv1alpha1.Cluster
+	if err := reader.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: ledger.Spec.ClusterRef}, &referencedCluster); err == nil && suspensionActive(&referencedCluster) {
+		ledger.Status.Message = "waiting for Cluster resume"
+
+		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+	} else if err != nil && !apierrors.IsNotFound(err) {
+		return ctrl.Result{}, err
+	}
 	if ledger.Status.Phase == ledgerv1alpha1.LedgerPhaseReady {
 		return r.reconcileReady(ctx, &ledger)
 	}

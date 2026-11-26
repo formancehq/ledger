@@ -344,6 +344,41 @@ Ledger rejects an ID mismatch on boot. A deleted Cluster recreated with fresh
 storage receives a new ID. Inspect `kubectl get cluster my-ledger -o
 jsonpath='{.spec.clusterID}'` to discover the resolved value.
 
+### Reversible suspension
+
+Set `Cluster.spec.disabled: true` to stop a Ledger v3 cluster without deleting
+its Cluster resource or changing its Raft voter set. The operator first commits
+replicated maintenance mode, waits for a commit barrier to be durably persisted by every
+original voter, checks that the WAL and data PVCs are bound, detaches any stale
+StatefulSet PVC owner references, and changes only StatefulSet replicas to zero
+with both PVC retention policies set to `Retain`. It reports `Suspended` only
+after every Pod has disappeared. `spec.replicas` and `spec.clusterID` stay
+unchanged. Failed prerequisites leave the Pods running and report
+`SuspensionBlocked` with the reason in `status.suspension.error`.
+
+Set `spec.disabled: false` to restart the original StatefulSet template and
+replica count. The operator checks that all original PVCs remain bound, waits
+for every original voter and the elected leader, and only then disables the
+maintenance gate it enabled. If maintenance was already enabled before the
+suspension, it remains enabled. Stack defers image and replica changes until
+this original cluster reaches `Running`. Direct Cluster spec edits during the
+transition block resume until the pinned spec is restored.
+
+Suspension is rejected for hostPath volumes and `retentionPolicy` values of
+`Delete`. A running BackupRun finishes before the stop barrier; new and
+scheduled runs wait for resume. EventSink, declarative Ledger, and volume
+expansion reconciliation also wait. The Raft WAL synchronizes new entries
+before they can be applied; Pebble WAL synchronization precedes Raft WAL
+compaction, so a crash after the barrier can replay any still-unsynced Pebble
+batch from the retained Raft log. The operator does not delete or rebuild
+volumes during this operation.
+
+Install the CRD and a Ledger operator that understands `spec.disabled` before
+deploying a Stack operator that requests it. Do not roll back either operator
+to a version that ignores suspension while a Cluster is suspended: an old
+Ledger operator may scale the StatefulSet back up, and an old Stack operator
+may delete the Cluster and its identity.
+
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster

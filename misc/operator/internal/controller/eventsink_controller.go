@@ -80,6 +80,9 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	applyDefaults(&cluster)
+	if suspensionActive(&cluster) {
+		return r.sinkFailure(ctx, &sink, "ClusterSuspending", errors.New("waiting for Cluster resume"), sinkRequeueInterval)
+	}
 
 	var sts appsv1.StatefulSet
 	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(cluster.Name)}, &sts); err != nil {

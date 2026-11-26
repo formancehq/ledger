@@ -1225,6 +1225,10 @@ spec:
                   LogLevel takes precedence when both are set; prefer LogLevel for new
                   manifests since it also unlocks the trace level.
                 type: boolean
+              disabled:
+                description: Disabled requests a reversible stop. Identity, Raft membership
+                  and PVCs remain.
+                type: boolean
               dnsEndpoints:
                 description: |-
                   DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
@@ -4316,6 +4320,38 @@ spec:
                 description: ReadyReplicas is the number of ready pods.
                 format: int32
                 type: integer
+              suspension:
+                description: Suspension is the restartable stop/start operation checkpoint.
+                properties:
+                  barrierIndex:
+                    format: int64
+                    type: integer
+                  error:
+                    type: string
+                  expectedReplicas:
+                    format: int32
+                    type: integer
+                  maintenancePreviouslyEnabled:
+                    type: boolean
+                  phase:
+                    type: string
+                  pinnedImage:
+                    type: string
+                  pinnedSpecHash:
+                    type: string
+                  pvUIDs:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  pvcUIDs:
+                    additionalProperties:
+                      type: string
+                    description: PVCUIDs and PVUIDs pin the original backing volumes
+                      across stop/start.
+                    type: object
+                  statefulSetUID:
+                    type: string
+                type: object
               tlsMigrationPhase:
                 description: |-
                   TLSMigrationPhase reflects the operator's current TLS rollout phase.
