@@ -827,6 +827,12 @@ leader keeps, never how an entry applies, and it persists nothing. Its limits:
   snapshot, as it would without the hold.
 - A follower that keeps answering heartbeats without acknowledging entries
   keeps holding, up to the byte cap.
+- RawNode can choose a snapshot while an earlier Ready is in flight; the
+  index then reaches the hold only through `Progress` until the next Ready
+  is taken. If an acknowledgement still in the log clears it first, the hold
+  keeps the entries after that `Match` instead, which also covers the
+  snapshot unless the byte cap moves compaction past `Match` in that
+  window.
 - etcd/raft keeps a learner's `Progress` across `ConfChangeUpdateNode`, so a
   refreshed learner can hold at its predecessor's `Match` or pending
   snapshot once it answers. That only keeps more log, up to the cap, for a
