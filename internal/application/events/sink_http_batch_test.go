@@ -97,6 +97,39 @@ func TestHTTPSinkBatchSplitsAtByteLimit(t *testing.T) {
 	require.Len(t, sizes, 2)
 }
 
+func TestHTTPSinkBatchOversizedEventRetriesThenContinues(t *testing.T) {
+	t.Parallel()
+	var bodies [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		bodies = append(bodies, body)
+		require.Equal(t, "1", r.Header.Get("X-Ledger-Batch-Version"))
+		if len(bodies) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer server.Close()
+	sink, err := NewHTTPSink(HTTPSinkConfig{Endpoint: server.URL, Format: FormatJSON, Batch: true})
+	require.NoError(t, err)
+	events := []*eventspb.Event{
+		{LogSequence: 7, Ledger: strings.Repeat("x", maxHTTPBatchBytes)},
+		{LogSequence: 8, Ledger: "next"},
+	}
+	require.Error(t, sink.Publish(context.Background(), events))
+	require.NoError(t, sink.Publish(context.Background(), events))
+	require.Len(t, bodies, 3)
+	require.Equal(t, bodies[0], bodies[1])
+	require.Greater(t, len(bodies[0]), maxHTTPBatchBytes)
+	var first, second []map[string]any
+	require.NoError(t, json.Unmarshal(bodies[1], &first))
+	require.NoError(t, json.Unmarshal(bodies[2], &second))
+	require.Len(t, first, 1)
+	require.Len(t, second, 1)
+	require.Equal(t, float64(7), first[0]["logSequence"])
+	require.Equal(t, float64(8), second[0]["logSequence"])
+}
+
 func TestHTTPSinkBatchConfigWireRoundTrip(t *testing.T) {
 	t.Parallel()
 	original := &commonpb.HttpSinkConfig{Endpoint: "https://example.com/events", Batch: true}

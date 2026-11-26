@@ -99,7 +99,9 @@ func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) (retEr
 }
 
 // HTTP batch v1 uses a JSON array or consecutive uint32 big-endian length
-// prefixed protobuf Events. A failed POST leaves the entire Publish unacknowledged.
+// prefixed protobuf Events. This is a packing target: an event larger than
+// the target is sent alone so it cannot permanently stall the shared sink.
+// A failed POST leaves the entire Publish unacknowledged.
 const maxHTTPBatchBytes = 1 << 20
 
 func (s *HTTPSink) publishBatch(ctx context.Context, events []*eventspb.Event) error {
@@ -127,9 +129,6 @@ func (s *HTTPSink) publishBatch(ctx context.Context, events []*eventspb.Event) e
 		overhead := 4
 		if s.format == FormatJSON {
 			overhead = 2 // brackets or comma and closing bracket
-		}
-		if len(data)+overhead > maxHTTPBatchBytes {
-			return fmt.Errorf("event seq=%d exceeds HTTP batch limit of %d bytes", event.GetLogSequence(), maxHTTPBatchBytes)
 		}
 		if count > 0 && len(body)+len(data)+overhead > maxHTTPBatchBytes {
 			if err := flush(first, last, count); err != nil {

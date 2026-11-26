@@ -854,9 +854,10 @@ contains `"http": {"endpoint": "https://receiver.example/events", "batch": true}
 Batch v1 sends events in ascending global log sequence order. JSON bodies are
 arrays of the existing Event JSON objects. Protobuf bodies concatenate the
 existing Event wire encodings, each preceded by its byte length as a four-byte
-big-endian unsigned integer. The body is capped at 1 MiB; the sink splits an
-emitter batch into consecutive POSTs at this boundary. An individual event
-larger than the cap fails delivery. Batch requests use the same Content-Type
+big-endian unsigned integer. The sink targets at most 1 MiB per POST and splits
+an emitter batch at this boundary. An individual event larger than 1 MiB is
+sent alone in the same batch framing; it is never skipped or acknowledged
+without a successful POST. Batch requests use the same Content-Type
 as legacy requests and set `X-Ledger-Batch-Version: 1`, `X-Event-Count`,
 `X-Log-Sequence-First`, and `X-Log-Sequence-Last`. Single-event headers
 `X-Event-Type`, `X-Ledger`, and `X-Log-Sequence` are absent because a batch can
