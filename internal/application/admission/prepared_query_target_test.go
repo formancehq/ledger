@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -57,6 +58,10 @@ func TestRequestToOrderPreparedQueryRejectsDeepFilter(t *testing.T) {
 
 func TestRequestToOrderPreparedQueryRequiresTarget(t *testing.T) {
 	t.Parallel()
+	var fieldErr *inputvalidation.FieldError
+	require.ErrorAs(t, (&servicepb.UpdatePreparedQueryRequest{}).ValidateInput(), &fieldErr)
+	require.Equal(t, "target", fieldErr.Path)
+	require.NoError(t, (&servicepb.UpdatePreparedQueryRequest{Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS.Enum()}).ValidateInput())
 	request := &servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{
 		UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{Ledger: "ledger1", Name: "q1"},
 	}}

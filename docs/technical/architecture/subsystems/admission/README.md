@@ -4,10 +4,10 @@ Admission (`internal/application/admission`) prepares Raft proposals. Client `Ap
 
 ## Documents
 
-`Posting.amount` has a generated `ValidateInput` presence check, but admission
-does not invoke it yet. The existing admission and FSM behavior remains in
-force until a separate boundary migration proves parity across entry points.
-Generated validators must only run on new input, never on replayed orders.
+Admission invokes generated `ValidateInput` presence checks for posting amounts
+and prepared-query update targets before proposing new orders. It maps failures
+to the existing public validation errors. The FSM does not invoke generated
+input validators, so historical orders retain their replay semantics.
 
 | Document | Description |
 |----------|-------------|

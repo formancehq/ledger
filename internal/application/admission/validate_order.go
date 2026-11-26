@@ -332,7 +332,7 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	for _, posting := range o.GetPostings() {
-		if posting.GetAmount() == nil {
+		if err := posting.ValidateInput(); err != nil {
 			return ErrPostingAmountRequired
 		}
 	}

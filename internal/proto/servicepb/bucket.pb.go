@@ -9785,12 +9785,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11transaction_count\x18\x06 \x01(\x06R\x10transactionCount\"a\n" +
 	"\x1aCreatePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
-	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb2\x01\n" +
+	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb8\x01\n" +
 	"\x1aUpdatePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12+\n" +
-	"\x06filter\x18\x03 \x01(\v2\x13.common.QueryFilterR\x06filter\x120\n" +
-	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetH\x00R\x06target\x88\x01\x01B\t\n" +
+	"\x06filter\x18\x03 \x01(\v2\x13.common.QueryFilterR\x06filter\x126\n" +
+	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetB\x04\xf0\xd5\"\x01H\x00R\x06target\x88\x01\x01B\t\n" +
 	"\a_target\"H\n" +
 	"\x1aDeletePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +

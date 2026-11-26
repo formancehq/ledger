@@ -1270,7 +1270,7 @@ message UpdatePreparedQueryRequest {
   common.QueryFilter filter = 3;
   // Required by admission: replaces the query target along with the filter.
   // Presence is tracked so omission can be rejected even when ACCOUNTS is 0.
-  optional common.QueryTarget target = 4;
+  optional common.QueryTarget target = 4 [(common.required_for_input) = true];
 }
 
 message DeletePreparedQueryRequest {
