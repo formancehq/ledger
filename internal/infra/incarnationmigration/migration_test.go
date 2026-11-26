@@ -196,7 +196,7 @@ func activateWrites(t *testing.T, store *dal.Store) {
 	require.NoError(t, batch.Commit())
 }
 
-func TestRunBackfillsDatesAndMergesNewWrites(t *testing.T) {
+func TestRunBackfillsDatesFromAuditInsteadOfExistingRows(t *testing.T) {
 	store := migrationStore(t)
 	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
 	appendFixture(t, store, 2, 200, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
@@ -241,7 +241,7 @@ func TestRunBackfillsDatesAndMergesNewWrites(t *testing.T) {
 	row, err := attrs.AccountIncarnation.Get(store, key.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
-	require.Equal(t, uint64(800), row.GetUpdatedAt().GetData())
+	require.Equal(t, uint64(300), row.GetUpdatedAt().GetData())
 	require.NoError(t, Run(t.Context(), store))
 }
 
@@ -370,22 +370,82 @@ func TestBackfillRecompilesAccountTypesWhenRemoved(t *testing.T) {
 	appendFixture(t, store, 2, 200, apply(&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
 		AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{Name: "ephemeral", Pattern: "alice", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}},
 	}}))
-	transaction := func() *commonpb.LedgerLogPayload {
-		return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+	transaction := func() *commonpb.LedgerLog {
+		return &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "alice", Destination: "world"}}}},
-		}}
+		}}}
 	}
-	appendFixture(t, store, 3, 300, apply(transaction()))
+	first := transaction()
+	first.EphemeralVolumes = []*commonpb.TouchedVolume{{Account: "alice", Asset: "USD"}}
+	appendFixture(t, store, 3, 300, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "ledger", Log: first}}})
 	appendFixture(t, store, 4, 400, apply(&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
 		RemovedAccountType: &commonpb.RemovedAccountTypeLog{Name: "ephemeral"},
 	}}))
-	appendFixture(t, store, 5, 500, apply(transaction()))
+	second := transaction()
+	second.NewKeptVolumes = []*commonpb.TouchedVolume{{Account: "alice", Asset: "USD"}}
+	appendFixture(t, store, 5, 500, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "ledger", Log: second}}})
 	activateWrites(t, store)
 	require.NoError(t, Run(t.Context(), store))
 	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
 	require.NoError(t, err)
 	require.Equal(t, uint64(500), row.GetInsertedAt().GetData())
 	require.Equal(t, uint64(500), row.GetUpdatedAt().GetData())
+}
+
+func TestBackfillEphemeralIncarnationClosesOnlyAfterLastVolume(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	volumeLog := func(kept, purged []*commonpb.TouchedVolume) *commonpb.LogPayload {
+		return &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			LedgerName: "ledger", Log: &commonpb.LedgerLog{
+				Data:           &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "alice", Destination: "world"}}}}}},
+				NewKeptVolumes: kept, PurgedVolumes: purged,
+			},
+		}}}
+	}
+	usd := &commonpb.TouchedVolume{Account: "alice", Asset: "USD"}
+	eur := &commonpb.TouchedVolume{Account: "alice", Asset: "EUR"}
+	appendFixture(t, store, 2, 200, volumeLog([]*commonpb.TouchedVolume{usd, eur}, nil))
+	appendFixture(t, store, 3, 300, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{Name: "transient", Pattern: "alice", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}},
+		}}},
+	}}})
+	appendFixture(t, store, 4, 400, volumeLog(nil, []*commonpb.TouchedVolume{usd}))
+	appendFixture(t, store, 5, 500, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
+			RemovedAccountType: &commonpb.RemovedAccountTypeLog{Name: "transient"},
+		}}},
+	}}})
+	appendFixture(t, store, 6, 600, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{Name: "ephemeral", Pattern: "alice", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL}},
+		}}},
+	}}})
+	for sequence := uint64(7); sequence <= 256; sequence++ {
+		appendFixture(t, store, sequence, sequence*100, volumeLog(nil, nil))
+	}
+	// Close and reopen after the first committed migration cursor.
+	appendFixture(t, store, 257, 25700, volumeLog(nil, []*commonpb.TouchedVolume{eur}))
+	appendFixture(t, store, 258, 25800, volumeLog([]*commonpb.TouchedVolume{usd}, nil))
+	activateWrites(t, store)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- RunWithPause(ctx, store, time.Hour) }()
+	require.Eventually(t, func() bool {
+		marker, err := ReadMarker(store)
+
+		return err == nil && marker.Cursor == 256
+	}, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.NoError(t, Run(t.Context(), store))
+	key := (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes()
+	row, err := attributes.New().AccountIncarnation.Get(store, key)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), row.GetVolumeCount())
+	require.Equal(t, uint64(25800), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(25800), row.GetUpdatedAt().GetData())
 }
 
 func TestRequireReadyRejectsUnmigratedActiveStore(t *testing.T) {

@@ -11,12 +11,46 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
+	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func TestEnsureAccountIncarnationsCreatesOnePerNormalAccount(t *testing.T) {
+func TestEphemeralIncarnationSurvivesPartialVolumePurgeAndReopens(t *testing.T) {
+	t.Parallel()
+	machine, _, _ := newTestMachine(t)
+	b := machine.writeSet
+	b.Reset(&commonpb.Timestamp{Data: 400})
+	key := domain.AccountKey{LedgerName: "ledger", Account: "ephemeral:one"}
+	b.Derived.AccountIncarnations.Put(key, &commonpb.AccountIncarnation{
+		Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		InsertedAt:  &commonpb.Timestamp{Data: 300}, UpdatedAt: &commonpb.Timestamp{Data: 400}, VolumeCount: 2,
+	})
+	old := kv.Some(&raftcmdpb.VolumePair{})
+	usd := domain.NewVolumeKey(key.LedgerName, key.Account, "USD", "")
+	eur := domain.NewVolumeKey(key.LedgerName, key.Account, "EUR", "")
+	require.NoError(t, b.adjustIncarnationVolumeCounts(volumePartitionResult{purged: []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{{Key: usd, Old: old}}}))
+	row, err := b.Derived.AccountIncarnations.Get(key)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), row.GetVolumeCount())
+	require.Equal(t, uint64(300), row.GetInsertedAt().GetData())
+	require.NoError(t, b.adjustIncarnationVolumeCounts(volumePartitionResult{purged: []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{{Key: eur, Old: old}}}))
+	_, err = b.Derived.AccountIncarnations.Get(key)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+	b.Reset(&commonpb.Timestamp{Data: 600})
+	b.Derived.AccountIncarnations.Put(key, &commonpb.AccountIncarnation{
+		Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		InsertedAt:  &commonpb.Timestamp{Data: 600}, UpdatedAt: &commonpb.Timestamp{Data: 600},
+	})
+	require.NoError(t, b.adjustIncarnationVolumeCounts(volumePartitionResult{kept: []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{{Key: usd}}}))
+	row, err = b.Derived.AccountIncarnations.Get(key)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), row.GetVolumeCount())
+	require.Equal(t, uint64(600), row.GetInsertedAt().GetData())
+}
+
+func TestEnsureAccountIncarnationsCreatesOnePerPersistentAccount(t *testing.T) {
 	t.Parallel()
 	machine, store, attrs := newTestMachine(t)
 	b := machine.writeSet
@@ -34,21 +68,24 @@ func TestEnsureAccountIncarnationsCreatesOnePerNormalAccount(t *testing.T) {
 		},
 	})
 	id, _ := attributes.MakeKey(account.Bytes())
+	ephemeralID, _ := attributes.MakeKey(ephemeral.Bytes())
 	factory := NewScopeFactory(b, &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
 		declareTestPlan(id, dal.SubAttrAccountIncarnation),
+		declareTestPlan(ephemeralID, dal.SubAttrAccountIncarnation),
 	}}, logging.FromContext(logging.TestingContext()), nil, 42)
 	scope, err := factory.NewProposalScope()
 	require.NoError(t, err)
 	require.NoError(t, b.ensureAccountIncarnations(scope))
-	require.Len(t, b.Derived.AccountIncarnations.DirtyValues(), 1)
-	_, err = b.Derived.AccountIncarnations.Get(ephemeral)
-	require.ErrorIs(t, err, domain.ErrNotFound)
+	require.Len(t, b.Derived.AccountIncarnations.DirtyValues(), 2)
+	ephemeralRow, err := b.Derived.AccountIncarnations.Get(ephemeral)
+	require.NoError(t, err)
+	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, ephemeralRow.GetPersistence())
 	incarnation, err := b.Derived.AccountIncarnations.Get(account)
 	require.NoError(t, err)
 	require.Equal(t, uint64(100), incarnation.GetInsertedAt().GetData())
 	require.Equal(t, uint64(100), incarnation.GetUpdatedAt().GetData())
 	require.NoError(t, b.ensureAccountIncarnations(scope))
-	require.Len(t, b.Derived.AccountIncarnations.DirtyValues(), 1)
+	require.Len(t, b.Derived.AccountIncarnations.DirtyValues(), 2)
 
 	updates, deletions, err := b.Derived.AccountIncarnations.Merge()
 	require.NoError(t, err)

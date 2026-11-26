@@ -27,6 +27,7 @@ func (m *AccountIncarnation) CloneVT() *AccountIncarnation {
 	r.Persistence = m.Persistence
 	r.InsertedAt = m.InsertedAt.CloneVT()
 	r.UpdatedAt = m.UpdatedAt.CloneVT()
+	r.VolumeCount = m.VolumeCount
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -51,6 +52,9 @@ func (this *AccountIncarnation) EqualVT(that *AccountIncarnation) bool {
 		return false
 	}
 	if !this.UpdatedAt.EqualVT(that.UpdatedAt) {
+		return false
+	}
+	if this.VolumeCount != that.VolumeCount {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -92,6 +96,11 @@ func (m *AccountIncarnation) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.VolumeCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.VolumeCount))
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.UpdatedAt != nil {
 		size, err := m.UpdatedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -137,6 +146,9 @@ func (m *AccountIncarnation) SizeVT() (n int) {
 	if m.UpdatedAt != nil {
 		l = m.UpdatedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.VolumeCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.VolumeCount))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -262,6 +274,25 @@ func (m *AccountIncarnation) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VolumeCount", wireType)
+			}
+			m.VolumeCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.VolumeCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

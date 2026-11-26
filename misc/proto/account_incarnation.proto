@@ -6,11 +6,11 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 
 import "common.proto";
 
-// Current lifetime of a normal account address. It opens on the first
-// account-state write and records the latest accepted account-state write.
-// Closure is left to a later change.
+// Current lifetime of an account address. Ephemeral lifetimes close when their
+// last persisted volume is purged; metadata survives closure.
 message AccountIncarnation {
   AccountTypePersistence persistence = 1;
   Timestamp inserted_at = 2;
   Timestamp updated_at = 3;
+  uint64 volume_count = 4;
 }

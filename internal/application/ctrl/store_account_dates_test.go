@@ -31,8 +31,13 @@ func TestAccountDatesComeFromIncarnation(t *testing.T) {
 	const ledger = "dates"
 	const address = "users:alice"
 	accountKey := domain.AccountKey{LedgerName: ledger, Account: address}
-
+	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}}
 	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, incarnationmigration.Run(t.Context(), store))
+
+	batch = store.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 	_, err = attrs.AccountIncarnation.Set(batch, accountKey.Bytes(), &commonpb.AccountIncarnation{
 		InsertedAt: &commonpb.Timestamp{Data: 100},
@@ -40,11 +45,6 @@ func TestAccountDatesComeFromIncarnation(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
-	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.AccountIncarnationWritesV1), Active: true}}}
-	batch = store.OpenWriteSession()
-	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy))
-	require.NoError(t, batch.Commit())
-	require.NoError(t, incarnationmigration.Run(t.Context(), store))
 	policy.CapabilityActivations = append(policy.CapabilityActivations, &commonpb.CapabilityActivation{Id: uint32(capabilities.AccountIncarnationHistoryCompleteV1), Active: true})
 	batch = store.OpenWriteSession()
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy))

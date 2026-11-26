@@ -111,7 +111,8 @@ type WriteSet struct {
 	// (machine.go:1539 before machine.go:1568). A technical-only proposal has
 	// no orders, hence no volume updates, so the absence of an entry at Merge
 	// time is impossible by design rather than an expected miss.
-	gatedLedgerTypes map[string]gatedLedgerType
+	gatedLedgerTypes    map[string]gatedLedgerType
+	incarnationsEnabled bool
 
 	// purgedByLog[i] is the deduplicated list of (account, asset) volumes
 	// drained to zero (had a prior non-zero balance, now zero and evicted
@@ -229,6 +230,7 @@ type mergeDrained struct {
 	preparedQueryDeletions    []attributes.Deletion[domain.PreparedQueryKey]
 	indexUpdates              []attributes.Update[domain.IndexKey, *commonpb.Index]
 	incarnationUpdates        []attributes.Update[domain.AccountKey, *commonpb.AccountIncarnation]
+	incarnationDeletions      []attributes.Deletion[domain.AccountKey]
 	indexDeletions            []attributes.Deletion[domain.IndexKey]
 }
 
@@ -318,15 +320,19 @@ func (b *WriteSet) drainDerived() (d mergeDrained, err error) {
 	if err != nil {
 		return d, fmt.Errorf("failed to merge volumes: %w", err)
 	}
-	d.incarnationUpdates, _, err = b.Derived.AccountIncarnations.Merge()
-	if err != nil {
-		return d, fmt.Errorf("failed to merge account incarnations: %w", err)
-	}
-
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
 	d.partResult, err = b.partitionVolumes(d.volumeUpdates)
 	if err != nil {
 		return d, fmt.Errorf("partitioning volumes: %w", err)
+	}
+	if b.incarnationsEnabled {
+		if err := b.adjustIncarnationVolumeCounts(d.partResult); err != nil {
+			return d, fmt.Errorf("adjusting account incarnation volume counts: %w", err)
+		}
+	}
+	d.incarnationUpdates, d.incarnationDeletions, err = b.Derived.AccountIncarnations.Merge()
+	if err != nil {
+		return d, fmt.Errorf("failed to merge account incarnations: %w", err)
 	}
 
 	d.metadataUpdates, d.metadataDeletions, err = b.Derived.AccountMetadata.Merge()
@@ -631,7 +637,7 @@ func (b *WriteSet) flushAttributes(batch *dal.WriteSession, genByte byte, d merg
 	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, d.indexUpdates, d.indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
 		return err
 	}
-	if err := flushAttributeAndCache(b.attrs.AccountIncarnation, batch, genByte, dal.SubAttrAccountIncarnation, d.incarnationUpdates, nil, &b.bloomUpdates.AccountIncarnations, "account incarnations"); err != nil {
+	if err := flushAttributeAndCache(b.attrs.AccountIncarnation, batch, genByte, dal.SubAttrAccountIncarnation, d.incarnationUpdates, d.incarnationDeletions, &b.bloomUpdates.AccountIncarnations, "account incarnations"); err != nil {
 		return err
 	}
 
@@ -924,6 +930,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
 	b.transientVolumes = nil
 	b.gatedLedgerTypes = nil
+	b.incarnationsEnabled = false
 	b.volumes.Reset()
 	for i := range b.purgedByLog {
 		b.purgedByLog[i] = nil

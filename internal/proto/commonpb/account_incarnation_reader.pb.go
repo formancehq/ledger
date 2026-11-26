@@ -9,6 +9,7 @@ type AccountIncarnationReader interface {
 	GetPersistence() AccountTypePersistence
 	GetInsertedAt() TimestampReader
 	GetUpdatedAt() TimestampReader
+	GetVolumeCount() uint64
 	Mutate() *AccountIncarnation
 }
 
@@ -32,6 +33,10 @@ func (r *accountIncarnationReadonly) GetUpdatedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *accountIncarnationReadonly) GetVolumeCount() uint64 {
+	return (*AccountIncarnation)(r).GetVolumeCount()
 }
 
 func (r *accountIncarnationReadonly) Mutate() *AccountIncarnation {

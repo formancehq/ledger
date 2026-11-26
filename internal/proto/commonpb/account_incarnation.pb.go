@@ -21,14 +21,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Current lifetime of a normal account address. It opens on the first
-// account-state write and records the latest accepted account-state write.
-// Closure is left to a later change.
+// Current lifetime of an account address. Ephemeral lifetimes close when their
+// last persisted volume is purged; metadata survives closure.
 type AccountIncarnation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Persistence   AccountTypePersistence `protobuf:"varint,1,opt,name=persistence,proto3,enum=common.AccountTypePersistence" json:"persistence,omitempty"`
 	InsertedAt    *Timestamp             `protobuf:"bytes,2,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
 	UpdatedAt     *Timestamp             `protobuf:"bytes,3,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	VolumeCount   uint64                 `protobuf:"varint,4,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -84,17 +84,25 @@ func (x *AccountIncarnation) GetUpdatedAt() *Timestamp {
 	return nil
 }
 
+func (x *AccountIncarnation) GetVolumeCount() uint64 {
+	if x != nil {
+		return x.VolumeCount
+	}
+	return 0
+}
+
 var File_account_incarnation_proto protoreflect.FileDescriptor
 
 const file_account_incarnation_proto_rawDesc = "" +
 	"\n" +
-	"\x19account_incarnation.proto\x12\x06common\x1a\fcommon.proto\"\xbc\x01\n" +
+	"\x19account_incarnation.proto\x12\x06common\x1a\fcommon.proto\"\xdf\x01\n" +
 	"\x12AccountIncarnation\x12@\n" +
 	"\vpersistence\x18\x01 \x01(\x0e2\x1e.common.AccountTypePersistenceR\vpersistence\x122\n" +
 	"\vinserted_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
 	"insertedAt\x120\n" +
 	"\n" +
-	"updated_at\x18\x03 \x01(\v2\x11.common.TimestampR\tupdatedAtB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"updated_at\x18\x03 \x01(\v2\x11.common.TimestampR\tupdatedAt\x12!\n" +
+	"\fvolume_count\x18\x04 \x01(\x04R\vvolumeCountB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_account_incarnation_proto_rawDescOnce sync.Once

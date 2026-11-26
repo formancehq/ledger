@@ -226,6 +226,21 @@ func run(ctx context.Context, store *dal.Store, pause time.Duration, allowDorman
 	if marker.Complete {
 		return nil
 	}
+	// A stopped migration can replay the complete audit into an empty
+	// projection. In particular, incarnations written after the writes
+	// capability activated must not contribute their volume counts twice.
+	// The range tombstone is safe to repeat while the cursor remains zero.
+	if marker.Cursor == 0 {
+		batch := store.OpenWriteSession()
+		defer func() { _ = batch.Cancel() }()
+		prefix := []byte{dal.ZoneAttributes, dal.SubAttrAccountIncarnation}
+		if err := batch.DeleteRange(prefix, dal.PrefixUpperBound(prefix), nil); err != nil {
+			return err
+		}
+		if err := batch.Commit(); err != nil {
+			return err
+		}
+	}
 
 	// This store is exclusively owned by the offline migrator. Audit and log
 	// history remain immutable while the new incarnation projection is written.
@@ -472,6 +487,7 @@ type folder struct {
 	types    map[string]map[string]*commonpb.AccountType
 	compiled map[string][]accounttype.CompiledType
 	rows     map[domain.AccountKey]*commonpb.AccountIncarnation
+	closed   map[domain.AccountKey]struct{}
 	deletes  map[string]struct{}
 	seen     *accountSeen
 	newKeys  [][]byte
@@ -512,6 +528,10 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 		return errors.New("audit item count mismatch")
 	}
 	touched := make(map[domain.AccountKey]struct{})
+	volumeDeltas := make(map[domain.AccountKey]int64)
+	volumeTouched := make(map[domain.AccountKey]struct{})
+	seenNew := make(map[domain.VolumeKey]struct{})
+	seenPurged := make(map[domain.VolumeKey]struct{})
 	deletedHere := make(map[string]struct{})
 	for _, item := range items {
 		sequence := item.GetLogSequence()
@@ -525,6 +545,32 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 		if err := f.processLog(log, touched, deletedHere, write); err != nil {
 			return err
 		}
+		if apply := log.GetPayload().GetApply(); apply != nil {
+			ledger := apply.GetLedgerName()
+			for _, volume := range apply.GetLog().GetNewKeptVolumes() {
+				key := domain.NewVolumeKey(ledger, volume.GetAccount(), volume.GetAsset(), volume.GetColor())
+				touched[key.AccountKey] = struct{}{}
+				volumeTouched[key.AccountKey] = struct{}{}
+				if _, ok := seenNew[key]; !ok {
+					seenNew[key] = struct{}{}
+					volumeDeltas[key.AccountKey]++
+				}
+			}
+			for _, volume := range apply.GetLog().GetPurgedVolumes() {
+				key := domain.NewVolumeKey(ledger, volume.GetAccount(), volume.GetAsset(), volume.GetColor())
+				touched[key.AccountKey] = struct{}{}
+				volumeTouched[key.AccountKey] = struct{}{}
+				if _, ok := seenPurged[key]; !ok {
+					seenPurged[key] = struct{}{}
+					volumeDeltas[key.AccountKey]--
+				}
+			}
+			for _, volume := range apply.GetLog().GetEphemeralVolumes() {
+				key := domain.AccountKey{LedgerName: ledger, Account: volume.GetAccount()}
+				touched[key] = struct{}{}
+				volumeTouched[key] = struct{}{}
+			}
+		}
 	}
 	if !write {
 		return nil
@@ -537,10 +583,21 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 		if !exists {
 			return fmt.Errorf("account write without live ledger %q", key.LedgerName)
 		}
-		if matched := accounttype.FindMatchingType(key.Account, f.compiled[key.LedgerName]); matched != nil && matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
+		persistence := commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
+		if matched := accounttype.FindMatchingType(key.Account, f.compiled[key.LedgerName]); matched != nil {
+			persistence = matched.GetPersistence()
+		}
+		if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+			if delta := volumeDeltas[key]; delta != 0 {
+				if err := f.adjustExistingVolumeCount(key, delta); err != nil {
+					return err
+				}
+			}
+
 			continue
 		}
-		if err := f.touch(key, entry.GetTimestamp()); err != nil {
+		_, volumeWrite := volumeTouched[key]
+		if err := f.touchWithVolumeDelta(key, entry.GetTimestamp(), persistence, volumeDeltas[key], volumeWrite); err != nil {
 			return err
 		}
 	}
@@ -627,6 +684,40 @@ func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]str
 }
 
 func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
+	return f.touchWithVolumeDelta(key, date, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, 0, false)
+}
+
+// A normal account may become transient while it still owns persisted cells.
+// The FSM continues to count those cells, but transient writes do not touch
+// account timestamps or create an incarnation of their own.
+func (f *folder) adjustExistingVolumeCount(key domain.AccountKey, delta int64) error {
+	row := f.rows[key]
+	if row == nil {
+		canonicalKey := key.Bytes()
+		_, closed := f.closed[key]
+		if closed || !f.seen.mayContain(canonicalKey) {
+			return nil
+		}
+		var err error
+		row, err = f.attrs.AccountIncarnation.Get(f.current, canonicalKey)
+		if err != nil || row == nil {
+			return err
+		}
+		f.rows[key] = row
+	}
+	if delta < 0 && uint64(-delta) > row.GetVolumeCount() {
+		return errors.New("historical account incarnation volume count underflow")
+	}
+	if delta < 0 {
+		row.VolumeCount -= uint64(-delta)
+	} else {
+		row.VolumeCount += uint64(delta)
+	}
+
+	return nil
+}
+
+func (f *folder) touchWithVolumeDelta(key domain.AccountKey, date *commonpb.Timestamp, persistence commonpb.AccountTypePersistence, delta int64, volumeWrite bool) error {
 	if date == nil {
 		return errors.New("accepted audit entry has no timestamp")
 	}
@@ -636,7 +727,8 @@ func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
 		// The migration's own rows soon occupy large SSTs. Probing every
 		// never-before-seen account would repeatedly read their filter blocks;
 		// the migration-local filter avoids those guaranteed misses.
-		if _, deleted := f.deletes[key.LedgerName]; !deleted && f.seen.mayContain(canonicalKey) {
+		_, closed := f.closed[key]
+		if _, deleted := f.deletes[key.LedgerName]; !deleted && !closed && f.seen.mayContain(canonicalKey) {
 			var err error
 			row, err = f.attrs.AccountIncarnation.Get(f.current, canonicalKey)
 			if err != nil {
@@ -644,10 +736,28 @@ func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
 			}
 		}
 		if row == nil {
-			row = &commonpb.AccountIncarnation{Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL}
+			row = &commonpb.AccountIncarnation{Persistence: persistence}
 			f.newKeys = append(f.newKeys, canonicalKey)
 		}
 		f.rows[key] = row
+	}
+	row.Persistence = persistence
+	if delta < 0 && uint64(-delta) > row.GetVolumeCount() {
+		return errors.New("historical account incarnation volume count underflow")
+	}
+	if delta < 0 {
+		row.VolumeCount -= uint64(-delta)
+	} else {
+		row.VolumeCount += uint64(delta)
+	}
+	if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL && row.GetVolumeCount() == 0 && volumeWrite {
+		delete(f.rows, key)
+		if f.closed == nil {
+			f.closed = make(map[domain.AccountKey]struct{})
+		}
+		f.closed[key] = struct{}{}
+
+		return nil
 	}
 	if row.GetInsertedAt() == nil || date.GetData() < row.GetInsertedAt().GetData() {
 		row.InsertedAt = date.CloneVT()
@@ -670,6 +780,11 @@ func (f *folder) commit(store *dal.Store, marker Marker) error {
 			return err
 		}
 	}
+	for key := range f.closed {
+		if err := f.attrs.AccountIncarnation.Delete(batch, key.Bytes()); err != nil {
+			return err
+		}
+	}
 	for key, row := range f.rows {
 		if _, err := f.attrs.AccountIncarnation.Set(batch, key.Bytes(), row); err != nil {
 			return err
@@ -685,6 +800,7 @@ func (f *folder) commit(store *dal.Store, marker Marker) error {
 		f.seen.add(key)
 	}
 	clear(f.rows)
+	clear(f.closed)
 	clear(f.deletes)
 	f.newKeys = f.newKeys[:0]
 

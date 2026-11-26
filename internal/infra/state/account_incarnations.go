@@ -13,10 +13,10 @@ import (
 )
 
 // ensureAccountIncarnations observes the final account write set for this
-// proposal. It opens or updates one incarnation per touched normal account,
-// regardless of the number of assets or metadata keys. Ephemeral and
-// transient lifecycles are deliberately unchanged in this experiment.
+// proposal. It opens or updates one incarnation per touched normal or ephemeral
+// account, regardless of the number of assets or metadata keys.
 func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.SerializableError {
+	b.incarnationsEnabled = true
 	seen := make(map[domain.AccountKey]struct{})
 	for volume := range b.Derived.Volumes.DirtyValues() {
 		seen[volume.AccountKey] = struct{}{}
@@ -63,17 +63,21 @@ func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Seri
 		if !ledgerType.found {
 			continue
 		}
-		if matched := accounttype.FindMatchingType(key.Account, ledgerType.compiled); matched != nil &&
-			matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
+		persistence := commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
+		if matched := accounttype.FindMatchingType(key.Account, ledgerType.compiled); matched != nil {
+			persistence = matched.GetPersistence()
+		}
+		if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			continue
 		}
 		if err := scope.CheckCoverage(dal.SubAttrAccountIncarnation, key); err != nil {
 			return domain.StoreFailure("checking account incarnation coverage", err)
 		}
 		if incarnation, err := b.Derived.AccountIncarnations.Get(key); err == nil {
-			if incarnation.GetUpdatedAt().GetData() != date.GetData() {
+			if incarnation.GetUpdatedAt().GetData() != date.GetData() || incarnation.GetPersistence() != persistence {
 				updated := incarnation.CloneVT()
 				updated.UpdatedAt = date.CloneVT()
+				updated.Persistence = persistence
 				b.Derived.AccountIncarnations.Put(key, updated)
 			}
 
@@ -82,10 +86,60 @@ func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Seri
 			return domain.StoreFailure("reading account incarnation", err)
 		}
 		b.Derived.AccountIncarnations.Put(key, &commonpb.AccountIncarnation{
-			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			Persistence: persistence,
 			InsertedAt:  date.CloneVT(),
 			UpdatedAt:   date.CloneVT(),
 		})
+	}
+
+	return nil
+}
+
+// adjustIncarnationVolumeCounts applies the final persisted-volume partition.
+// The count tracks all (asset, color) cells, so closing one asset cannot close
+// an ephemeral account that still owns another.
+func (b *WriteSet) adjustIncarnationVolumeCounts(part volumePartitionResult) error {
+	deltas := make(map[domain.AccountKey]int64)
+	for _, update := range part.kept {
+		if !update.Old.IsDefined() {
+			deltas[update.Key.AccountKey]++
+		}
+	}
+	for _, update := range part.purged {
+		if update.Old.IsDefined() {
+			deltas[update.Key.AccountKey]--
+		} else {
+			// A newly created and purged cell still closes an empty incarnation.
+			deltas[update.Key.AccountKey] += 0
+		}
+	}
+	for key, delta := range deltas {
+		row, err := b.Derived.AccountIncarnations.Get(key)
+		if errors.Is(err, domain.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if delta < 0 && uint64(-delta) > row.GetVolumeCount() {
+			return errors.New("account incarnation volume count underflow")
+		}
+		count := row.GetVolumeCount()
+		if delta < 0 {
+			count -= uint64(-delta)
+		} else {
+			count += uint64(delta)
+		}
+		if row.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL && count == 0 {
+			b.Derived.AccountIncarnations.Delete(key)
+
+			continue
+		}
+		if count != row.GetVolumeCount() {
+			updated := row.CloneVT()
+			updated.VolumeCount = count
+			b.Derived.AccountIncarnations.Put(key, updated)
+		}
 	}
 
 	return nil
