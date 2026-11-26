@@ -121,9 +121,6 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 
 	for _, order := range proposals.BatchOrders(proposal) {
 		ledgerScoped := order.GetLedgerScoped()
-		if ledgerScoped.GetCreateLedger() != nil {
-			return []CapabilityID{StrictAccountTypes}, nil
-		}
 		apply := ledgerScoped.GetApply()
 		if apply.GetCreateTransaction() != nil || apply.GetExecuteNumscript() != nil {
 			return []CapabilityID{StrictAccountTypes}, nil

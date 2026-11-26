@@ -134,7 +134,7 @@ func TestProcessCreateLedger_UnmarkedHistoricalOrdersKeepLegacySemantics(t *test
 
 			log, err := processCreateLedger("l", &raftcmdpb.CreateLedgerOrder{
 				AccountTypes: tc.types, DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
-			}, &Context{Scope: mockStore})
+			}, &Context{Scope: mockStore, auditReplay: true})
 			require.NoError(t, err)
 			require.Len(t, log.GetCreateLedger().GetAccountTypes(), len(tc.types))
 		})

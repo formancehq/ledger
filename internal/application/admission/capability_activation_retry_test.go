@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -47,13 +48,19 @@ func TestCapabilityActivationRetryRepreparesBeforeSubmission(t *testing.T) {
 			return future, nil
 		}).Times(2)
 		admission, reader := createTestAdmissionWithReader(t, store, proposer)
-		request := businessWrite("activation-retry")
+		request := servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{Ledger: testLedgerName, Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+					Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+				}},
+			}},
+		}})
 		original := request.CloneVT()
 		_, err := admission.Admit(attributedTestContext(t.Context()), request)
 		require.NoError(t, err)
 		require.Equal(t, 2, attempts)
 		require.True(t, original.EqualVT(request))
-		require.Equal(t, int64(1), recordedActionCounts(t, reader)[mActionTotal]["create_ledger"])
+		require.Equal(t, int64(1), recordedActionCounts(t, reader)[mActionTotal]["create_transaction"])
 	})
 }
 

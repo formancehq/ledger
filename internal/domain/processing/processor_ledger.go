@@ -46,11 +46,14 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	// frozen outcome hash disagree with the checker's hash re-derived from
 	// the audited order (EN-1533). Nil map values are rejected by the pattern
 	// parser before cloning, so every entry cloned below is guaranteed non-nil.
+	// RC.5 already validates every live creation, including unmarked proposals
+	// from an old leader. Only pre-RC.5 audit replay keeps the legacy rule.
+	validateInitialTypes := !ctx.auditReplay || ctx.hasCapability(capabilities.StrictAccountTypes)
 	var canonicalAccountTypes map[string]*commonpb.AccountType
 	var parsedAccountTypes map[string][]accounttype.PatternSegment
 	if src := order.GetAccountTypes(); len(src) > 0 {
 		canonicalAccountTypes = make(map[string]*commonpb.AccountType, len(src))
-		if ctx.hasCapability(capabilities.StrictAccountTypes) {
+		if validateInitialTypes {
 			parsedAccountTypes = make(map[string][]accounttype.PatternSegment, len(src))
 		}
 	}
@@ -70,7 +73,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		if err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
-		if ctx.hasCapability(capabilities.StrictAccountTypes) {
+		if validateInitialTypes {
 			if err := accounttype.ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
 				return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 			}
@@ -91,7 +94,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		clone := at.CloneVT()
 		clone.Name = name
 		canonicalAccountTypes[name] = clone
-		if ctx.hasCapability(capabilities.StrictAccountTypes) {
+		if validateInitialTypes {
 			parsedAccountTypes[name] = segments
 		}
 	}

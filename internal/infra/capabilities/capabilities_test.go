@@ -129,7 +129,7 @@ func TestPrepareProposalMarksTransactionSemantics(t *testing.T) {
 	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
 }
 
-func TestPrepareProposalMarksCreateLedgerAndMixedBatch(t *testing.T) {
+func TestPrepareProposalMarksOnlyTransactionInMixedBatch(t *testing.T) {
 	t.Parallel()
 	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
@@ -147,7 +147,8 @@ func TestPrepareProposalMarksCreateLedgerAndMixedBatch(t *testing.T) {
 	proposal.GetBatch().Orders = []*raftcmdpb.Order{create}
 	prepared, err = PrepareProposal(proposal)
 	require.NoError(t, err)
-	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
+	require.Empty(t, prepared.RequiredCapabilities())
+	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
 func TestStrictAccountTypesActivation(t *testing.T) {

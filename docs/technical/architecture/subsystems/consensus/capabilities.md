@@ -81,19 +81,19 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-Capability ID 1 (`StrictAccountTypes`) marks every new CreateLedger,
-CreateTransaction, and ExecuteNumscript proposal. For marked transactions and
-Numscript executions, the FSM checks the account type of every merged
+Capability ID 1 (`StrictAccountTypes`) marks every new CreateTransaction and
+ExecuteNumscript proposal. For marked transactions and Numscript executions,
+the FSM checks the account type of every merged
 account-metadata address after syntax and metadata-budget validation and before
 metadata writes. Addresses are checked in lexical order so replicas select the
-same failure. STRICT rejects
-unmatched addresses; AUDIT and matching addresses keep their existing behavior.
-Proposals without ID 1 retain the historical behavior. The audit
+same failure. STRICT rejects unmatched addresses; AUDIT and matching addresses
+keep their existing behavior. Unmarked transaction and Numscript proposals
+retain the historical behavior. The audit
 entry stores the declaration, and checker replay passes it to the processor;
 changing the currently active policy never changes replay of an old proposal.
-The marker is proposal-wide: each marked order uses its own account-type
-validation rule. A batch with any of these orders declares ID 1 once. New
-transaction and Numscript executions require activation even without account
+The marker is proposal-wide: each marked transaction or Numscript order uses
+the account-metadata validation rule. A batch with either order declares ID 1
+once. New transaction and Numscript executions require activation even without account
 metadata, because Numscript can produce metadata during apply.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
@@ -150,16 +150,14 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
-For a marked `CreateLedger`, the processor validates segment constraints and
-conflicting initial patterns. Earlier successful creations without the marker
-retain their historical validation during Raft recovery and audit replay.
-Admission waits for ID 1 to activate and every member to advertise it before
-accepting a marked batch. This changes no existing protobuf field or service
-revision. RC.4
-accepted invalid constraints and conflicting patterns; the RC.4-to-RC.5
-stopped upgrade still drains every RC.4 entry before RC.5 starts. The ID 1
-marker makes the apply rule explicit for future replay and
-mixed-version admission.
+Live `CreateLedger` apply validates segment constraints and conflicting initial
+patterns for both marked and unmarked proposals, matching the rule shipped in
+RC.5. An RC.5 leader can still commit an unmarked proposal during a rolling
+upgrade, so a new voter must apply that proposal identically. Historical audit
+replay retains the earlier creation rule for unmarked entries. RC.4 accepted
+invalid constraints and conflicting patterns; the RC.4-to-RC.5 stopped upgrade
+drained every RC.4 entry before RC.5 started. ID 1 is required for the new
+transaction and Numscript metadata rule, not for CreateLedger.
 
 Forwarded preload gaps also change apply at the same boundary without a
 capability. RC.4 rejects a keyed batch carrying an order marked
