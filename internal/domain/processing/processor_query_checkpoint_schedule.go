@@ -1,6 +1,9 @@
 package processing
 
 import (
+	"strings"
+	"time"
+
 	"github.com/robfig/cron/v3"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -12,6 +15,19 @@ import (
 // extended 6-field format with an optional leading seconds field.
 // It is exported so the QueryCheckpointScheduler can reuse the same parser.
 var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+
+// NonPositiveCronInterval reports @every durations that cron accepts but
+// silently rounds up to one second. Keep this runtime/admission check out of
+// Raft apply so already committed schedules retain their apply semantics.
+func NonPositiveCronInterval(expression string) bool {
+	durationText, ok := strings.CutPrefix(strings.TrimSpace(expression), "@every ")
+	if !ok {
+		return false
+	}
+	duration, err := time.ParseDuration(durationText)
+
+	return err == nil && duration <= 0
+}
 
 // processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
 // It validates the cron expression; the schedule-set signal is derived

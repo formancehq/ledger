@@ -17,16 +17,19 @@ func TestAdmitQueryCheckpointSchedule(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
-		cron       string
-		neverFires bool
+		cron           string
+		invalidDetails string
 	}{
-		{cron: "0 0 31 2 *", neverFires: true},
-		{cron: "0 0 0 31 2 *", neverFires: true},
+		{cron: "0 0 31 2 *", invalidDetails: "schedule never fires"},
+		{cron: "0 0 0 31 2 *", invalidDetails: "schedule never fires"},
+		{cron: "@every 0s", invalidDetails: "schedule interval must be positive"},
+		{cron: "@every -1h", invalidDetails: "schedule interval must be positive"},
 		{cron: "0 0 * * *"},
 		{cron: "0 0 29 2 *"},
 		{cron: "0 0 31 2 MON"},
 		{cron: "* * * * * *"},
 		{cron: "@every 1h"},
+		{cron: "@every 500ms"},
 		{cron: "not-a-cron"},
 		{cron: ""},
 	} {
@@ -35,7 +38,7 @@ func TestAdmitQueryCheckpointSchedule(t *testing.T) {
 			store := createTestStore(t)
 			proposer := NewMockProposer(gomock.NewController(t))
 			proposed := errors.New("proposal reached")
-			if !test.neverFires {
+			if test.invalidDetails == "" {
 				proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil, proposed)
 			}
 			admission, _ := createTestAdmissionWithReader(t, store, proposer)
@@ -44,11 +47,11 @@ func TestAdmitQueryCheckpointSchedule(t *testing.T) {
 			_, err := admission.Admit(attributedTestContext(ctx), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: test.cron}},
 			}))
-			if test.neverFires {
+			if test.invalidDetails != "" {
 				var invalid *domain.ErrInvalidCronExpression
 				require.ErrorAs(t, err, &invalid)
 				require.Equal(t, test.cron, invalid.Expression)
-				require.Equal(t, "schedule never fires", invalid.Details)
+				require.Equal(t, test.invalidDetails, invalid.Details)
 				var business *domain.BusinessError
 				require.ErrorAs(t, err, &business)
 			} else {

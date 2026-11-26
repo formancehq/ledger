@@ -213,6 +213,13 @@ occurrence is evaluated against the admission node's current clock. Malformed
 expressions still reach the FSM's existing syntax validation and audited failure
 path. Raft apply never consults the clock for schedule validation.
 
+Admission also rejects `@every` intervals of zero or less, such as `@every 0s`
+and `@every -1h`, with `INVALID_CRON_EXPRESSION` (`schedule interval must be
+positive`). The cron library otherwise rounds these intervals up to one second.
+Positive subsecond intervals are still rounded up to one second, and a valid
+one-second schedule can consume all ten live checkpoint slots in about ten
+seconds if checkpoints are not deleted.
+
 ### How It Works
 
 The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint creation on the **Raft leader**. When the cron fires, the leader proposes a `CreateQueryCheckpoint` order through the admission layer directly, as a leader-internal system actor. That is not a gRPC handler, so it is outside the Apply-only rule; `ledgerctl query-checkpoint create` reaches the same order through `Apply`.
@@ -221,8 +228,9 @@ The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint c
 2. When the schedule changes, a notification signal wakes the scheduler goroutine to recompute the next fire time.
 3. On leader change, the new leader's scheduler is already running and will fire at the next scheduled time.
 
-If the next occurrence is zero, the scheduler logs an error and leaves its timer
-disarmed until a schedule-change notification. This applies both at startup with
+If the next occurrence is zero or a stored `@every` interval is nonpositive,
+the scheduler logs an error and leaves its timer disarmed until a schedule-change
+notification. This applies both at startup with
 a previously stored schedule and when replacing an armed schedule. No proposal
 or persisted rewrite occurs on this path: the stored schedule and existing
 checkpoints remain intact. Replacing the schedule re-arms the same worker;
@@ -230,7 +238,8 @@ deleting it keeps automatic creation disabled. The scheduler never interprets
 the zero time as an immediate deadline.
 
 During an RC rolling upgrade, an old leader can still accept an impossible
-schedule or run the old creation loop. Delete that schedule before upgrading,
+schedule or a nonpositive `@every` interval and run the old creation loop. Delete
+that schedule before upgrading,
 or finish upgrading all potential leaders before relying on the new guard.
 No storage migration or checkpoint reconstruction is needed. If the old loop
 already filled the live-checkpoint limit, delete unneeded checkpoints explicitly;

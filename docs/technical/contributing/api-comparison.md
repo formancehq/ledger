@@ -244,7 +244,8 @@ Service protocol revision remains 40 under the RC wire freeze. See
 ### Query-checkpoint schedule admission
 
 `Apply(set_query_checkpoint_schedule)` rejects a parsed cron with no next
-occurrence with `INVALID_CRON_EXPRESSION` before proposal. Malformed syntax
+occurrence or a nonpositive `@every` interval with `INVALID_CRON_EXPRESSION`
+before proposal. Malformed syntax
 still produces its existing audited FSM failure. Revision stays 40; no wire
 or HTTP route changes. Already stored impossible schedules remain readable but
 upgraded schedulers leave them disarmed. Old leaders remain affected until

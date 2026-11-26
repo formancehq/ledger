@@ -818,6 +818,9 @@ HTTP responses keep their JSON shape and no longer fail with
 Revision remains 40. `Apply(SetQueryCheckpointSchedule)` now rejects a parsed
 cron with no next occurrence as `InvalidArgument` / `INVALID_CRON_EXPRESSION`
 before Raft, instead of accepting it and immediately exhausting checkpoint slots.
+The same admission error now applies to `@every` intervals of zero or less;
+upgraded schedulers disarm such previously stored intervals without rewriting
+them. Positive one-second schedules remain valid and can still fill the limit.
 Clients must replace such expressions; no wire or client rebuild is required.
 Malformed syntax retains its existing audited failure path. Stored schedules,
 audit entries, Raft commands, snapshots and backups keep their existing format

@@ -72,6 +72,14 @@ func (s *QueryCheckpointScheduler) loop(stop <-chan struct{}) {
 
 			return nil
 		}
+		if processing.NonPositiveCronInterval(cronExpr) {
+			s.logger.WithFields(map[string]any{
+				"cron": cronExpr,
+			}).Errorf("Query checkpoint schedule interval is nonpositive, disabling scheduler")
+			timer = nil
+
+			return nil
+		}
 
 		schedule, err := processing.CronParser.Parse(cronExpr)
 		if err != nil {
