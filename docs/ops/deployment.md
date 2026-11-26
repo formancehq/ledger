@@ -1192,6 +1192,8 @@ spec:
 > **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a Pebble checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
 >
 > **Tuning compaction margin**: The `compactionMargin` controls how many WAL entries are retained after compaction, allowing followers that are slightly behind to catch up without needing a full snapshot transfer. Increase this value if followers frequently fall behind.
+>
+> **Follower log retention**: The leader also keeps the log a follower still needs while that follower is replicating, for example while it downloads a checkpoint after a snapshot. The extra log is capped by `--raft-follower-retention-max-bytes` (default `1Gi`, held in leader memory and on the WAL volume), and a follower whose replication stalls for `--raft-follower-retention-idle-timeout` (default `5m`) stops holding it. A follower that still loops on checkpoint sync under heavy writes needs a cap that covers one checkpoint download at peak write rate. These settings are server flags; the operator `Cluster` resource does not expose them yet.
 
 ### Configuration Safety Checks at Startup
 

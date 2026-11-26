@@ -4352,6 +4352,8 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
+| `--raft-follower-retention-max-bytes` | ByteSize | `1Gi` | Maximum Raft log the leader keeps beyond the compaction margin for followers still catching up, so a follower downloading a checkpoint is not sent a new snapshot. Held in leader memory and on the WAL volume (0 = disable) |
+| `--raft-follower-retention-idle-timeout` | duration | `5m` | How long a follower's replication progress may stall before it stops holding back leader compaction (0 = use default 5m) |
 | `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
 | `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
 | `--raft-tick-interval` | duration | `100ms` | Interval between Raft ticks (0 = 100ms); must be at least 10ns when processing uses its default |

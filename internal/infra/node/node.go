@@ -369,7 +369,14 @@ type Node struct {
 	// MsgStorageApplyResp into RawNode. Maintenance must not compact entries
 	// that RawNode can still scan while this cursor lags the FSM.
 	lastRaftApplied atomic.Uint64
-	observer        *Observer
+	// followerRetention holds back leader compaction for followers still
+	// catching up (EN-3429). nil disables the hold. The orchestrate goroutine
+	// observes progress into it; maintenance reads its floor.
+	followerRetention *followerRetention
+	// retentionProgress is the orchestrate goroutine's reusable buffer for
+	// followerRetention.observe.
+	retentionProgress []followerProgress
+	observer          *Observer
 	applier         *Applier
 
 	readies         chan raft.Ready
@@ -736,6 +743,10 @@ func NewNode(
 		lastAutoPromote:  make(map[uint64]time.Time),
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
 		observer:         NewNoOpObserver(),
+		followerRetention: newFollowerRetention(
+			cfg.FollowerRetentionMaxBytes,
+			cfg.FollowerRetentionIdleTimeout,
+		),
 	}
 	for _, opt := range opts {
 		opt(node)
@@ -1054,7 +1065,7 @@ func (node *Node) doMaintenance() error {
 	// unapplied configuration changes during an election.
 	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
 	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
-		compactIdx := acknowledgedApplied - node.applier.CompactionMargin()
+		compactIdx := node.retainForFollowers(acknowledgedApplied - node.applier.CompactionMargin())
 		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
 		}
@@ -1076,6 +1087,70 @@ func (node *Node) doMaintenance() error {
 	node.lastCheckpointPersistedIndex = capturedIndex
 
 	return nil
+}
+
+// retainForFollowers lowers a compaction target to keep the entries that
+// followers still catching up need (EN-3429). A failure to size the hold
+// keeps the requested target: the margin still applies, and a follower that
+// falls behind it receives a snapshot as before.
+func (node *Node) retainForFollowers(target uint64) uint64 {
+	if node.followerRetention == nil {
+		return target
+	}
+
+	held, decision, err := node.followerRetention.compactionTarget(target, node.wal)
+	if err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to size follower log retention")
+
+		return target
+	}
+
+	if !decision.held && !decision.capped {
+		return target
+	}
+
+	fields := map[string]any{
+		"marginTarget":  target,
+		"compactIndex":  held,
+		"followerMatch": decision.floor,
+		"retainedBytes": decision.retainedBytes,
+		"maxBytes":      node.followerRetention.maxBytes,
+	}
+	if decision.capped {
+		node.logger.WithFields(fields).Errorf("Background maintenance: follower log retention reached its byte cap, the lagging follower will need a snapshot")
+	} else {
+		node.logger.WithFields(fields).Infof("Background maintenance: retaining Raft log for a follower that is catching up")
+	}
+
+	return held
+}
+
+// observeFollowerRetention feeds the followers' Raft progress to the
+// compaction hold. It runs on the orchestrate goroutine, which owns rawNode.
+func (node *Node) observeFollowerRetention(now time.Time) {
+	if node.followerRetention == nil {
+		return
+	}
+
+	status := node.rawNode.BasicStatus()
+	isLeader := status.RaftState == raft.StateLeader
+	progress := node.retentionProgress[:0]
+	if isLeader {
+		node.rawNode.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
+			if id == status.ID {
+				return
+			}
+
+			progress = append(progress, followerProgress{
+				id:           id,
+				match:        pr.Match,
+				snapshotting: pr.State == tracker.StateSnapshot,
+			})
+		})
+	}
+	node.retentionProgress = progress
+
+	node.followerRetention.observe(now, isLeader, progress)
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
@@ -2137,6 +2212,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			if shouldTickRaft(status) {
 				node.rawNode.Tick()
 			}
+
+			node.observeFollowerRetention(time.Now())
 
 			// Learner promotion proposes a ConfChange; keep it strictly to
 			// the normal path so we don't try to drive cluster topology

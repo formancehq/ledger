@@ -428,6 +428,8 @@ type NodeConfig struct {
     TickInterval         time.Duration // Interval between ticks
     MaintenanceInterval  time.Duration // Periodic maintenance interval for snapshots, compaction, and checkpoints (default: 30s)
     CompactionMargin     uint64        // Minimum WAL entries retained after compaction for follower catch-up (default: 1000)
+    FollowerRetentionMaxBytes    uint64        // Extra log the leader keeps for catching-up followers (CLI default: 1GiB, 0 = disabled)
+    FollowerRetentionIdleTimeout time.Duration // Match stall after which a follower stops holding compaction (default: 5m)
     ProposeQueueCapacity int           // Capacity of the propose queue
 }
 ```
@@ -744,6 +746,42 @@ purpose of `CompactionMargin` and prevents routine maintenance from forcing a
 full business-log synchronization for a follower that is only a few entries
 behind (EN-1925). On restart, the latest durable snapshot becomes the new
 compacted boundary; the previous process's catch-up margin is not reconstructed.
+
+#### Follower log retention (EN-3429)
+
+`MsgSnap` carries no data: the follower downloads a full Pebble checkpoint out
+of band and then replays the log after the checkpoint index. While it
+downloads, which can take tens of minutes, it keeps appending the leader's
+entries. `CompactionMargin` counts entries, not time, so under sustained writes
+the leader could compact past the follower's `Match` before the download ends.
+The follower then received a new `MsgSnap`, which threw away the download or
+the checkpoint it had just restored, and the cycle could repeat indefinitely.
+
+The leader therefore holds back its compaction target for followers that are
+still replicating:
+
+1. On every Raft tick, the orchestrate goroutine reads each follower's
+   `Progress` from `RawNode` and publishes a floor: the lowest `Match` among
+   followers whose `Match` advanced within
+   `--raft-follower-retention-idle-timeout`. A follower in `StateSnapshot`
+   never counts, because its `Match` is older than the leader's log. A node
+   that is not the leader publishes no floor and forgets the history.
+2. Maintenance computes the usual target,
+   `min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`, and lowers
+   it to the floor when the floor is below it.
+3. The entries kept beyond the usual target never exceed
+   `--raft-follower-retention-max-bytes`. When the cap is reached, the leader
+   keeps the newest entries that fit and logs an error: the follower below
+   them will receive a snapshot. The WAL keeps retained entries in memory, so
+   this cap bounds leader memory as well as the WAL volume.
+4. A floor already below the WAL's first index, or a failure to read the
+   retained entries, leaves the usual target unchanged.
+
+The hold is node-local policy on the leader. It changes only how much log the
+leader keeps, never how an entry applies, and it persists nothing. A new
+leader starts with no history and builds its floor from its own `Progress`; it
+may already have compacted past a follower that the previous leader was
+holding for.
 
 #### Snapshot Transfer (MsgSnap)
 

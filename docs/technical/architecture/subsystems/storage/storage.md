@@ -507,8 +507,11 @@ The WAL is compacted after snapshots to prevent unbounded growth:
    `C = min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`.
    The FSM can publish a durable batch before the orchestrator steps its
    `MsgStorageApplyResp`; the Raft cursor is therefore the safety frontier for
-   compaction. A target older than the current retained-log boundary is a
-   no-op; compaction never moves the boundary backwards.
+   compaction. On the leader, a follower still replicating behind that target
+   can lower it to the follower's `Match`, within a byte cap (see
+   [follower log retention](../consensus/raft-consensus.md#follower-log-retention-en-3429)).
+   A target older than the current retained-log boundary is a no-op;
+   compaction never moves the boundary backwards.
 2. When the boundary advances to `C`, entry `C` is retained as a dummy matching
    point: `Term(C)` remains available, `FirstIndex()` becomes `C + 1`, and
    entries `[C + 1, N]` remain available through `Entries`. A follower whose

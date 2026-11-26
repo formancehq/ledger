@@ -41,6 +41,14 @@ type NodeConfig struct {
 	MaxInflightMsgs      int           // Maximum number of in-flight messages (default: 256)
 	TickInterval         time.Duration // Raft tick interval (0 = 100ms); must be >= 10ns when processing uses its default
 	CompactionMargin     uint64        // Compaction margin in number of logs
+	// FollowerRetentionMaxBytes caps the Raft entries the leader keeps beyond
+	// CompactionMargin for followers still catching up (EN-3429). The WAL
+	// holds retained entries in memory, so this bounds memory and disk. 0
+	// disables the hold.
+	FollowerRetentionMaxBytes uint64
+	// FollowerRetentionIdleTimeout is how long a follower's Match may stay
+	// unchanged before it stops holding back compaction (default: 5m).
+	FollowerRetentionIdleTimeout time.Duration
 	ProposeQueueCapacity int           // Capacity of the propose queue (default: 100)
 	AdvertiseAddr        string
 	BindAddr             string
@@ -112,6 +120,10 @@ func (cfg *NodeConfig) Validate() error {
 		}
 	}
 
+	if cfg.FollowerRetentionIdleTimeout < 0 {
+		return fmt.Errorf("--raft-follower-retention-idle-timeout must be ≥ 0 (got %s)", cfg.FollowerRetentionIdleTimeout)
+	}
+
 	if cfg.MaintenanceInterval < 0 {
 		return fmt.Errorf("--maintenance-interval must be ≥ 0 (got %s)", cfg.MaintenanceInterval)
 	}
@@ -156,6 +168,10 @@ func (cfg *NodeConfig) SetDefaults() {
 
 	if cfg.MaintenanceInterval == 0 {
 		cfg.MaintenanceInterval = 30 * time.Second
+	}
+
+	if cfg.FollowerRetentionIdleTimeout == 0 {
+		cfg.FollowerRetentionIdleTimeout = 5 * time.Minute
 	}
 
 	if cfg.RotationThreshold == 0 {
