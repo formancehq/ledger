@@ -70,6 +70,16 @@ func TestSuspensionMembershipRequiresTheOriginalVoters(t *testing.T) {
 
 func TestSuspensionCycleRetainsIdentityVolumesAndMembership(t *testing.T) {
 	t.Parallel()
+	runSuspensionCycle(t, false)
+}
+
+func TestSuspensionEarlyResumeAfterQuiescing(t *testing.T) {
+	t.Parallel()
+	runSuspensionCycle(t, true)
+}
+
+func runSuspensionCycle(t *testing.T, earlyResume bool) {
+	t.Helper()
 	ctx := t.Context()
 	scheme := runtime.NewScheme()
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
@@ -118,10 +128,15 @@ func TestSuspensionCycleRetainsIdentityVolumesAndMembership(t *testing.T) {
 	}
 	key := types.NamespacedName{Name: "test", Namespace: "default"}
 	stsKey := types.NamespacedName{Name: "ledger-test", Namespace: "default"}
+	stopped := false
 	for step := range 16 {
 		current := &ledgerv1alpha1.Cluster{}
 		require.NoError(t, c.Get(ctx, key, current))
-		if current.Status.Suspension != nil && current.Status.Suspension.Phase == suspensionPhaseSuspended && current.Spec.Disabled {
+		if earlyResume && current.Status.Suspension != nil && current.Status.Suspension.Phase == suspensionPhaseBarrier && current.Status.Suspension.BarrierIndex == 0 && current.Spec.Disabled {
+			current.Spec.Disabled = false
+			require.NoError(t, c.Update(ctx, current))
+		}
+		if !earlyResume && current.Status.Suspension != nil && current.Status.Suspension.Phase == suspensionPhaseSuspended && current.Spec.Disabled {
 			stopped := &appsv1.StatefulSet{}
 			require.NoError(t, c.Get(ctx, stsKey, stopped))
 			require.Equal(t, int32(0), *stopped.Spec.Replicas)
@@ -138,6 +153,7 @@ func TestSuspensionCycleRetainsIdentityVolumesAndMembership(t *testing.T) {
 		liveSTS := &appsv1.StatefulSet{}
 		require.NoError(t, c.Get(ctx, stsKey, liveSTS))
 		if *liveSTS.Spec.Replicas == 0 && liveSTS.Status.Replicas != 0 {
+			stopped = true
 			liveSTS.Status.Replicas, liveSTS.Status.ReadyReplicas, liveSTS.Status.UpdatedReplicas = 0, 0, 0
 			require.NoError(t, c.Status().Update(ctx, liveSTS))
 		} else if *liveSTS.Spec.Replicas == 1 && liveSTS.Status.Replicas == 0 {
@@ -150,6 +166,10 @@ func TestSuspensionCycleRetainsIdentityVolumesAndMembership(t *testing.T) {
 	require.NoError(t, c.Get(ctx, key, final))
 	require.NotNil(t, final.Status.Suspension)
 	require.Equal(t, suspensionPhaseRunning, final.Status.Suspension.Phase)
+	require.Positive(t, final.Status.Suspension.BarrierIndex)
+	if earlyResume {
+		require.False(t, stopped, "canceling disable before the barrier must not stop the StatefulSet")
+	}
 	require.Equal(t, "original-id", final.Spec.ClusterID)
 	require.False(t, maintenance)
 	require.Equal(t, 1, enableCalls, "lost response must be resolved by observing maintenance, not by repeating the command")

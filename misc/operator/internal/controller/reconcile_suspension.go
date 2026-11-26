@@ -135,11 +135,6 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, ledger *led
 		}
 		status.Phase = suspensionPhaseBarrier
 	case suspensionPhaseBarrier:
-		if !ledger.Spec.Disabled {
-			status.Phase = suspensionPhaseStarting
-
-			break
-		}
 		if status.BarrierIndex == 0 {
 			leader, err := readSuspensionLeaderStatus(ctx, r, ledger, tlsMode, exec, status.ExpectedReplicas)
 			if err != nil {
@@ -161,6 +156,14 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, ledger *led
 			return retry, nil
 		}
 		if !ready {
+			break
+		}
+		if !ledger.Spec.Disabled {
+			// A disable canceled before scale-to-zero still has to prove the
+			// replicated maintenance entry durable on every original voter.
+			// The workload is already running, so resume verification directly.
+			status.Phase = suspensionPhaseVerifying
+
 			break
 		}
 		status.Phase = suspensionPhaseStopping

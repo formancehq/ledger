@@ -21,6 +21,10 @@ deletes PVCs.
 barrier. `Barrier` checks each original voter reports maintenance and a
 durably persisted Raft index through the barrier. It confirms the complete
 voter set from the current leader, since followers do not expose that list.
+If `disabled` is cleared before scale-to-zero, `Barrier` still records and
+verifies that durable index, then proceeds directly to `Verifying` with the
+existing Pods. This lets the operator reopen write admission after an early
+cancel without stopping healthy voters.
 `Stopping` is persisted before the operator
 detaches stale StatefulSet owner references from PVCs and requests zero
 replicas with both retention policies set to `Retain`. The operator reports
