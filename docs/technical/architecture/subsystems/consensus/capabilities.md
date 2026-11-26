@@ -184,6 +184,15 @@ committed order under the same rules as an older voter, including historically
 accepted shapes. No capability, persisted migration, wire revision, or
 stopped-upgrade boundary is needed for these checks.
 
+Posting amount presence is another admission-only shape check. A new server
+rejects an explicit transaction posting without an amount before proposing it;
+an explicit zero remains valid. Old and new voters apply an already committed
+order with a missing amount identically as zero, including historical replay.
+The proposal format, FSM behavior, and capability registry are unchanged, so
+no capability ID or stopped-upgrade boundary is needed. During a rolling
+upgrade, the leader's admission version determines whether a fresh request
+without an amount is accepted.
+
 The Numscript library version description (EN-3381) adds an optional
 `SaveNumscriptOrder.description` that the FSM stores in `NumscriptInfo` and
 echoes in `SavedNumscriptLog`. An RC.4 voter would apply the same order without

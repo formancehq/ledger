@@ -5293,6 +5293,9 @@ components:
       type: object
     AtomicApplyPosting:
       additionalProperties: false
+      description: |
+        Each posting must supply a non-null amount. An explicit zero is valid.
+        Missing amounts are rejected before the atomic batch is committed.
       properties:
         amount:
           $ref: '#/components/schemas/PostingAmount'
@@ -5304,6 +5307,7 @@ components:
           type: string
         source:
           type: string
+      required: [amount]
       type: object
     AtomicApplyPreparedQuery:
       additionalProperties: false
@@ -6948,6 +6952,9 @@ components:
 
     PostingRequest:
       type: object
+      description: |
+        Each posting must supply a non-null amount. An explicit zero is valid.
+        Missing or null amounts are rejected before the transaction is committed.
       required:
         - source
         - destination

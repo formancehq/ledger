@@ -20,6 +20,24 @@ the branch is reached. Evidence must distinguish those cases and show that a
 same-key retry after repair can establish one definitive outcome, while a
 same-key retry of an earlier committed outcome does not execute it again.
 
+## Historical retries with missing posting amounts
+
+An old keyed transaction may contain a committed posting without an amount;
+its historical apply interpretation is zero. New admission requires amount
+presence before the FSM's retained-key lookup. Retrying the identical omitted
+payload under a retained key now returns `VALIDATION` before proposal, even
+when the old outcome is frozen. It cannot recover that outcome by replaying the
+same invalid request. Adding an explicit zero changes the business payload and
+may conflict with the retained key; it must not silently replay the old result.
+This is a client-facing compatibility limit, not a change to historical apply.
+
+The evidence oracle must separate that historical case from a fresh invalid
+request. A fresh missing-amount rejection creates no proposal, audit entry or
+idempotency row, so a corrected explicit-zero request can reuse its key. Test
+the historical case with an actual retained pre-change outcome through real
+admission and inspect both the response and durable records; the fresh-case
+regression alone cannot prove the historical retry behavior.
+
 ## Forwarded preload gaps inside a keyed batch
 
 Admission forwards a keyed order whose dependency discovery failed, marked

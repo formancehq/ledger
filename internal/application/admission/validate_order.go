@@ -284,6 +284,7 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 // content source (no postings, no inline script, no script reference) and
 // orders that combine explicit postings with a script — both shapes silently
 // produce an unintended transaction at the FSM (#452).
+// Explicit postings must carry an amount; a present zero is valid.
 //
 // The "result must contain ≥1 posting" invariant — needed to catch numscripts
 // that execute fine but emit no postings — lives on the FSM
@@ -328,6 +329,12 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return domain.ErrPostingsAndScriptConflict
 	case !hasPostings && !hasInlineScript && !refValid:
 		return domain.ErrEmptyTransaction
+	}
+
+	for _, posting := range o.GetPostings() {
+		if posting.GetAmount() == nil {
+			return ErrPostingAmountRequired
+		}
 	}
 
 	// An executable reference's selector — the literal "latest" or a full semver

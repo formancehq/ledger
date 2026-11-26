@@ -40,6 +40,18 @@ requests only; do not replay historical records under the new validators.
 
 ## Evidence contract
 
+For a new transaction, exercise the registered HTTP create route, atomic HTTP
+Apply and service gRPC Apply. A missing posting amount must fail before Raft,
+including when an earlier order in the batch is valid. On the transaction
+route, JSON `null` reaches the same presence validation; atomic HTTP Apply's
+strict decoder rejects `null` earlier. Check the resulting validation response,
+no new transaction or audit log, and successful reuse of the unconsumed key
+with a corrected posting. Numeric and decimal-string HTTP zero and a present
+empty gRPC `Uint256` must produce a stored amount of zero. Use
+`tests/e2e/business/posting_amount_required_test.go` as the routed oracle;
+adapter helper tests alone do not establish the shared admission boundary.
+Historical committed orders are outside this new-request check.
+
 For a Numscript execution containing account metadata changes but no postings,
 trace the `/numscripts/execute` HTTP route, service Apply response and `ledgerctl
 numscripts execute` separately. The execution route returns 204 with no transaction
