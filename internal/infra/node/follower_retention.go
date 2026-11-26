@@ -138,6 +138,64 @@ func (r *followerRetention) heard(id uint64, at time.Time) {
 	r.lastHeard[id] = at
 }
 
+// sentSnapshot is a MsgSnap the leader handed to the transport.
+type sentSnapshot struct {
+	to    uint64
+	term  uint64
+	index uint64
+}
+
+// sentSnapshotsOf returns every outbound MsgSnap.
+func sentSnapshotsOf(outbound []*raftpb.Message) []sentSnapshot {
+	var sent []sentSnapshot
+	for _, m := range outbound {
+		if m.GetType() == raftpb.MsgSnap {
+			sent = append(sent, sentSnapshot{
+				to:    m.GetTo(),
+				term:  m.GetTerm(),
+				index: m.GetSnapshot().GetMetadata().GetIndex(),
+			})
+		}
+	}
+
+	return sent
+}
+
+// recordSentSnapshot records a snapshot the leader sent. Call it from the
+// orchestrate goroutine for every MsgSnap handed to the transport. The index
+// comes from the message, not from Progress: an acknowledgement stepped
+// between choosing the snapshot and this call can already have cleared the
+// pending snapshot from Progress.
+func (r *followerRetention) recordSentSnapshot(s sentSnapshot) {
+	if s.term != r.term {
+		clear(r.peers)
+		r.term = s.term
+	}
+
+	h, ok := r.peers[s.to]
+	if !ok {
+		h = &followerHistory{}
+		r.peers[s.to] = h
+	}
+	if s.index > h.match {
+		h.addSentSnapshot(s.index)
+	}
+}
+
+// addSentSnapshot adds a sent snapshot index, keeping the newest
+// maxSentSnapshots.
+func (h *followerHistory) addSentSnapshot(index uint64) {
+	if index == 0 || slices.Contains(h.sentSnapshots, index) {
+		return
+	}
+
+	h.sentSnapshots = append(h.sentSnapshots, index)
+	slices.Sort(h.sentSnapshots)
+	if len(h.sentSnapshots) > maxSentSnapshots {
+		h.sentSnapshots = slices.Delete(h.sentSnapshots, 0, len(h.sentSnapshots)-maxSentSnapshots)
+	}
+}
+
 // forget drops what is known about node id. Call it from the orchestrate
 // goroutine when a configuration change ends or starts an incarnation of id:
 // a member removed and re-added under the same ID, or given a new identity,
@@ -182,12 +240,8 @@ func (r *followerRetention) observe(now time.Time, term uint64, followers []foll
 			r.peers[f.id] = h
 		}
 		h.match = f.match
-		if f.state == tracker.StateSnapshot && f.pendingSnapshot > 0 && !slices.Contains(h.sentSnapshots, f.pendingSnapshot) {
-			h.sentSnapshots = append(h.sentSnapshots, f.pendingSnapshot)
-			slices.Sort(h.sentSnapshots)
-			if len(h.sentSnapshots) > maxSentSnapshots {
-				h.sentSnapshots = slices.Delete(h.sentSnapshots, 0, len(h.sentSnapshots)-maxSentSnapshots)
-			}
+		if f.state == tracker.StateSnapshot {
+			h.addSentSnapshot(f.pendingSnapshot)
 		}
 		h.sentSnapshots = slices.DeleteFunc(h.sentSnapshots, func(index uint64) bool { return index <= h.match })
 

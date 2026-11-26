@@ -302,6 +302,9 @@ type readyResult struct {
 	// to the transport for; orchestrate must call rawNode.ReportSnapshot for
 	// each of them. See finishReady.
 	snapshotRecipients []uint64
+	// sentSnapshots are the same MsgSnap with their index, recorded for the
+	// follower log retention before the report. See reportSentSnapshots.
+	sentSnapshots []sentSnapshot
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
 	// retained so callers can wait for the matching FSM batch to become durable.
@@ -1141,6 +1144,13 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 
 		return 0, false
 	}
+	// The refresh can complete as stop closes: a stopping task compacts no
+	// further.
+	select {
+	case <-stop:
+		return 0, false
+	default:
+	}
 
 	held, decision, err := node.followerRetention.compactionTarget(target, node.wal)
 	if err != nil {
@@ -1170,16 +1180,17 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 }
 
 // reportSentSnapshots reports every snapshot handed to the transport as
-// finished (see finishReady). The report can return a peer to a probe at the
-// index it held before the snapshot, so the follower positions are recorded
-// first: the follower retention then sees the StateSnapshot transition as
-// activity (EN-3429). Must be called from the orchestrate goroutine.
-func (node *Node) reportSentSnapshots(recipients []uint64) {
-	if len(recipients) == 0 {
-		return
+// finished (see finishReady). The report returns a peer to a probe with its
+// pre-snapshot Match, so the follower log retention records each snapshot's
+// index from its message first (EN-3429). Must be called from the
+// orchestrate goroutine.
+func (node *Node) reportSentSnapshots(recipients []uint64, sent []sentSnapshot) {
+	if node.followerRetention != nil {
+		for _, s := range sent {
+			node.followerRetention.recordSentSnapshot(s)
+		}
 	}
 
-	node.observeFollowerRetention(time.Now())
 	for _, peerID := range recipients {
 		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
 	}
@@ -1860,6 +1871,7 @@ func (node *Node) sendReadyMessages(stop chan struct{}, rd raft.Ready, result *r
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
 	result.applyResponses = applyResponses
 	result.snapshotRecipients = snapshotRecipients(outbound)
+	result.sentSnapshots = sentSnapshotsOf(outbound)
 
 	node.transport.Send(outbound)
 
@@ -1907,7 +1919,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// fresh snapshot. The MsgSnap carries no payload here (the checkpoint is
 	// fetched out-of-band), so handing it to the transport is the send.
 	// Non-leaders and peers no longer in StateSnapshot ignore the report.
-	node.reportSentSnapshots(result.snapshotRecipients)
+	node.reportSentSnapshots(result.snapshotRecipients, result.sentSnapshots)
 
 	if result.snapshotApplied {
 		node.recordRaftApplied(rd.Snapshot.GetMetadata().GetIndex())

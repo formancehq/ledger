@@ -772,13 +772,51 @@ func TestDoMaintenanceHoldsAtReportedSnapshot(t *testing.T) {
 	leader.propose(2)
 	leader.attach(node)
 
-	node.reportSentSnapshots(sentSnapshotRecipients(t, leader.rejectProbe(1), 3))
+	msgs := leader.rejectProbe(1)
+	node.reportSentSnapshots(sentSnapshotRecipients(t, msgs, 3), sentSnapshotsOf(msgs))
 	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.Equal(t, tracker.StateProbe, pr.State)
 	require.Zero(t, pr.Match, "the report leaves Match before the snapshot")
 
 	require.NoError(t, node.doMaintenance(nil))
 	requireFirstIndex(t, node, 4, "entries after the reported snapshot must stay available")
+}
+
+// TestReportSentSnapshotsRecordsIndexClearedByAck covers an acknowledgement
+// stepped between RawNode choosing a snapshot and finishReady reporting it.
+// The acknowledgement is still in the leader's log, so raft leaves
+// StateSnapshot and clears the pending snapshot from Progress. The follower
+// may still install the snapshot, so its index must come from the sent
+// message and stay a candidate position.
+func TestReportSentSnapshotsRecordsIndexClearedByAck(t *testing.T) {
+	t.Parallel()
+
+	node := &Node{followerRetention: newFollowerRetention(math.MaxUint64, time.Hour)}
+
+	// The leader's log is 2..6; it snapshots at 5 but keeps entries from 4.
+	leader := newTestRetentionLeader(t, 1)
+	leader.propose(4)
+	_, err := leader.storage.CreateSnapshot(5, leader.conf, nil)
+	require.NoError(t, err)
+	require.NoError(t, leader.storage.Compact(3))
+	leader.attach(node)
+
+	// The leader probes the peer from 1, already compacted: it sends the
+	// snapshot at 5.
+	leader.fromPeer(raftpb.MsgHeartbeatResp, nil)
+	msgs := leader.drain()
+	recipients := sentSnapshotRecipients(t, msgs, 5)
+	require.Equal(t, []uint64{testRetentionPeerID}, recipients)
+
+	// A delayed acknowledgement of 4 lands before the report.
+	leader.ack(4)
+	pr := leader.rn.Status().Progress[testRetentionPeerID]
+	require.NotEqual(t, tracker.StateSnapshot, pr.State)
+	require.Zero(t, pr.PendingSnapshot, "the acknowledgement cleared the pending snapshot")
+
+	node.reportSentSnapshots(recipients, sentSnapshotsOf(msgs))
+	node.observeFollowerRetention(time.Now())
+	require.Equal(t, &retentionPositions{positions: []uint64{4, 5}}, publishedPositions(node.followerRetention))
 }
 
 // TestDoMaintenanceStopAbandonsRetentionRefresh covers shutdown: the refresh
@@ -853,13 +891,14 @@ func TestObserveFollowerRetentionFollowsSnapshotHandoff(t *testing.T) {
 		m.RejectHint = proto.Uint64(9)
 		m.LogTerm = proto.Uint64(1)
 	})
-	recipients := sentSnapshotRecipients(t, leader.drain(), 12)
+	msgs := leader.drain()
+	recipients := sentSnapshotRecipients(t, msgs, 12)
 	require.Equal(t, []uint64{testRetentionPeerID}, recipients)
 	node.observeFollowerRetention(time.Now())
 	require.Equal(t, &retentionPositions{positions: []uint64{9, 12}}, publishedPositions(node.followerRetention),
 		"a follower being sent a snapshot can resume from its Match or the snapshot")
 
-	node.reportSentSnapshots(recipients)
+	node.reportSentSnapshots(recipients, sentSnapshotsOf(msgs))
 	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.Equal(t, tracker.StateProbe, pr.State)
 	require.Equal(t, uint64(9), pr.Match)
