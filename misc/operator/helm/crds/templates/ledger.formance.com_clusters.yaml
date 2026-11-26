@@ -3038,6 +3038,25 @@ spec:
                     description: ElectionTick is the election timeout in ticks.
                     format: int32
                     type: integer
+                  followerRetentionIdleTimeout:
+                    description: |-
+                      FollowerRetentionIdleTimeout is how long the leader may go without a
+                      message from a follower before that follower stops holding back
+                      compaction.
+                      Default: 5m.
+                    type: string
+                  followerRetentionMaxBytes:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      FollowerRetentionMaxBytes caps the Raft log the leader keeps beyond the
+                      compaction margin for followers still catching up, for example while
+                      they download a checkpoint (e.g. "1Gi"). The leader holds it in memory
+                      and on the WAL volume. "0" disables the hold.
+                      Default: 1Gi.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
                   heartbeatTick:
                     description: HeartbeatTick is the heartbeat interval in ticks.
                     format: int32

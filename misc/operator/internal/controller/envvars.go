@@ -156,6 +156,8 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		envs = appendIfStr(envs, "RAFT_TICK_INTERVAL", spec.Raft.TickInterval)
 		envs = appendIfInt32(envs, "RAFT_PROPOSE_QUEUE_CAPACITY", spec.Raft.ProposeQueueCapacity)
 		envs = appendIfInt32(envs, "RAFT_COMPACTION_MARGIN", spec.Raft.CompactionMargin)
+		envs = appendIfQuantity(envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", spec.Raft.FollowerRetentionMaxBytes)
+		envs = appendIfStr(envs, "RAFT_FOLLOWER_RETENTION_IDLE_TIMEOUT", spec.Raft.FollowerRetentionIdleTimeout)
 		envs = appendIfInt32(envs, "RAFT_REPLAY_BATCH_SIZE", spec.Raft.ReplayBatchSize)
 		envs = appendIfStr(envs, "RAFT_PROCESSING_TICK_INTERVAL", spec.Raft.ProcessingTickInterval)
 		envs = appendIfInt32(envs, "LEARNER_PROMOTION_THRESHOLD", spec.Raft.LearnerPromotionThreshold)

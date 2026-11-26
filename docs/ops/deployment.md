@@ -1187,13 +1187,15 @@ spec:
   raft:
     maintenanceInterval: "30s"  # Periodic maintenance interval (default: 30s)
     compactionMargin: 1000      # Minimum WAL entries retained after compaction (default: 1000)
+    followerRetentionMaxBytes: "1Gi"     # Extra log kept for catching-up followers ("0" disables; default: 1Gi)
+    followerRetentionIdleTimeout: "5m"   # Silence after which a follower stops holding it (default: 5m)
 ```
 
 > **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a Pebble checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
 >
 > **Tuning compaction margin**: The `compactionMargin` controls how many WAL entries are retained after compaction, allowing followers that are slightly behind to catch up without needing a full snapshot transfer. Increase this value if followers frequently fall behind.
 >
-> **Follower log retention**: The leader also keeps the log a follower still needs while that follower is replicating, for example while it downloads a checkpoint after a snapshot. The extra log is capped by `--raft-follower-retention-max-bytes` (default `1Gi`, held in leader memory and on the WAL volume), and a follower the leader has not heard from for `--raft-follower-retention-idle-timeout` (default `5m`) stops holding it. Just after an election, a follower that has not yet acknowledged an entry holds the leader's whole retained log until it does. Size the cap for the log written during one checkpoint download at peak write rate; a follower that still loops on checkpoint sync under heavy writes needs a larger cap. The cap counts encoded entries, and the leader can keep one more entry (the WAL's boundary entry), so leader memory use runs somewhat above it. The syncing follower separately accumulates its own WAL and spool on its volumes until the checkpoint is restored. These settings are server flags; the operator `Cluster` resource does not expose them yet.
+> **Follower log retention**: The leader also keeps the log a follower still needs while that follower is replicating, for example while it downloads a checkpoint after a snapshot. The extra log is capped by `followerRetentionMaxBytes` (`--raft-follower-retention-max-bytes`, default `1Gi`, held in leader memory and on the WAL volume), and a follower the leader has not heard from for `followerRetentionIdleTimeout` (`--raft-follower-retention-idle-timeout`, default `5m`) stops holding it. Budget the cap in the container memory limit: a leader with a small limit should lower it. Just after an election, a follower that has not yet acknowledged an entry holds the leader's whole retained log until it does. Size the cap for the log written during one checkpoint download at peak write rate; a follower that still loops on checkpoint sync under heavy writes needs a larger cap. The cap counts encoded entries, and the leader can keep one more entry (the WAL's boundary entry), so leader memory use runs somewhat above it. The syncing follower separately accumulates its own WAL and spool on its volumes until the checkpoint is restored.
 
 ### Configuration Safety Checks at Startup
 

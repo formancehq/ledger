@@ -2351,6 +2351,11 @@ func (in *RaftConfig) DeepCopyInto(out *RaftConfig) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.FollowerRetentionMaxBytes != nil {
+		in, out := &in.FollowerRetentionMaxBytes, &out.FollowerRetentionMaxBytes
+		x := (*in).DeepCopy()
+		*out = &x
+	}
 	if in.ElectionTick != nil {
 		in, out := &in.ElectionTick, &out.ElectionTick
 		*out = new(int32)

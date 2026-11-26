@@ -577,6 +577,21 @@ type RaftConfig struct {
 	// +optional
 	CompactionMargin *int32 `json:"compactionMargin,omitempty"`
 
+	// FollowerRetentionMaxBytes caps the Raft log the leader keeps beyond the
+	// compaction margin for followers still catching up, for example while
+	// they download a checkpoint (e.g. "1Gi"). The leader holds it in memory
+	// and on the WAL volume. "0" disables the hold.
+	// Default: 1Gi.
+	// +optional
+	FollowerRetentionMaxBytes *resource.Quantity `json:"followerRetentionMaxBytes,omitempty"`
+
+	// FollowerRetentionIdleTimeout is how long the leader may go without a
+	// message from a follower before that follower stops holding back
+	// compaction.
+	// Default: 5m.
+	// +optional
+	FollowerRetentionIdleTimeout string `json:"followerRetentionIdleTimeout,omitempty"`
+
 	// MaintenanceInterval is the interval for background WAL snapshot + Pebble checkpoint.
 	// Default: 30s.
 	// +optional

@@ -358,6 +358,45 @@ func TestBuildEnvVars_RaftProcessingTickInterval(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Raft follower log retention
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_RaftFollowerRetention(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		maxBytes := resource.MustParse("2Gi")
+		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{
+			FollowerRetentionMaxBytes:    &maxBytes,
+			FollowerRetentionIdleTimeout: "10m",
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", "2Gi")
+		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_IDLE_TIMEOUT", "10m")
+	})
+
+	t.Run("zero disables the hold", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		zero := resource.MustParse("0")
+		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: &zero}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", "0")
+	})
+
+	t.Run("unset omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES")
+		assertNoEnv(t, envs, "RAFT_FOLLOWER_RETENTION_IDLE_TIMEOUT")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Raft transport buffer size
 // ---------------------------------------------------------------------------
 

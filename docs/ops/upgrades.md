@@ -863,6 +863,22 @@ A worker that finds assets v3 cannot represent among a mirror's stored volumes
 stops ingesting that mirror after the upgrade. Delete the mirror ledger and
 recreate it with the needed mappings.
 
+### Follower log retention
+
+The leader now keeps the Raft log a follower still needs while that follower
+catches up, so a follower downloading a checkpoint is not sent a new snapshot
+before it finishes (EN-3429). The change is node-local policy: it persists
+nothing, does not change how entries apply, and needs no migration or stopped
+upgrade. Old and new members can coexist during a rolling upgrade; only an
+upgraded leader holds.
+
+It is on by default. While a follower catches up, an upgraded leader can keep
+up to `1Gi` more log in memory and on its WAL volume. Before upgrading a
+cluster whose container memory limit or WAL volume cannot absorb that, set
+`spec.raft.followerRetentionMaxBytes` (or `--raft-follower-retention-max-bytes`)
+to a smaller value, or `"0"` to keep the previous behaviour. See
+[follower log retention](../technical/architecture/subsystems/consensus/raft-consensus.md#follower-log-retention-en-3429).
+
 ## Repairing historical transaction address indexes
 
 A builder fix can preserve transaction-address history for purged EPHEMERAL
