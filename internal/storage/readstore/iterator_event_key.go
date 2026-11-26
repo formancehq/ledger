@@ -32,6 +32,9 @@ func parseEventKey(key []byte, prefixLen int) (group []byte, seq uint64, op byte
 // parseAccountAssetKey accepts both the RC.5 first-touch row and the event
 // form. The old row's eight-byte value is a synthetic ADD at that sequence.
 // Its key sorts immediately before the event keys for the same account.
+// TODO: Remove the plain-row branch and its value decoder only after supported
+// upgrades, restores, and retained query checkpoints can no longer expose
+// RC.5 account-by-asset rows. Live GC completion alone is insufficient.
 func parseAccountAssetKey(key, value []byte, prefixLen int) (group []byte, seq uint64, legacy bool, ok bool) {
 	if len(key) <= prefixLen || key[0] != PrefixAccountByAsset {
 		return nil, 0, false, false

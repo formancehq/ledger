@@ -109,6 +109,9 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 		tpos := len(key) - suffix
 		var identity []byte
 		var legacy bool
+		// TODO: Remove legacy detection, Value() from eventGCIterator, and
+		// the conversion branch below when no supported live read store or
+		// restore path can contain RC.5 plain account-by-asset rows.
 		if len(key) > 0 && key[0] == PrefixAccountByAsset {
 			prefixLen, prefixOK := accountAssetPrefixLen(key)
 			if prefixOK {

@@ -16,6 +16,9 @@ func legacyAccountAssetKey(kb *dal.KeyBuilder, account string) []byte {
 		PutStringNull("USD").PutByte(2).PutString(account).Consume()
 }
 
+// TODO: Retire these RC.5 compatibility fixtures with the dual decoder and
+// GC conversion, after upgrades, restores, and retained checkpoints cannot
+// reopen plain account-by-asset rows.
 func TestAccountAssetLegacyRowsResolveAndMigrate(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

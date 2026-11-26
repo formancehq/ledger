@@ -121,6 +121,8 @@ func (it *ReverseEventResolveIterator) settle() bool {
 }
 
 func (it *ReverseEventResolveIterator) parseCurrent() (group []byte, seq uint64, op byte, ok bool) {
+	// TODO: Remove the RC.5 value-decoding path with the forward reader once
+	// retained RC.5 read stores are no longer supported; keep ADD-only checks.
 	if len(it.seekPrefix) > 0 && it.seekPrefix[0] == PrefixAccountByAsset {
 		group, seq, _, ok = parseAccountAssetKey(it.iter.Key(), it.iter.Value(), it.prefixLen)
 

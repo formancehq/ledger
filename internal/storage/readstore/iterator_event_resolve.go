@@ -153,6 +153,8 @@ func (it *EventResolveIterator) settle() bool {
 }
 
 func (it *EventResolveIterator) parseCurrent() (group []byte, seq uint64, op byte, ok bool) {
+	// TODO: Remove the RC.5 value-decoding path when legacy rows are retired.
+	// Keep the account-by-asset ADD-only operation check in the event path.
 	if len(it.seekPrefix) > 0 && it.seekPrefix[0] == PrefixAccountByAsset {
 		group, seq, _, ok = parseAccountAssetKey(it.iter.Key(), it.iter.Value(), it.prefixLen)
 
