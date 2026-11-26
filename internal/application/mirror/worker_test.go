@@ -78,6 +78,29 @@ func TestWorker_FreshLedgerFetchesFromSourceIDOne(t *testing.T) {
 	require.True(t, w.boundariesLoaded)
 }
 
+func TestWorker_PreEpochBusinessTimestampDoesNotAdvanceBoundary(t *testing.T) {
+	t.Parallel()
+
+	builder, store := newTestBuilder(t)
+	ctrl := gomock.NewController(t)
+	source := v2.NewMockSource(ctrl)
+	source.EXPECT().FetchLogs(gomock.Any(), uint64(0), gomock.Any()).Return([]v2.V2Log{{
+		ID:   1,
+		Type: "NEW_TRANSACTION",
+		Date: "2023-11-14T22:13:20Z",
+		Data: []byte(`{"transaction":{"id":0,"timestamp":"1969-12-31T23:59:59.999999Z"}}`),
+	}}, false, nil)
+
+	w := newWorkerForTest(t, "mirrored", source, store, builder)
+	_, err := w.processBatch(context.Background())
+	require.ErrorContains(t, err, "business timestamp is before the Unix epoch")
+	require.Zero(t, w.lastAppliedV2LogID)
+	require.Equal(t, uint64(1), w.nextTxID)
+	boundaries, err := builder.ReadBoundaries("mirrored")
+	require.NoError(t, err)
+	require.Nil(t, boundaries)
+}
+
 // A ledger whose FSM-applied boundary is 50 always resumes after 50.
 func TestWorker_ResumesFromAppliedBoundary(t *testing.T) {
 	t.Parallel()

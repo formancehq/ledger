@@ -131,6 +131,23 @@ func translateV2LogDate(value string) (*commonpb.Timestamp, error) {
 	return &commonpb.Timestamp{Data: uint64(microseconds)}, nil
 }
 
+func translateV2BusinessTimestamp(value string) (*commonpb.Timestamp, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	ts, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil, nil
+	}
+	microseconds := ts.UnixMicro()
+	if microseconds < 0 {
+		return nil, errors.New("business timestamp is before the Unix epoch")
+	}
+
+	return &commonpb.Timestamp{Data: uint64(microseconds)}, nil
+}
+
 func makeMirrorOrder(ledger string, entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -203,13 +220,12 @@ func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, 
 
 	metadata := translateMetadataMap(data.Transaction.Metadata)
 
-	var timestamp *commonpb.Timestamp
+	timestamp, err := translateV2BusinessTimestamp(data.Transaction.Timestamp)
+	if err != nil {
+		resetV2NewTxData(data)
+		v2NewTxPool.Put(data)
 
-	if data.Transaction.Timestamp != "" {
-		ts, err := time.Parse(time.RFC3339Nano, data.Transaction.Timestamp)
-		if err == nil {
-			timestamp = &commonpb.Timestamp{Data: uint64(ts.UnixMicro())}
-		}
+		return nil, 0, err
 	}
 
 	accountMetadata := translateAccountMetadata(data.AccountMetadata)
@@ -300,13 +316,12 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcm
 		return nil, 0, err
 	}
 
-	var timestamp *commonpb.Timestamp
+	timestamp, err := translateV2BusinessTimestamp(data.RevertTransaction.Timestamp)
+	if err != nil {
+		resetV2RevertData(data)
+		v2RevertPool.Put(data)
 
-	if data.RevertTransaction.Timestamp != "" {
-		ts, err := time.Parse(time.RFC3339Nano, data.RevertTransaction.Timestamp)
-		if err == nil {
-			timestamp = &commonpb.Timestamp{Data: uint64(ts.UnixMicro())}
-		}
+		return nil, 0, err
 	}
 
 	entry := &raftcmdpb.MirrorLogEntry{
