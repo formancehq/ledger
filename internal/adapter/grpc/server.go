@@ -529,6 +529,30 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 }
 
 func convertToGRPCErrorWithContext(ctx context.Context, err error, logger logging.Logger) error {
+	return deadlineCancellationToDeadlineExceeded(ctx, classifyGRPCError(ctx, err, logger))
+}
+
+// deadlineCancellationToDeadlineExceeded reports a Canceled status as
+// DeadlineExceeded once the incoming deadline has passed. grpc-go cancels a
+// handler's context from its own deadline timer, which can fire before the
+// context's deadline timer; a forwarded call then fails with Canceled although
+// nobody cancelled it. grpc-go's client applies the same rule to RST_STREAM.
+func deadlineCancellationToDeadlineExceeded(ctx context.Context, err error) error {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.Canceled {
+		return err
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Now().Before(deadline) {
+		return err
+	}
+	converted := st.Proto()
+	converted.Code = int32(codes.DeadlineExceeded)
+
+	return status.FromProto(converted).Err()
+}
+
+func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) error {
 	// Re-emit decoded statuses verbatim: outer routing context is diagnostic,
 	// not part of the upstream public message.
 	if st := grpcerr.OriginalStatus(err); st != nil {

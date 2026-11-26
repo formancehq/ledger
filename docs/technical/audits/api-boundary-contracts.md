@@ -328,6 +328,14 @@ through that factory. These checks establish keyed recovery, not non-commit or
 safe unkeyed replay; those identities remain owned by
 `idempotency-retries-partial-failures`.
 
+A service handler that ends with `Canceled` after its incoming deadline has
+passed is reported as `DeadlineExceeded`; `Canceled` before that deadline, or
+without one, is unchanged. grpc-go's own deadline timer cancels the handler
+context and can fire before the context's deadline timer, so a forwarded call
+otherwise fails with `Canceled` that no caller issued. A caller usually stops
+waiting first, so check the written status with the caller stalled, as
+`TestForwardedCallEndedByIncomingDeadlineIsDeadlineExceeded` does.
+
 The broad adapter and CLI globs locate request builders, shared encoders and
 existing tests. They do not authorize auditing every subsystem reachable from
 those directories. Bucket, Cluster and Restore service request/response adapters
