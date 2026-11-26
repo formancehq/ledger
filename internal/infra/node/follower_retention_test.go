@@ -943,16 +943,18 @@ func TestDoMaintenanceStopAbandonsRetentionRefresh(t *testing.T) {
 // goroutine too busy to refresh the positions in time. The published
 // positions may miss a snapshot sent since, so maintenance treats every
 // follower's position as unknown, but it still compacts what lies beyond the
-// byte cap.
+// byte cap. A node not known to lead holds nothing.
 func TestDoMaintenanceRefreshTimeoutHoldsWithinCap(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
+		state     raft.StateType
 		maxBytes  uint64
 		wantFirst uint64
 	}{
-		"an unbounded cap holds the whole retained log": {maxBytes: math.MaxUint64, wantFirst: 1},
-		"a cap below one entry compacts to the target":  {maxBytes: 1, wantFirst: 6},
+		"an unbounded cap holds the whole retained log": {state: raft.StateLeader, maxBytes: math.MaxUint64, wantFirst: 1},
+		"a cap below one entry compacts to the target":  {state: raft.StateLeader, maxBytes: 1, wantFirst: 6},
+		"a follower compacts to the target":             {state: raft.StateFollower, maxBytes: math.MaxUint64, wantFirst: 6},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -960,6 +962,7 @@ func TestDoMaintenanceRefreshTimeoutHoldsWithinCap(t *testing.T) {
 			node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
 			node.followerRetention = newFollowerRetention(tc.maxBytes, time.Hour)
 			node.followerRetention.refreshTimeout = time.Millisecond
+			node.lastSoftState.Store(&raft.SoftState{Lead: 1, RaftState: tc.state})
 
 			require.NoError(t, node.doMaintenance(nil))
 			requireFirstIndex(t, node, tc.wantFirst, "")

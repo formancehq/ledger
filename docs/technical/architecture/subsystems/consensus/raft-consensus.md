@@ -799,9 +799,10 @@ still replicating:
    records it in `Progress` at once, so the refresh covers every snapshot
    already sent; any snapshot chosen later is the new one, past the
    compaction target. If the refresh fails or times out (10s), maintenance
-   does not trust positions from an earlier tick: it treats every
-   follower's position as unknown and keeps the whole retained log, still
-   within the byte cap. If the maintenance task stops, it skips compaction.
+   does not trust positions from an earlier tick: on a node last seen as
+   leader, it treats every follower's position as unknown and keeps the
+   whole retained log, still within the byte cap; any other node compacts
+   to the usual target. If the maintenance task stops, it skips compaction.
    The refresh is idempotent, so a command left queued at shutdown is
    harmless.
 4. **The compaction target.** Maintenance computes the usual target,

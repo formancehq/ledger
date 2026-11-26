@@ -1067,7 +1067,8 @@ func (node *Node) doMaintenance(stop <-chan struct{}) error {
 	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
 	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
 		compactIdx, ok := node.retainForFollowers(acknowledgedApplied-node.applier.CompactionMargin(), stop)
-		if ok {
+		// A stopping task compacts no further.
+		if ok && !isStopping(stop) {
 			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
 			}
@@ -1140,6 +1141,11 @@ func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint6
 
 	size := node.followerRetention.compactionTarget
 	if refreshErr != nil {
+		// Only a leader holds. A node whose last observed state is not
+		// leader compacts to the margin, as before the hold existed.
+		if ss := node.lastSoftState.Load(); ss == nil || ss.RaftState != raft.StateLeader {
+			return target, true
+		}
 		node.logger.WithFields(map[string]any{"error": refreshErr}).Errorf("Background maintenance: failed to refresh follower positions, holding the whole retained log within the byte cap")
 		size = node.followerRetention.conservativeCompactionTarget
 	}
