@@ -1721,7 +1721,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			raftIndex, proposal.GetId(), scopeErr)
 	}
 
-	transientErr := buffer.ValidateTransientVolumes(validateScope)
+	var transientErr domain.Describable = buffer.ValidateTransientVolumes(validateScope)
 	if transientErr == nil && slices.Contains(proposal.GetRequiredCapabilities(), uint32(capabilities.AccountIncarnationWritesV1)) {
 		for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
 			if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {
@@ -1739,15 +1739,27 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 			return result, nil
 		}
+		audited, ok := errors.AsType[domain.SerializableError](err)
+		if !ok {
+			assert.Unreachable("non-auditable transient validation failure reached the audit path", map[string]any{
+				"raftIndex":  raftIndex,
+				"proposalID": proposal.GetId(),
+				"reason":     err.Reason(),
+			})
+
+			return nil, fmt.Errorf("invariant: transient validation failure %q is neither uncommitted nor auditable (raft index %d, proposal %d): %w",
+				err.Reason(), raftIndex, proposal.GetId(), err)
+		}
+
 		transientFailureEntry := auditpb.AuditEntryFromVTPool()
-		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(audited)}
 		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
 		transientFailureEntry.ReturnToVTPool()
 		if appendErr != nil {
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, audited, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 

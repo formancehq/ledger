@@ -15,7 +15,7 @@ import (
 // ensureAccountIncarnations observes the final account write set for this
 // proposal. It opens or updates one incarnation per touched normal or ephemeral
 // account, regardless of the number of assets or metadata keys.
-func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.SerializableError {
+func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Describable {
 	b.incarnationsEnabled = true
 	seen := make(map[domain.AccountKey]struct{})
 	for volume := range b.Derived.Volumes.DirtyValues() {
