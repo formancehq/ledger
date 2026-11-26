@@ -7,6 +7,19 @@ import (
 )
 
 func processPutKV(ledger string, order *raftcmdpb.PutKVOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	if !ctx.auditReplay {
+		policy := ctx.Scope.GetClusterPolicy()
+		keyLimit, valueLimit := uint64(domain.DefaultKVKeyBytes), uint64(domain.DefaultKVValueBytes)
+		if policy.GetKvMaxKeyBytes() != 0 {
+			keyLimit = policy.GetKvMaxKeyBytes()
+		}
+		if policy.GetKvMaxValueBytes() != 0 {
+			valueLimit = policy.GetKvMaxValueBytes()
+		}
+		if uint64(len(order.GetKey())) > keyLimit || uint64(len(order.GetValue())) > valueLimit {
+			return nil, domain.ErrKVLimitExceeded
+		}
+	}
 	if _, err := loadLiveLedgerReader(ctx.Scope, ledger); err != nil {
 		return nil, err
 	}

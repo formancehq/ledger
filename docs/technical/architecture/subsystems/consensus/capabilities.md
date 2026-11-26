@@ -211,6 +211,11 @@ has to apply a KV order during a supported rollout. KV proposals therefore do
 not declare a capability ID. After the first KV order commits, an older binary
 cannot replay that WAL or snapshot and rollback must use forward recovery, as
 specified in the [KV rollout](../../../../ops/upgrades.md#ledger-kv-rollout).
+The KV size policy is applied by the FSM after idempotency replay lookup, and
+its new `kv_limit_exceeded` audited failure detail is part of the same
+unreleased KV order contract. It needs no separate capability because there
+are no previously released KV orders or KV failures to reinterpret. The
+stopped rollout remains required before any KV order can commit.
 Any future rolling activation or change to the meaning of an existing order
 needs its own capability ID, persisted declaration, and replay tests.
 

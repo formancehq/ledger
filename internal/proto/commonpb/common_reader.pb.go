@@ -6959,6 +6959,7 @@ type FailureDetailsReader interface {
 	GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader
 	GetNumscriptDescriptionTooLong() NumscriptDescriptionTooLongDetailsReader
 	GetNumscriptDescriptionInvalidChar() NumscriptDescriptionInvalidCharDetailsReader
+	GetKvLimitExceeded() KvLimitExceededDetailsReader
 	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
@@ -8189,6 +8190,14 @@ func (r *failureDetailsReadonly) GetNumscriptDescriptionInvalidChar() NumscriptD
 	return v.NumscriptDescriptionInvalidChar.AsReader()
 }
 
+func (r *failureDetailsReadonly) GetKvLimitExceeded() KvLimitExceededDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_KvLimitExceeded)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.KvLimitExceeded.AsReader()
+}
+
 // FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type FailureDetails_KindReaderCase int32
 
@@ -8347,6 +8356,7 @@ const (
 	FailureDetails_KindReaderCase_MetadataOnlyReference                    FailureDetails_KindReaderCase = 151
 	FailureDetails_KindReaderCase_NumscriptDescriptionTooLong              FailureDetails_KindReaderCase = 152
 	FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar          FailureDetails_KindReaderCase = 153
+	FailureDetails_KindReaderCase_KvLimitExceeded                          FailureDetails_KindReaderCase = 154
 )
 
 func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
@@ -8657,6 +8667,8 @@ func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
 		return FailureDetails_KindReaderCase_NumscriptDescriptionTooLong
 	case *FailureDetails_NumscriptDescriptionInvalidChar:
 		return FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar
+	case *FailureDetails_KvLimitExceeded:
+		return FailureDetails_KindReaderCase_KvLimitExceeded
 	default:
 		return FailureDetails_KindReaderCase_Unset
 	}
@@ -27441,4 +27453,66 @@ func (l deleteKVLogListReadonly) Range(yield func(int, DeleteKVLogReader) bool) 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewDeleteKVLogListReader(s []*DeleteKVLog) DeleteKVLogListReader {
 	return deleteKVLogListReadonly(s)
+}
+
+// KvLimitExceededDetailsReader provides read-only access to KvLimitExceededDetails.
+// Call Mutate() to obtain a mutable clone.
+type KvLimitExceededDetailsReader interface {
+	Mutate() *KvLimitExceededDetails
+}
+
+type kvLimitExceededDetailsReadonly KvLimitExceededDetails
+
+func (r *kvLimitExceededDetailsReadonly) Mutate() *KvLimitExceededDetails {
+	return (*KvLimitExceededDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this KvLimitExceededDetails.
+func (m *KvLimitExceededDetails) AsReader() KvLimitExceededDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*kvLimitExceededDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this KvLimitExceededDetails.
+func (m *KvLimitExceededDetails) Mutate() *KvLimitExceededDetails {
+	return m.CloneVT()
+}
+
+// KvLimitExceededDetailsListReader provides read-only iteration over []*KvLimitExceededDetails.
+type KvLimitExceededDetailsListReader interface {
+	Len() int
+	Get(i int) KvLimitExceededDetailsReader
+	Range(yield func(int, KvLimitExceededDetailsReader) bool)
+}
+
+type kvLimitExceededDetailsListReadonly []*KvLimitExceededDetails
+
+func (l kvLimitExceededDetailsListReadonly) Len() int { return len(l) }
+
+func (l kvLimitExceededDetailsListReadonly) Get(i int) KvLimitExceededDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l kvLimitExceededDetailsListReadonly) Range(yield func(int, KvLimitExceededDetailsReader) bool) {
+	for i, v := range l {
+		var r KvLimitExceededDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewKvLimitExceededDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewKvLimitExceededDetailsListReader(s []*KvLimitExceededDetails) KvLimitExceededDetailsListReader {
+	return kvLimitExceededDetailsListReadonly(s)
 }

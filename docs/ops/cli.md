@@ -4105,6 +4105,8 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 |------|------|---------|-------------|
 | `--cluster-policy-revision` | uint64 | `1` | Desired revision of the replicated cluster policy. The leader proposes the policy only when this exceeds the applied revision. Must be greater than zero. |
 | `--query-checkpoint-limit` | uint64 | `10` | Maximum number of live query checkpoints, carried in the cluster policy. Must be greater than zero. |
+| `--kv-max-key-bytes` | uint64 | `256` | Maximum size of a KV key written by Put, in bytes. Must be greater than zero and at most `256`. Deletes retain the absolute key bound after a policy decrease. |
+| `--kv-max-value-bytes` | uint64 | `4096` | Maximum size of a KV value written by Put, in bytes. Must be greater than zero and at most `1048576`. |
 | `--metadata-max-entries` | uint64 | `128` | Maximum metadata entries one command may carry for a single entity (transaction, account or ledger). Must be greater than zero. |
 | `--metadata-max-key-bytes` | uint64 | `256` | Maximum metadata key size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
 | `--metadata-max-value-bytes` | uint64 | `16384` | Maximum metadata value size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
@@ -4121,7 +4123,7 @@ To change a policy value, raise `--cluster-policy-revision` so the new policy su
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
 
-The metadata ceilings and `--idempotency-ttl` follow the same rule: changing one
+The KV and metadata ceilings and `--idempotency-ttl` follow the same rule: changing one
 without bumping `--cluster-policy-revision` logs a payload-divergence error and
 changes nothing. With the operator, the `Cluster` CRD rejects such an update,
 and a decrease of `spec.clusterPolicyRevision`, at admission time.

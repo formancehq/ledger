@@ -2315,18 +2315,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	if err := validateOrder(order); err != nil {
 		return nil, err
 	}
-	if ls := order.GetLedgerScoped(); ls != nil {
-		switch ls.GetPayload().(type) {
-		case *raftcmdpb.LedgerScopedOrder_PutKv, *raftcmdpb.LedgerScopedOrder_DeleteKv:
-			policy, err := query.ReadClusterPolicy(a.store)
-			if err != nil {
-				return nil, err
-			}
-			if err := validateOrderKVPolicy(order, policy); err != nil {
-				return nil, &domain.BusinessError{Err: err}
-			}
-		}
-	}
 
 	return order, nil
 }

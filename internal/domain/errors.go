@@ -618,6 +618,7 @@ var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 var (
 	ErrTargetRequired                  = NewValidationSentinel("TARGET_REQUIRED", "target is required")
 	ErrMetadataKeyRequired             = NewValidationSentinel("METADATA_KEY_REQUIRED", "key is required")
+	ErrKVLimitExceeded                 = NewValidationSentinel("KV_LIMIT_EXCEEDED", "KV key or value exceeds the committed cluster policy limit")
 	ErrNumscriptContentRequired        = NewValidationSentinel("NUMSCRIPT_CONTENT_REQUIRED", "numscript content is required")
 	ErrScriptAndReferenceConflict      = NewValidationSentinel("SCRIPT_AND_REFERENCE_CONFLICT", "cannot specify both script and scriptReference")
 	ErrEmptyTransaction                = NewValidationSentinel("EMPTY_TRANSACTION", "transaction must produce at least one posting")

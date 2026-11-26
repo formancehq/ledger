@@ -112,32 +112,6 @@ func validateOrderKV(order *raftcmdpb.Order) domain.Describable {
 	return nil
 }
 
-func validateOrderKVPolicy(order *raftcmdpb.Order, policy *commonpb.ClusterPolicy) domain.Describable {
-	ls := order.GetLedgerScoped()
-	if ls == nil {
-		return nil
-	}
-	keyLimit, valueLimit := uint64(domain.DefaultKVKeyBytes), uint64(domain.DefaultKVValueBytes)
-	if policy.GetKvMaxKeyBytes() != 0 {
-		keyLimit = policy.GetKvMaxKeyBytes()
-	}
-	if policy.GetKvMaxValueBytes() != 0 {
-		valueLimit = policy.GetKvMaxValueBytes()
-	}
-	switch payload := ls.GetPayload().(type) {
-	case *raftcmdpb.LedgerScopedOrder_PutKv:
-		if uint64(len(payload.PutKv.GetKey())) > keyLimit || uint64(len(payload.PutKv.GetValue())) > valueLimit {
-			return invalidKVOrder{message: "KV key or value exceeds the committed cluster policy limit"}
-		}
-	case *raftcmdpb.LedgerScopedOrder_DeleteKv:
-		if uint64(len(payload.DeleteKv.GetKey())) > keyLimit {
-			return invalidKVOrder{message: "KV key exceeds the committed cluster policy limit"}
-		}
-	}
-
-	return nil
-}
-
 // invalidUTF8Order is an admission-only validation error. It never enters the
 // FSM audit schema, and it does not echo malformed bytes to an API client.
 type invalidUTF8Order struct{}
