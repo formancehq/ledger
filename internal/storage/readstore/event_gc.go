@@ -12,15 +12,18 @@ type eventGCIterator interface {
 	Valid() bool
 	Next() bool
 	Key() []byte
+	Value() []byte
 	Error() error
 }
 
 // GCEventZone reclaims superseded events below the read-lease watermark
-// across one event zone (the metadata index 0x01 or the exists index 0x02),
+// across one event zone (metadata 0x01, exists 0x02, or account asset 0x0C),
 // walking at most budget keys from resume (nil = zone start) and stopping
 // only at group boundaries. It returns the number of reclaimed events and
 // the cursor to resume from on the next call — nil once the zone walk
-// completed.
+// completed. In 0x0C it also replaces RC.5 first-touch rows with equivalent
+// ADD events in an atomic batch. A group being converted is not pruned in the
+// same pass because its old key sorts before all its events regardless of seq.
 //
 // The pruning rule per event group: every event with seq < watermark is
 // droppable EXCEPT the latest one, and that one survives only as an ADD.
@@ -104,7 +107,20 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		tpos := len(key) - suffix
-		if tpos < 1 || key[tpos] != metadataEventTerminator {
+		var identity []byte
+		var legacy bool
+		if len(key) > 0 && key[0] == PrefixAccountByAsset {
+			prefixLen, prefixOK := accountAssetPrefixLen(key)
+			if prefixOK {
+				_, _, legacy, prefixOK = parseAccountAssetKey(key, iter.Value(), prefixLen)
+			}
+			if !prefixOK {
+				tpos = -1
+			} else if legacy {
+				identity = key
+			}
+		}
+		if tpos < 1 || (!legacy && key[tpos] != metadataEventTerminator) {
 			// The identity cannot be parsed, so which group the key belongs to
 			// is unknowable: a truncated key sorts before the very events it
 			// shares an identity with, so it lands between two groups and
@@ -119,7 +135,9 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 			continue
 		}
 
-		identity := key[:tpos]
+		if !legacy {
+			identity = key[:tpos]
+		}
 
 		if !bytes.Equal(identity, group) {
 			closeGroup()
@@ -146,6 +164,27 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 		}
 
 		scanned++
+		if legacy {
+			// A legacy stamp is a synthetic ADD. Rewrite it atomically and
+			// skip pruning this group: its physical position precedes newer
+			// event keys regardless of the stamp's sequence.
+			seq := binary.BigEndian.Uint64(iter.Value())
+			converted := make([]byte, 0, len(key)+10)
+			converted = append(converted, key...)
+			converted = append(converted, metadataEventTerminator)
+			converted = binary.BigEndian.AppendUint64(converted, seq)
+			converted = append(converted, MetadataEventAdd)
+			if err := batch.Set(converted, nil, nil); err != nil {
+				return 0, nil, err
+			}
+			if err := batch.Delete(key, nil); err != nil {
+				return 0, nil, err
+			}
+			pruned++ // one legacy row replaced, not an event reclaimed
+			groupUnsafe = true
+
+			continue
+		}
 
 		op := key[tpos+9]
 		if !validEventOp(op) {

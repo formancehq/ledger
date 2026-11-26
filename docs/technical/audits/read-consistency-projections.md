@@ -64,8 +64,8 @@ An aligned read-index snapshot may legally be ahead of the main handle only
 when target-specific gates project it back to the main pin:
 
 - transaction and log membership use `query.MainHorizonKeep`;
-- account metadata resolves event history at the pin and has-asset rows use
-  first-touch stamps;
+- account metadata and has-asset membership resolve events at the pin;
+  RC.5 first-touch rows remain readable as synthetic ADD events;
 - folded account membership retains the documented purged-address exception;
 - schema and `IndexVersionState` come from their owning pinned views.
 
@@ -77,16 +77,18 @@ store already saw deleted into an obligation no later log can resolve. See
 `TestWorkerBootsAfterLeaderSyncRestoresMainStoreBehindReadStore` in
 `internal/application/indexbuilder/resync_boot_test.go`.
 
-For account-asset first-touch rows, test the overlap between live folding and
-historical backfill. Seed an independently known first touch at sequence 5,
-create the index on a non-empty ledger, and fold a later live touch at sequence
-10 before backfill reaches 5. The live fold may first store 10, but after
-backfill the row must store `min(10, 5) = 5`. Presence alone is not a sufficient
-deduplication oracle. Inspect the stored stamp independently of the writer and
-verify the served-version readiness gate before testing query visibility at a
-pin. A pin before `CreateIndex` cannot use that index, even if the account's
-first touch predates its creation. See `TestAccountAssetBackfillRepairsLaterLiveFirstTouch`
-in `internal/application/indexbuilder/backfill_test.go` for the regression seam.
+For account-asset membership, test the overlap between live folding and
+historical backfill. Seed a touch at sequence 5, create the index on a
+non-empty ledger, and fold a later live touch at sequence 10 before backfill
+reaches 5. The writer must retain both ADD event keys; direct read-store
+resolution at pin 5 must find the earlier event. A query pinned before
+`CreateIndex` cannot use that index even if the touch predates its creation.
+On an RC.5 store, also
+verify that an eight-byte first-touch row resolves as an ADD at its stored
+sequence, that the live GC converts it atomically without changing admissible
+reads, and that frozen checkpoint copies remain readable through the dual
+reader. See `TestAccountAssetBackfillRepairsLaterLiveFirstTouch` and
+`TestAccountAssetLegacyRowsResolveAndMigrate` for regression seams.
 
 ### Generated history classification and readiness
 

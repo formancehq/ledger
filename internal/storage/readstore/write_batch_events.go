@@ -25,8 +25,8 @@ import (
 // checker's reverse-map pass is untouched).
 
 // eventSequence returns the declared raft sequence for sequence-stamped
-// writes — metadata events and the single-stamp rows (account-by-asset,
-// reverted_at) — failing loudly when unset: stamping a zero or stale
+// writes — metadata and account-by-asset events, and the single-stamp
+// reverted_at rows — failing loudly when unset: stamping a zero or stale
 // sequence would silently corrupt pinned resolution for every future reader.
 func (wb *WriteBatch) eventSequence() (uint64, error) {
 	if wb.eventSeq == 0 {

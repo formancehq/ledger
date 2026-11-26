@@ -466,10 +466,8 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 }
 
 // TestAccountAssetBackfillRepairsLaterLiveFirstTouch reproduces EN-3309:
-// CreateIndex makes the account-asset index pending while live folding remains
-// active. A later live transaction can therefore write the row before the
-// backfill replays the historical first touch. Presence-only dedup used to
-// preserve the later stamp forever; the backfill must retain the minimum.
+// live folding writes ADD@10 before backfill discovers ADD@5. Both immutable
+// events must survive so a reader pinned at 5 sees the historical touch.
 func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
 	t.Parallel()
 

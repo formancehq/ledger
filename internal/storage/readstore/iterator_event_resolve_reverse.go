@@ -10,7 +10,8 @@ import (
 )
 
 // ReverseEventResolveIterator is the descending twin of
-// EventResolveIterator's POINT form: it reads a metadata / exists index event
+// EventResolveIterator's POINT form: it reads a metadata, exists, or
+// account-by-asset index event
 // range at a pinned raft sequence and yields, in descending key order, every
 // group whose latest event at or below the pin is an ADD (see event_keys.go).
 //
@@ -38,9 +39,9 @@ type ReverseEventResolveIterator struct {
 	err       error
 }
 
-// NewReverseEventResolveIterator scans the event range under prefix (built by
-// MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin,
-// descending.
+// NewReverseEventResolveIterator scans metadata, exists, or account-by-asset
+// groups at the pin, descending. It accepts RC.5 first-touch rows in the
+// account-by-asset zone for live migration and frozen query checkpoints.
 func NewReverseEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*ReverseEventResolveIterator, error) {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
@@ -72,7 +73,7 @@ func (it *ReverseEventResolveIterator) settleFrom(seekTarget []byte) bool {
 // preceding group.
 func (it *ReverseEventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := parseEventKey(it.iter.Key(), it.prefixLen)
+		g, _, _, ok := it.parseCurrent()
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
@@ -84,7 +85,7 @@ func (it *ReverseEventResolveIterator) settle() bool {
 		decided := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := parseEventKey(it.iter.Key(), it.prefixLen)
+			g, seq, op, ok := it.parseCurrent()
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
@@ -117,6 +118,16 @@ func (it *ReverseEventResolveIterator) settle() bool {
 	it.exhausted = true
 
 	return false
+}
+
+func (it *ReverseEventResolveIterator) parseCurrent() (group []byte, seq uint64, op byte, ok bool) {
+	if len(it.seekPrefix) > 0 && it.seekPrefix[0] == PrefixAccountByAsset {
+		group, seq, _, ok = parseAccountAssetKey(it.iter.Key(), it.iter.Value(), it.prefixLen)
+
+		return group, seq, MetadataEventAdd, ok
+	}
+
+	return parseEventKey(it.iter.Key(), it.prefixLen)
 }
 
 func (it *ReverseEventResolveIterator) Next() bool {

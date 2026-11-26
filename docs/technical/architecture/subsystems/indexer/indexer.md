@@ -26,9 +26,9 @@ flowchart LR
 The ticker is intentional: an indexer that wakes only on signal would stall on signal-channel loss or under heavy GC pressure. The 100 ms cap bounds query-staleness even in the worst case.
 
 Event-history GC uses the same wakes but is edge-triggered rather than periodic.
-Each metadata (`0x01`) and entity-exists (`0x02`) zone records the stable
+Each metadata (`0x01`), entity-exists (`0x02`), and account-asset (`0x0C`) zone records the stable
 `(lease-bounded watermark, committed write epoch)` tuple covered by its last
-complete traversal. Once both zones complete, idle ticks perform no event-zone
+complete traversal. Once all zones complete, idle ticks perform no event-zone
 iteration until the watermark advances or a successfully committed batch adds
 an event to the affected zone. The write epochs are per-zone, so a
 metadata-only event does not rescan entity existence.
@@ -152,7 +152,10 @@ identical events within a batch and never probes committed membership. A late
 historical backfill can append an earlier sequence after a live fold; readers
 resolve the latest event at or below their pin. The event GC uses the same
 lease watermark and committed-write epoch as metadata events, retaining the
-latest ADD below the watermark. Ledger deletion range-deletes the entire zone.
+latest ADD below the watermark. Ledger deletion range-deletes the entire zone. The live GC also converts
+RC.5 first-touch rows to equivalent ADD events in bounded atomic batches.
+The reader accepts both formats because frozen query checkpoints keep their
+read-only copies of the old rows.
 
 The work stays linear in posting count, with constant-time membership probes and
 at most four historical puts per posting (two ANY, one SOURCE, one DESTINATION)

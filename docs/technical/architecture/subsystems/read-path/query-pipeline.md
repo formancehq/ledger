@@ -286,7 +286,15 @@ dates retain the materializing path: mirror ingest preserves the source v2
 date as `inserted_at`, so transaction ID and `inserted_at` are not guaranteed
 to have the same order.
 
-A gate that hides rows must hide them in **both** directions. `ReversePrefixIterator` carries the same fold-sequence stamp gate as `PrefixIterator`, and `ReverseEventResolveIterator` resolves each group at the same pin as its ascending twin — walking a group backwards, the *first* event with `seq <= pin` is the latest one at or below it, which is the event the forward pass settles on. A gate present on one side only is a direction-dependent visibility bug that a whole-set parity test cannot see, because both directions are compared against the same pinned view; the registry-driven conformance suite in `internal/storage/readstore/iterator_conformance_test.go` compares each direction against the independently declared set at a pin instead.
+Pin visibility must agree in **both** directions. Plain `PrefixIterator` and
+`ReversePrefixIterator` scan keys without a fold-sequence gate. Has-asset,
+metadata, and exists leaves use `EventResolveIterator` and
+`ReverseEventResolveIterator` to resolve each group at the same pin; the
+account-asset resolvers also accept RC.5 first-touch rows during migration.
+`NewStampGatedRangeIterator` separately gates the materialized `reverted_at`
+range. The registry-driven conformance suite compares each event direction
+against an independently declared set at a pin, so missing resolution in
+both directions cannot pass merely because their outputs agree.
 
 The acceptance oracle for the compiled path is `internal/query/compile_reverse_parity_test.go`: for **every supported target** — ACCOUNTS, TRANSACTIONS and LOGS — crossed with the filter families the per-target validity table allows on it and six page sizes, a full descending traversal *by pages* equals the reversed ascending reference. Target is part of the case matrix rather than a constant because TRANSACTIONS is the public default descending direction, so an ACCOUNTS-only oracle would prove the criterion on the wrong surface.
 

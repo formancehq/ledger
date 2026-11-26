@@ -24,6 +24,14 @@ with the null flag in place of the encoded value. The account-by-asset key is
 `[0x0C][ledger 64B][assetBase\x00][precision 1B][account\x00][seq BE8][ADD]`;
 its events are ADD-only because a historical touch is never revoked.
 
+RC.5 stored the account-by-asset cell as a plain key ending at `account`, with
+an eight-byte first-touch sequence in its value. Forward and reverse readers
+interpret that row as a synthetic ADD at its stored sequence and resolve it
+in the same account group as any new event keys. New writes use only event
+keys. Invalid legacy stamps fail the read rather than becoming membership.
+This dual reader is required for frozen query checkpoints, whose read stores
+open read-only and cannot be swept by live GC.
+
 Two details are load-bearing:
 
 - **The `\x00` terminator after the entity.** Entities are variable-length, so
@@ -81,8 +89,8 @@ the floor after the walk would reopen exactly that gap.
 
 ### Edge-triggered cycles
 
-The indexbuilder keeps an in-memory cycle state independently for `0x01` and
-`0x02`. An inactive zone starts a full traversal only when it has never
+The indexbuilder keeps an in-memory cycle state independently for `0x01`,
+`0x02`, and `0x0C`. An inactive zone starts a full traversal only when it has never
 completed one, its effective lease-bounded watermark advanced, or its local
 committed write epoch advanced. A traversal remains budgeted to 4,096 keys per
 wake and captures one stable `(watermark, write epoch)` tuple at its start.
@@ -103,7 +111,7 @@ Cycle state and epochs are not persisted because the read store is a
 rebuildable per-replica projection. After restart, the first positive watermark
 therefore performs a conservative full traversal. Watermark zero keeps the
 existing fast path and performs no scan. A failed slice retains its exact
-resume key and captured tuple for retry, while the other zone continues and
+resume key and captured tuple for retry, while the other zones continue and
 may complete independently. Iterator failures abort before the current group is
 settled or the pending delete batch is committed, so a partial traversal can
 never be recorded as completed coverage.
@@ -131,3 +139,10 @@ pinned main handle (`MainHorizonKeep`) restores exactness without a format
 change. The reverse map (`0x03`) also keeps prompt deletion: it is builder
 bookkeeping, never query-facing, and the index builder maintains it
 as-is.
+
+For the live `0x0C` zone, the budgeted sweep converts each RC.5 plain row
+by atomically putting its sequence-keyed ADD event and deleting the plain key.
+It skips pruning that account group in the conversion pass; later watermark
+advances can prune redundant events. A crash before the batch commit leaves
+the old row; repeating the conversion is idempotent. Checkpoint copies retain
+the old rows and use the dual reader for their lifetime.

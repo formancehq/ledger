@@ -92,14 +92,15 @@ iteration already consumed and a latched `childDone` survives it green.
 `TestReverseNotIterator_SeekRepositionsConsumedChild` drives the seek
 directly.
 
-Reverse leaves also owe the **visibility gates** their ascending twin carries —
-the fold-sequence stamp on `ReversePrefixIterator`, the pin on
-`ReverseEventResolveIterator`. A gate on one side only produces rows a
-descending page shows and an ascending page hides.
-`TestIteratorPairs_GateParity` compares each direction against the
-independently declared set at a pin, which is what separates them; comparing
-the two drains to each other cannot, since a gate missing from both still
-agrees.
+Plain `PrefixIterator` and `ReversePrefixIterator` owe the absolute seek
+contract, but they do not filter by pin. Pin visibility for has-asset,
+metadata, and exists comes from `EventResolveIterator` and
+`ReverseEventResolveIterator`; both directions must resolve the same group
+history. The account-asset resolver also accepts RC.5 first-touch rows as
+synthetic ADD events during migration. `TestIteratorPairs_GateParity` compares
+each direction against an independently declared set at a pin, catching a
+missing gate in either or both directions. The materialized `reverted_at`
+range retains its separate fold-sequence stamp gate.
 
 One leaf is exempt: `RangeIterator` only supports forward draining. Every
 construction site materializes it into a sorted `SliceIterator` before

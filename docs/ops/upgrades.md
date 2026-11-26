@@ -10,6 +10,19 @@ and test a safe migration when a format changes. A full data wipe or external
 reconstruction is not an acceptable release upgrade. Beta and development
 revisions before `v3.0.0-rc.1` remain outside this guarantee.
 
+### Account-by-asset read-index format after RC.5
+
+RC.5 stored each account/asset first touch as a plain read-index key with an
+eight-byte sequence value. The subsequent event-key format keeps the read
+store online during the upgrade: new writes append ADD events, while forward
+and reverse readers treat an RC.5 row as an ADD at its stored sequence. The
+background event GC converts live RC.5 rows to event keys in bounded atomic
+batches. An interrupted pass can repeat safely; the old row remains readable
+until its conversion commits. Frozen query-checkpoint read stores are read-only
+and retain their RC.5 rows, so their reads continue to use the dual decoder
+for the checkpoint's lifetime. No read-index wipe or external rebuild is
+required for this format transition.
+
 **Maintainer-approved backup artifact exception (PR #2600):** the
 checkpoint-only backup release does not restore incremental export manifests
 published by earlier RCs. This exception applies only to object-store backup
