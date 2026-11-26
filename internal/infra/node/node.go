@@ -1188,14 +1188,38 @@ func (node *Node) reportSentSnapshots(recipients []uint64) {
 // forgetRetainedFollowers drops the compaction hold's history for every node
 // an applied configuration change touches. Must be called from the
 // orchestrate goroutine, right after rawNode.ApplyConfChange.
-func (node *Node) forgetRetainedFollowers(cc *raftpb.ConfChangeV2) {
+func (node *Node) forgetRetainedFollowers(prior *raftpb.ConfState, cc *raftpb.ConfChangeV2) {
 	if node.followerRetention == nil {
 		return
 	}
 
 	for _, change := range cc.GetChanges() {
-		node.followerRetention.forget(change.GetNodeId())
+		id := change.GetNodeId()
+		switch change.GetType() {
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+			// Promoting or demoting a member keeps the same replica and its
+			// hold; only a node that was not a member starts afresh.
+			if confStateHasMember(prior, id) {
+				continue
+			}
+		case raftpb.ConfChangeRemoveNode, raftpb.ConfChangeUpdateNode:
+			// A removal ends the incarnation; an update installs a new
+			// identity under the same ID.
+		}
+		node.followerRetention.forget(id)
 	}
+}
+
+// confStateHasMember reports whether id is a voter or learner of cs,
+// including either side of a joint configuration.
+func confStateHasMember(cs *raftpb.ConfState, id uint64) bool {
+	for _, members := range [][]uint64{cs.GetVoters(), cs.GetLearners(), cs.GetVotersOutgoing(), cs.GetLearnersNext()} {
+		if slices.Contains(members, id) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // observeFollowerRetention feeds the followers' Raft progress to the
@@ -1910,8 +1934,9 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		node.logger.
 			WithFields(map[string]any{"transition": cc.GetTransition().String()}).
 			Infof("Applying configuration change")
+		prior := node.confState.Load()
 		node.confState.Store(node.rawNode.ApplyConfChange(cc))
-		node.forgetRetainedFollowers(cc)
+		node.forgetRetainedFollowers(prior, cc)
 
 		// Mirror the committed ConfChange into the in-memory cache +
 		// transport so the next Raft tick already sees the new address.
@@ -4005,9 +4030,10 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 				NodeId: new(nodeID),
 			}},
 		}
+		prior := node.confState.Load()
 		cs := node.rawNode.ApplyConfChange(cc)
 		node.confState.Store(cs)
-		node.forgetRetainedFollowers(cc)
+		node.forgetRetainedFollowers(prior, cc)
 
 		// Order matters here. ForceRemoveNode bypasses the Raft log, so
 		// there is no EntryConfChange the FSM replay can re-apply on

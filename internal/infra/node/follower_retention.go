@@ -28,14 +28,15 @@ import (
 // heard from within idleTimeout can resume from. Positions come only from
 // facts the leader has, never from raft's speculative probe cursor:
 //   - Match, the last entry the follower acknowledged in this term;
-//   - the index of a snapshot this leader sent the follower in this term and
-//     that Match has not passed yet. The follower resumes after it once it
-//     restores the checkpoint; the node reports every sent snapshot at once,
-//     which leaves Match at its pre-snapshot value.
+//   - the index of each snapshot this leader sent the follower in this term
+//     and that Match has not passed yet. The follower resumes after one once
+//     it restores the checkpoint; the node reports every sent snapshot at
+//     once, which leaves Match at its pre-snapshot value.
 //
-// Either can be the one the follower resumes from: a snapshot handed to the
-// transport can be lost, and a Match the leader compacted past is useless.
-// Both are published, and maintenance holds at the lowest one still in the
+// Any of these can be the one the follower resumes from: a snapshot handed
+// to the transport can be lost, a newer offer can be lost while the follower
+// installs an older one, and a Match the leader compacted past is useless.
+// All are published, and maintenance holds at the lowest one still in the
 // leader's log. A follower heard from with neither (typically just after an
 // election) has an unknown position: the leader keeps its whole retained log
 // until the follower acknowledges.
@@ -66,12 +67,17 @@ type followerRetention struct {
 	published atomic.Pointer[retentionPositions]
 }
 
+// maxSentSnapshots bounds how many sent snapshot indexes a follower keeps;
+// the oldest goes first.
+const maxSentSnapshots = 8
+
 // followerHistory is what the leader learned about a follower in term.
 type followerHistory struct {
 	match uint64
-	// sentSnapshot is the highest snapshot index sent to the follower that
-	// match has not reached yet, or 0.
-	sentSnapshot uint64
+	// sentSnapshots lists, ascending, the snapshot indexes sent to the
+	// follower that match has not reached. Every one is kept: a newer offer
+	// can be lost while the follower installs an older one.
+	sentSnapshots []uint64
 }
 
 // retentionPositions is what maintenance holds compaction for.
@@ -133,9 +139,9 @@ func (r *followerRetention) heard(id uint64, at time.Time) {
 }
 
 // forget drops what is known about node id. Call it from the orchestrate
-// goroutine when a configuration change for id applies: a member removed and
-// re-added under the same ID, or replaced, is a different follower whose
-// progress raft tracks afresh.
+// goroutine when a configuration change ends or starts an incarnation of id:
+// a member removed and re-added under the same ID, or given a new identity,
+// is a different follower. A promotion keeps the same follower.
 func (r *followerRetention) forget(id uint64) {
 	delete(r.lastHeard, id)
 	delete(r.peers, id)
@@ -176,27 +182,28 @@ func (r *followerRetention) observe(now time.Time, term uint64, followers []foll
 			r.peers[f.id] = h
 		}
 		h.match = f.match
-		if f.state == tracker.StateSnapshot {
-			h.sentSnapshot = max(h.sentSnapshot, f.pendingSnapshot)
+		if f.state == tracker.StateSnapshot && f.pendingSnapshot > 0 && !slices.Contains(h.sentSnapshots, f.pendingSnapshot) {
+			h.sentSnapshots = append(h.sentSnapshots, f.pendingSnapshot)
+			slices.Sort(h.sentSnapshots)
+			if len(h.sentSnapshots) > maxSentSnapshots {
+				h.sentSnapshots = slices.Delete(h.sentSnapshots, 0, len(h.sentSnapshots)-maxSentSnapshots)
+			}
 		}
-		if h.match >= h.sentSnapshot {
-			h.sentSnapshot = 0
-		}
+		h.sentSnapshots = slices.DeleteFunc(h.sentSnapshots, func(index uint64) bool { return index <= h.match })
 
 		if _, heard := r.lastHeard[f.id]; !heard {
 			continue
 		}
 
-		if h.match == 0 && h.sentSnapshot == 0 {
+		if h.match == 0 && len(h.sentSnapshots) == 0 {
 			published.unknown = true
 
 			continue
 		}
-		for _, position := range []uint64{h.match, h.sentSnapshot} {
-			if position > 0 {
-				published.positions = append(published.positions, position)
-			}
+		if h.match > 0 {
+			published.positions = append(published.positions, h.match)
 		}
+		published.positions = append(published.positions, h.sentSnapshots...)
 	}
 
 	if len(published.positions) == 0 && !published.unknown {

@@ -770,21 +770,24 @@ still replicating:
    probe cursor `Next-1` (a new leader probes every follower from its own
    log tail):
    - `Match`, the last entry the follower acknowledged;
-   - the index of a snapshot this leader sent it and that `Match` has not
-     reached, recorded while its `Progress` is in `StateSnapshot`. The node
-     reports every sent snapshot at once, which returns the follower to a
-     probe with its pre-snapshot `Match`; `finishReady` records the
-     positions before that report, so the snapshot index survives it.
+   - the index of each snapshot this leader sent it and that `Match` has not
+     reached (up to the 8 most recent), recorded while its `Progress` is in
+     `StateSnapshot`. The node reports every sent snapshot at once, which
+     returns the follower to a probe with its pre-snapshot `Match`;
+     `finishReady` records the positions before that report, so the
+     snapshot index survives it.
 
-   Both are published: a snapshot handed to the transport can be lost while
-   appends resume from `Match`, and a `Match` the leader compacted past is
+   All are published: a snapshot handed to the transport can be lost while
+   appends resume from `Match`, a newer offer can be lost while the follower
+   installs an older one, and a `Match` the leader compacted past is
    useless. A follower heard from with neither, typically just after an
    election, has an unknown position: the leader keeps its whole retained
    log until the follower acknowledges or is sent a snapshot. A new term, or
-   losing leadership, discards the positions but not the liveness. Applying
-   a configuration change discards both for every node it touches, so a
-   member removed and re-added, or replaced, under the same ID inherits
-   nothing from its predecessor.
+   losing leadership, discards the positions but not the liveness. A
+   configuration change that ends or starts an incarnation discards both
+   for that node: a removal, an identity update (`ConfChangeUpdateNode`), or
+   the addition of a node that was not a member. Promoting or demoting a
+   member keeps the same replica and its hold.
 3. **Fresh positions before compaction.** The positions are published on
    every Raft tick. Maintenance creates its WAL snapshot, then has the
    orchestrate goroutine publish them again and waits for it. RawNode

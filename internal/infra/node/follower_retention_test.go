@@ -107,6 +107,34 @@ func TestFollowerRetentionObserve(t *testing.T) {
 		require.Equal(t, &retentionPositions{positions: []uint64{90}}, publishedPositions(r), "a passed snapshot is forgotten")
 	})
 
+	t.Run("a newer snapshot offer keeps the older one", func(t *testing.T) {
+		t.Parallel()
+
+		// Snapshot 2000 is sent and reported; a delayed rejection makes the
+		// leader offer 4000, which can be lost while 2000 is installed.
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
+		r.observe(t0, term, []followerProgress{snapshotting(2, 3, 2000)})
+		r.observe(t0, term, []followerProgress{probing(2, 3)})
+		r.observe(t0, term, []followerProgress{snapshotting(2, 3, 4000)})
+		require.Equal(t, &retentionPositions{positions: []uint64{3, 2000, 4000}}, publishedPositions(r))
+
+		// The follower acknowledges 2000: only the newer offer remains.
+		r.observe(t0, term, []followerProgress{replicating(2, 2000)})
+		require.Equal(t, &retentionPositions{positions: []uint64{2000, 4000}}, publishedPositions(r))
+	})
+
+	t.Run("sent snapshots are bounded, oldest first", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
+		for i := range uint64(maxSentSnapshots + 2) {
+			r.observe(t0, term, []followerProgress{snapshotting(2, 3, 100*(i+1))})
+		}
+		require.Equal(t, []uint64{300, 400, 500, 600, 700, 800, 900, 1000}, r.peers[2].sentSnapshots)
+	})
+
 	t.Run("a follower silent past the idle timeout stops holding", func(t *testing.T) {
 		t.Parallel()
 
@@ -203,31 +231,56 @@ func TestForgetRetainedFollowersOnConfChange(t *testing.T) {
 	t.Parallel()
 
 	t0 := time.Unix(1_000, 0)
+	// Voters 1, 2; learners 3, 4, 5. Node 6 is not a member.
+	prior := &raftpb.ConfState{Voters: []uint64{1, 2}, Learners: []uint64{3, 4, 5}}
 	node := &Node{followerRetention: newFollowerRetention(1<<20, time.Minute)}
-	for _, id := range []uint64{2, 3, 4} {
+	for _, id := range []uint64{2, 3, 4, 5, 6} {
 		node.followerRetention.heard(id, t0)
 	}
 	node.followerRetention.observe(t0, 3, []followerProgress{
 		{id: 2, state: tracker.StateReplicate, match: 20},
 		{id: 3, state: tracker.StateReplicate, match: 30},
 		{id: 4, state: tracker.StateReplicate, match: 40},
+		{id: 5, state: tracker.StateReplicate, match: 50},
+		{id: 6, state: tracker.StateReplicate, match: 60},
 	})
 
-	node.forgetRetainedFollowers(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
+	node.forgetRetainedFollowers(prior, &raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
 		{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
-		{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(3)},
+		{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(3)},
+		{Type: new(raftpb.ConfChangeUpdateNode), NodeId: proto.Uint64(4)},
+		{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(6)},
 	}})
-	require.NotContains(t, node.followerRetention.lastHeard, uint64(2))
-	require.NotContains(t, node.followerRetention.lastHeard, uint64(3))
-	require.Contains(t, node.followerRetention.lastHeard, uint64(4))
-	require.NotContains(t, node.followerRetention.peers, uint64(2))
-	require.NotContains(t, node.followerRetention.peers, uint64(3))
-	require.Contains(t, node.followerRetention.peers, uint64(4))
+	r := node.followerRetention
+	for id, kept := range map[uint64]bool{
+		2: false, // removed: the incarnation ends
+		3: true,  // promoted: the same replica keeps its hold
+		4: false, // given a new identity
+		5: true,  // untouched
+		6: false, // added: a new member starts afresh
+	} {
+		require.Equal(t, kept, r.lastHeard[id] == t0, "lastHeard of %d", id)
+		_, hasPeer := r.peers[id]
+		require.Equal(t, kept, hasPeer, "history of %d", id)
+	}
 
 	// Disabled retention ignores configuration changes.
-	(&Node{}).forgetRetainedFollowers(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
+	(&Node{}).forgetRetainedFollowers(prior, &raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
 		{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
 	}})
+}
+
+func TestConfStateHasMember(t *testing.T) {
+	t.Parallel()
+
+	cs := &raftpb.ConfState{
+		Voters: []uint64{1}, Learners: []uint64{2}, VotersOutgoing: []uint64{3}, LearnersNext: []uint64{4},
+	}
+	for _, id := range []uint64{1, 2, 3, 4} {
+		require.True(t, confStateHasMember(cs, id), "member %d", id)
+	}
+	require.False(t, confStateHasMember(cs, 5))
+	require.False(t, confStateHasMember(nil, 1))
 }
 
 // fakeRetentionLog serves entries [first, first+len(entries)).
