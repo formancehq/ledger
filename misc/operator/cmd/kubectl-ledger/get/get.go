@@ -85,7 +85,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	)
 
 	// Pods section
-	pods, err := cmdutil.ClusterPods(ctx, cs, ns, name)
+	pods, err := cmdutil.ClusterPods(ctx, cs, ledger)
 	if err != nil {
 		return fmt.Errorf("listing pods: %w", err)
 	}
@@ -108,7 +108,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// PVCs section
-	pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ns, name)
+	pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ledger)
 	if err != nil {
 		return fmt.Errorf("listing PVCs: %w", err)
 	}
@@ -137,7 +137,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// Services section
-	svcs, err := cmdutil.Clusters(ctx, cs, ns, name)
+	svcs, err := cmdutil.ClusterServices(ctx, cs, ledger)
 	if err != nil {
 		return fmt.Errorf("listing services: %w", err)
 	}
