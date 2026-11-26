@@ -102,8 +102,9 @@ The operator keeps that proof on each claim in the
 
 When the StatefulSet and its Pods are absent and claims remain, the operator
 admits an RC tag only when every remaining WAL/data claim records exactly that
-tag. It rejects a claim without the annotation, a claim being deleted, and
-claims that record different tags. It also rejects the next adjacent RC: without a StatefulSet
+tag. It rejects a claim without the annotation, a claim being deleted, a
+missing claim for an ordinal below `spec.replicas`, and claims that record
+different tags. It also rejects the next adjacent RC: without a StatefulSet
 there is no rolling transition. Recreate the Cluster with the recorded tag, wait
 for the rollout to converge, then upgrade through the normal path.
 
@@ -152,7 +153,20 @@ it, attest the source manually:
 The operator also rejects a recreation while any WAL or data claim is being
 deleted, whatever it records and even when an orphan Pod runs the requested
 tag: the recreated Pod would mount an empty replacement, not the recorded data.
-Kubernetes finishes the deletion only once no Pod mounts the claim.
+Kubernetes finishes the deletion only once no Pod mounts the claim. The
+operator checks again every 10 seconds.
+
+Once retained claims or an orphan Pod show that a previous cluster existed,
+the operator also requires every claim that the recreated StatefulSet will
+mount: each PVC-backed WAL and data volume at each ordinal below
+`spec.replicas`. A missing claim, including one whose deletion just finished,
+blocks the recreation instead of being provisioned empty, and the operator
+does not retry it. The operator cannot tell a lost claim from one that never
+existed, so it also refuses a recreation with more replicas than the retained
+claims cover. Recreate with the previous replica count and scale afterwards.
+If a member's claim is lost, recovering it is an explicit decision: restore the
+claim from a volume snapshot under the same name, or restore the cluster from a
+backup. Then touch the `Cluster` so that it reconciles.
 
 This annotation replaces the earlier workaround of creating a placeholder Pod
 with the source image so that the orphan-Pod branch admits the source. Do not

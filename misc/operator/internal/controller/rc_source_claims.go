@@ -251,6 +251,44 @@ func rejectDeletingClaims(stsName string, claims []corev1.PersistentVolumeClaim)
 	return nil
 }
 
+// rejectMissingClaims refuses a recreation that would provision an empty claim
+// for a member of the previous cluster. A retained ordinal claim or a matching
+// orphan Pod proves that a previous cluster existed; every claim the recreated
+// StatefulSet will mount (each PVC-backed volume at each ordinal below the
+// desired replica count) must then still exist. The operator cannot tell a
+// claim that was lost from one that never existed, so a recreation that also
+// scales up is refused too: recreate with the previous replica count, then
+// scale through the normal path. Without such evidence there is nothing to
+// protect and the Cluster is created from scratch.
+func rejectMissingClaims(ledger *ledgerv1alpha1.Cluster, orphanPods bool, claims []corev1.PersistentVolumeClaim) error {
+	if !orphanPods && len(claims) == 0 {
+		return nil
+	}
+	stsName := resourceName(ledger.Name)
+	present := make(map[string]bool, len(claims))
+	for _, claim := range claims {
+		present[claim.Name] = true
+	}
+	replicas := int32(3)
+	if ledger.Spec.Replicas != nil {
+		replicas = *ledger.Spec.Replicas
+	}
+	var missing []string
+	for _, volume := range pvcVolumeNames(&ledger.Spec.Persistence) {
+		for ordinal := range replicas {
+			name := fmt.Sprintf("%s-%s-%d", volume, stsName, ordinal)
+			if !present[name] {
+				missing = append(missing, name)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: cannot recreate StatefulSet %q over the previous cluster: missing PVC(s) %s would be provisioned empty; restore them, or recreate with the replica count the retained claims cover and scale afterwards", errRCClaimMissing, stsName, strings.Join(missing, ", "))
+	}
+
+	return nil
+}
+
 // validateClaimSourceTags admits a recreation only when every retained
 // ordinal claim records exactly the requested tag. Without a StatefulSet there
 // is no rolling transition, so even the next adjacent RC is refused.

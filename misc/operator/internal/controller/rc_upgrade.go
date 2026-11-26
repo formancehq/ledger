@@ -24,6 +24,9 @@ var (
 	// errRCClaimDeletionPending marks a rejection that clears by itself once a
 	// claim deletion finishes. PVCs are not watched, so the caller requeues.
 	errRCClaimDeletionPending = errors.New("RC source claim deletion pending")
+	// errRCClaimMissing marks a recreation refused because a claim of the
+	// previous cluster is gone. It needs an operator decision, not a retry.
+	errRCClaimMissing = errors.New("RC source claim missing")
 )
 
 const rcClaimDeletionRequeueInterval = 10 * time.Second
@@ -118,6 +121,10 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 	// Checked before the orphan-Pod branch: a matching Pod proves the image,
 	// not the data a recreated Pod would mount.
 	if err := rejectDeletingClaims(name, claims); err != nil {
+		return err
+	}
+	// A finished deletion must not turn into an admitted empty replacement.
+	if err := rejectMissingClaims(ledger, matchingPod, claims); err != nil {
 		return err
 	}
 	if matchingPod {

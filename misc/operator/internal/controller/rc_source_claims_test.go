@@ -304,6 +304,9 @@ func TestRecreatedClusterStartsFromRecordedClaims(t *testing.T) {
 
 	recreated := sourceRecordCluster("v3.0.0-rc.4")
 	recreated.UID = types.UID("recreated-cluster-uid")
+	require.ErrorIs(t, r.validateRCUpgradeWithoutStatefulSet(ctx, recreated), errRCClaimMissing,
+		"recreating at the default 3 replicas over a 1-replica claim set provisions empty members")
+	recreated.Spec.Replicas = new(int32(1))
 	require.NoError(t, r.validateRCUpgradeWithoutStatefulSet(ctx, recreated))
 	recreated.Spec.Image.Tag = "v3.0.0-rc.5"
 	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(ctx, recreated), "restore spec.image.tag to v3.0.0-rc.4")

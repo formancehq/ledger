@@ -258,7 +258,12 @@ source image. They do not prove the data: whether or not orphan Pods match, the
 gate first rejects the recreation while any WAL/data ordinal claim is being
 deleted, because the recreated Pod would mount its empty replacement. The
 operator does not watch PVCs, so this rejection requeues the Cluster every
-10 seconds and the recreation resumes once the deletion finishes. A failure to
+10 seconds. A finished deletion does not admit the recreation: once a retained
+ordinal claim or a matching orphan Pod proves a previous cluster, every claim
+the recreated StatefulSet will mount (each PVC-backed volume at each ordinal
+below the desired replica count) must exist, or the gate reports
+`ConfigValid=False` without a requeue. A missing claim is indistinguishable from
+one never created, so a recreation that scales up is refused too. A failure to
 list the Pods or claims is not a verdict: Reconcile returns it for controller
 backoff and leaves `ConfigValid` unchanged. A Cluster deleted with retained claims leaves neither, so the operator
 keeps the source on the claims themselves in the

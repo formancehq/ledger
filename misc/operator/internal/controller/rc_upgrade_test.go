@@ -152,7 +152,7 @@ func TestReconcileRejectsSkippedRCWhenStatefulSetIsBeingRecreated(t *testing.T) 
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 	c := fake.NewClientBuilder().WithScheme(scheme).
 		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
-		WithObjects(cluster, orphan).Build()
+		WithObjects(append(retainedClaimSet(cluster, 3, ""), cluster, orphan)...).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"} // New reconciler after orphan deletion.
 	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
 	stsKey := types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}
@@ -182,13 +182,10 @@ func TestMissingStatefulSetWithPVCKeepsRCSourceUnknown(t *testing.T) {
 
 	cluster := newMinimalCluster()
 	cluster.Spec.Image.Tag = "v3.0.0-rc.3"
-	claim := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
-		Name: "wal-" + resourceName(cluster.Name) + "-0", Namespace: cluster.Namespace,
-	}}
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(claim).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(retainedClaimSet(cluster, 3, "")...).Build()
 	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
 	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster), "cannot verify RC source")
@@ -285,6 +282,17 @@ func recordedClaim(cluster *ledgerv1alpha1.Cluster, prefix string, ordinal int, 
 	return claim
 }
 
+// retainedClaimSet returns the WAL and data claims of every ordinal below
+// replicas, as a Cluster deleted with deletion protection leaves them.
+func retainedClaimSet(cluster *ledgerv1alpha1.Cluster, replicas int, tag string) []client.Object {
+	var objects []client.Object
+	for ordinal := range replicas {
+		objects = append(objects, recordedClaim(cluster, "wal", ordinal, tag), recordedClaim(cluster, "data", ordinal, tag))
+	}
+
+	return objects
+}
+
 // A Cluster deleted with retained claims and recreated with the same RC tag
 // proves its source from the claim record, without an orphan Pod.
 func TestMissingStatefulSetWithRecordedClaimsValidatesRCSource(t *testing.T) {
@@ -371,70 +379,154 @@ func TestOrphanPodRecreationRejectsDeletingClaim(t *testing.T) {
 			Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.4",
 		}}},
 	}
-	kept := recordedClaim(cluster, "data", 0, "")
-	deleting := recordedClaim(cluster, "data", 1, "")
-	now := metav1.Now()
-	deleting.DeletionTimestamp = &now
-	deleting.Finalizers = []string{"kubernetes.io/pvc-protection"}
+	retained := retainedClaimSet(cluster, 3, "")
+	deleting := retained[3].(*corev1.PersistentVolumeClaim) // data, ordinal 1
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
 
-	admitted := fake.NewClientBuilder().WithScheme(scheme).WithObjects(orphan, kept).Build()
+	admitted := fake.NewClientBuilder().WithScheme(scheme).WithObjects(append(retained, orphan)...).Build()
 	r := &ClusterReconciler{Client: admitted, Scheme: scheme}
 	require.NoError(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster))
 
-	blocked := fake.NewClientBuilder().WithScheme(scheme).WithObjects(orphan, kept, deleting).Build()
+	now := metav1.Now()
+	deleting.DeletionTimestamp = &now
+	deleting.Finalizers = []string{"kubernetes.io/pvc-protection"}
+	blocked := fake.NewClientBuilder().WithScheme(scheme).WithObjects(append(retained, orphan)...).Build()
 	r = &ClusterReconciler{Client: blocked, Scheme: scheme}
 	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster),
 		fmt.Sprintf("PVC %q is being deleted", deleting.Name))
 }
 
-// PVCs are not watched, so the deleting-claim gate must requeue itself: the
-// recreation proceeds once the deletion finishes, without a Cluster edit.
-func TestReconcileRequeuesUntilDeletingClaimIsGone(t *testing.T) {
+// PVCs are not watched, so the deleting-claim gate requeues itself. Once the
+// deletion finishes, a claim of a member below the replica count is missing:
+// the recreation stays refused rather than provisioning it empty. A deleting
+// claim beyond the replica count only delays the recreation.
+func TestReconcileDeletingClaimRequeuesThenBlocksMissingMember(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	cluster := newMinimalCluster()
-	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
-	orphan := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name) + "-0", Namespace: cluster.Namespace},
-		Spec: corev1.PodSpec{Containers: []corev1.Container{{
-			Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.4",
-		}}},
+	for _, tt := range []struct {
+		name        string
+		ordinal     int
+		wantCreated bool
+	}{
+		{name: "member claim", ordinal: 1},
+		{name: "claim beyond the replica count", ordinal: 3, wantCreated: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			cluster := newMinimalCluster()
+			cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+			orphan := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name) + "-0", Namespace: cluster.Namespace},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{
+					Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.4",
+				}}},
+			}
+			objects := retainedClaimSet(cluster, 4, "")
+			deleting := objects[2*tt.ordinal+1].(*corev1.PersistentVolumeClaim) // data claim
+			now := metav1.Now()
+			deleting.DeletionTimestamp = &now
+			deleting.Finalizers = []string{"kubernetes.io/pvc-protection"}
+			scheme := runtime.NewScheme()
+			require.NoError(t, clientgoscheme.AddToScheme(scheme))
+			require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+			c := fake.NewClientBuilder().WithScheme(scheme).
+				WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
+				WithObjects(append(objects, cluster, orphan)...).Build()
+			r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
+			key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+			stsKey := types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}
+
+			result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+			require.NoError(t, err)
+			require.Equal(t, rcClaimDeletionRequeueInterval, result.RequeueAfter)
+			require.NoError(t, c.Get(ctx, key, cluster))
+			condition := meta.FindStatusCondition(cluster.Status.Conditions, "ConfigValid")
+			require.NotNil(t, condition)
+			require.Equal(t, metav1.ConditionFalse, condition.Status)
+			require.Contains(t, condition.Message, fmt.Sprintf("PVC %q is being deleted", deleting.Name))
+			require.True(t, apierrors.IsNotFound(c.Get(ctx, stsKey, &appsv1.StatefulSet{})))
+
+			// The deletion finishes once the finalizer is released.
+			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(deleting), deleting))
+			deleting.Finalizers = nil
+			require.NoError(t, c.Update(ctx, deleting))
+			result, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+			require.NoError(t, err)
+			if tt.wantCreated {
+				require.NoError(t, c.Get(ctx, stsKey, &appsv1.StatefulSet{}))
+
+				return
+			}
+			require.Zero(t, result, "a missing member claim needs a decision, not a retry")
+			require.NoError(t, c.Get(ctx, key, cluster))
+			condition = meta.FindStatusCondition(cluster.Status.Conditions, "ConfigValid")
+			require.NotNil(t, condition)
+			require.Equal(t, metav1.ConditionFalse, condition.Status)
+			require.Contains(t, condition.Message, "missing PVC(s) "+deleting.Name)
+			require.True(t, apierrors.IsNotFound(c.Get(ctx, stsKey, &appsv1.StatefulSet{})),
+				"the empty replacement must not be admitted")
+		})
 	}
-	deleting := recordedClaim(cluster, "data", 1, "")
-	now := metav1.Now()
-	deleting.DeletionTimestamp = &now
-	deleting.Finalizers = []string{"kubernetes.io/pvc-protection"}
-	scheme := runtime.NewScheme()
-	require.NoError(t, clientgoscheme.AddToScheme(scheme))
-	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
-	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
-		WithObjects(cluster, orphan, deleting).Build()
-	r := &ClusterReconciler{Client: c, Scheme: scheme, OperatorVersion: "v3.0.0-rc.4"}
-	key := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
-	stsKey := types.NamespacedName{Name: resourceName(cluster.Name), Namespace: cluster.Namespace}
+}
 
-	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-	require.NoError(t, err)
-	require.Equal(t, rcClaimDeletionRequeueInterval, result.RequeueAfter)
-	require.NoError(t, c.Get(ctx, key, cluster))
-	condition := meta.FindStatusCondition(cluster.Status.Conditions, "ConfigValid")
-	require.NotNil(t, condition)
-	require.Equal(t, metav1.ConditionFalse, condition.Status)
-	require.Contains(t, condition.Message, fmt.Sprintf("PVC %q is being deleted", deleting.Name))
-	require.True(t, apierrors.IsNotFound(c.Get(ctx, stsKey, &appsv1.StatefulSet{})))
+// Evidence of a previous cluster requires every claim the recreated Pods will
+// mount. Only PVC-backed volumes count, and a recreation that scales up is
+// refused because a never-created claim cannot be told from a lost one.
+func TestRecreationRejectsMissingClaims(t *testing.T) {
+	t.Parallel()
 
-	// The deletion finishes once the finalizer is released.
-	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(deleting), deleting))
-	deleting.Finalizers = nil
-	require.NoError(t, c.Update(ctx, deleting))
-	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-	require.NoError(t, err)
-	require.NoError(t, c.Get(ctx, stsKey, &appsv1.StatefulSet{}))
+	hostPathData := func(cluster *ledgerv1alpha1.Cluster) {
+		cluster.Spec.Persistence.Data = ledgerv1alpha1.VolumeSpec{
+			HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/nvme0/data"},
+		}
+	}
+	for _, tt := range []struct {
+		name        string
+		replicas    int32
+		retained    int  // ordinals with retained claims
+		walOnly     bool // keep only the WAL claims of those ordinals
+		orphanPods  bool
+		mutate      func(*ledgerv1alpha1.Cluster)
+		wantMissing string
+	}{
+		{name: "no evidence creates from scratch", replicas: 3},
+		{name: "complete set", replicas: 3, retained: 3},
+		{name: "orphan Pods without claims", replicas: 1, orphanPods: true, wantMissing: "wal-ledger-test-0, data-ledger-test-0"},
+		{name: "scale-up during recreation", replicas: 3, retained: 2, wantMissing: "wal-ledger-test-2, data-ledger-test-2"},
+		{name: "scale-down during recreation", replicas: 1, retained: 3},
+		{name: "hostPath data needs only WAL claims", replicas: 3, retained: 3, walOnly: true, mutate: hostPathData},
+		{name: "PVC data needs data claims", replicas: 1, retained: 1, walOnly: true, wantMissing: "data-ledger-test-0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cluster := newMinimalCluster()
+			cluster.Spec.Replicas = &tt.replicas
+			if tt.mutate != nil {
+				tt.mutate(cluster)
+			}
+			var claims []corev1.PersistentVolumeClaim
+			for ordinal := range tt.retained {
+				claims = append(claims, *recordedClaim(cluster, "wal", ordinal, ""))
+				if !tt.walOnly {
+					claims = append(claims, *recordedClaim(cluster, "data", ordinal, ""))
+				}
+			}
+
+			err := rejectMissingClaims(cluster, tt.orphanPods, claims)
+			if tt.wantMissing == "" {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorIs(t, err, errRCClaimMissing)
+			require.ErrorContains(t, err, "missing PVC(s) "+tt.wantMissing+" would be provisioned empty")
+		})
+	}
 }
 
 // An API failure while reading the RC evidence is not a verdict on the spec:
@@ -483,10 +575,11 @@ func TestMissingStatefulSetReadsClaimRecordsThroughAPIReader(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	cluster.Spec.Replicas = new(int32(1))
 	cached := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(recordedClaim(cluster, "wal", 0, "v3.0.0-rc.4")).Build()
+		WithObjects(retainedClaimSet(cluster, 1, "v3.0.0-rc.4")...).Build()
 	live := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(recordedClaim(cluster, "wal", 0, "")).Build()
+		WithObjects(recordedClaim(cluster, "wal", 0, ""), recordedClaim(cluster, "data", 0, "v3.0.0-rc.4")).Build()
 	r := &ClusterReconciler{Client: cached, APIReader: live, Scheme: scheme}
 
 	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster), "cannot verify RC source")
