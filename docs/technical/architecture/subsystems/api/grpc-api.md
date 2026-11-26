@@ -8,6 +8,14 @@ The gRPC API provides a programmatic interface for interacting with the ledger c
 2. **Inter-node communication**: Request forwarding from followers to the leader
 3. **CLI tools**: The `ledgerctl` command-line tool uses gRPC
 
+Read RPCs that previously checked `ledger == ""` now call the generated
+`ValidateInput` method on their request at the same point. An empty ledger
+still returns `ErrLedgerNameRequired`; requests without an existing ledger-name
+guard are unaffected. This input check does not run during Raft apply or replay.
+The cluster drain RPCs also use generated validation for an empty epoch, while
+retaining the existing 128-byte limit and error. Leadership transfer uses it
+for a zero transferee ID; zero in cluster-state requests remains meaningful.
+
 ### Restore-mode service lifetime
 
 `RestoreService.StartDownloadBackup` deliberately detaches the transfer from

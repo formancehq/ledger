@@ -125,7 +125,7 @@ message GetClusterStateRequest {
 }
 
 message BeginDrainRequest {
-  string epoch = 1; // Stable operator-generated ID for retry after timeout.
+  string epoch = 1 [(common.non_zero_for_input) = true]; // Stable operator-generated ID for retry after timeout.
 }
 
 message BeginDrainResponse {
@@ -135,7 +135,7 @@ message BeginDrainResponse {
 }
 
 message EndDrainRequest {
-  string epoch = 1; // Must match the active drain epoch.
+  string epoch = 1 [(common.non_zero_for_input) = true]; // Must match the active drain epoch.
 }
 
 message EndDrainResponse {
@@ -240,7 +240,7 @@ message SyncProgress {
 // ============================================================================
 
 message TransferLeadershipRequest {
-  uint64 transferee = 1;  // Target node ID
+  uint64 transferee = 1 [(common.non_zero_for_input) = true];  // Target node ID
 }
 
 message TransferLeadershipResponse {

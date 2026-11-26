@@ -6,6 +6,14 @@ import (
 )
 
 // ValidateInput checks declared direct-field input requirements.
+func (m *LedgerScopedOrder) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
 func (m *CreatePreparedQueryOrder) ValidateInput() error {
 	if m == nil || m.Query == nil {
 		return &inputvalidation.FieldError{Path: "query"}

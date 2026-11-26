@@ -19,10 +19,13 @@ generated methods.
 | Prepared-query update/delete names | Non-zero string | Generated checks run before the existing name-shape validator at the same admission position. |
 | Prepared-query name, sink name, mirror IAM region | Non-zero string | Generated check replaces the empty-value branch at the existing boundary. |
 | Sink `type` | Oneof selection | Remains manual; a direct scalar rule cannot express oneof selection. |
-| Ledger and account names, metadata keys, signing key IDs | Value shape and context | Existing domain validators also enforce characters, length or scope and retain their error order. |
+| Ledger-scoped order names | Non-zero string plus value shape | Generated check replaces the empty-name branch at admission; the domain validator retains character, length and reserved-name checks. |
+| Ledger names on existing gRPC read guards | Non-zero string | Generated checks replace eleven empty-name branches at their existing adapter positions and retain `ErrLedgerNameRequired`. |
+| Account names, metadata keys, signing key IDs | Value shape and context | Existing validators also enforce characters, length or scope and retain their error order. |
 | Posting amount, update target | Explicit presence | Generated check accepts a present zero value. |
 | Sink batch size and query target enum | Valid zero/default | Must not use a non-zero rule. |
-| Cluster IDs, epochs and bootstrap fields | Protocol and lifecycle invariants | Remain at their transport and lifecycle boundaries. |
+| Cluster drain epochs and leadership transferee | Non-zero scalar plus lifecycle rules | Generated checks replace the existing zero guards at the same RPC positions; epoch length and cluster preconditions remain manual. |
+| Cluster state target, bootstrap fields and other IDs | Protocol and lifecycle invariants | Remain at their transport and lifecycle boundaries; zero is valid for the cluster-state target. |
 | Persisted order and audit fields | Committed/replay contract | Do not run input-only methods during apply or replay. |
 
 ## Goal

@@ -6,9 +6,97 @@ import (
 )
 
 // ValidateInput checks declared direct-field input requirements.
+func (m *GetAccountRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *GetTransactionRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *ListTransactionsRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *ListAccountsRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *GetLedgerRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *ListLogsRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *AnalyzeAccountsRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *AnalyzeTransactionsRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
 func (m *UpdatePreparedQueryRequest) ValidateInput() error {
 	if m == nil || m.Target == nil {
 		return &inputvalidation.FieldError{Path: "target"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *GetLedgerStatsRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *AggregateVolumesRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *InspectIndexRequest) ValidateInput() error {
+	if m == nil || m.Ledger == "" {
+		return &inputvalidation.FieldError{Path: "ledger"}
 	}
 	return nil
 }

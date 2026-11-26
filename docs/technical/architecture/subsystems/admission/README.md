@@ -4,9 +4,10 @@ Admission (`internal/application/admission`) prepares Raft proposals. Client `Ap
 
 ## Documents
 
-Admission invokes generated `ValidateInput` checks for posting amounts,
-prepared-query update targets, query presence and names, sink configuration
-presence and names, and mirror IAM regions before proposing new orders. It maps
+Admission invokes generated `ValidateInput` checks for ledger-scoped order
+names, posting amounts, prepared-query update targets, query presence and names,
+sink configuration presence and names, and mirror IAM regions before proposing
+new orders. It maps
 failures to the existing public validation errors. Validators on order messages
 run only in admission; the FSM does not invoke them, so historical orders retain
 their replay semantics.

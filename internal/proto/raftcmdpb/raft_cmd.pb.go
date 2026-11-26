@@ -5928,9 +5928,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
 	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
-	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xda\x06\n" +
-	"\x11LedgerScopedOrder\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xe0\x06\n" +
+	"\x11LedgerScopedOrder\x12\x1c\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
 	"\rcreate_ledger\x18\x03 \x01(\v2\x17.raft.CreateLedgerOrderH\x00R\fcreateLedger\x12>\n" +
 	"\rdelete_ledger\x18\x04 \x01(\v2\x17.raft.DeleteLedgerOrderH\x00R\fdeleteLedger\x12>\n" +

@@ -291,7 +291,7 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
@@ -493,7 +493,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return domain.ErrLedgerNameRequired
 	}
 
@@ -601,7 +601,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	ctx, span := bucketTracer.Start(ctx, "grpc.GetLedger")
 	defer span.End()
 
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
@@ -622,7 +622,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
@@ -647,7 +647,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return domain.ErrLedgerNameRequired
 	}
 
@@ -874,7 +874,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	}
 	defer cleanup()
 
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return domain.ErrLedgerNameRequired
 	}
 
@@ -991,7 +991,7 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccountsRequest, stream servicepb.BucketService_AnalyzeAccountsServer) error {
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return domain.ErrLedgerNameRequired
 	}
 
@@ -1018,7 +1018,7 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeTransactionsRequest, stream servicepb.BucketService_AnalyzeTransactionsServer) error {
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return domain.ErrLedgerNameRequired
 	}
 
@@ -1071,7 +1071,7 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 }
 
 func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
@@ -1088,7 +1088,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
@@ -1198,7 +1198,7 @@ func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, 
 }
 
 func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
-	if req.GetLedger() == "" {
+	if err := req.ValidateInput(); err != nil {
 		return nil, domain.ErrLedgerNameRequired
 	}
 

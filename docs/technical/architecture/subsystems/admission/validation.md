@@ -54,7 +54,7 @@ not move any validator or change client behavior.
 | Event sink name and type | ✅ | — | New `AddEventsSink` orders require a nonempty name and one sink variant. |
 | Ledger mode and mirror source | ✅ | — | `MIRROR` creation requires a source configuration; `NORMAL` creation must omit it. |
 | HTTP mirror base URL syntax, HTTP(S) scheme and nonempty hostname | ✅ | — | Rejected with a safe `VALIDATION` error before Raft or ledger creation. No connectivity probe or configuration rewrite; raw URL parser errors may contain credentials and must not be exposed. |
-| Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |
+| Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `LedgerScopedOrder.ValidateInput` rejects an empty name at admission; `ValidateLedgerName` retains the character and length checks and their public errors. The fixed size matters because ledger names pad into Pebble keys. |
 | Account type name ≤ 256 bytes and pattern ≤ 4096 bytes | ✅ | ✅ | Admission rejects oversized inputs before consensus. The FSM repeats the bounds for replay and directly proposed orders so error facts retain the original value rather than a digest. |
 | Transaction reference ≤ 4096 bytes | ✅ | ✅ | The conflict fact contains the exact reference; both layers reject an oversized reference before a conflict can be audited. |
 | Idempotency key (UTF-8, ≤ 256 bytes) | ✅ | — | The *uniqueness* of the key is checked at FSM time against `SubIdempKeys`; the *shape* is checked at admission. |

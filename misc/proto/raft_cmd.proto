@@ -91,7 +91,7 @@ message OrderTechnical {
 // attribution and admission scope checks; payload sub-messages must not carry
 // their own ledger field.
 message LedgerScopedOrder {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true];
   oneof payload {
     LedgerApplyOrder apply = 2;
     CreateLedgerOrder create_ledger = 3;

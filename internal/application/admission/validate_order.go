@@ -227,6 +227,9 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 	if ls == nil {
 		return nil
 	}
+	if err := ls.ValidateInput(); err != nil {
+		return domain.ErrLedgerNameRequired
+	}
 
 	if err := domain.ValidateLedgerName(ls.GetLedger()); err != nil {
 		return err
