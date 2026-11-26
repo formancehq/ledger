@@ -109,8 +109,8 @@ func validateRCUpgradeWithoutStatefulSet(ctx context.Context, c client.Client, s
 		return nil
 	}
 
-	// PVCs are read uncached: the operator has no watch RBAC on them, so a
-	// cached List starts an informer that never syncs.
+	// Read PVCs directly from the API server so this storage safety check uses
+	// current state rather than the controller cache.
 	claims := &corev1.PersistentVolumeClaimList{}
 	if err := storageReader.List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
 		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)

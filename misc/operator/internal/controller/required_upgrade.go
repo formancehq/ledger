@@ -155,8 +155,8 @@ type stoppedUpgradeClaimLifecycle struct {
 
 type stoppedUpgradeReconciler struct {
 	client client.Client
-	// reader serves PVC and PV reads. The operator has no watch RBAC on them,
-	// so a read through the cached client starts an informer that never syncs.
+	// reader serves PVC and PV reads directly from the API server so storage
+	// safety checks use current state rather than the controller cache.
 	reader       client.Reader
 	config       *rest.Config
 	clientset    kubernetes.Interface
