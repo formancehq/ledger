@@ -470,6 +470,19 @@ func (x *ListSigningKeysRequest) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (x *GetSigningConfigRequest) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+	}{})
+}
+
+func (x *GetSigningConfigResponse) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		RequireSignatures bool `json:"requireSignatures"`
+	}{
+		RequireSignatures: x.RequireSignatures,
+	})
+}
+
 func (x *SetMaintenanceModeRequest) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
 		Enabled bool `json:"enabled"`

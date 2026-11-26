@@ -161,6 +161,7 @@ func expectedRouteScopes() []routeScope {
 		{http.MethodPost, "/v3/_/events-sinks", kindGuarded, internalauth.ScopeOpsWrite, false},
 		{http.MethodDelete, "/v3/_/events-sinks/{sinkName}", kindGuarded, internalauth.ScopeOpsWrite, false},
 		{http.MethodGet, "/v3/_/signing-keys", kindGuarded, internalauth.ScopeOpsRead, false},
+		{http.MethodGet, "/v3/_/signing-config", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes/status", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes/{canonicalId}", kindGuarded, internalauth.ScopeOpsRead, false},

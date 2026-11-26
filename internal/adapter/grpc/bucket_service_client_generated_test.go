@@ -1010,6 +1010,50 @@ func (c *MockBucketServiceClientGetSecondaryMetricsCall) DoAndReturn(f func(cont
 	return c
 }
 
+// GetSigningConfig mocks base method.
+func (m *MockBucketServiceClient) GetSigningConfig(ctx context.Context, in *servicepb.GetSigningConfigRequest, opts ...grpc.CallOption) (*servicepb.GetSigningConfigResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetSigningConfig", varargs...)
+	ret0, _ := ret[0].(*servicepb.GetSigningConfigResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSigningConfig indicates an expected call of GetSigningConfig.
+func (mr *MockBucketServiceClientMockRecorder) GetSigningConfig(ctx, in any, opts ...any) *MockBucketServiceClientGetSigningConfigCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSigningConfig", reflect.TypeOf((*MockBucketServiceClient)(nil).GetSigningConfig), varargs...)
+	return &MockBucketServiceClientGetSigningConfigCall{Call: call}
+}
+
+// MockBucketServiceClientGetSigningConfigCall wrap *gomock.Call
+type MockBucketServiceClientGetSigningConfigCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetSigningConfigCall) Return(arg0 *servicepb.GetSigningConfigResponse, arg1 error) *MockBucketServiceClientGetSigningConfigCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetSigningConfigCall) Do(f func(context.Context, *servicepb.GetSigningConfigRequest, ...grpc.CallOption) (*servicepb.GetSigningConfigResponse, error)) *MockBucketServiceClientGetSigningConfigCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetSigningConfigCall) DoAndReturn(f func(context.Context, *servicepb.GetSigningConfigRequest, ...grpc.CallOption) (*servicepb.GetSigningConfigResponse, error)) *MockBucketServiceClientGetSigningConfigCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetTemplateUsage mocks base method.
 func (m *MockBucketServiceClient) GetTemplateUsage(ctx context.Context, in *servicepb.GetTemplateUsageRequest, opts ...grpc.CallOption) (*commonpb.TemplateUsage, error) {
 	m.ctrl.T.Helper()

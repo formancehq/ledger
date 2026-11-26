@@ -301,6 +301,21 @@ func (mr *MockControllerMockRecorder) GetNumscript(ctx, ledger, name, version an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, ledger, name, version)
 }
 
+// GetSigningConfig mocks base method.
+func (m *MockController) GetSigningConfig(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSigningConfig", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSigningConfig indicates an expected call of GetSigningConfig.
+func (mr *MockControllerMockRecorder) GetSigningConfig(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSigningConfig", reflect.TypeOf((*MockController)(nil).GetSigningConfig), ctx)
+}
+
 // GetTemplateUsage mocks base method.
 func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
 	m.ctrl.T.Helper()

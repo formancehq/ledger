@@ -1978,6 +1978,18 @@ func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (cursor.Curs
 	return cursor.NewClosingCursor(c, handle), nil
 }
 
+// GetSigningConfig reads the persisted require-signatures flag; it is false
+// until a SetSigningConfig order enables it.
+func (ctrl *DefaultController) GetSigningConfig(_ context.Context) (bool, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return false, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	return query.ReadSigningConfig(handle)
+}
+
 // ListPreparedQueries returns all prepared queries for a ledger.
 func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
 	handle, err := ctrl.store.NewReadHandle()

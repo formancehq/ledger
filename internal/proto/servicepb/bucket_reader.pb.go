@@ -2278,6 +2278,135 @@ func NewListSigningKeysRequestListReader(s []*ListSigningKeysRequest) ListSignin
 	return listSigningKeysRequestListReadonly(s)
 }
 
+// GetSigningConfigRequestReader provides read-only access to GetSigningConfigRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetSigningConfigRequestReader interface {
+	Mutate() *GetSigningConfigRequest
+}
+
+type getSigningConfigRequestReadonly GetSigningConfigRequest
+
+func (r *getSigningConfigRequestReadonly) Mutate() *GetSigningConfigRequest {
+	return (*GetSigningConfigRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetSigningConfigRequest.
+func (m *GetSigningConfigRequest) AsReader() GetSigningConfigRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getSigningConfigRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetSigningConfigRequest.
+func (m *GetSigningConfigRequest) Mutate() *GetSigningConfigRequest {
+	return m.CloneVT()
+}
+
+// GetSigningConfigRequestListReader provides read-only iteration over []*GetSigningConfigRequest.
+type GetSigningConfigRequestListReader interface {
+	Len() int
+	Get(i int) GetSigningConfigRequestReader
+	Range(yield func(int, GetSigningConfigRequestReader) bool)
+}
+
+type getSigningConfigRequestListReadonly []*GetSigningConfigRequest
+
+func (l getSigningConfigRequestListReadonly) Len() int { return len(l) }
+
+func (l getSigningConfigRequestListReadonly) Get(i int) GetSigningConfigRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getSigningConfigRequestListReadonly) Range(yield func(int, GetSigningConfigRequestReader) bool) {
+	for i, v := range l {
+		var r GetSigningConfigRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetSigningConfigRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetSigningConfigRequestListReader(s []*GetSigningConfigRequest) GetSigningConfigRequestListReader {
+	return getSigningConfigRequestListReadonly(s)
+}
+
+// GetSigningConfigResponseReader provides read-only access to GetSigningConfigResponse.
+// Call Mutate() to obtain a mutable clone.
+type GetSigningConfigResponseReader interface {
+	GetRequireSignatures() bool
+	Mutate() *GetSigningConfigResponse
+}
+
+type getSigningConfigResponseReadonly GetSigningConfigResponse
+
+func (r *getSigningConfigResponseReadonly) GetRequireSignatures() bool {
+	return (*GetSigningConfigResponse)(r).GetRequireSignatures()
+}
+
+func (r *getSigningConfigResponseReadonly) Mutate() *GetSigningConfigResponse {
+	return (*GetSigningConfigResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetSigningConfigResponse.
+func (m *GetSigningConfigResponse) AsReader() GetSigningConfigResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*getSigningConfigResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetSigningConfigResponse.
+func (m *GetSigningConfigResponse) Mutate() *GetSigningConfigResponse {
+	return m.CloneVT()
+}
+
+// GetSigningConfigResponseListReader provides read-only iteration over []*GetSigningConfigResponse.
+type GetSigningConfigResponseListReader interface {
+	Len() int
+	Get(i int) GetSigningConfigResponseReader
+	Range(yield func(int, GetSigningConfigResponseReader) bool)
+}
+
+type getSigningConfigResponseListReadonly []*GetSigningConfigResponse
+
+func (l getSigningConfigResponseListReadonly) Len() int { return len(l) }
+
+func (l getSigningConfigResponseListReadonly) Get(i int) GetSigningConfigResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getSigningConfigResponseListReadonly) Range(yield func(int, GetSigningConfigResponseReader) bool) {
+	for i, v := range l {
+		var r GetSigningConfigResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetSigningConfigResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetSigningConfigResponseListReader(s []*GetSigningConfigResponse) GetSigningConfigResponseListReader {
+	return getSigningConfigResponseListReadonly(s)
+}
+
 // SetMaintenanceModeRequestReader provides read-only access to SetMaintenanceModeRequest.
 // Call Mutate() to obtain a mutable clone.
 type SetMaintenanceModeRequestReader interface {

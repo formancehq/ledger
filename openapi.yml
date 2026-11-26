@@ -3321,6 +3321,55 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /v3/_/signing-config:
+    get:
+      summary: Get the write-signing policy
+      description: |
+        Returns whether the cluster rejects unsigned write requests. The flag
+        is `false` until a signed `SetSigningConfig` order enables it.
+        Requires `ledger:ReadOps` scope.
+
+        This route performs a live read, linearizable by default.
+        `X-Consistency: stale` reads the receiving node's local state, which
+        may lag the leader.
+      operationId: v3GetSigningConfig
+      x-speakeasy-name-override: GetSigningConfig
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/Consistency'
+      responses:
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '200':
+          description: Signing policy retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - requireSignatures
+                    properties:
+                      requireSignatures:
+                        type: boolean
+                        description: True when unsigned write requests are rejected.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /v3/_/indexes:
     get:
       summary: List bucket-wide indexes

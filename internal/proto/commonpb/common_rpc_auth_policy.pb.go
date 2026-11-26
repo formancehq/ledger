@@ -88,6 +88,8 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
 	case "/ledger.BucketService/ListSigningKeys":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
+	case "/ledger.BucketService/GetSigningConfig":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
 	case "/ledger.BucketService/Discovery":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}}, nil
 	case "/ledger.BucketService/GetMetadataSchemaStatus":
@@ -168,6 +170,7 @@ func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 		"/ledger.BucketService/ListLogs":                     &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
 		"/ledger.BucketService/GetLog":                       &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/ledger.BucketService/ListSigningKeys":              &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
+		"/ledger.BucketService/GetSigningConfig":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/ledger.BucketService/Discovery":                    &MethodAuthPolicy{Policy: &MethodAuthPolicy_Public{Public: true}},
 		"/ledger.BucketService/GetMetadataSchemaStatus":      &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_ACCOUNT_READ}},
 		"/ledger.BucketService/AnalyzeAccounts":              &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_ACCOUNT_READ}},

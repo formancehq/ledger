@@ -1511,6 +1511,7 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/_/events-sinks` | ✅ | ❌ | Create an instance-wide sink from protobuf JSON; `ledger:WriteOps`, `201 {data: {name}}`, optional `Idempotency-Key` |
 | `DELETE /v3/_/events-sinks/{sinkName}` | ✅ | ❌ | Remove an instance-wide sink; `ledger:WriteOps`, optional `controllerId` precondition and `Idempotency-Key`, `204` |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys, paged by key id ([pagination](#pagination)) |
+| `GET /v3/_/signing-config` | ✅ | ❌ | Get the write-signing policy (`{requireSignatures}`, parity with gRPC `GetSigningConfig`) |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}/status` | ✅ | ❌ | IndexEntry (backfill cursor + per-replica IndexVersionState) |
@@ -1672,6 +1673,7 @@ Paged list RPCs follow the shared `ListOptions` contract and publish the
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field). Follows the shared `ListOptions` contract: cursor/page_size/reverse (descending ledger-local id)/checkpoint_id plus `log_id` and date filters. Ledger-scoped read → requires `ledger:read` (granular `ledger:ReadLedger`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
 | `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:ReadOps`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream registered signing keys, paged by key id | ✅ |
+| `GetSigningConfig` | Get the write-signing policy (`require_signatures`) | ✅ |
 | `Discovery` | Return server capabilities (response signing config), build info (`ServerInfo`: version, commit, build date, Go version), and committed `ClusterPolicy` | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |

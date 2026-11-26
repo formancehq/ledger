@@ -934,6 +934,15 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 	}, nil
 }
 
+func (impl *BucketServiceServerImpl) GetSigningConfig(ctx context.Context, _ *servicepb.GetSigningConfigRequest) (*servicepb.GetSigningConfigResponse, error) {
+	requireSignatures, err := impl.ctrl.GetSigningConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading signing config: %w", err)
+	}
+
+	return &servicepb.GetSigningConfigResponse{RequireSignatures: requireSignatures}, nil
+}
+
 func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListSigningKeys")
 	defer span.End()

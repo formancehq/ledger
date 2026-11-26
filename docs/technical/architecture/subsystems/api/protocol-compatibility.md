@@ -36,6 +36,13 @@ client during a rolling upgrade; clients must wait for the server rollout
 before calling the new RPC. The operation has no persisted, Raft, snapshot,
 backup, or audit format effect.
 
+The additive `BucketService.GetSigningConfig` RPC (EN-3426) and its
+`GET /v3/_/signing-config` route read the existing require-signatures flag
+through new messages and field numbers. Revision 40 remains unchanged. Older
+servers return `Unimplemented` (HTTP `404`) to a new client during a rolling
+upgrade; clients must wait for the server rollout before calling it. The read
+has no persisted, Raft, snapshot, backup, or audit format effect.
+
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
