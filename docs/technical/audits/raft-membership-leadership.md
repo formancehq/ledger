@@ -101,7 +101,8 @@ serializes peer removal with final proposal admission. Previously admitted
 proposals may commit after the removal.
 Trace its synced force-removal marker before the live tracker mutation, then
 the snapshot-file replacement, WAL snapshot record, Pebble tombstone batch,
-and marker cleanup. A failed batch must stop the process; restart repairs only
+Pebble WAL sync, and marker cleanup. A failed batch or sync must stop the process
+with the marker retained; restart repairs only
 the marked identity if durable ConfState excludes it. A snapshot ConfState that
 lags a later committed add must not cause an unmarked peer to be tombstoned.
 Compare the old and fresh identities at the reused ordinal after restart.

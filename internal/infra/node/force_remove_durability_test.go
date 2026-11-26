@@ -187,6 +187,15 @@ func newForceRemoveHarnessWithCommitFailure(
 	updateErr error, blockUpdate bool, beforeCommit func() error,
 	peerTransports ...membership.Transport,
 ) *forceRemoveHarness {
+	return newForceRemoveHarnessWithStoreFailures(t, voters, failureStage, updateErr, blockUpdate,
+		beforeCommit, nil, peerTransports...)
+}
+
+func newForceRemoveHarnessWithStoreFailures(
+	t *testing.T, voters []uint64, failureStage forceRemoveFailureStage,
+	updateErr error, blockUpdate bool, beforeCommit, beforeSync func() error,
+	peerTransports ...membership.Transport,
+) *forceRemoveHarness {
 	t.Helper()
 
 	setup := newTestApplierSetup(t)
@@ -253,7 +262,7 @@ func newForceRemoveHarnessWithCommitFailure(
 			"two acknowledgements are not a quorum of four")
 	}
 
-	m, membershipStore, membershipPath := newTestMembershipWithCommitFailure(t, beforeCommit, peerTransports...)
+	m, membershipStore, membershipPath := newTestMembershipWithStoreFailures(t, beforeCommit, beforeSync, peerTransports...)
 	for _, id := range voters {
 		require.NoError(t, m.Register(
 			id,
@@ -438,6 +447,37 @@ func (h *forceRemoveHarness) restartedState(t *testing.T) (*raftpb.HardState, ma
 
 func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 	t.Parallel()
+	t.Run("Pebble sync failure retains marker and stops admission", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			injected := errors.New("injected Pebble sync failure")
+			failSync := true
+			h := newForceRemoveHarnessWithStoreFailures(t, []uint64{1, 2, 3},
+				forceRemoveNoFailure, nil, false, nil, func() error {
+					if failSync {
+						return injected
+					}
+
+					return nil
+				})
+			err := h.n.ForceRemoveNode(context.Background(), 3)
+			require.ErrorIs(t, err, injected)
+			require.ErrorContains(t, err, "syncing force-remove tombstone")
+			require.ErrorIs(t, h.waitForTerminal(t), injected)
+			marker, markerErr := readForceRemoveMarker(h.walDir)
+			require.NoError(t, markerErr)
+			require.NotNil(t, marker)
+			removed, lookupErr := h.membership.IsRemoved(3, []byte("0000000000000003"))
+			require.NoError(t, lookupErr)
+			require.True(t, removed, "the batch committed before the sync failure")
+			failSync = false
+			require.NoError(t, recoverForceRemoveMarker(h.walDir,
+				&raftpb.ConfState{Voters: []uint64{1, 2}}, h.membership))
+			marker, markerErr = readForceRemoveMarker(h.walDir)
+			require.NoError(t, markerErr)
+			require.Nil(t, marker)
+		})
+	})
 
 	t.Run("tombstone batch failure stops admission after ConfState persistence", func(t *testing.T) {
 		t.Parallel()

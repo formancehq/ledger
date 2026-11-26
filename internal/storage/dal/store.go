@@ -153,6 +153,7 @@ type Store struct {
 	stallState        *WriteStallState
 	iopsCounters      *IOPSCounters
 	beforeBatchCommit func() error
+	beforeWALSync     func() error
 
 	queryCheckpointMu       sync.Mutex
 	queryCheckpointReaders  map[uint64]uint64
@@ -604,6 +605,7 @@ func NewStore(
 
 	store := &Store{
 		beforeBatchCommit:       cfg.BeforeBatchCommit,
+		beforeWALSync:           cfg.BeforeWALSync,
 		opts:                    opts,
 		logger:                  logger.WithField("cmp", "pebble"),
 		dataDir:                 dataDir,
@@ -677,6 +679,11 @@ func (s *Store) SyncWAL() error {
 	db := s.getDB()
 	if db == nil {
 		return ErrStoreClosed
+	}
+	if s.beforeWALSync != nil {
+		if err := s.beforeWALSync(); err != nil {
+			return fmt.Errorf("syncing Pebble WAL: %w", err)
+		}
 	}
 
 	return db.LogData(nil, &pebble.WriteOptions{Sync: true})

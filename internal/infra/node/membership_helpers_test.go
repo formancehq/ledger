@@ -41,6 +41,10 @@ func newTestMembershipWithStore(t *testing.T, transports ...membership.Transport
 }
 
 func newTestMembershipWithCommitFailure(t *testing.T, beforeCommit func() error, transports ...membership.Transport) (*membership.Membership, *dal.Store, string) {
+	return newTestMembershipWithStoreFailures(t, beforeCommit, nil, transports...)
+}
+
+func newTestMembershipWithStoreFailures(t *testing.T, beforeCommit, beforeSync func() error, transports ...membership.Transport) (*membership.Membership, *dal.Store, string) {
 	t.Helper()
 	var peerTransport membership.Transport = noopMemTransport{}
 	if len(transports) > 0 {
@@ -54,6 +58,7 @@ func newTestMembershipWithCommitFailure(t *testing.T, beforeCommit func() error,
 	path := t.TempDir()
 	cfg := dal.DefaultConfig()
 	cfg.BeforeBatchCommit = beforeCommit
+	cfg.BeforeWALSync = beforeSync
 	store, err := dal.NewStore(path, logger, meter, cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })

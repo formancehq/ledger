@@ -56,6 +56,12 @@ func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
+// SyncWAL makes completed peer and tombstone batches durable before their
+// separate force-removal recovery marker can be cleared.
+func (p *PeerStore) SyncWAL() error {
+	return p.store.SyncWAL()
+}
+
 // migrateLegacyServiceAddressesFromPort upgrades RC.4 rows. The local row may
 // already have been refreshed with its peer address before WAL replay.
 func (p *PeerStore) migrateLegacyServiceAddressesFromPort(servicePort int, selfNodeID uint64, selfServiceAddr string) error {

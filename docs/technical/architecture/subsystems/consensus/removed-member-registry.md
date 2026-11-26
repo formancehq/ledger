@@ -167,7 +167,7 @@ This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only 
 3. `membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt)` performs a Pebble batch atomic between:
    - Delete of the peer row.
    - Put of `RemovedMembers[nodeID, instanceID]`.
-4. Remove the marker durably. A failure to clear it is terminal; replaying the repair on restart is idempotent.
+4. Sync Pebble's WAL so the peer deletion and tombstone survive a power loss, then remove the marker durably. A sync or marker-clear failure is terminal; replaying the repair on restart is idempotent.
 
 The `instanceID` is read and validated from the peer's Membership row before `rawNode.ApplyConfChange`, so an invalid identity cannot leave RawNode mutated without its tombstone. No explicit parameter needs to travel on the remove RPC. The membership read uses the in-memory cache populated at boot from Pebble and is outside the FSM hot path, so invariants #3/#6/#9 do not apply.
 
@@ -207,7 +207,8 @@ A failure of the following Pebble batch is also terminal: durable ConfState
 may exclude the peer while its tombstone is absent. The force-removal marker is
 written and synced before the live Raft mutation. On restart, if durable
 ConfState excludes the marked node, startup atomically deletes its stale peer
-row and writes a tombstone for the marked identity before serving admission.
+row, writes a tombstone for the marked identity, and syncs Pebble's WAL before
+clearing the marker and serving admission.
 If ConfState still includes it, startup clears the marker without removing the
 peer. A failed repair or marker cleanup prevents startup. Other peer rows
 absent from the snapshot ConfState are not tombstoned by this repair, because
@@ -220,11 +221,12 @@ they can represent a later committed add awaiting WAL snapshot catch-up.
 | in-memory `ApplyConfChange` and atomic snapshot-file replacement | ConfState unchanged; peer still voter. A returned persistence error fail-stops the running node and fails queued work. | Restart reconstructs the old membership; the reduced live quorum is never used by a continuing node. |
 | snapshot-file replacement and WAL snapshot-record write | The replacement file contains the reduced ConfState at the snapshot's existing term/index. A record-write error still fail-stops the node and skips peer cleanup. | Restart may reconstruct the new membership from the durable replacement file; no contradictory process continues serving. |
 | WAL write and Pebble batch | ConfState says "removed"; peer row still present; `RemovedMembers` empty; force-removal marker identifies the removed instance. | A batch failure stops the serving node. Restart writes the marked tombstone before admitting joins; failed repair prevents startup. |
-| After Pebble batch | Nominal. | — |
+| Pebble batch and Pebble WAL sync | The batch may be lost after power failure, but the force-removal marker remains. | Restart repeats the exact tombstone repair before admission. A returned sync error fail-stops the node. |
+| Pebble WAL sync and marker cleanup | ConfState and tombstone are durable; the marker may remain. | Restart safely repeats the idempotent repair. |
 
 The marker adds one local file sync and directory sync before the live Raft
 mutation. WAL snapshot persistence still precedes the Pebble batch. After a
-successful removal, the marker is cleared only after both stores hold
+successful removal, the marker is cleared only after both stores durably hold
 the removed state. If durable ConfState still contains the member, startup
 discards the marker for the aborted removal attempt and retains the peer.
 

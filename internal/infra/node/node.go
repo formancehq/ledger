@@ -3890,6 +3890,9 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 			// tombstone. Stop admission until startup can repair the stale row.
 			return &terminalNodeError{cause: fmt.Errorf("force-remove atomic batch: %w", err)}
 		}
+		if err := node.membership.PeerStore().SyncWAL(); err != nil {
+			return &terminalNodeError{cause: fmt.Errorf("syncing force-remove tombstone: %w", err)}
+		}
 		if err := clearForceRemoveMarker(node.config.WalDir); err != nil {
 			return &terminalNodeError{cause: fmt.Errorf("clearing force-remove marker: %w", err)}
 		}

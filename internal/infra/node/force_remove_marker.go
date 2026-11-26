@@ -118,6 +118,9 @@ func recoverForceRemoveMarker(dir string, cs *raftpb.ConfState, peers *membershi
 		if err := peers.UnregisterAndBlacklist(marker.nodeID, marker.instanceID, marker.removedAt); err != nil {
 			return fmt.Errorf("repairing force-remove tombstone: %w", err)
 		}
+		if err := peers.PeerStore().SyncWAL(); err != nil {
+			return fmt.Errorf("syncing repaired force-remove tombstone: %w", err)
+		}
 	}
 	if err := clearForceRemoveMarker(dir); err != nil {
 		return fmt.Errorf("clearing force-remove marker: %w", err)
