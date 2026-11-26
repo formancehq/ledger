@@ -460,6 +460,15 @@ func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, na
 	return resp.GetLatestVersion(), resp.GetVersions(), nil
 }
 
+func (g *BucketGrpcClient) GetSigningConfig(ctx context.Context) (bool, error) {
+	resp, err := g.client.GetSigningConfig(ctx, &servicepb.GetSigningConfigRequest{})
+	if err != nil {
+		return false, err
+	}
+
+	return resp.GetRequireSignatures(), nil
+}
+
 func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	resp, err := g.client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {

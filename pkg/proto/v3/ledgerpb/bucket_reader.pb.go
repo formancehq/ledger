@@ -2336,7 +2336,7 @@ func (l getSigningConfigRequestListReadonly) Range(yield func(int, GetSigningCon
 
 // NewGetSigningConfigRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetSigningConfigRequestListReader(s []*GetSigningConfigRequest) GetSigningConfigRequestListReader {
+func NewGetSigningConfigRequestListReader(s []*GetSigningConfigRequest) getSigningConfigRequestListReadonly {
 	return getSigningConfigRequestListReadonly(s)
 }
 
@@ -2403,7 +2403,7 @@ func (l getSigningConfigResponseListReadonly) Range(yield func(int, GetSigningCo
 
 // NewGetSigningConfigResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetSigningConfigResponseListReader(s []*GetSigningConfigResponse) GetSigningConfigResponseListReader {
+func NewGetSigningConfigResponseListReader(s []*GetSigningConfigResponse) getSigningConfigResponseListReadonly {
 	return getSigningConfigResponseListReadonly(s)
 }
 
