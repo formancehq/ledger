@@ -123,7 +123,8 @@ stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+The supported registry includes `MirrorPromotionCatchUp` (ID `1`), which
+activates automatically after every member has committed support evidence.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own

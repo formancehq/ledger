@@ -81,10 +81,12 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+The supported registry includes `MirrorPromotionCatchUp` (ID `1`). The leader
+activates it automatically after every member has committed support evidence;
+audited order batches wait while activation is pending. Each future feature
+must separately register its stable ID, select its proposal marker at
+preparation, and dispatch deterministic apply from that persisted marker.
+The account-type validation feature from PR #2552 is not registered here.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
