@@ -133,7 +133,7 @@ are unchanged. See [HTTP request signing](../../ops/signing.md#http-request-sign
 
 ## Transaction metadata address validation
 
-EN-2941: after capability 1 activates, v3 transaction account metadata obeys
+After capability 1 activates, v3 transaction account metadata obeys
 the ledger's STRICT account types, including Numscript `set_account_meta`.
 Unmatched addresses fail with the existing `ACCOUNT_NOT_MATCHING_TYPE` error.
 AUDIT mode and previously committed transactions keep their prior outcome.
