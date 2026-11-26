@@ -1721,7 +1721,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			raftIndex, proposal.GetId(), scopeErr)
 	}
 
-	var transientErr domain.Describable = buffer.ValidateTransientVolumes(validateScope)
+	transientErr := buffer.ValidateTransientVolumes(validateScope)
 	if transientErr == nil && slices.Contains(proposal.GetRequiredCapabilities(), uint32(capabilities.AccountIncarnationWritesV1)) {
 		for _, attr := range proposal.GetExecutionPlan().GetAttributes() {
 			if attr.GetAttrCode() == uint32(dal.SubAttrAccountIncarnation) {

@@ -1189,7 +1189,7 @@ type gatedLedgerType struct {
 // used — coverage checks on ledger reads here go through the same gate as
 // every handler-level read so a missing ledger declaration surfaces as
 // *ErrCoverageMiss instead of an opaque "ledger not found" skip.
-func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.SerializableError {
+func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
 	// Published on the WriteSet rather than kept local: partitionVolumes
 	// consumes it at Merge time so the same gated resolution drives both the
 	// zero-balance assertion here and the persistence classification there,
