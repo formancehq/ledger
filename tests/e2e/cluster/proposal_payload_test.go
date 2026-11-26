@@ -3,6 +3,7 @@
 package cluster
 
 import (
+	"fmt"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -24,7 +25,10 @@ var _ = Describe("Proposal payload replication", func() {
 		ctx, servers, gateway, leaderID := testutil.SetupMultiNodeCluster(3, testutil.WithGateway())
 		DeferCleanup(func() { testutil.StopServers(ctx, servers) })
 		var batches, policies atomic.Uint64
-		var invalid atomic.Bool
+		var invalidReason atomic.Pointer[string]
+		setInvalid := func(reason string) {
+			invalidReason.CompareAndSwap(nil, &reason)
+		}
 		gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(message *raftpb.Message) bool {
 			// ReadIndex messages also use Entry.Data, but carry opaque request
 			// contexts rather than proposals. Inspect actual log replication.
@@ -36,19 +40,21 @@ var _ = Describe("Proposal payload replication", func() {
 					continue
 				}
 				p := &raftcmdpb.Proposal{}
-				if p.UnmarshalVT(entry.GetData()) != nil {
-					invalid.Store(true)
+				if err := p.UnmarshalVT(entry.GetData()); err != nil {
+					setInvalid("invalid proposal encoding: " + err.Error())
 
 					continue
 				}
 				if len(p.GetOrders()) != 0 || len(p.GetTechnicalUpdates()) != 0 {
-					invalid.Store(true)
+					setInvalid(fmt.Sprintf("legacy proposal fields are present: orders=%d updates=%d batch=%t policy=%t activation=%t",
+						len(p.GetOrders()), len(p.GetTechnicalUpdates()), p.GetBatch() != nil,
+						p.GetSetClusterPolicy() != nil, p.GetCapabilityActivation() != nil))
 				}
 				if len(p.GetBatch().GetOrders()) > 0 {
 					batches.Add(1)
 				}
 				if policy := p.GetSetClusterPolicy(); policy != nil && (!policy.GetConfigurationOnly() || len(policy.GetPolicy().GetCapabilityActivations()) != 0) {
-					invalid.Store(true)
+					setInvalid("cluster policy control has unexpected activation fields")
 				}
 				if p.GetSetClusterPolicy().GetPolicy().GetRevision() == 100 {
 					policies.Add(1)
@@ -80,6 +86,8 @@ var _ = Describe("Proposal payload replication", func() {
 		testutil.RestartNodeWithInstruments(ctx, servers[oldLeader-1], servers[oldLeader-1].Service.Instruments)
 		Eventually(servers[oldLeader-1]).WithTimeout(30 * time.Second).Should(BeFollower())
 		expectVolumeAllNodes(ctx, servers, "payload", "400")
-		Expect(invalid.Load()).To(BeFalse())
+		if reason := invalidReason.Load(); reason != nil {
+			Fail(*reason)
+		}
 	})
 })

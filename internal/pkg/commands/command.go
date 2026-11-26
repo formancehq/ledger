@@ -28,7 +28,6 @@ func GenerateRandomID() uint64 {
 func NewCommand(orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	cmd := &raftcmdpb.Proposal{
 		Id:            GenerateRandomID(),
-		Orders:        orders,
 		Date:          ledgerpb.NewTimestamp(time.Now()),
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}
