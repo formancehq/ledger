@@ -20,7 +20,7 @@ func TestGeneratorRejectsInvalidAnnotations(t *testing.T) {
 package common;
 option go_package = "example/commonpb";
 import "google/protobuf/descriptor.proto";
-extend google.protobuf.FieldOptions { bool required_for_input = 71006; bool non_zero_for_input = 71007; }
+extend google.protobuf.FieldOptions { bool required_for_input = 71006; bool non_zero_for_input = 71007; uint32 max_bytes_for_input = 71008; uint32 exact_bytes_for_input = 71009; }
 enum Mode { MODE_UNSPECIFIED = 0; MODE_ACTIVE = 1; }
 message Sample { FIELD }
 `
@@ -34,6 +34,13 @@ message Sample { FIELD }
 		{"nonzero repeated", `repeated string value = 1 [(common.non_zero_for_input) = true];`, "singular field"},
 		{"nonzero false", `string value = 1 [(common.non_zero_for_input) = false];`, "remove the annotation"},
 		{"conflicting rules", `optional string value = 1 [(common.required_for_input) = true, (common.non_zero_for_input) = true];`, "cannot be combined"},
+		{"zero max", `string value = 1 [(common.max_bytes_for_input) = 0];`, "must be positive"},
+		{"zero exact", `bytes value = 1 [(common.exact_bytes_for_input) = 0];`, "must be positive"},
+		{"numeric max", `uint64 value = 1 [(common.max_bytes_for_input) = 8];`, "string or bytes"},
+		{"numeric exact", `int32 value = 1 [(common.exact_bytes_for_input) = 8];`, "string or bytes"},
+		{"conflicting limits", `string value = 1 [(common.max_bytes_for_input) = 8, (common.exact_bytes_for_input) = 8];`, "cannot be combined"},
+		{"conflicting presence and limit", `optional string value = 1 [(common.required_for_input) = true, (common.max_bytes_for_input) = 8];`, "cannot be combined"},
+		{"conflicting nonzero and limit", `string value = 1 [(common.non_zero_for_input) = true, (common.max_bytes_for_input) = 8];`, "cannot be combined"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := filepath.Join(dir, strings.ReplaceAll(tc.name, " ", "_")+".proto")
@@ -55,6 +62,9 @@ bool enabled = 4 [(common.non_zero_for_input) = true];
 optional int32 limit = 5 [(common.non_zero_for_input) = true];`
 	fields += `
 Mode mode = 6 [(common.non_zero_for_input) = true];`
+	fields += `
+string reference = 7 [(common.max_bytes_for_input) = 4096];
+bytes public_key = 8 [(common.exact_bytes_for_input) = 32];`
 	if err := os.WriteFile(fixture, []byte(strings.Replace(definitions, "FIELD", fields, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +76,7 @@ Mode mode = 6 [(common.non_zero_for_input) = true];`
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, check := range []string{`m.Name == ""`, `len(m.Key) == 0`, `m.Count == 0`, `!m.Enabled`, `m.Limit == nil || *m.Limit == 0`, `m.Mode == 0`} {
+	for _, check := range []string{`m.Name == ""`, `len(m.Key) == 0`, `m.Count == 0`, `!m.Enabled`, `m.Limit == nil || *m.Limit == 0`, `m.Mode == 0`, `len(m.Reference) > 4096`, `len(m.PublicKey) != 32`} {
 		if !strings.Contains(string(generated), check) {
 			t.Errorf("generated validator missing %q: %s", check, generated)
 		}

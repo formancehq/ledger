@@ -44,3 +44,35 @@ func (m *AddEventsSinkOrder) ValidateInput() error {
 	}
 	return nil
 }
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *RegisterSigningKeyOrder) ValidateInput() error {
+	if m == nil || len(m.PublicKey) != 32 {
+		return &inputvalidation.FieldError{Path: "public_key", Rule: "exact_bytes"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *RemoveAccountTypeOrder) ValidateInput() error {
+	if m == nil || len(m.Name) > 256 {
+		return &inputvalidation.FieldError{Path: "name", Rule: "max_bytes"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *CreateTransactionOrder) ValidateInput() error {
+	if m == nil || len(m.Reference) > 4096 {
+		return &inputvalidation.FieldError{Path: "reference", Rule: "max_bytes"}
+	}
+	return nil
+}
+
+// ValidateInput checks declared direct-field input requirements.
+func (m *ExecuteNumscriptOrder) ValidateInput() error {
+	if m == nil || len(m.Reference) > 4096 {
+		return &inputvalidation.FieldError{Path: "reference", Rule: "max_bytes"}
+	}
+	return nil
+}

@@ -1,7 +1,6 @@
 package admission
 
 import (
-	"crypto/ed25519"
 	"errors"
 	"maps"
 	"net/url"
@@ -180,7 +179,7 @@ func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
 			return domain.ErrAccountTypePatternTooLong
 		}
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-		if len(d.RemoveAccountType.GetName()) > domain.MaxAccountTypeNameLength {
+		if d.RemoveAccountType != nil && d.RemoveAccountType.ValidateInput() != nil {
 			return domain.ErrAccountTypeNameTooLong
 		}
 	}
@@ -307,14 +306,17 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	switch data := apply.Apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		o = data.CreateTransaction
+		if o != nil && o.ValidateInput() != nil {
+			return domain.ErrTransactionReferenceTooLong
+		}
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
 		execute = true
+		if data.ExecuteNumscript != nil && data.ExecuteNumscript.ValidateInput() != nil {
+			return domain.ErrTransactionReferenceTooLong
+		}
 		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
 	default:
 		return nil
-	}
-	if len(o.GetReference()) > domain.MaxTransactionReferenceLength {
-		return domain.ErrTransactionReferenceTooLong
 	}
 	hasPostings := len(o.GetPostings()) > 0
 	hasInlineScript := o.GetScript() != nil && o.GetScript().GetPlain() != ""
@@ -564,7 +566,7 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	if len(reg.RegisterSigningKey.GetPublicKey()) != ed25519.PublicKeySize {
+	if reg.RegisterSigningKey.ValidateInput() != nil {
 		return ErrSigningKeyInvalidLength
 	}
 

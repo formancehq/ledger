@@ -14,13 +14,17 @@ import (
 )
 
 const (
-	requiredExtensionName = "common.required_for_input"
-	nonZeroExtensionName  = "common.non_zero_for_input"
+	requiredExtensionName   = "common.required_for_input"
+	nonZeroExtensionName    = "common.non_zero_for_input"
+	maxBytesExtensionName   = "common.max_bytes_for_input"
+	exactBytesExtensionName = "common.exact_bytes_for_input"
 )
 
 type fieldRule struct {
-	field   *protogen.Field
-	nonZero bool
+	field      *protogen.Field
+	nonZero    bool
+	maxBytes   uint64
+	exactBytes uint64
 }
 
 type messageRules struct {
@@ -32,7 +36,7 @@ func main() { protogen.Options{}.Run(generate) }
 
 func generate(gen *protogen.Plugin) error {
 	gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
-	var requiredExtension, nonZeroExtension protoreflect.ExtensionDescriptor
+	var requiredExtension, nonZeroExtension, maxBytesExtension, exactBytesExtension protoreflect.ExtensionDescriptor
 	for _, file := range gen.Files {
 		for _, candidate := range file.Extensions {
 			switch string(candidate.Desc.FullName()) {
@@ -40,10 +44,14 @@ func generate(gen *protogen.Plugin) error {
 				requiredExtension = candidate.Desc
 			case nonZeroExtensionName:
 				nonZeroExtension = candidate.Desc
+			case maxBytesExtensionName:
+				maxBytesExtension = candidate.Desc
+			case exactBytesExtensionName:
+				exactBytesExtension = candidate.Desc
 			}
 		}
 	}
-	if requiredExtension == nil || nonZeroExtension == nil {
+	if requiredExtension == nil || nonZeroExtension == nil || maxBytesExtension == nil || exactBytesExtension == nil {
 		return fmt.Errorf("input validation extensions not found")
 	}
 	resolver := &protoregistry.Types{}
@@ -52,6 +60,11 @@ func generate(gen *protogen.Plugin) error {
 	}
 	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(nonZeroExtension)); err != nil {
 		return fmt.Errorf("register extension: %w", err)
+	}
+	for _, extension := range []protoreflect.ExtensionDescriptor{maxBytesExtension, exactBytesExtension} {
+		if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(extension)); err != nil {
+			return fmt.Errorf("register extension: %w", err)
+		}
 	}
 	for _, file := range gen.Files {
 		if !file.Generate {
@@ -73,6 +86,14 @@ func generate(gen *protogen.Plugin) error {
 				if err != nil {
 					return err
 				}
+				maxPresent, maxBytes, err := readUintRule(field, maxBytesExtension, resolver)
+				if err != nil {
+					return err
+				}
+				exactPresent, exactBytes, err := readUintRule(field, exactBytesExtension, resolver)
+				if err != nil {
+					return err
+				}
 				if present && !required {
 					return fmt.Errorf("%s: required_for_input=false is invalid; remove the annotation", field.Desc.FullName())
 				}
@@ -82,8 +103,20 @@ func generate(gen *protogen.Plugin) error {
 				if present && nonZeroPresent {
 					return fmt.Errorf("%s: required_for_input and non_zero_for_input cannot be combined", field.Desc.FullName())
 				}
-				if !present && !nonZeroPresent {
+				if !present && !nonZeroPresent && !maxPresent && !exactPresent {
 					continue
+				}
+				if maxPresent && maxBytes == 0 || exactPresent && exactBytes == 0 {
+					return fmt.Errorf("%s: byte limit must be positive", field.Desc.FullName())
+				}
+				if maxPresent && exactPresent {
+					return fmt.Errorf("%s: max_bytes_for_input and exact_bytes_for_input cannot be combined", field.Desc.FullName())
+				}
+				if (maxPresent || exactPresent) && (present || nonZeroPresent) {
+					return fmt.Errorf("%s: byte limits cannot be combined with presence or non-zero rules", field.Desc.FullName())
+				}
+				if (maxPresent || exactPresent) && field.Desc.Kind() != protoreflect.StringKind && field.Desc.Kind() != protoreflect.BytesKind {
+					return fmt.Errorf("%s: byte limit requires a string or bytes field", field.Desc.FullName())
 				}
 				if field.Desc.IsList() || field.Desc.IsMap() || field.Desc.ContainingOneof() != nil && !field.Desc.ContainingOneof().IsSynthetic() {
 					return fmt.Errorf("%s: input validation requires a singular field outside a oneof", field.Desc.FullName())
@@ -94,7 +127,7 @@ func generate(gen *protogen.Plugin) error {
 				if nonZeroPresent && (field.Desc.Kind() == protoreflect.MessageKind || field.Desc.Kind() == protoreflect.GroupKind) {
 					return fmt.Errorf("%s: non_zero_for_input requires a scalar field", field.Desc.FullName())
 				}
-				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent})
+				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent, maxBytes: maxBytes, exactBytes: exactBytes})
 			}
 			if len(fields) > 0 {
 				for _, field := range message.Fields {
@@ -127,12 +160,22 @@ func generate(gen *protogen.Plugin) error {
 			g.P("// ValidateInput checks declared direct-field input requirements.")
 			g.P("func (m *", item.message.GoIdent.GoName, ") ValidateInput() error {")
 			for _, rule := range item.fields {
-				condition := "m." + rule.field.GoName + " == nil"
-				if rule.nonZero {
+				condition := ""
+				errorRule := ""
+				switch {
+				case rule.nonZero:
 					condition = nonZeroCondition(rule.field)
+				case rule.maxBytes > 0:
+					condition = fmt.Sprintf("len(m.%s) > %d", rule.field.GoName, rule.maxBytes)
+					errorRule = `, Rule: "max_bytes"`
+				case rule.exactBytes > 0:
+					condition = fmt.Sprintf("len(m.%s) != %d", rule.field.GoName, rule.exactBytes)
+					errorRule = `, Rule: "exact_bytes"`
+				default:
+					condition = "m." + rule.field.GoName + " == nil"
 				}
 				g.P("if m == nil || ", condition, " {")
-				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), "}")
+				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), errorRule, "}")
 				g.P("}")
 			}
 			g.P("return nil")
@@ -173,21 +216,37 @@ func nonZeroConditionValue(field *protogen.Field, value string) string {
 }
 
 func readRule(field *protogen.Field, extension protoreflect.ExtensionDescriptor, resolver *protoregistry.Types) (bool, bool, error) {
+	present, value, err := readExtension(field, extension, resolver)
+	if err != nil || !present {
+		return present, false, err
+	}
+	return present, value.Bool(), err
+}
+
+func readUintRule(field *protogen.Field, extension protoreflect.ExtensionDescriptor, resolver *protoregistry.Types) (bool, uint64, error) {
+	present, value, err := readExtension(field, extension, resolver)
+	if err != nil || !present {
+		return present, 0, err
+	}
+	return present, value.Uint(), err
+}
+
+func readExtension(field *protogen.Field, extension protoreflect.ExtensionDescriptor, resolver *protoregistry.Types) (bool, protoreflect.Value, error) {
 	opts := field.Desc.Options()
 	if opts == nil {
-		return false, false, nil
+		return false, protoreflect.Value{}, nil
 	}
 	raw, err := proto.Marshal(opts)
 	if err != nil {
-		return false, false, fmt.Errorf("%s: marshal options: %w", field.Desc.FullName(), err)
+		return false, protoreflect.Value{}, fmt.Errorf("%s: marshal options: %w", field.Desc.FullName(), err)
 	}
 	resolved := dynamicpb.NewMessage(opts.ProtoReflect().Descriptor())
 	if err := (proto.UnmarshalOptions{Resolver: resolver}).Unmarshal(raw, resolved); err != nil {
-		return false, false, fmt.Errorf("%s: parse options: %w", field.Desc.FullName(), err)
+		return false, protoreflect.Value{}, fmt.Errorf("%s: parse options: %w", field.Desc.FullName(), err)
 	}
 	resolvedExtension := dynamicpb.NewExtensionType(extension).TypeDescriptor()
 	if !resolved.Has(resolvedExtension) {
-		return false, false, nil
+		return false, protoreflect.Value{}, nil
 	}
-	return true, resolved.Get(resolvedExtension).Bool(), nil
+	return true, resolved.Get(resolvedExtension), nil
 }

@@ -11,8 +11,48 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestGeneratedInputByteLimitBoundaries(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		valid    func() error
+		invalid  func() error
+		wantRule string
+	}{
+		{"transaction reference", func() error {
+			return (&raftcmdpb.CreateTransactionOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.CreateTransactionOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1)}).ValidateInput()
+		}, "max_bytes"},
+		{"script reference", func() error {
+			return (&raftcmdpb.ExecuteNumscriptOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.ExecuteNumscriptOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1)}).ValidateInput()
+		}, "max_bytes"},
+		{"account type name", func() error {
+			return (&raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", domain.MaxAccountTypeNameLength)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", domain.MaxAccountTypeNameLength+1)}).ValidateInput()
+		}, "max_bytes"},
+		{"signing key", func() error {
+			return (&raftcmdpb.RegisterSigningKeyOrder{PublicKey: bytes.Repeat([]byte{1}, 32)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.RegisterSigningKeyOrder{PublicKey: bytes.Repeat([]byte{1}, 31)}).ValidateInput()
+		}, "exact_bytes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, tc.valid())
+			var fieldErr *inputvalidation.FieldError
+			require.ErrorAs(t, tc.invalid(), &fieldErr)
+			require.Equal(t, tc.wantRule, fieldErr.Rule)
+		})
+	}
+}
 
 func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
 	t.Parallel()

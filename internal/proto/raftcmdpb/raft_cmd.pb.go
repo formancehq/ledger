@@ -5971,11 +5971,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigB\x04\xf0\xd5\"\x01R\x06config\"P\n" +
 	"\x15RemoveEventsSinkOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
-	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"s\n" +
+	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"y\n" +
 	"\x17RegisterSigningKeyOrder\x12\x15\n" +
-	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12#\n" +
 	"\n" +
-	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\"\n" +
+	"public_key\x18\x02 \x01(\fB\x04\x88\xd6\" R\tpublicKey\x12\"\n" +
 	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId\"H\n" +
 	"\x15RevokeSigningKeyOrder\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x18\n" +
@@ -6085,9 +6085,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eDropIndexOrder\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\"M\n" +
 	"\x13AddAccountTypeOrder\x126\n" +
-	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\",\n" +
-	"\x16RemoveAccountTypeOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"l\n" +
+	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\"3\n" +
+	"\x16RemoveAccountTypeOrder\x12\x19\n" +
+	"\x04name\x18\x01 \x01(\tB\x05\x80\xd6\"\x80\x02R\x04name\"l\n" +
 	"!UpdateDefaultEnforcementModeOrder\x12G\n" +
 	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\x8c\x01\n" +
 	"\x19SetMetadataFieldTypeOrder\x123\n" +
@@ -6098,12 +6098,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1cRemoveMetadataFieldTypeOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xf0\x04\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xf7\x04\n" +
 	"\x16CreateTransactionOrder\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1c\n" +
-	"\treference\x18\x04 \x01(\tR\treference\x12F\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12#\n" +
+	"\treference\x18\x04 \x01(\tB\x05\x80\xd6\"\x80 R\treference\x12F\n" +
 	"\bmetadata\x18\x05 \x03(\v2*.raft.CreateTransactionOrder.MetadataEntryR\bmetadata\x12\\\n" +
 	"\x10account_metadata\x18\x06 \x03(\v21.raft.CreateTransactionOrder.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
 	"\x05force\x18\a \x01(\bR\x05force\x12I\n" +
@@ -6113,14 +6113,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xaa\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xb1\x04\n" +
 	"\x15ExecuteNumscriptOrder\x12&\n" +
 	"\x06script\x18\x01 \x01(\v2\x0e.common.ScriptR\x06script\x12I\n" +
 	"\x13numscript_reference\x18\x02 \x01(\v2\x18.raft.NumscriptReferenceR\x12numscriptReference\x12/\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12E\n" +
 	"\bmetadata\x18\x04 \x03(\v2).raft.ExecuteNumscriptOrder.MetadataEntryR\bmetadata\x12[\n" +
-	"\x10account_metadata\x18\x05 \x03(\v20.raft.ExecuteNumscriptOrder.AccountMetadataEntryR\x0faccountMetadata\x12\x1c\n" +
-	"\treference\x18\x06 \x01(\tR\treference\x1aR\n" +
+	"\x10account_metadata\x18\x05 \x03(\v20.raft.ExecuteNumscriptOrder.AccountMetadataEntryR\x0faccountMetadata\x12#\n" +
+	"\treference\x18\x06 \x01(\tB\x05\x80\xd6\"\x80 R\treference\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +

@@ -154,7 +154,7 @@ message RemoveEventsSinkOrder {
 // Signing key management orders
 message RegisterSigningKeyOrder {
   string key_id = 1;
-  bytes public_key = 2;
+  bytes public_key = 2 [(common.exact_bytes_for_input) = 32];
   string parent_key_id = 3;
 }
 
@@ -333,7 +333,7 @@ message AddAccountTypeOrder {
 
 // RemoveAccountTypeOrder removes an account type from the ledger.
 message RemoveAccountTypeOrder {
-  string name = 1;
+  string name = 1 [(common.max_bytes_for_input) = 256];
 }
 
 // UpdateDefaultEnforcementModeOrder updates the ledger's default enforcement mode for unmatched accounts.
@@ -357,7 +357,7 @@ message CreateTransactionOrder {
   repeated common.Posting postings = 1;
   common.Script script = 2;
   common.Timestamp timestamp = 3;
-  string reference = 4;
+  string reference = 4 [(common.max_bytes_for_input) = 4096];
   map<string, common.MetadataValue> metadata = 5;
   map<string, common.MetadataMap> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
@@ -373,7 +373,7 @@ message ExecuteNumscriptOrder {
   common.Timestamp timestamp = 3;
   map<string, common.MetadataValue> metadata = 4;
   map<string, common.MetadataMap> account_metadata = 5;
-  string reference = 6;
+  string reference = 6 [(common.max_bytes_for_input) = 4096];
 }
 
 // NumscriptReference identifies a numscript from the library to use for a

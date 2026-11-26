@@ -72,10 +72,12 @@ extend google.protobuf.MessageOptions {
   bool ledger_json_manual = 71005;
 }
 
-// Input-only presence rule. Decoding historical records never invokes it.
+// Input-only field rules. Decoding historical records never invokes them.
 extend google.protobuf.FieldOptions {
   bool required_for_input = 71006;
   bool non_zero_for_input = 71007;
+  uint32 max_bytes_for_input = 71008;
+  uint32 exact_bytes_for_input = 71009;
 }
 
 // ============================================================================
