@@ -102,8 +102,10 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 		return nil
 	}
 
+	// PVCs are read uncached: the operator has no watch RBAC on them, so a
+	// cached List starts an informer that never syncs.
 	claims := &corev1.PersistentVolumeClaimList{}
-	if err := r.List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
+	if err := r.storageAPIReader().List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
 		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
 	}
 	for _, claim := range claims.Items {

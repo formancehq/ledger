@@ -199,7 +199,7 @@ func (r *ClusterReconciler) ownersOutsideWorkload(ctx context.Context, ledger *l
 // a lost claim would be recreated empty under its name. Without a StatefulSet,
 // ordinary reconciliation recreates it with the requested policy.
 func (r *ClusterReconciler) reconcileUpgradeClaimAdoption(ctx context.Context, ledger *ledgerv1alpha1.Cluster, sts *appsv1.StatefulSet) (bool, ctrl.Result, error) {
-	upgrade := stoppedUpgradeReconciler{client: r.Client}
+	upgrade := stoppedUpgradeReconciler{client: r.Client, reader: r.storageAPIReader()}
 	if err := upgrade.verifyUpgradeClaims(ctx, ledger, ledger.Status.Upgrade); err != nil {
 		return false, ctrl.Result{}, err
 	}
