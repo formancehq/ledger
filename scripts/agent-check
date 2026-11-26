@@ -27,7 +27,7 @@ echo "==> agent-check: compile all root-module packages"
 go list -export ./... >/dev/null
 
 echo "==> agent-check: verify tracked/staged diff whitespace"
-git diff --check HEAD --
+git --no-pager diff --check HEAD --
 
 echo "==> agent-check: verify untracked file whitespace"
 untracked_failed=0
