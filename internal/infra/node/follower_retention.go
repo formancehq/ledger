@@ -343,10 +343,10 @@ func (r *followerRetention) targetFor(published *retentionPositions, target uint
 			return target, retentionDecision{}, fmt.Errorf("reading retained entries [%d, %d): %w", windowLo, hi, err)
 		}
 
-		for j := len(entries) - 1; j >= 0; j-- {
-			entrySize := uint64(proto.Size(entries[j]))
+		for _, entry := range slices.Backward(entries) {
+			entrySize := uint64(proto.Size(entry))
 			if size+entrySize > r.maxBytes {
-				compactIdx := entries[j].GetIndex() + 1
+				compactIdx := entry.GetIndex() + 1
 
 				return compactIdx, retentionDecision{
 					held:          compactIdx < target,

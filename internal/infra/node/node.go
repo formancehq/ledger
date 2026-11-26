@@ -377,7 +377,7 @@ type Node struct {
 	// followerRetention.observe.
 	retentionProgress []followerProgress
 	observer          *Observer
-	applier         *Applier
+	applier           *Applier
 
 	readies         chan raft.Ready
 	readyTerminated chan readyResult

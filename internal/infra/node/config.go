@@ -34,13 +34,13 @@ type NodeConfig struct {
 	DataDir             string        // Data directory (for detecting RESTORED marker)
 	MaintenanceInterval time.Duration // Interval for background WAL snapshot + Pebble checkpoint (default: 30s)
 
-	RotationThreshold    uint64        // Number of entries before rotating generations (default: 1000)
-	ElectionTick         int           // Election timeout in ticks (default: 10)
-	HeartbeatTick        int           // Heartbeat interval in ticks (default: 1)
-	MaxSizePerMsg        uint64        // Maximum size per message in bytes (default: 1MB)
-	MaxInflightMsgs      int           // Maximum number of in-flight messages (default: 256)
-	TickInterval         time.Duration // Raft tick interval (0 = 100ms); must be >= 10ns when processing uses its default
-	CompactionMargin     uint64        // Compaction margin in number of logs
+	RotationThreshold uint64        // Number of entries before rotating generations (default: 1000)
+	ElectionTick      int           // Election timeout in ticks (default: 10)
+	HeartbeatTick     int           // Heartbeat interval in ticks (default: 1)
+	MaxSizePerMsg     uint64        // Maximum size per message in bytes (default: 1MB)
+	MaxInflightMsgs   int           // Maximum number of in-flight messages (default: 256)
+	TickInterval      time.Duration // Raft tick interval (0 = 100ms); must be >= 10ns when processing uses its default
+	CompactionMargin  uint64        // Compaction margin in number of logs
 	// FollowerRetentionMaxBytes caps the encoded Raft entries the leader
 	// keeps beyond CompactionMargin for followers still catching up
 	// (EN-3429), plus at most the WAL's boundary entry. The WAL holds
@@ -51,9 +51,9 @@ type NodeConfig struct {
 	// message from a follower before that follower stops holding back
 	// compaction (default: 5m).
 	FollowerRetentionIdleTimeout time.Duration
-	ProposeQueueCapacity int           // Capacity of the propose queue (default: 100)
-	AdvertiseAddr        string
-	BindAddr             string
+	ProposeQueueCapacity         int // Capacity of the propose queue (default: 100)
+	AdvertiseAddr                string
+	BindAddr                     string
 	// ServiceAdvertiseAddr is the address this node advertises for its
 	// service API (gRPC client-facing). It is persisted alongside
 	// AdvertiseAddr in the peer store so the cluster knows how to forward

@@ -262,7 +262,7 @@ func TestForgetRetainedFollowersOnConfChange(t *testing.T) {
 		5: true,  // untouched
 		6: false, // added: a new member starts afresh
 	} {
-		require.Equal(t, kept, r.lastHeard[id] == t0, "lastHeard of %d", id)
+		require.Equal(t, kept, r.lastHeard[id].Equal(t0), "lastHeard of %d", id)
 		_, hasPeer := r.peers[id]
 		require.Equal(t, kept, hasPeer, "history of %d", id)
 	}
@@ -320,7 +320,7 @@ func TestForgetRetainedFollowersOnUpdateNode(t *testing.T) {
 			node.forgetRetainedFollowers(prior, update(t, tc.instanceID))
 			_, hasPeer := node.followerRetention.peers[2]
 			require.Equal(t, tc.kept, hasPeer)
-			require.Equal(t, tc.kept, node.followerRetention.lastHeard[2] == t0)
+			require.Equal(t, tc.kept, node.followerRetention.lastHeard[2].Equal(t0))
 		})
 	}
 }
@@ -350,7 +350,7 @@ func newFakeRetentionLog(first, last uint64, dataSize int) *fakeRetentionLog {
 	l := &fakeRetentionLog{}
 	for i := first; i <= last; i++ {
 		l.entries = append(l.entries, &raftpb.Entry{
-			Index: proto.Uint64(i),
+			Index: new(i),
 			Term:  proto.Uint64(1),
 			Data:  make([]byte, dataSize),
 		})
@@ -551,7 +551,7 @@ func newTestRetentionLeader(t *testing.T, snapshotIndex uint64) *testRetentionLe
 	conf := &raftpb.ConfState{Voters: []uint64{testRetentionLeaderID}, Learners: []uint64{testRetentionPeerID}}
 	storage := raft.NewMemoryStorage()
 	require.NoError(t, storage.ApplySnapshot(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{
-		Index: proto.Uint64(snapshotIndex), Term: proto.Uint64(1), ConfState: conf,
+		Index: new(snapshotIndex), Term: proto.Uint64(1), ConfState: conf,
 	}}))
 	rn, err := raft.NewRawNode(&raft.Config{
 		ID: testRetentionLeaderID, ElectionTick: 10, HeartbeatTick: 1, Storage: storage,
@@ -593,7 +593,7 @@ func (l *testRetentionLeader) drain() []*raftpb.Message {
 func (l *testRetentionLeader) fromPeer(typ raftpb.MessageType, fields func(*raftpb.Message)) {
 	l.t.Helper()
 	m := &raftpb.Message{
-		Type: typ.Enum(), From: proto.Uint64(testRetentionPeerID), To: proto.Uint64(testRetentionLeaderID),
+		Type: typ.Enum(), From: new(testRetentionPeerID), To: new(testRetentionLeaderID),
 		Term: new(l.rn.Status().GetTerm()),
 	}
 	if fields != nil {
@@ -615,7 +615,7 @@ func (l *testRetentionLeader) propose(n int) {
 
 func (l *testRetentionLeader) ack(index uint64) {
 	l.t.Helper()
-	l.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(index) })
+	l.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = new(index) })
 	l.drain()
 }
 
@@ -633,7 +633,7 @@ func (l *testRetentionLeader) rejectProbe(hint uint64) []*raftpb.Message {
 	l.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) {
 		m.Index = new(probe.GetIndex())
 		m.Reject = new(true)
-		m.RejectHint = proto.Uint64(hint)
+		m.RejectHint = new(hint)
 		m.LogTerm = proto.Uint64(1)
 	})
 
