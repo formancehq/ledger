@@ -97,6 +97,16 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 			return fmt.Errorf("cannot change RC while StatefulSet %q is absent and Pod %q retains another or unknown image; restore the source image tag first", name, pod.Name)
 		}
 	}
+	// listOrdinalClaims reads uncached: the operator has no PVC watch RBAC.
+	claims, err := r.listOrdinalClaims(ctx, ledger)
+	if err != nil {
+		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
+	}
+	// Checked before the orphan-Pod branch: a matching Pod proves the image,
+	// not the data a recreated Pod would mount.
+	if err := rejectDeletingClaims(name, claims); err != nil {
+		return err
+	}
 	if matchingPod {
 		// A matching orphan Pod is enough to prove this is a recreation of
 		// the same image, not a new version transition.
@@ -106,12 +116,6 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 	// Without Pods, retained claims prove the source only through the record
 	// the operator keeps on them (see annotationClaimSourceTag). A Cluster
 	// deleted and recreated with deletion protection reaches this branch.
-	// listOrdinalClaims reads uncached: the operator has no PVC watch RBAC.
-	claims, err := r.listOrdinalClaims(ctx, ledger)
-	if err != nil {
-		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
-	}
-
 	return validateClaimSourceTags(name, ledger.Spec.Image.Tag, claims)
 }
 

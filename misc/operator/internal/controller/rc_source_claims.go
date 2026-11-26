@@ -236,6 +236,21 @@ func claimOrdinalBelow(claimName, stsName string, replicas int32) bool {
 	return false
 }
 
+// rejectDeletingClaims refuses a recreation while a retained ordinal claim is
+// being deleted. Such a claim is about to be replaced by an empty one, so
+// neither its record nor a matching orphan Pod says anything about the data
+// the recreated Pods will mount. Kubernetes keeps the claim until no Pod
+// mounts it, so an orphan Pod still using it holds the deletion open.
+func rejectDeletingClaims(stsName string, claims []corev1.PersistentVolumeClaim) error {
+	for _, claim := range claims {
+		if !claim.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("cannot recreate StatefulSet %q while PVC %q is being deleted; wait for the deletion to finish, which requires that no Pod still mounts the claim", stsName, claim.Name)
+		}
+	}
+
+	return nil
+}
+
 // validateClaimSourceTags admits a recreation only when every retained
 // ordinal claim records exactly the requested tag. Without a StatefulSet there
 // is no rolling transition, so even the next adjacent RC is refused.
@@ -243,14 +258,12 @@ func validateClaimSourceTags(stsName, target string, claims []corev1.PersistentV
 	if len(claims) == 0 {
 		return nil
 	}
+	if err := rejectDeletingClaims(stsName, claims); err != nil {
+		return err
+	}
 	var unrecorded []string
 	recorded := map[string][]string{}
 	for _, claim := range claims {
-		// A deleting claim is about to be replaced by an empty one, so its
-		// record says nothing about the data the recreated Pods will mount.
-		if !claim.DeletionTimestamp.IsZero() {
-			return fmt.Errorf("cannot verify RC source while StatefulSet %q is absent and PVC %q is being deleted; wait for the deletion to finish", stsName, claim.Name)
-		}
 		tag, ok := claim.Annotations[annotationClaimSourceTag]
 		if !ok || tag == "" {
 			unrecorded = append(unrecorded, claim.Name)

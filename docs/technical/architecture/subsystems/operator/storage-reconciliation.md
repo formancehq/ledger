@@ -254,7 +254,9 @@ artifacts from controllers and CSI running in the target environment.
 
 The RC predecessor gate reads the running source tag from the owned
 StatefulSet template. When the StatefulSet is absent, orphan Pods prove the
-source. A Cluster deleted with retained claims leaves neither, so the operator
+source image. They do not prove the data: whether or not orphan Pods match, the
+gate first rejects the recreation while any WAL/data ordinal claim is being
+deleted, because the recreated Pod would mount its empty replacement. A Cluster deleted with retained claims leaves neither, so the operator
 keeps the source on the claims themselves in the
 `ledger.formance.com/data-source-tag` annotation
 (`misc/operator/internal/controller/rc_source_claims.go`).

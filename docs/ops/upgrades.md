@@ -150,8 +150,9 @@ it, attest the source manually:
    then watch `ConfigValid` and the StatefulSet rollout.
 
 The operator also rejects a recreation while any WAL or data claim is being
-deleted, whatever it records: the recreated Pod would mount an empty
-replacement, not the recorded data.
+deleted, whatever it records and even when an orphan Pod runs the requested
+tag: the recreated Pod would mount an empty replacement, not the recorded data.
+Kubernetes finishes the deletion only once no Pod mounts the claim.
 
 This annotation replaces the earlier workaround of creating a placeholder Pod
 with the source image so that the orphan-Pod branch admits the source. Do not

@@ -356,6 +356,39 @@ func TestClaimSourceValidationRejectsDeletingClaim(t *testing.T) {
 		fmt.Sprintf("PVC %q is being deleted", claims[3].Name))
 }
 
+// A matching orphan Pod proves the image, not the data: a deleting claim at
+// another ordinal still blocks the recreation that would mount its empty
+// replacement.
+func TestOrphanPodRecreationRejectsDeletingClaim(t *testing.T) {
+	t.Parallel()
+
+	cluster := newMinimalCluster()
+	cluster.Spec.Image.Tag = "v3.0.0-rc.4"
+	orphan := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name) + "-0", Namespace: cluster.Namespace},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "ledger", Image: "ghcr.io/formancehq/ledger:v3.0.0-rc.4",
+		}}},
+	}
+	kept := recordedClaim(cluster, "data", 0, "")
+	deleting := recordedClaim(cluster, "data", 1, "")
+	now := metav1.Now()
+	deleting.DeletionTimestamp = &now
+	deleting.Finalizers = []string{"kubernetes.io/pvc-protection"}
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	admitted := fake.NewClientBuilder().WithScheme(scheme).WithObjects(orphan, kept).Build()
+	r := &ClusterReconciler{Client: admitted, Scheme: scheme}
+	require.NoError(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster))
+
+	blocked := fake.NewClientBuilder().WithScheme(scheme).WithObjects(orphan, kept, deleting).Build()
+	r = &ClusterReconciler{Client: blocked, Scheme: scheme}
+	require.ErrorContains(t, r.validateRCUpgradeWithoutStatefulSet(context.Background(), cluster),
+		fmt.Sprintf("PVC %q is being deleted", deleting.Name))
+}
+
 // The record is read through the uncached API reader: a stale cache must not
 // show a record that the operator already cleared.
 func TestMissingStatefulSetReadsClaimRecordsThroughAPIReader(t *testing.T) {

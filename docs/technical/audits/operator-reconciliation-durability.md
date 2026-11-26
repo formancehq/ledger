@@ -272,7 +272,8 @@ cleared, not only how it is read. A record may be stamped only from an uncached
 read of the owned StatefulSet converged on one revision, and only on claims
 created from one of its claim templates whose volume the `ledger` container
 mounts; a retained claim whose volume moved to hostPath is never stamped. A
-deleting claim never admits a recreation. A record must be removed
+deleting claim never admits a recreation, even when a matching orphan Pod
+would otherwise prove the source image. A record must be removed
 from every ordinal claim whose record differs before any publish with another
 Ledger tag, and before a stopped upgrade deletes its source; a failed removal
 must stop that publish or deletion. Recreation without a StatefulSet admits
