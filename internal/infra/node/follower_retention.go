@@ -24,21 +24,21 @@ import (
 // retained log in entries, not in time, so under sustained writes it can be
 // shorter than one download.
 //
-// The leader therefore keeps every entry after the lowest position a follower
-// is known to hold, among the followers it heard from within idleTimeout.
-// A position comes only from facts the leader has, never from raft's
-// speculative probe cursor:
+// The leader therefore keeps the entries after a position each follower it
+// heard from within idleTimeout can resume from. Positions come only from
+// facts the leader has, never from raft's speculative probe cursor:
 //   - Match, the last entry the follower acknowledged in this term;
-//   - the index of a snapshot this leader sent the follower, which the
-//     follower restores before it asks for the next entry;
-//   - unknown, for a follower heard from that has acknowledged nothing in
-//     this term (typically just after an election). The leader then keeps
-//     its whole retained log until the follower acknowledges.
+//   - the index of a snapshot this leader sent the follower in this term and
+//     that Match has not passed yet. The follower resumes after it once it
+//     restores the checkpoint; the node reports every sent snapshot at once,
+//     which leaves Match at its pre-snapshot value.
 //
-// Within a term each of these only rises, and unknown only resolves to a
-// position, so a position read before compaction can only be lower than the
-// one the follower has when compaction runs. A new term starts with no
-// history.
+// Either can be the one the follower resumes from: a snapshot handed to the
+// transport can be lost, and a Match the leader compacted past is useless.
+// Both are published, and maintenance holds at the lowest one still in the
+// leader's log. A follower heard from with neither (typically just after an
+// election) has an unknown position: the leader keeps its whole retained log
+// until the follower acknowledges.
 //
 // Two bounds keep a slow or dead follower from growing the WAL without limit:
 //   - a follower the leader has not heard from for idleTimeout no longer
@@ -55,26 +55,28 @@ type followerRetention struct {
 
 	// The fields below are owned by the orchestrate goroutine.
 	//
-	// term is the leader term the history belongs to; 0 when not leader.
-	term uint64
-	// now is the time of the last observation; heard stamps peers with it.
-	now   time.Time
+	// lastHeard is when a message from each node was last stepped. Liveness
+	// does not depend on the term, so it survives elections.
+	lastHeard map[uint64]time.Time
+	// term is the leader term peers belongs to; 0 when not leader.
+	term  uint64
 	peers map[uint64]*followerHistory
 
 	// published is read by maintenance.
 	published atomic.Pointer[retentionPositions]
 }
 
+// followerHistory is what the leader learned about a follower in term.
 type followerHistory struct {
-	lastHeard time.Time
-	// sentSnapshot is the highest snapshot index this leader sent the
-	// follower in term.
+	match uint64
+	// sentSnapshot is the highest snapshot index sent to the follower that
+	// match has not reached yet, or 0.
 	sentSnapshot uint64
 }
 
 // retentionPositions is what maintenance holds compaction for.
 type retentionPositions struct {
-	// positions lists the known positions in ascending order.
+	// positions lists the followers' candidate positions in ascending order.
 	positions []uint64
 	// unknown is true when a follower heard from has no known position.
 	unknown bool
@@ -115,18 +117,15 @@ func newFollowerRetention(maxBytes uint64, idleTimeout time.Duration) *followerR
 	return &followerRetention{
 		maxBytes:    maxBytes,
 		idleTimeout: idleTimeout,
+		lastHeard:   make(map[uint64]time.Time),
 		peers:       make(map[uint64]*followerHistory),
 	}
 }
 
-// heard records a message from peer id, at the time of the last
-// observation. Call it from the orchestrate goroutine for every message
-// stepped. Messages from nodes that are not tracked followers, including the
-// local storage threads, are ignored.
-func (r *followerRetention) heard(id uint64) {
-	if h, ok := r.peers[id]; ok {
-		h.lastHeard = r.now
-	}
+// heard records a message from node id stepped at at. Call it from the
+// orchestrate goroutine for every message stepped from another node.
+func (r *followerRetention) heard(id uint64, at time.Time) {
+	r.lastHeard[id] = at
 }
 
 // observe records the followers' progress and publishes the positions to
@@ -134,7 +133,12 @@ func (r *followerRetention) heard(id uint64) {
 // term, or 0 when the node is not the leader; followers must exclude the
 // local node.
 func (r *followerRetention) observe(now time.Time, term uint64, followers []followerProgress) {
-	r.now = now
+	for id, at := range r.lastHeard {
+		if now.Sub(at) > r.idleTimeout {
+			delete(r.lastHeard, id)
+		}
+	}
+
 	if term != r.term {
 		clear(r.peers)
 		r.term = term
@@ -158,21 +162,34 @@ func (r *followerRetention) observe(now time.Time, term uint64, followers []foll
 			h = &followerHistory{}
 			r.peers[f.id] = h
 		}
+		// Match never decreases for a member within a term: a lower one is a
+		// removed member re-added under the same ID, with fresh progress.
+		if f.match < h.match {
+			*h = followerHistory{}
+			delete(r.lastHeard, f.id)
+		}
+		h.match = f.match
 		if f.state == tracker.StateSnapshot {
 			h.sentSnapshot = max(h.sentSnapshot, f.pendingSnapshot)
 		}
+		if h.match >= h.sentSnapshot {
+			h.sentSnapshot = 0
+		}
 
-		if h.lastHeard.IsZero() || now.Sub(h.lastHeard) > r.idleTimeout {
+		if _, heard := r.lastHeard[f.id]; !heard {
 			continue
 		}
 
-		position := max(f.match, h.sentSnapshot)
-		if position == 0 {
+		if h.match == 0 && h.sentSnapshot == 0 {
 			published.unknown = true
 
 			continue
 		}
-		published.positions = append(published.positions, position)
+		for _, position := range []uint64{h.match, h.sentSnapshot} {
+			if position > 0 {
+				published.positions = append(published.positions, position)
+			}
+		}
 	}
 
 	if len(published.positions) == 0 && !published.unknown {

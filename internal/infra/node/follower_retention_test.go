@@ -39,6 +39,10 @@ func TestFollowerRetentionObserve(t *testing.T) {
 		return followerProgress{id: id, state: tracker.StateProbe, match: match}
 	}
 
+	snapshotting := func(id, match, pending uint64) followerProgress {
+		return followerProgress{id: id, state: tracker.StateSnapshot, match: match, pendingSnapshot: pending}
+	}
+
 	t.Run("a follower never heard from does not hold", func(t *testing.T) {
 		t.Parallel()
 
@@ -51,12 +55,20 @@ func TestFollowerRetentionObserve(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		followers := []followerProgress{replicating(2, 50), replicating(3, 30), replicating(4, 40)}
-		r.observe(t0, term, followers)
-		r.heard(2)
-		r.heard(3)
-		r.observe(t0, term, followers)
+		r.heard(2, t0)
+		r.heard(3, t0)
+		r.observe(t0, term, []followerProgress{replicating(2, 50), replicating(3, 30), replicating(4, 40)})
 		require.Equal(t, &retentionPositions{positions: []uint64{30, 50}}, publishedPositions(r))
+	})
+
+	t.Run("a message heard before the first observation of a term counts", func(t *testing.T) {
+		t.Parallel()
+
+		// A new leader can step a follower's response before its first tick.
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
+		r.observe(t0.Add(time.Millisecond), term, []followerProgress{replicating(2, 50)})
+		require.Equal(t, &retentionPositions{positions: []uint64{50}}, publishedPositions(r))
 	})
 
 	t.Run("a heard follower that acknowledged nothing has an unknown position", func(t *testing.T) {
@@ -65,29 +77,34 @@ func TestFollowerRetentionObserve(t *testing.T) {
 		// A new leader probes from its log tail; Match stays 0 until the
 		// follower acknowledges. The probe cursor is not a position.
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, term, []followerProgress{probing(2, 0), replicating(3, 40)})
-		r.heard(2)
-		r.heard(3)
+		r.heard(2, t0)
+		r.heard(3, t0)
 		r.observe(t0, term, []followerProgress{probing(2, 0), replicating(3, 40)})
 		require.Equal(t, &retentionPositions{positions: []uint64{40}, unknown: true}, publishedPositions(r))
 	})
 
-	t.Run("a sent snapshot is a position until Match passes it", func(t *testing.T) {
+	t.Run("a sent snapshot counts alongside Match until Match passes it", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, term, []followerProgress{probing(2, 3)})
-		r.heard(2)
-		r.observe(t0, term, []followerProgress{{id: 2, state: tracker.StateSnapshot, match: 3, pendingSnapshot: 70}})
-		require.Equal(t, &retentionPositions{positions: []uint64{70}}, publishedPositions(r))
+		r.heard(2, t0)
+		r.observe(t0, term, []followerProgress{snapshotting(2, 3, 70)})
+		require.Equal(t, &retentionPositions{positions: []uint64{3, 70}}, publishedPositions(r))
 
 		// Reporting the snapshot sent returns the follower to a probe with
-		// its stale Match: the sent snapshot still counts.
+		// its pre-snapshot Match: the sent snapshot still counts.
 		r.observe(t0, term, []followerProgress{probing(2, 3)})
-		require.Equal(t, &retentionPositions{positions: []uint64{70}}, publishedPositions(r))
+		require.Equal(t, &retentionPositions{positions: []uint64{3, 70}}, publishedPositions(r))
+
+		// The snapshot may have been lost: appends resume from a Match below
+		// it, which stays a candidate.
+		r.observe(t0, term, []followerProgress{replicating(2, 50)})
+		require.Equal(t, &retentionPositions{positions: []uint64{50, 70}}, publishedPositions(r))
 
 		r.observe(t0, term, []followerProgress{replicating(2, 90)})
 		require.Equal(t, &retentionPositions{positions: []uint64{90}}, publishedPositions(r))
+		r.observe(t0, term, []followerProgress{probing(2, 90)})
+		require.Equal(t, &retentionPositions{positions: []uint64{90}}, publishedPositions(r), "a passed snapshot is forgotten")
 	})
 
 	t.Run("a follower silent past the idle timeout stops holding", func(t *testing.T) {
@@ -95,8 +112,7 @@ func TestFollowerRetentionObserve(t *testing.T) {
 
 		r := newFollowerRetention(1<<20, time.Minute)
 		followers := []followerProgress{replicating(2, 30)}
-		r.observe(t0, term, followers)
-		r.heard(2)
+		r.heard(2, t0)
 		r.observe(t0.Add(time.Minute), term, followers)
 		require.Equal(t, &retentionPositions{positions: []uint64{30}}, publishedPositions(r), "silence of exactly the idle timeout still holds")
 
@@ -104,37 +120,42 @@ func TestFollowerRetentionObserve(t *testing.T) {
 		require.Nil(t, publishedPositions(r))
 
 		// Any message makes it hold again, whatever its progress did.
-		r.heard(2)
+		r.heard(2, t0.Add(2*time.Minute))
 		r.observe(t0.Add(2*time.Minute), term, followers)
 		require.Equal(t, &retentionPositions{positions: []uint64{30}}, publishedPositions(r))
 	})
 
-	t.Run("a new term starts with no history", func(t *testing.T) {
+	t.Run("a message is aged from when it was stepped", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFollowerRetention(1<<20, 10*time.Millisecond)
+		followers := []followerProgress{replicating(2, 30)}
+		r.observe(t0, term, followers)
+		r.heard(2, t0.Add(99*time.Millisecond))
+		r.observe(t0.Add(100*time.Millisecond), term, followers)
+		require.Equal(t, &retentionPositions{positions: []uint64{30}}, publishedPositions(r))
+	})
+
+	t.Run("a new term keeps liveness and drops sent snapshots", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
-		r.observe(t0, term, []followerProgress{probing(2, 3)})
-		r.heard(2)
-		r.observe(t0, term, []followerProgress{{id: 2, state: tracker.StateSnapshot, match: 3, pendingSnapshot: 70}})
-		require.NotNil(t, publishedPositions(r))
+		r.heard(2, t0)
+		r.observe(t0, term, []followerProgress{snapshotting(2, 3, 70)})
+		require.Equal(t, &retentionPositions{positions: []uint64{3, 70}}, publishedPositions(r))
 
-		r.observe(t0, term+1, []followerProgress{probing(2, 3)})
-		require.Nil(t, publishedPositions(r), "neither the heard time nor the sent snapshot carry over")
-		r.heard(2)
 		r.observe(t0, term+1, []followerProgress{probing(2, 3)})
 		require.Equal(t, &retentionPositions{positions: []uint64{3}}, publishedPositions(r))
 	})
 
-	t.Run("a node that is not the leader holds nothing and ignores messages", func(t *testing.T) {
+	t.Run("a node that is not the leader holds nothing", func(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
 		r.observe(t0, term, []followerProgress{replicating(2, 30)})
-		r.heard(2)
 		r.observe(t0, 0, nil)
 		require.Nil(t, publishedPositions(r))
-		require.Empty(t, r.peers)
-		r.heard(2)
 		require.Empty(t, r.peers)
 	})
 
@@ -142,12 +163,25 @@ func TestFollowerRetentionObserve(t *testing.T) {
 		t.Parallel()
 
 		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
+		r.heard(3, t0)
 		r.observe(t0, term, []followerProgress{replicating(2, 30), replicating(3, 40)})
-		r.heard(2)
-		r.heard(3)
 		r.observe(t0, term, []followerProgress{replicating(3, 40)})
 		require.Equal(t, &retentionPositions{positions: []uint64{40}}, publishedPositions(r))
 		require.NotContains(t, r.peers, uint64(2))
+	})
+
+	t.Run("a member re-added under the same ID starts with no history", func(t *testing.T) {
+		t.Parallel()
+
+		// Removal and re-addition both apply between two observations; raft
+		// gives the new member fresh progress.
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
+		r.observe(t0, term, []followerProgress{snapshotting(2, 30, 70)})
+		r.observe(t0, term, []followerProgress{probing(2, 0)})
+		require.Nil(t, publishedPositions(r), "the new member has not been heard from")
+		require.Equal(t, &followerHistory{}, r.peers[2])
 	})
 }
 
@@ -236,6 +270,21 @@ func TestFollowerRetentionCompactionTarget(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(40), got)
 		require.Equal(t, retentionDecision{held: true, need: 40, retainedBytes: 40 * entrySize}, decision)
+	})
+
+	t.Run("a usable Match below a sent snapshot holds", func(t *testing.T) {
+		t.Parallel()
+
+		// The snapshot at 150 may have been lost and appends resumed from 110.
+		walLog := newFakeRetentionLog(90, 200, dataSize)
+		var want uint64
+		for _, e := range walLog.entries[110-90 : 140-90] {
+			want += uint64(proto.Size(e))
+		}
+		got, decision, err := retention(math.MaxUint64, at(110, 150)).compactionTarget(140, walLog)
+		require.NoError(t, err)
+		require.Equal(t, uint64(110), got)
+		require.Equal(t, retentionDecision{held: true, need: 110, retainedBytes: want}, decision)
 	})
 
 	t.Run("only followers already compacted away keep the target", func(t *testing.T) {
@@ -414,7 +463,7 @@ func (l *testRetentionLeader) rejectProbe(hint uint64) []*raftpb.Message {
 func (l *testRetentionLeader) attach(node *Node) {
 	node.rawNode = l.rn
 	node.observeFollowerRetention(time.Now())
-	l.heard = node.followerRetention.heard
+	l.heard = func(from uint64) { node.followerRetention.heard(from, time.Now()) }
 }
 
 func sentSnapshotRecipients(t *testing.T, msgs []*raftpb.Message, wantIndex uint64) []uint64 {
@@ -680,16 +729,16 @@ func TestObserveFollowerRetentionFollowsSnapshotHandoff(t *testing.T) {
 	recipients := sentSnapshotRecipients(t, leader.drain(), 12)
 	require.Equal(t, []uint64{testRetentionPeerID}, recipients)
 	node.observeFollowerRetention(time.Now())
-	require.Equal(t, &retentionPositions{positions: []uint64{12}}, publishedPositions(node.followerRetention),
-		"a follower being sent a snapshot holds at its index")
+	require.Equal(t, &retentionPositions{positions: []uint64{9, 12}}, publishedPositions(node.followerRetention),
+		"a follower being sent a snapshot can resume from its Match or the snapshot")
 
 	node.reportSentSnapshots(recipients)
 	pr := leader.rn.Status().Progress[testRetentionPeerID]
 	require.Equal(t, tracker.StateProbe, pr.State)
 	require.Equal(t, uint64(9), pr.Match)
 	node.observeFollowerRetention(time.Now())
-	require.Equal(t, &retentionPositions{positions: []uint64{12}}, publishedPositions(node.followerRetention),
-		"the hold must cover the snapshot index until the follower acknowledges it")
+	require.Equal(t, &retentionPositions{positions: []uint64{9, 12}}, publishedPositions(node.followerRetention),
+		"the snapshot index must survive the report until the follower acknowledges it")
 
 	leader.ack(12)
 	require.Equal(t, uint64(12), leader.rn.Status().Progress[testRetentionPeerID].Match)

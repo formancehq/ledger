@@ -2216,8 +2216,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 			// Any message from a follower shows it is reachable: the
 			// compaction hold counts followers by when they were last heard.
-			if node.followerRetention != nil {
-				node.followerRetention.heard(msg.GetFrom())
+			if from := msg.GetFrom(); node.followerRetention != nil &&
+				from != node.config.NodeID && from != raft.LocalAppendThread && from != raft.LocalApplyThread {
+				node.followerRetention.heard(from, time.Now())
 			}
 
 			err := node.rawNode.Step(msg)
