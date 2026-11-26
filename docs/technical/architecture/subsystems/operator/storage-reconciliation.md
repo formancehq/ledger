@@ -298,8 +298,8 @@ maintains it in this order:
    claims.
 
 Recreation without a StatefulSet or Pods admits an RC target only when every
-retained WAL/data ordinal claim records exactly that target. A missing, mixed
-or different record is rejected, including the next adjacent RC, because there
+retained WAL/data ordinal claim records exactly that target. A deleting
+claim, or a missing, mixed or different record is rejected, including the next adjacent RC, because there
 is no rolling transition to validate. The gate also reads the claims through
 the API reader.
 

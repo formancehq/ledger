@@ -102,8 +102,8 @@ The operator keeps that proof on each claim in the
 
 When the StatefulSet and its Pods are absent and claims remain, the operator
 admits an RC tag only when every remaining WAL/data claim records exactly that
-tag. It rejects a claim without the annotation and claims that record
-different tags. It also rejects the next adjacent RC: without a StatefulSet
+tag. It rejects a claim without the annotation, a claim being deleted, and
+claims that record different tags. It also rejects the next adjacent RC: without a StatefulSet
 there is no rolling transition. Recreate the Cluster with the recorded tag, wait
 for the rollout to converge, then upgrade through the normal path.
 
@@ -118,27 +118,40 @@ carry no annotation. The recreated Cluster then stays in `phase: Error` with
 `ConfigValid=False` and a message naming the first unrecorded claim. To admit
 it, attest the source manually:
 
-1. Establish the Ledger tag that the deleted StatefulSet ran on every replica
-   at the moment it stopped. Use evidence that names the running build, such as
-   the `service.version` resource attribute in the Ledger logs or traces of
-   each Pod up to its shutdown, or `/_info` captured before deletion. Image
-   pull events alone are not enough. Every Pod must report the same tag and no
-   rollout to another tag may have started. If the evidence is incomplete or
-   mixed, stop: do not attest.
-2. Confirm that the `Cluster` requests exactly that tag.
-3. Annotate every WAL and data claim of the Cluster, including claims retained
-   beyond the replica count:
+1. List every WAL and data claim of the Cluster at every ordinal, including
+   claims retained beyond the replica count after an earlier scale-down:
 
    ```bash
-   kubectl -n <namespace> annotate pvc \
-     wal-ledger-<cluster>-0 data-ledger-<cluster>-0 \
-     wal-ledger-<cluster>-1 data-ledger-<cluster>-1 \
-     wal-ledger-<cluster>-2 data-ledger-<cluster>-2 \
+   kubectl -n <namespace> get pvc -o name | grep -E '/(wal|data)-ledger-<cluster>-[0-9]+$'
+   ```
+
+2. For **each** listed claim, establish the Ledger tag of the last Pod that
+   mounted it: the Pod with the claim's ordinal, up to that Pod's last
+   shutdown. For a claim beyond the current replica count, that is the Pod
+   removed by the scale-down, not the replicas still running when the Cluster
+   was deleted; their evidence says nothing about it. Use evidence that names
+   the running build, such as the `service.version` resource attribute in the
+   Ledger logs or traces of that Pod, or `/_info` captured before it stopped.
+   Image pull events alone are not enough. No rollout to another tag may have
+   started after that evidence.
+3. Stop without annotating any claim if a claim lacks such evidence or if the
+   claims do not all show the same tag. An inferred tag is not evidence. Plan
+   the recovery for that data instead; do not delete claims to make the check
+   pass.
+4. Confirm that the `Cluster` requests exactly the verified tag.
+5. Annotate every listed claim, and only those, with that tag:
+
+   ```bash
+   kubectl -n <namespace> annotate pvc <claim> [<claim>...] \
      ledger.formance.com/data-source-tag=<verified-tag>
    ```
 
-4. Touch the `Cluster`, for example with an annotation, so that it reconciles,
+6. Touch the `Cluster`, for example with an annotation, so that it reconciles,
    then watch `ConfigValid` and the StatefulSet rollout.
+
+The operator also rejects a recreation while any WAL or data claim is being
+deleted, whatever it records: the recreated Pod would mount an empty
+replacement, not the recorded data.
 
 This annotation replaces the earlier workaround of creating a placeholder Pod
 with the source image so that the orphan-Pod branch admits the source. Do not

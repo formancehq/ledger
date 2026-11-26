@@ -246,6 +246,11 @@ func validateClaimSourceTags(stsName, target string, claims []corev1.PersistentV
 	var unrecorded []string
 	recorded := map[string][]string{}
 	for _, claim := range claims {
+		// A deleting claim is about to be replaced by an empty one, so its
+		// record says nothing about the data the recreated Pods will mount.
+		if !claim.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("cannot verify RC source while StatefulSet %q is absent and PVC %q is being deleted; wait for the deletion to finish", stsName, claim.Name)
+		}
 		tag, ok := claim.Annotations[annotationClaimSourceTag]
 		if !ok || tag == "" {
 			unrecorded = append(unrecorded, claim.Name)

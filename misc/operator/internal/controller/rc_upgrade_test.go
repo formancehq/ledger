@@ -335,6 +335,27 @@ func TestMissingStatefulSetWithRecordedClaimsValidatesRCSource(t *testing.T) {
 	}
 }
 
+// A deleting claim cannot prove the source, even when its record matches: the
+// recreated Pods would mount its empty replacement, not the recorded data.
+func TestClaimSourceValidationRejectsDeletingClaim(t *testing.T) {
+	t.Parallel()
+
+	cluster := newMinimalCluster()
+	var claims []corev1.PersistentVolumeClaim
+	for ordinal := range 3 {
+		claims = append(claims,
+			*recordedClaim(cluster, "wal", ordinal, "v3.0.0-rc.4"),
+			*recordedClaim(cluster, "data", ordinal, "v3.0.0-rc.4"))
+	}
+	stsName := resourceName(cluster.Name)
+	require.NoError(t, validateClaimSourceTags(stsName, "v3.0.0-rc.4", claims))
+
+	deleting := metav1.Now()
+	claims[3].DeletionTimestamp = &deleting
+	require.ErrorContains(t, validateClaimSourceTags(stsName, "v3.0.0-rc.4", claims),
+		fmt.Sprintf("PVC %q is being deleted", claims[3].Name))
+}
+
 // The record is read through the uncached API reader: a stale cache must not
 // show a record that the operator already cleared.
 func TestMissingStatefulSetReadsClaimRecordsThroughAPIReader(t *testing.T) {
