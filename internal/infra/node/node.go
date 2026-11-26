@@ -1112,7 +1112,7 @@ func (node *Node) retainForFollowers(target uint64) uint64 {
 	fields := map[string]any{
 		"marginTarget":  target,
 		"compactIndex":  held,
-		"followerMatch": decision.floor,
+		"followerIndex": decision.need,
 		"retainedBytes": decision.retainedBytes,
 		"maxBytes":      node.followerRetention.maxBytes,
 	}
@@ -1141,11 +1141,7 @@ func (node *Node) observeFollowerRetention(now time.Time) {
 				return
 			}
 
-			progress = append(progress, followerProgress{
-				id:           id,
-				match:        pr.Match,
-				snapshotting: pr.State == tracker.StateSnapshot,
-			})
+			progress = append(progress, followerProgress{id: id, need: followerNeed(pr)})
 		})
 	}
 	node.retentionProgress = progress

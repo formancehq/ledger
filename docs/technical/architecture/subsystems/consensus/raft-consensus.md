@@ -761,21 +761,28 @@ The leader therefore holds back its compaction target for followers that are
 still replicating:
 
 1. On every Raft tick, the orchestrate goroutine reads each follower's
-   `Progress` from `RawNode` and publishes a floor: the lowest `Match` among
-   followers whose `Match` advanced within
-   `--raft-follower-retention-idle-timeout`. A follower in `StateSnapshot`
-   never counts, because its `Match` is older than the leader's log. A node
-   that is not the leader publishes no floor and forgets the history.
-2. Maintenance computes the usual target,
+   `Progress` from `RawNode` and derives the last entry the follower holds or
+   is about to hold: `Match` in `StateReplicate`, `Next-1` in `StateProbe`,
+   and the pending snapshot index in `StateSnapshot`. The probe and snapshot
+   cases cover the handoff after `MsgSnap`: the node reports the snapshot
+   sent at once, raft then probes from the snapshot index, and `Match` stays
+   at the follower's pre-snapshot position until the follower acknowledges.
+2. It publishes the positions of followers whose position changed within
+   `--raft-follower-retention-idle-timeout`. A node that is not the leader
+   publishes nothing and forgets the history.
+3. Maintenance computes the usual target,
    `min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`, and lowers
-   it to the floor when the floor is below it.
-3. The entries kept beyond the usual target never exceed
+   it to the lowest published position that is still in the leader's log (at
+   or after `FirstIndex()-1`). A follower already compacted away receives a
+   snapshot whatever the leader keeps, so it does not cancel the hold for the
+   others.
+4. The encoded size of the entries kept beyond the usual target never exceeds
    `--raft-follower-retention-max-bytes`. When the cap is reached, the leader
-   keeps the newest entries that fit and logs an error: the follower below
-   them will receive a snapshot. The WAL keeps retained entries in memory, so
-   this cap bounds leader memory as well as the WAL volume.
-4. A floor already below the WAL's first index, or a failure to read the
-   retained entries, leaves the usual target unchanged.
+   keeps the newest entries that fit and logs an error: a follower below them
+   will receive a snapshot. The WAL keeps retained entries in memory, so the
+   cap bounds leader memory and the WAL volume. It counts encoded entries:
+   heap overhead and segment-granular file removal add to it.
+5. A failure to read the retained entries leaves the usual target unchanged.
 
 The hold is node-local policy on the leader. It changes only how much log the
 leader keeps, never how an entry applies, and it persists nothing. A new

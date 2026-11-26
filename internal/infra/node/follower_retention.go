@@ -8,11 +8,9 @@ import (
 	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/tracker"
 	"google.golang.org/protobuf/proto"
 )
-
-// noRetentionFloor means no follower currently holds back WAL compaction.
-const noRetentionFloor = math.MaxUint64
 
 // followerRetention holds back leader WAL compaction for followers that are
 // still catching up through log replication (EN-3429).
@@ -21,19 +19,20 @@ const noRetentionFloor = math.MaxUint64
 // MsgSnap downloads a full Pebble checkpoint out of band, which can take tens
 // of minutes, and then replays the Raft log from the checkpoint index. While
 // it downloads it keeps appending the leader's entries. If the leader compacts
-// past the follower's Match during that window, the follower receives a new
-// MsgSnap and the download starts over. CompactionMargin alone sizes the
+// past the follower's position during that window, the follower receives a
+// new MsgSnap and the download starts over. CompactionMargin alone sizes the
 // retained log in entries, not in time, so under sustained writes it can be
 // shorter than one download.
 //
-// The leader therefore keeps every entry after the lowest Match among
-// followers whose Match advanced within idleTimeout. Two bounds keep a slow or
-// dead follower from growing the WAL without limit:
-//   - a follower whose Match stopped advancing for idleTimeout no longer
-//     counts, and a follower in StateSnapshot never counts;
+// The leader therefore keeps every entry after the lowest position a follower
+// still needs, among followers whose position advanced within idleTimeout and
+// is still in the leader's log. Two bounds keep a slow or dead follower from
+// growing the WAL without limit:
+//   - a follower whose position stopped advancing for idleTimeout no longer
+//     counts;
 //   - the entries retained beyond the normal compaction target never exceed
-//     maxBytes. The WAL keeps retained entries in memory, so this caps memory
-//     as well as disk.
+//     maxBytes of encoded entries. The WAL keeps retained entries in memory,
+//     so this bounds memory as well as disk.
 //
 // The hold is node-local, leader-only policy outside the FSM apply path: it
 // only decides how much log the leader keeps, never how an entry applies.
@@ -41,24 +40,46 @@ type followerRetention struct {
 	maxBytes    uint64
 	idleTimeout time.Duration
 
-	// matches is owned by the orchestrate goroutine.
-	matches map[uint64]followerMatch
+	// positions is owned by the orchestrate goroutine.
+	positions map[uint64]followerPosition
 
-	// floor is published by the orchestrate goroutine and read by
-	// maintenance. noRetentionFloor means no hold.
-	floor atomic.Uint64
+	// needs is published by the orchestrate goroutine and read by
+	// maintenance: the ascending positions of the followers that hold, or
+	// nil when none does.
+	needs atomic.Pointer[[]uint64]
 }
 
-type followerMatch struct {
-	match      uint64
+type followerPosition struct {
+	need       uint64
 	advancedAt time.Time
 }
 
-// followerProgress is the part of a Raft tracker.Progress the hold needs.
+// followerProgress is a follower's position as the leader tracks it: the
+// index of the last entry the follower is known or about to have. The leader
+// sends it the entries after that index.
 type followerProgress struct {
-	id           uint64
-	match        uint64
-	snapshotting bool
+	id   uint64
+	need uint64
+}
+
+// followerNeed returns the last entry index the leader expects pr's follower
+// to hold:
+//   - StateReplicate: Match, the follower acknowledged it.
+//   - StateProbe: Next-1, the entry the leader probes from. After a snapshot
+//     is reported sent, raft probes from the snapshot index while Match is
+//     still the follower's pre-snapshot position, which the leader's log
+//     no longer holds.
+//   - StateSnapshot: the snapshot index being sent; the follower resumes
+//     after it.
+func followerNeed(pr tracker.Progress) uint64 {
+	switch pr.State {
+	case tracker.StateSnapshot:
+		return max(pr.Match, pr.PendingSnapshot)
+	case tracker.StateProbe:
+		return max(pr.Match, pr.Next-1)
+	default:
+		return pr.Match
+	}
 }
 
 // retentionEntries is the WAL surface compactionTarget reads.
@@ -71,9 +92,11 @@ type retentionEntries interface {
 type retentionDecision struct {
 	// held is true when the returned target is below the requested one.
 	held bool
-	// capped is true when maxBytes stopped the hold above the floor.
-	capped        bool
-	floor         uint64
+	// capped is true when maxBytes stopped the hold above the follower's
+	// position.
+	capped bool
+	// need is the follower position the hold was sized for.
+	need          uint64
 	retainedBytes uint64
 }
 
@@ -83,63 +106,60 @@ func newFollowerRetention(maxBytes uint64, idleTimeout time.Duration) *followerR
 		return nil
 	}
 
-	r := &followerRetention{
+	return &followerRetention{
 		maxBytes:    maxBytes,
 		idleTimeout: idleTimeout,
-		matches:     make(map[uint64]followerMatch),
+		positions:   make(map[uint64]followerPosition),
 	}
-	r.floor.Store(noRetentionFloor)
-
-	return r
 }
 
-// observe records the followers' progress and publishes the new floor. Call it
-// from the orchestrate goroutine only. followers must exclude the local node.
+// observe records the followers' positions and publishes the ones that hold.
+// Call it from the orchestrate goroutine only. followers must exclude the
+// local node.
 func (r *followerRetention) observe(now time.Time, isLeader bool, followers []followerProgress) {
 	if !isLeader {
-		clear(r.matches)
-		r.floor.Store(noRetentionFloor)
+		clear(r.positions)
+		r.needs.Store(nil)
 
 		return
 	}
 
-	for id := range r.matches {
+	for id := range r.positions {
 		if !slices.ContainsFunc(followers, func(f followerProgress) bool { return f.id == id }) {
-			delete(r.matches, id)
+			delete(r.positions, id)
 		}
 	}
 
-	floor := uint64(noRetentionFloor)
+	var needs []uint64
 	for _, f := range followers {
-		// The leader is already sending this follower a snapshot: its Match
-		// is older than the leader's log and the hold cannot help it.
-		if f.snapshotting {
-			delete(r.matches, f.id)
-
-			continue
-		}
-
-		prev, ok := r.matches[f.id]
-		if !ok || f.match > prev.match {
-			prev = followerMatch{match: f.match, advancedAt: now}
-			r.matches[f.id] = prev
+		prev, ok := r.positions[f.id]
+		if !ok || f.need != prev.need {
+			prev = followerPosition{need: f.need, advancedAt: now}
+			r.positions[f.id] = prev
 		}
 
 		if now.Sub(prev.advancedAt) > r.idleTimeout {
 			continue
 		}
 
-		floor = min(floor, prev.match)
+		needs = append(needs, prev.need)
 	}
 
-	r.floor.Store(floor)
+	if len(needs) == 0 {
+		r.needs.Store(nil)
+
+		return
+	}
+
+	slices.Sort(needs)
+	r.needs.Store(&needs)
 }
 
 // compactionTarget lowers target to keep the entries the followers still
 // need, within maxBytes of entries beyond target.
 func (r *followerRetention) compactionTarget(target uint64, walLog retentionEntries) (uint64, retentionDecision, error) {
-	floor := r.floor.Load()
-	if floor >= target {
+	published := r.needs.Load()
+	if published == nil || (*published)[0] >= target {
 		return target, retentionDecision{}, nil
 	}
 
@@ -148,30 +168,44 @@ func (r *followerRetention) compactionTarget(target uint64, walLog retentionEntr
 		return target, retentionDecision{}, fmt.Errorf("reading WAL first index: %w", err)
 	}
 
-	// Entries up to floor are already gone: the follower will receive a
-	// snapshot whatever this node keeps.
-	if floor+1 < firstIndex {
+	// A follower whose position is already compacted away will receive a
+	// snapshot whatever this node keeps: it must not hold for the others.
+	// The compacted index itself (firstIndex-1) is still a valid append
+	// boundary.
+	i, _ := slices.BinarySearch(*published, firstIndex-1)
+	if i == len(*published) || (*published)[i] >= target {
 		return target, retentionDecision{}, nil
 	}
+	need := (*published)[i]
 
-	entries, err := walLog.Entries(floor+1, target+1, math.MaxUint64)
+	// Compacting at C keeps entries [C, last] in memory; the normal target T
+	// keeps [T, last]. The hold therefore costs entries [C, T-1], minus the
+	// entry at firstIndex-1 that the WAL keeps already.
+	lo := max(need, firstIndex)
+	if lo >= target {
+		return need, retentionDecision{held: true, need: need}, nil
+	}
+
+	entries, err := walLog.Entries(lo, target, math.MaxUint64)
 	if err != nil {
-		return target, retentionDecision{}, fmt.Errorf("reading retained entries [%d, %d]: %w", floor+1, target, err)
+		return target, retentionDecision{}, fmt.Errorf("reading retained entries [%d, %d): %w", lo, target, err)
 	}
 
 	var size uint64
-	for i := len(entries) - 1; i >= 0; i-- {
-		entrySize := uint64(proto.Size(entries[i]))
+	for j := len(entries) - 1; j >= 0; j-- {
+		entrySize := uint64(proto.Size(entries[j]))
 		if size+entrySize > r.maxBytes {
-			return entries[i].GetIndex(), retentionDecision{
-				held:          entries[i].GetIndex() < target,
+			compactIdx := entries[j].GetIndex() + 1
+
+			return compactIdx, retentionDecision{
+				held:          compactIdx < target,
 				capped:        true,
-				floor:         floor,
+				need:          need,
 				retainedBytes: size,
 			}, nil
 		}
 		size += entrySize
 	}
 
-	return floor, retentionDecision{held: true, floor: floor, retainedBytes: size}, nil
+	return need, retentionDecision{held: true, need: need, retainedBytes: size}, nil
 }

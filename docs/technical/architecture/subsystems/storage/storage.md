@@ -508,7 +508,7 @@ The WAL is compacted after snapshots to prevent unbounded growth:
    The FSM can publish a durable batch before the orchestrator steps its
    `MsgStorageApplyResp`; the Raft cursor is therefore the safety frontier for
    compaction. On the leader, a follower still replicating behind that target
-   can lower it to the follower's `Match`, within a byte cap (see
+   can lower it to the follower's position, within a byte cap (see
    [follower log retention](../consensus/raft-consensus.md#follower-log-retention-en-3429)).
    A target older than the current retained-log boundary is a no-op;
    compaction never moves the boundary backwards.
