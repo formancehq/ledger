@@ -839,7 +839,44 @@ sequenceDiagram
 
 ### HTTP Webhook Details
 
-The HTTP sink sends each event as an individual HTTP POST request with the following headers:
+The operational need is to reduce receiver request load: the emitter already
+collects up to 64 events by default, but the legacy HTTP sink sends one POST
+per event. Existing receivers expect one Event per body, so that contract
+remains the default. Operators set `http.batch: true` when creating the sink
+through the configuration API. The additive `HttpSinkConfig.batch` field is
+false when absent; existing configurations and receivers keep their behavior.
+The field is stored in the replicated sink configuration. Enable it after the
+server rollout completes because an old leader cannot interpret it.
+
+For example, the HTTP sink configuration sent to `POST /v3/_/events-sinks`
+contains `"http": {"endpoint": "https://receiver.example/events", "batch": true}`.
+
+Batch v1 sends events in ascending global log sequence order. JSON bodies are
+arrays of the existing Event JSON objects. Protobuf bodies concatenate the
+existing Event wire encodings, each preceded by its byte length as a four-byte
+big-endian unsigned integer. The body is capped at 1 MiB; the sink splits an
+emitter batch into consecutive POSTs at this boundary. An individual event
+larger than the cap fails delivery. Batch requests use the same Content-Type
+as legacy requests and set `X-Ledger-Batch-Version: 1`, `X-Event-Count`,
+`X-Log-Sequence-First`, and `X-Log-Sequence-Last`. Single-event headers
+`X-Event-Type`, `X-Ledger`, and `X-Log-Sequence` are absent because a batch can
+contain different event types and ledgers. HMAC-SHA256 signs the complete body
+under the existing `X-Webhook-Signature` header. Redirects remain failures.
+
+Each 2xx acknowledges the entire POST, never a subset. A non-2xx response or
+transport failure returns an error from Publish; the emitter does not advance
+its Raft cursor and retries the entire emitter batch. Previously accepted
+POSTs from a split batch can therefore reappear. Receivers must process a POST
+atomically before returning 2xx and deduplicate using the global log sequence.
+After all POSTs succeed, the emitter proposes its cursor update through Raft;
+failure to commit that update can also cause redelivery. Batch mode changes
+only the external HTTP transport, not Raft entries, snapshots, backups, or
+audit records. During a rolling server upgrade, enable it only after all
+voters run a version supporting batch v1; an older leader would revert to
+legacy single-event delivery.
+
+In the default legacy mode, the HTTP sink sends each event as an individual
+HTTP POST request with the following headers:
 
 | Header | Description |
 |---|---|

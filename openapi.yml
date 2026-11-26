@@ -6419,6 +6419,10 @@ components:
         secret:
           type: string
           description: Optional HMAC-SHA256 secret for the X-Webhook-Signature header
+        batch:
+          type: boolean
+          description: Opt in to HTTP batch v1 delivery; the receiver must acknowledge complete batches
+          default: false
 
     DatabricksSinkConfig:
       type: object

@@ -5313,6 +5313,19 @@ writers can coexist during a rolling upgrade. Queries or clients that read
 `log_sequence` into signed 64-bit values must change to a decimal or string
 representation before values exceed `MaxInt64`.
 
+When the HTTP sink is created with `http.batch: true` through the sink
+configuration API, it sends ordered events in POST bodies of at most 1 MiB.
+JSON bodies are arrays of event objects. Protobuf bodies are consecutive Events,
+each prefixed with a four-byte big-endian unsigned length. The request carries
+`X-Ledger-Batch-Version: 1`, `X-Event-Count`, `X-Log-Sequence-First`, and
+`X-Log-Sequence-Last` instead of the single-event headers above. The HMAC signs
+the entire body. A 2xx acknowledges every event in the POST; any other result
+retries the entire emitter batch, so receivers must deduplicate by global log
+sequence and must not acknowledge partial processing. An event exceeding 1 MiB
+fails delivery and requires operator intervention. `ledgerctl events add-sink`
+creates a legacy HTTP sink; the batch setting is available in the HTTP sink
+configuration sent to the API.
+
 ### `events remove-sink`
 
 Remove a named event sink. If this is the last sink, event emission is implicitly disabled. With `--controller-id`, removal succeeds only if the current Raft-applied configuration carries the exact same identity; a missing sink or different owner returns an error without removing anything. Omit the flag for ordinary unconditional removal.
