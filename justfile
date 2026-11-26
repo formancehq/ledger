@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator test-reader-generator test-buf-plugin lint-proto operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator test-reader-generator test-ledger-validate-generator test-buf-plugin lint-proto operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
@@ -460,6 +460,9 @@ test-rpcauth-generator:
 
 test-reader-generator:
     go -C tools/protoc-gen-reader test -race ./...
+
+test-ledger-validate-generator:
+    go -C tools/protoc-gen-ledger-validate test -race ./...
 
 # Initial-layout conventions for new protobuf types via the buf check plugin
 # in tools/buf-plugin-ledger; existing types retain their published numbers.
