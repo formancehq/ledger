@@ -174,15 +174,60 @@ func TestFollowerRetentionObserve(t *testing.T) {
 	t.Run("a member re-added under the same ID starts with no history", func(t *testing.T) {
 		t.Parallel()
 
-		// Removal and re-addition both apply between two observations; raft
-		// gives the new member fresh progress.
+		// Removal and re-addition both apply between two observations, each
+		// forgetting the ID; the replacement has not answered yet.
 		r := newFollowerRetention(1<<20, time.Minute)
 		r.heard(2, t0)
 		r.observe(t0, term, []followerProgress{snapshotting(2, 30, 70)})
+		r.forget(2)
+		r.forget(2)
 		r.observe(t0, term, []followerProgress{probing(2, 0)})
-		require.Nil(t, publishedPositions(r), "the new member has not been heard from")
-		require.Equal(t, &followerHistory{}, r.peers[2])
+		require.Nil(t, publishedPositions(r), "the replacement has not been heard from")
+		require.Equal(t, &followerHistory{}, r.peers[2], "the replacement inherits no sent snapshot")
 	})
+
+	t.Run("a replacement's acknowledgement below the old Match holds", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFollowerRetention(1<<20, time.Minute)
+		r.heard(2, t0)
+		r.observe(t0, term, []followerProgress{replicating(2, 30)})
+		r.forget(2)
+		r.heard(2, t0)
+		r.observe(t0, term, []followerProgress{replicating(2, 10)})
+		require.Equal(t, &retentionPositions{positions: []uint64{10}}, publishedPositions(r))
+	})
+}
+
+func TestForgetRetainedFollowersOnConfChange(t *testing.T) {
+	t.Parallel()
+
+	t0 := time.Unix(1_000, 0)
+	node := &Node{followerRetention: newFollowerRetention(1<<20, time.Minute)}
+	for _, id := range []uint64{2, 3, 4} {
+		node.followerRetention.heard(id, t0)
+	}
+	node.followerRetention.observe(t0, 3, []followerProgress{
+		{id: 2, state: tracker.StateReplicate, match: 20},
+		{id: 3, state: tracker.StateReplicate, match: 30},
+		{id: 4, state: tracker.StateReplicate, match: 40},
+	})
+
+	node.forgetRetainedFollowers(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
+		{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
+		{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(3)},
+	}})
+	require.NotContains(t, node.followerRetention.lastHeard, uint64(2))
+	require.NotContains(t, node.followerRetention.lastHeard, uint64(3))
+	require.Contains(t, node.followerRetention.lastHeard, uint64(4))
+	require.NotContains(t, node.followerRetention.peers, uint64(2))
+	require.NotContains(t, node.followerRetention.peers, uint64(3))
+	require.Contains(t, node.followerRetention.peers, uint64(4))
+
+	// Disabled retention ignores configuration changes.
+	(&Node{}).forgetRetainedFollowers(&raftpb.ConfChangeV2{Changes: []*raftpb.ConfChangeSingle{
+		{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
+	}})
 }
 
 // fakeRetentionLog serves entries [first, first+len(entries)).

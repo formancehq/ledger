@@ -1185,6 +1185,19 @@ func (node *Node) reportSentSnapshots(recipients []uint64) {
 	}
 }
 
+// forgetRetainedFollowers drops the compaction hold's history for every node
+// an applied configuration change touches. Must be called from the
+// orchestrate goroutine, right after rawNode.ApplyConfChange.
+func (node *Node) forgetRetainedFollowers(cc *raftpb.ConfChangeV2) {
+	if node.followerRetention == nil {
+		return
+	}
+
+	for _, change := range cc.GetChanges() {
+		node.followerRetention.forget(change.GetNodeId())
+	}
+}
+
 // observeFollowerRetention feeds the followers' Raft progress to the
 // compaction hold. It runs on the orchestrate goroutine, which owns rawNode.
 func (node *Node) observeFollowerRetention(now time.Time) {
@@ -1898,6 +1911,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			WithFields(map[string]any{"transition": cc.GetTransition().String()}).
 			Infof("Applying configuration change")
 		node.confState.Store(node.rawNode.ApplyConfChange(cc))
+		node.forgetRetainedFollowers(cc)
 
 		// Mirror the committed ConfChange into the in-memory cache +
 		// transport so the next Raft tick already sees the new address.
@@ -3993,6 +4007,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		}
 		cs := node.rawNode.ApplyConfChange(cc)
 		node.confState.Store(cs)
+		node.forgetRetainedFollowers(cc)
 
 		// Order matters here. ForceRemoveNode bypasses the Raft log, so
 		// there is no EntryConfChange the FSM replay can re-apply on

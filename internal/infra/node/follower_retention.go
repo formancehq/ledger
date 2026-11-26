@@ -128,6 +128,15 @@ func (r *followerRetention) heard(id uint64, at time.Time) {
 	r.lastHeard[id] = at
 }
 
+// forget drops what is known about node id. Call it from the orchestrate
+// goroutine when a configuration change for id applies: a member removed and
+// re-added under the same ID, or replaced, is a different follower whose
+// progress raft tracks afresh.
+func (r *followerRetention) forget(id uint64) {
+	delete(r.lastHeard, id)
+	delete(r.peers, id)
+}
+
 // observe records the followers' progress and publishes the positions to
 // hold for. Call it from the orchestrate goroutine only. term is the leader
 // term, or 0 when the node is not the leader; followers must exclude the
@@ -161,12 +170,6 @@ func (r *followerRetention) observe(now time.Time, term uint64, followers []foll
 		if !ok {
 			h = &followerHistory{}
 			r.peers[f.id] = h
-		}
-		// Match never decreases for a member within a term: a lower one is a
-		// removed member re-added under the same ID, with fresh progress.
-		if f.match < h.match {
-			*h = followerHistory{}
-			delete(r.lastHeard, f.id)
 		}
 		h.match = f.match
 		if f.state == tracker.StateSnapshot {

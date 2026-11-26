@@ -781,9 +781,10 @@ still replicating:
    useless. A follower heard from with neither, typically just after an
    election, has an unknown position: the leader keeps its whole retained
    log until the follower acknowledges or is sent a snapshot. A new term, or
-   losing leadership, discards the positions but not the liveness. A
-   follower whose `Match` goes backwards within a term was removed and
-   re-added under the same ID; its history is discarded.
+   losing leadership, discards the positions but not the liveness. Applying
+   a configuration change discards both for every node it touches, so a
+   member removed and re-added, or replaced, under the same ID inherits
+   nothing from its predecessor.
 3. **Fresh positions before compaction.** The positions are published on
    every Raft tick. Maintenance creates its WAL snapshot, then has the
    orchestrate goroutine publish them again and waits for it. RawNode
