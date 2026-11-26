@@ -209,7 +209,7 @@ The Grafana dashboard includes panels for disk usage visualization. See the `mis
 
 ### Volume Sizing
 
-- **WAL volume**: Size based on maintenance interval, compaction margin, and write throughput. The WAL grows between maintenance cycles and is compacted periodically, retaining at least `compactionMargin` entries. While a follower catches up, the leader can keep up to `--raft-follower-retention-max-bytes` (default `1Gi`) more; budget that on the WAL volume and in leader memory.
+- **WAL volume**: Size based on maintenance interval, compaction margin, and write throughput. The WAL grows between maintenance cycles and is compacted periodically, retaining at least `compactionMargin` entries. While a follower catches up, the leader can keep up to `--raft-follower-retention-max-bytes` (default `1Gi`) more, plus one boundary entry; budget that on the WAL volume and in leader memory.
 - **Data volume**: Size based on total data retention. Pebble compaction reclaims space over time, but peak usage can be higher during compaction.
 
 ### Operational Response

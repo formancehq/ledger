@@ -987,7 +987,7 @@ func (node *Node) runBackgroundMaintenance(ctx context.Context, stop chan struct
 		case <-stop:
 			return nil
 		case <-ticker.C:
-			if err := node.doMaintenance(); err != nil {
+			if err := node.doMaintenance(stop); err != nil {
 				return err
 			}
 		}
@@ -995,8 +995,9 @@ func (node *Node) runBackgroundMaintenance(ctx context.Context, stop chan struct
 }
 
 // doMaintenance logs and absorbs the failures it can retry on the next tick. It
-// returns only what makes retrying pointless.
-func (node *Node) doMaintenance() error {
+// returns only what makes retrying pointless. Closing stop abandons a wait on
+// the orchestrate goroutine; a nil stop never does.
+func (node *Node) doMaintenance(stop <-chan struct{}) error {
 	store := node.applier.Store()
 
 	lastSnap, err := node.wal.Snapshot()
@@ -1065,7 +1066,7 @@ func (node *Node) doMaintenance() error {
 	// unapplied configuration changes during an election.
 	acknowledgedApplied = min(node.lastRaftApplied.Load(), capturedIndex)
 	if snapshotUsable && acknowledgedApplied > node.applier.CompactionMargin() {
-		compactIdx, ok := node.retainForFollowers(acknowledgedApplied - node.applier.CompactionMargin())
+		compactIdx, ok := node.retainForFollowers(acknowledgedApplied-node.applier.CompactionMargin(), stop)
 		if ok {
 			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
@@ -1101,23 +1102,37 @@ const retentionRefreshTimeout = 10 * time.Second
 //
 // Call it after the tick's WAL snapshot is published. RawNode chooses the
 // snapshot it sends while the orchestrate goroutine steps a message, and
-// records it in the peer's Progress at once. Refreshing the positions on that
-// goroutine after the new snapshot is published therefore sees every older
-// snapshot already chosen; a snapshot chosen later is the new one, which is
-// past the target. Positions sampled on the previous Raft tick could miss a
-// snapshot chosen since, so a failed refresh skips compaction rather than
-// using them.
+// records it in the peer's Progress at once; finishReady records the
+// positions again before reporting the snapshot sent, so the StateSnapshot
+// transition is seen even when the report returns the peer to the same probe
+// position. Refreshing the positions on that goroutine after the new snapshot
+// is published therefore covers every older snapshot already chosen; a
+// snapshot chosen later is the new one, which is past the target. Positions
+// sampled on the previous Raft tick could miss a snapshot chosen since, so a
+// failed refresh skips compaction rather than using them.
+//
+// The refresh is idempotent, so the wait is abandoned on timeout or when stop
+// closes: a command still queued then runs harmlessly or never.
 //
 // A failure to size the hold keeps the requested target: the margin still
 // applies, and a follower that falls behind it receives a snapshot as before.
-func (node *Node) retainForFollowers(target uint64) (uint64, bool) {
+func (node *Node) retainForFollowers(target uint64, stop <-chan struct{}) (uint64, bool) {
 	if node.followerRetention == nil {
 		return target, true
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), retentionRefreshTimeout)
 	defer cancel()
-	if err := node.execClusterCommand(ctx, true, func() error {
+	if stop != nil {
+		go func() {
+			select {
+			case <-stop:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
+	if err := node.execClusterCommand(ctx, false, func() error {
 		node.observeFollowerRetention(time.Now())
 
 		return nil
@@ -1152,6 +1167,22 @@ func (node *Node) retainForFollowers(target uint64) (uint64, bool) {
 	}
 
 	return held, true
+}
+
+// reportSentSnapshots reports every snapshot handed to the transport as
+// finished (see finishReady). The report can return a peer to a probe at the
+// index it held before the snapshot, so the follower positions are recorded
+// first: the follower retention then sees the StateSnapshot transition as
+// activity (EN-3429). Must be called from the orchestrate goroutine.
+func (node *Node) reportSentSnapshots(recipients []uint64) {
+	if len(recipients) == 0 {
+		return
+	}
+
+	node.observeFollowerRetention(time.Now())
+	for _, peerID := range recipients {
+		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
+	}
 }
 
 // observeFollowerRetention feeds the followers' Raft progress to the
@@ -1833,9 +1864,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// fresh snapshot. The MsgSnap carries no payload here (the checkpoint is
 	// fetched out-of-band), so handing it to the transport is the send.
 	// Non-leaders and peers no longer in StateSnapshot ignore the report.
-	for _, peerID := range result.snapshotRecipients {
-		node.rawNode.ReportSnapshot(peerID, raft.SnapshotFinish)
-	}
+	node.reportSentSnapshots(result.snapshotRecipients)
 
 	if result.snapshotApplied {
 		node.recordRaftApplied(rd.Snapshot.GetMetadata().GetIndex())

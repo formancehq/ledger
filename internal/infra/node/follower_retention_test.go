@@ -361,31 +361,10 @@ func (l *testRetentionLeader) rejectProbe(hint uint64) []*raftpb.Message {
 func newTestRetentionMaintenanceNode(t *testing.T) *Node {
 	t.Helper()
 
-	node, setup := newTestMaintenanceNode(t)
-	setup.applier.compactionMargin = 1
-	node.followerRetention = newFollowerRetention(math.MaxUint64, time.Minute)
-
-	entries := make([]*raftpb.Entry, 6)
-	for i := range entries {
-		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "retention-ledger-"+string(rune('a'+i)))
-	}
-	require.NoError(t, node.wal.Append(&raftpb.HardState{
-		Term:   proto.Uint64(1),
-		Vote:   proto.Uint64(1),
-		Commit: proto.Uint64(6),
-	}, entries))
-
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
-	setup.applier.Submit(entries, nil, nil, setup.stop)
-	setup.applier.Drain(setup.stop)
-	close(setup.stop)
-	require.NoError(t, <-runDone)
-	node.lastRaftApplied.Store(6)
+	node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
 
 	// Serve the orchestrate command loop: maintenance refreshes follower
 	// positions on it.
-	node.clusterCommandCh = make(chan *clusterCommand, 1)
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	t.Cleanup(func() {
@@ -407,6 +386,104 @@ func newTestRetentionMaintenanceNode(t *testing.T) *Node {
 	return node
 }
 
+// newTestRetentionMaintenanceNodeWithoutOrchestrator is
+// newTestRetentionMaintenanceNode with nothing serving the command loop, as
+// after the orchestrate goroutine has stopped.
+func newTestRetentionMaintenanceNodeWithoutOrchestrator(t *testing.T) *Node {
+	t.Helper()
+
+	node, setup := newTestMaintenanceNode(t)
+	setup.applier.compactionMargin = 1
+	node.followerRetention = newFollowerRetention(math.MaxUint64, time.Minute)
+
+	entries := make([]*raftpb.Entry, 6)
+	for i := range entries {
+		entries[i], _ = makeCreateLedgerEntry(t, uint64(i+1), "retention-ledger-"+string(rune('a'+i)))
+	}
+	require.NoError(t, node.wal.Append(&raftpb.HardState{
+		Term:   proto.Uint64(1),
+		Vote:   proto.Uint64(1),
+		Commit: proto.Uint64(6),
+	}, entries))
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(context.Background(), setup.stop) }()
+	setup.applier.Submit(entries, nil, nil, setup.stop)
+	setup.applier.Drain(setup.stop)
+	close(setup.stop)
+	require.NoError(t, <-runDone)
+	node.lastRaftApplied.Store(6)
+	node.clusterCommandCh = make(chan *clusterCommand, 1)
+
+	return node
+}
+
+// TestDoMaintenanceStopAbandonsRetentionRefresh covers shutdown: the refresh
+// command can be queued just as the orchestrate goroutine takes its stop
+// branch, and nothing consumes it. Closing the maintenance task's stop
+// channel must release maintenance, which then skips compaction rather than
+// compact from unrefreshed positions.
+func TestDoMaintenanceStopAbandonsRetentionRefresh(t *testing.T) {
+	t.Parallel()
+
+	node := newTestRetentionMaintenanceNodeWithoutOrchestrator(t)
+
+	stop := make(chan struct{})
+	close(stop)
+	require.NoError(t, node.doMaintenance(stop))
+
+	snapshot, err := node.wal.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(6), snapshot.GetMetadata().GetIndex(), "the WAL snapshot does not depend on the refresh")
+	first, err := node.wal.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), first, "compaction must be skipped without refreshed positions")
+}
+
+// TestDoMaintenanceSeesSnapshotWhoseReportRestoredTheProbe covers a snapshot
+// sent and reported between two samples. The peer was last seen probing at 3
+// and had gone idle, so it no longer held. It then rejects the probe, is sent
+// the snapshot at 3, and the report returns it to a probe at 3: the sampled
+// position and state are the same as before. The positions recorded before
+// the report must make the peer hold again, so maintenance keeps the entries
+// after 3 instead of compacting to its normal target 5.
+func TestDoMaintenanceSeesSnapshotWhoseReportRestoredTheProbe(t *testing.T) {
+	t.Parallel()
+
+	node := newTestRetentionMaintenanceNode(t)
+	node.followerRetention = newFollowerRetention(math.MaxUint64, time.Hour)
+
+	leader := newTestRetentionLeader(t, 3)
+	leader.propose(2)
+	node.rawNode = leader.rn
+	pr := leader.rn.Status().Progress[testRetentionPeerID]
+	require.Equal(t, tracker.StateProbe, pr.State)
+	require.Equal(t, uint64(3), followerNeed(pr))
+
+	// The peer was last seen at Probe(3) two hours ago: it no longer holds.
+	node.observeFollowerRetention(time.Now().Add(-2 * time.Hour))
+	node.observeFollowerRetention(time.Now())
+	require.Nil(t, publishedNeeds(node.followerRetention))
+
+	var recipients []uint64
+	for _, m := range leader.rejectProbe(1) {
+		if m.GetType() == raftpb.MsgSnap {
+			require.Equal(t, uint64(3), m.GetSnapshot().GetMetadata().GetIndex())
+			recipients = append(recipients, m.GetTo())
+		}
+	}
+	require.Equal(t, []uint64{testRetentionPeerID}, recipients, "the leader must send a snapshot")
+	node.reportSentSnapshots(recipients)
+	pr = leader.rn.Status().Progress[testRetentionPeerID]
+	require.Equal(t, tracker.StateProbe, pr.State)
+	require.Equal(t, uint64(3), followerNeed(pr), "the report restores the sampled position and state")
+
+	require.NoError(t, node.doMaintenance(nil))
+	first, err := node.wal.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), first, "entries after the snapshot index must stay available")
+}
+
 // TestDoMaintenanceRetainsLogForCatchingUpFollower reproduces EN-3429 at the
 // maintenance boundary: with a follower still replicating behind the
 // compaction margin, the leader must keep the entries after the follower's
@@ -425,7 +502,7 @@ func TestDoMaintenanceRetainsLogForCatchingUpFollower(t *testing.T) {
 	node.rawNode = leader.rn
 
 	// The margin alone would compact to 5.
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 	snapshot, err := node.wal.Snapshot()
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), snapshot.GetMetadata().GetIndex())
@@ -436,7 +513,7 @@ func TestDoMaintenanceRetainsLogForCatchingUpFollower(t *testing.T) {
 	// The follower catches up: compaction returns to the margin.
 	leader.fromPeer(raftpb.MsgAppResp, func(m *raftpb.Message) { m.Index = proto.Uint64(6) })
 	leader.drain()
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 	first, err = node.wal.FirstIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), first)
@@ -467,7 +544,7 @@ func TestDoMaintenanceSeesSnapshotSentSinceLastTick(t *testing.T) {
 	require.Equal(t, tracker.StateSnapshot, leader.rn.Status().Progress[testRetentionPeerID].State)
 	require.Nil(t, publishedNeeds(node.followerRetention), "no tick has observed the snapshot yet")
 
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 	first, err := node.wal.FirstIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), first, "entries after the snapshot index must stay available")

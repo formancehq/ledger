@@ -99,7 +99,7 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 
 	// FSM=4, but the orchestrator has not stepped the apply response beyond 1.
 	node.lastRaftApplied.Store(1)
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 	snapshot, err := node.wal.Snapshot()
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), snapshot.GetMetadata().GetIndex())
@@ -148,7 +148,7 @@ func TestDoMaintenanceRetainsEntriesUntilRaftApplyAcked(t *testing.T) {
 	require.NoError(t, orchestrateErr)
 	require.Equal(t, uint64(4), node.rawNode.Status().Applied)
 	require.Equal(t, uint64(4), node.lastRaftApplied.Load())
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 	_, err = node.wal.Entries(2, 5, ^uint64(0))
 	require.ErrorIs(t, err, raft.ErrCompacted)
 }
@@ -184,7 +184,7 @@ func TestDoMaintenance_NoEntries_NoOp(t *testing.T) {
 	snapBefore, err := node.wal.Snapshot()
 	require.NoError(t, err)
 
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -210,7 +210,7 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 	persisted := node.fsm.LastPersistedIndex()
 	require.Equal(t, uint64(1), persisted)
 
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -245,7 +245,7 @@ func TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint(t *testing.T) {
 	// snapshot or the checkpoint marker.
 	require.NoError(t, setup.store.Close())
 
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -305,7 +305,7 @@ func TestDoMaintenance_SnapshotSaveFailure_RetriesNextTick(t *testing.T) {
 	require.NoError(t, os.RemoveAll(snapDir))
 	require.NoError(t, os.WriteFile(snapDir, nil, 0600))
 
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 
 	snap, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -313,7 +313,7 @@ func TestDoMaintenance_SnapshotSaveFailure_RetriesNextTick(t *testing.T) {
 
 	require.NoError(t, os.Remove(snapDir))
 
-	require.NoError(t, node.doMaintenance())
+	require.NoError(t, node.doMaintenance(nil))
 
 	snap, err = node.wal.Snapshot()
 	require.NoError(t, err)

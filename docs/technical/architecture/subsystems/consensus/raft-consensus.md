@@ -773,15 +773,22 @@ still replicating:
    state changed within `--raft-follower-retention-idle-timeout`. The state
    counts because a speculative probe position can equal the index of the
    snapshot sent after it. A node that is not the leader publishes nothing
-   and forgets the history. Publication runs on every Raft tick, and once
-   more on demand from maintenance.
+   and forgets the history. Publication runs on every Raft tick, before
+   `finishReady` reports sent snapshots, and once more on demand from
+   maintenance. Reporting a snapshot sent can return the peer to a probe at
+   the index it held before (`Probe(S) → Snapshot(S) → Probe(S)`); recording
+   the positions before the report keeps that transition visible as
+   activity.
 3. Maintenance creates its WAL snapshot, then asks the orchestrate goroutine
    to publish the positions again and waits for it. RawNode chooses the
-   snapshot it sends while that goroutine steps a message, and records it in
-   `Progress` at once, so the refreshed positions include every older
-   snapshot already sent; any snapshot chosen later is the new one, past the
-   compaction target. If the refresh fails, maintenance skips compaction for
-   that tick rather than use positions from an earlier tick.
+   snapshot it sends while that goroutine steps a message and records it in
+   `Progress` at once, and a reported snapshot was recorded before its
+   report, so the refreshed positions cover every older snapshot already
+   sent; any snapshot chosen later is the new one, past the compaction
+   target. If the refresh fails, times out (10s) or the maintenance task
+   stops, maintenance skips compaction for that tick rather than use
+   positions from an earlier tick. The refresh is idempotent, so a command
+   left queued at shutdown is harmless.
 4. Maintenance computes the usual target,
    `min(FSM.LastPersistedIndex, RawNode.Applied) - CompactionMargin`, and lowers
    it to the lowest published position that is still in the leader's log (at
