@@ -479,23 +479,6 @@ func (b *Builder) markLedgerDeletedInBatch(name string) {
 	b.seenAcctAsset = make(map[string]struct{})
 }
 
-// readstoreKeyExists reports whether key is present in committed read-store
-// state. A point Get on the underlying Pebble DB: (false, nil) on not-found,
-// (true, nil) on hit. Mirrors reverseMapValue's committed-read path.
-func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
-	_, closer, err := b.readStore.DB().Get(key)
-	if errors.Is(err, pebble.ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
-	_ = closer.Close()
-
-	return true, nil
-}
-
 // reverseMapValue returns the encoded value the index currently holds for an
 // entity+key (its reverse-map entry) — the authoritative target to delete on an
 // overwrite. It reads the uncommitted-batch overlay first, then committed state.

@@ -509,14 +509,9 @@ func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
 	assert.Equal(t, []string{"accounts:alice", "accounts:bank"}, scanAccountByAssetAtPin(t, store, prefix, 5))
 }
 
-// TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete guards the
-// dedup against a DeleteLedger that lands in the same indexer batch as renewed
-// account-by-asset activity for a same-name (recreated) ledger. DeleteLedger
-// only queues a by-name range delete (no batch flush), and readstoreKeyExists
-// reads committed Pebble directly — so without the in-batch-delete guard the
-// dedup sees the about-to-be-deleted row, skips the new Put, and the range
-// delete then wipes the row, silently dropping the account from has-asset
-// queries.
+// TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete verifies
+// that a ledger range deletion clears in-batch event deduplication before a
+// same-name ledger receives new account-by-asset touches.
 func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testing.T) {
 	t.Parallel()
 

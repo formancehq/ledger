@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -359,10 +360,14 @@ func v1Row(t *testing.T, b *Builder) func() bool {
 	require.NoError(t, batch.Commit())
 
 	return func() bool {
-		exists, err := b.readstoreKeyExists(key)
+		_, closer, err := b.readStore.DB().Get(key)
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false
+		}
 		require.NoError(t, err)
+		require.NoError(t, closer.Close())
 
-		return exists
+		return true
 	}
 }
 

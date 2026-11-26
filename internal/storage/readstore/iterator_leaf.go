@@ -19,14 +19,6 @@ type PrefixIterator struct {
 	started      bool
 	exhausted    bool
 	floor        seekFloor
-	// stampPin gates rows by the fold sequence stored in their value: a row
-	// is admitted only when its 8-byte stamp is at or below the pin. Zero
-	// leaves the scan ungated. Rows written after a reader's main-store pin
-	// are invisible to it, exactly like the event-keyed metadata indexes —
-	// the single-stamp form suffices for rows written at most once (first
-	// asset touch, a transaction's one revert).
-	stampPin uint64
-	stampErr error
 }
 
 // NewPrefixIterator creates an iterator that scans all keys with the given
@@ -57,38 +49,6 @@ func NewPrefixIterator(
 	}, nil
 }
 
-// NewStampGatedPrefixIterator is NewPrefixIterator with the fold-sequence
-// gate armed at pin (see PrefixIterator.stampPin).
-func NewStampGatedPrefixIterator(
-	reader dal.PebbleReader,
-	prefix []byte,
-	entityOffset int,
-	entityLen int,
-	pin uint64,
-) (*PrefixIterator, error) {
-	it, err := NewPrefixIterator(reader, prefix, entityOffset, entityLen)
-	if err != nil {
-		return nil, err
-	}
-
-	it.stampPin = pin
-
-	return it, nil
-}
-
-// admitStamp applies the fold-sequence gate to the row under the cursor. A
-// malformed value latches an error and exhausts the iterator: refusing per
-// invariant #7 beats silently folding an unreadable row into the page.
-func (it *PrefixIterator) admitStamp() bool {
-	admitted, err := admitFoldStamp(it.iter, it.stampPin)
-	if err != nil {
-		it.stampErr = err
-		it.exhausted = true
-	}
-
-	return admitted
-}
-
 func (it *PrefixIterator) Next() bool {
 	if it.exhausted {
 		return false
@@ -107,27 +67,19 @@ func (it *PrefixIterator) Next() bool {
 		}
 
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil && it.admitStamp() {
+		if entity != nil {
 			it.current = entity
 
 			return true
-		}
-
-		if it.stampErr != nil {
-			return false
 		}
 	}
 
 	for it.iter.Next() {
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil && it.admitStamp() {
+		if entity != nil {
 			it.current = entity
 
 			return true
-		}
-
-		if it.stampErr != nil {
-			return false
 		}
 	}
 
@@ -169,14 +121,10 @@ func (it *PrefixIterator) Seek(target []byte) bool {
 	// SeekPrefixGE constrains iteration to the prefix; UpperBound is still respected.
 	for it.iter.Valid() {
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil && compareEntities(entity, target) >= 0 && it.admitStamp() {
+		if entity != nil && compareEntities(entity, target) >= 0 {
 			it.current = entity
 
 			return true
-		}
-
-		if it.stampErr != nil {
-			return false
 		}
 
 		if !it.iter.Next() {
@@ -191,10 +139,6 @@ func (it *PrefixIterator) Seek(target []byte) bool {
 }
 
 func (it *PrefixIterator) Err() error {
-	if it.stampErr != nil {
-		return it.stampErr
-	}
-
 	if it.iter == nil {
 		return nil
 	}
@@ -239,8 +183,7 @@ type RangeIterator struct {
 	started      bool
 	exhausted    bool
 	seekErr      error
-	// stampPin / stampErr: the fold-sequence value gate — see
-	// PrefixIterator.stampPin.
+	// stampPin / stampErr gate range rows by their fold sequence.
 	stampPin uint64
 	stampErr error
 }
@@ -273,7 +216,7 @@ func NewRangeIterator(
 }
 
 // NewStampGatedRangeIterator is NewRangeIterator with the fold-sequence gate
-// armed at pin (see PrefixIterator.stampPin).
+// armed at pin.
 func NewStampGatedRangeIterator(
 	reader dal.PebbleReader,
 	lower, upper []byte,
@@ -291,7 +234,7 @@ func NewStampGatedRangeIterator(
 	return it, nil
 }
 
-// admitStamp — see PrefixIterator.admitStamp.
+// admitStamp validates the fold sequence and excludes rows above the pin.
 func (it *RangeIterator) admitStamp() bool {
 	admitted, err := admitFoldStamp(it.iter, it.stampPin)
 	if err != nil {

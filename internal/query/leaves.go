@@ -41,13 +41,6 @@ type leaves[D readstore.Direction] interface {
 
 	// prefixScan is an entity-ordered scan of one index prefix.
 	prefixScan(ctx *compileCtx, prefix []byte, entityOffset, entityLen int) (readstore.Iterator[D], error)
-	// stampGatedPrefix is prefixScan with the fold-sequence gate armed at the
-	// reader's pin. The gate MUST be present in both directions: a row
-	// written past the pin that one direction hides and the other admits is a
-	// direction-dependent visibility bug, and a whole-set parity test cannot
-	// see it, because both directions are compared against the same pinned
-	// view.
-	stampGatedPrefix(ctx *compileCtx, prefix []byte, entityOffset, entityLen int) (readstore.Iterator[D], error)
 
 	// txRange is the transaction universe restricted to [lower, upper) on the
 	// transaction id. A nil bound is open on that side.
@@ -86,10 +79,6 @@ func (ascLeaves) eventResolve(ctx *compileCtx, prefix []byte) (readstore.Iterato
 
 func (ascLeaves) prefixScan(ctx *compileCtx, prefix []byte, entityOffset, entityLen int) (readstore.Iterator[readstore.Asc], error) {
 	return readstore.NewPrefixIterator(ctx.indexReader, prefix, entityOffset, entityLen)
-}
-
-func (ascLeaves) stampGatedPrefix(ctx *compileCtx, prefix []byte, entityOffset, entityLen int) (readstore.Iterator[readstore.Asc], error) {
-	return readstore.NewStampGatedPrefixIterator(ctx.indexReader, prefix, entityOffset, entityLen, ctx.pin)
 }
 
 func (ascLeaves) txRange(ctx *compileCtx, lower, upper []byte) (readstore.Iterator[readstore.Asc], error) {
@@ -131,10 +120,6 @@ func (descLeaves) eventResolve(ctx *compileCtx, prefix []byte) (readstore.Iterat
 
 func (descLeaves) prefixScan(ctx *compileCtx, prefix []byte, entityOffset, entityLen int) (readstore.Iterator[readstore.Desc], error) {
 	return readstore.NewReversePrefixIterator(ctx.indexReader, prefix, entityOffset, entityLen)
-}
-
-func (descLeaves) stampGatedPrefix(ctx *compileCtx, prefix []byte, entityOffset, entityLen int) (readstore.Iterator[readstore.Desc], error) {
-	return readstore.NewStampGatedReversePrefixIterator(ctx.indexReader, prefix, entityOffset, entityLen, ctx.pin)
 }
 
 func (descLeaves) txRange(ctx *compileCtx, lower, upper []byte) (readstore.Iterator[readstore.Desc], error) {

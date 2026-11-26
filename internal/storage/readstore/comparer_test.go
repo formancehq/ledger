@@ -213,13 +213,13 @@ func TestReadStoreComparerSplitProperties(t *testing.T) {
 	}
 }
 
-func TestAccountByAssetKeyOrdering(t *testing.T) {
+func TestAccountByAssetEventKeyOrdering(t *testing.T) {
 	t.Parallel()
 	kb := dal.NewKeyBuilder()
 
 	prefix := AccountByAssetPrefix(kb, "billing", "USD", 0)
-	k1 := AccountByAssetKey(kb, "billing", "USD", 0, "accounts:alice")
-	k2 := AccountByAssetKey(kb, "billing", "USD", 0, "accounts:bob")
+	k1 := bytes.Clone(AccountByAssetEventKey(kb, "billing", "USD", 0, "accounts:alice", 5))
+	k2 := bytes.Clone(AccountByAssetEventKey(kb, "billing", "USD", 0, "accounts:bob", 5))
 	require.True(t, bytes.HasPrefix(k1, prefix))
 	require.True(t, bytes.HasPrefix(k2, prefix))
 
