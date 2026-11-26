@@ -4189,6 +4189,15 @@ spec:
           status:
             description: ClusterStatus defines the observed state of Cluster.
             properties:
+              backupReservations:
+                additionalProperties:
+                  type: string
+                description: |-
+                  BackupReservations serializes BackupRun admission with suspension intent.
+                  Keys are BackupRun names and values are their UIDs. A reservation is
+                  retained until the run is terminal or absent, so a crash cannot let the
+                  suspension stop Pods while a Job can still be created.
+                type: object
               claimTemplateRecovery:
                 description: |-
                   ClaimTemplateRecovery identifies the durable journal for a claim-template

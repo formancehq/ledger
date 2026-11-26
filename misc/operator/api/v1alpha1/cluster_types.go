@@ -1389,6 +1389,12 @@ type TLSRolloutStatus struct {
 
 // ClusterStatus defines the observed state of Cluster.
 type ClusterStatus struct {
+	// BackupReservations serializes BackupRun admission with suspension intent.
+	// Keys are BackupRun names and values are their UIDs. A reservation is
+	// retained until the run is terminal or absent, so a crash cannot let the
+	// suspension stop Pods while a Job can still be created.
+	// +optional
+	BackupReservations map[string]string `json:"backupReservations,omitempty"`
 	// ClaimTemplateRecovery identifies the durable journal for a claim-template
 	// replacement. The operator restores that workload before newer spec edits.
 	// +optional

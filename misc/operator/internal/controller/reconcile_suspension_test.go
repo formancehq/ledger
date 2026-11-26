@@ -68,6 +68,89 @@ func TestSuspensionMembershipRequiresTheOriginalVoters(t *testing.T) {
 	require.False(t, suspensionMembershipComplete(status, 3))
 }
 
+func TestBackupAdmissionReservationFencesSuspensionIntent(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	scheme := runtime.NewScheme()
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	cluster := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}}
+	backup := &ledgerv1alpha1.Backup{ObjectMeta: metav1.ObjectMeta{Name: "daily", Namespace: "default"}, Spec: ledgerv1alpha1.BackupSpec{ClusterRef: "test"}}
+	run := &ledgerv1alpha1.BackupRun{ObjectMeta: metav1.ObjectMeta{Name: "run-1", Namespace: "default", UID: "run-uid"}, Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: "daily"}}
+	c := clientfake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, backup, run).
+		WithStatusSubresource(&ledgerv1alpha1.Cluster{}, &ledgerv1alpha1.BackupRun{}).Build()
+	runController := &BackupRunReconciler{Client: c, APIReader: c}
+	clusterController := &ClusterReconciler{Client: c, APIReader: c}
+	stale := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "test", Namespace: "default"}, stale))
+	admitted, err := runController.reserveClusterBackup(ctx, "test", run)
+	require.NoError(t, err)
+	require.True(t, admitted)
+	require.Error(t, c.Status().Update(ctx, stale), "a stale suspension checkpoint must lose the resource-version race")
+	require.ErrorContains(t, clusterController.suspensionInFlightBackups(ctx, cluster), "reserved Cluster admission")
+
+	latest := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "test", Namespace: "default"}, latest))
+	latest.Spec.Disabled = true
+	require.NoError(t, c.Update(ctx, latest))
+	second := &ledgerv1alpha1.BackupRun{ObjectMeta: metav1.ObjectMeta{Name: "run-2", Namespace: "default", UID: "second-uid"}}
+	admitted, err = runController.reserveClusterBackup(ctx, "test", second)
+	require.NoError(t, err)
+	require.False(t, admitted, "a new run cannot reserve admission after disable")
+
+	currentRun := &ledgerv1alpha1.BackupRun{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: run.Name, Namespace: run.Namespace}, currentRun))
+	currentRun.Status.Phase = ledgerv1alpha1.BackupRunPhaseSucceeded
+	require.NoError(t, c.Status().Update(ctx, currentRun))
+	require.NoError(t, clusterController.suspensionInFlightBackups(ctx, cluster))
+	require.NoError(t, runController.releaseClusterBackupReservation(ctx, currentRun))
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "test", Namespace: "default"}, latest))
+	require.Empty(t, latest.Status.BackupReservations)
+}
+
+func TestSuspensionResumeRevokesKeysBeforeStartingPods(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	scheme := runtime.NewScheme()
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	replicas, zero := int32(1), int32(0)
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default", UID: "cluster-original"},
+		Spec: ledgerv1alpha1.ClusterSpec{Replicas: &replicas, ClusterID: "original-id", Image: ledgerv1alpha1.ImageSpec{Repository: "ledger", Tag: "pinned"},
+			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: new(true), Issuer: "https://issuer.example"}},
+	}
+	wal, data := boundSuspensionPVC("wal-ledger-test-0"), boundSuspensionPVC("data-ledger-test-0")
+	cluster.Status.Suspension = &ledgerv1alpha1.SuspensionStatus{
+		Phase: suspensionPhaseStarting, ExpectedReplicas: replicas, BarrierIndex: 10,
+		PinnedSpecHash: computeSpecHash(&cluster.Spec), PinnedImage: "ledger:pinned", StatefulSetUID: "sts-original",
+		PVCUIDs: map[string]string{wal.Name: string(wal.UID), data.Name: string(data.UID)},
+		PVUIDs:  map[string]string{wal.Name: string(boundSuspensionPV(wal).UID), data.Name: string(boundSuspensionPV(data).UID)},
+	}
+	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "ledger-test", Namespace: "default", UID: "sts-original"},
+		Spec: appsv1.StatefulSetSpec{Replicas: &zero,
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{annotationSpecHash: computeSpecHash(&cluster.Spec)}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "ledger", Image: "ledger:pinned", Env: []corev1.EnvVar{{Name: "TLS_MODE", Value: tlsModeDisabled}}}}}},
+			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}}}}
+	staleKeys := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(cluster.Name), Namespace: cluster.Namespace,
+		OwnerReferences: []metav1.OwnerReference{{APIVersion: "ledger.formance.com/v1alpha1", Kind: "Cluster", Name: cluster.Name, UID: cluster.UID, Controller: new(true)}}},
+		Data: map[string]string{"revoked": "old-key"}}
+	c := clientfake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, sts, wal, data, boundSuspensionPV(wal), boundSuspensionPV(data), staleKeys).
+		WithStatusSubresource(&ledgerv1alpha1.Cluster{}, &appsv1.StatefulSet{}).Build()
+	credential := matchingCredentials("revoked-credential", nil, true, cluster.Namespace, "revoked-secret")
+	require.NoError(t, c.Create(ctx, credential))
+	require.NoError(t, c.Delete(ctx, credential)) // Revoked while the original Pods are stopped.
+	r := &ClusterReconciler{Client: c, APIReader: c, Scheme: scheme, Config: &rest.Config{}, Clientset: fake.NewSimpleClientset()}
+	_, err := r.reconcileSuspension(ctx, cluster, nil)
+	require.NoError(t, err)
+	updatedKeys := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: staleKeys.Name, Namespace: staleKeys.Namespace}, updatedKeys))
+	require.JSONEq(t, `{"keys":[]}`, updatedKeys.Data["auth-keys.json"], "revoked keys must be removed before replicas are restored")
+	updatedSTS := &appsv1.StatefulSet{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: sts.Name, Namespace: sts.Namespace}, updatedSTS))
+	require.Equal(t, replicas, *updatedSTS.Spec.Replicas)
+}
+
 func TestSuspensionCycleRetainsIdentityVolumesAndMembership(t *testing.T) {
 	t.Parallel()
 	runSuspensionCycle(t, false)

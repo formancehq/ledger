@@ -146,8 +146,10 @@ Ledger v3 `Cluster.spec.disabled` performs a reversible stop for PVC-backed
 clusters. It retains the Cluster identity, Raft membership, StatefulSet and
 volumes while setting workload replicas to zero after replicated maintenance
 and a persistence barrier. `status.phase=Suspended` confirms all Pods have
-stopped; `SuspensionBlocked` means the Pods remain running and the status error
-explains which safety gate failed. Clear `spec.disabled` to restart the original
+stopped; `SuspensionBlocked` means a safety gate failed. Check the StatefulSet
+replica count and `status.suspension.error`: a pre-stop failure leaves Pods
+running, while a resume failure can leave the cluster stopped. Clear
+`spec.disabled` to restart the original
 members, then apply deferred image or replica changes. hostPath and PVC
 deletion retention policies are unsupported. Install the new CRD and Ledger
 operator before enabling this behavior in the Stack operator; rollback to an

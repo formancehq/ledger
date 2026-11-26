@@ -4132,6 +4132,13 @@
       "additionalProperties": false,
       "description": "ClusterStatus defines the observed state of Cluster.",
       "properties": {
+        "backupReservations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "BackupReservations serializes BackupRun admission with suspension intent.\nKeys are BackupRun names and values are their UIDs. A reservation is\nretained until the run is terminal or absent, so a crash cannot let the\nsuspension stop Pods while a Job can still be created.",
+          "type": "object"
+        },
         "claimTemplateRecovery": {
           "additionalProperties": false,
           "description": "ClaimTemplateRecovery identifies the durable journal for a claim-template\nreplacement. The operator restores that workload before newer spec edits.",

@@ -353,8 +353,9 @@ original voter, checks that the WAL and data PVCs are bound, detaches any stale
 StatefulSet PVC owner references, and changes only StatefulSet replicas to zero
 with both PVC retention policies set to `Retain`. It reports `Suspended` only
 after every Pod has disappeared. `spec.replicas` and `spec.clusterID` stay
-unchanged. Failed prerequisites leave the Pods running and report
-`SuspensionBlocked` with the reason in `status.suspension.error`.
+unchanged. Failed prerequisites before scale-to-zero leave the Pods running;
+resume failures can leave them stopped. Both report `SuspensionBlocked` with
+the reason in `status.suspension.error`.
 
 Set `spec.disabled: false` to restart the original StatefulSet template and
 replica count. The operator checks that all original PVCs remain bound, waits
@@ -363,6 +364,10 @@ maintenance gate it enabled. If maintenance was already enabled before the
 suspension, it remains enabled. Stack defers image and replica changes until
 this original cluster reaches `Running`. Direct Cluster spec edits during the
 transition block resume until the pinned spec is restored.
+Before restarting Pods, the operator refreshes their mounted auth-key ConfigMap
+from current Credentials; unresolved keys block resume. BackupRun admission
+reserves the Cluster status before creating a Job, and suspension waits for
+reserved runs to finish before stopping Pods.
 
 Suspension is rejected for hostPath volumes and `retentionPolicy` values of
 `Delete`. A running BackupRun finishes before the stop barrier; new and

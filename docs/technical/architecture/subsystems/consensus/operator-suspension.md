@@ -32,7 +32,8 @@ replicas with both retention policies set to `Retain`. The operator reports
 gate reports `SuspensionBlocked` and retries; before the zero update it leaves
 all Pods in place.
 
-`Starting` checks each original PVC is still bound, then restores only the
+`Starting` checks each original PVC is still bound, refreshes the retained
+auth-key ConfigMap from current Credentials, then restores only the
 original replica count on the pinned StatefulSet template. `Verifying` waits
 for all replicas and the original voter set with an elected leader. It clears
 maintenance only if this suspension enabled it; `Opening` confirms every
@@ -51,6 +52,10 @@ alone as proof that the cluster has elected a leader.
 hostPath and PVC `Delete` retention policies are rejected. Running BackupRuns
 must complete before stopping; pending and scheduled runs wait for resume.
 EventSink, declarative Ledger and volume-expansion controllers also wait.
+BackupRun admission records a reservation in Cluster status. The reservation
+and suspension intent use the same resource version, so a pending run cannot
+pass the stop barrier after it has been closed. An admitted run may finish
+before scale-to-zero; terminal or deleted runs cannot start a new Job.
 Ledger v2 uses its existing Stack disable behavior. A Ledger v3 preview beside
 v2 follows this suspension protocol for its own Cluster.
 

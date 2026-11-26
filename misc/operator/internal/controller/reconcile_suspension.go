@@ -243,6 +243,24 @@ func (r *ClusterReconciler) reconcileSuspension(ctx context.Context, ledger *led
 
 			return retry, nil
 		}
+		// The old Pods load keys at boot. Publish current Credentials into
+		// their retained mount before any Pod can restart on the pinned template.
+		keys, pending, err := r.reconcileAuthKeysProjection(ctx, ledger, true)
+		if err != nil {
+			r.suspensionBlocked(ledger, fmt.Sprintf("refreshing auth keys before restart: %v", err))
+
+			return retry, nil
+		}
+		if pending.pending() {
+			r.suspensionBlocked(ledger, "auth keys cannot be safely projected before restart: "+pending.conditionMessage())
+
+			return retry, nil
+		}
+		if ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled && ledger.Spec.Auth.Issuer == "" && len(keys) == 0 {
+			r.suspensionBlocked(ledger, "auth-enabled cluster has no resolved keys or OIDC issuer for restart")
+
+			return retry, nil
+		}
 		if *sts.Spec.Replicas == 0 {
 			replicas := status.ExpectedReplicas
 			sts.Spec.Replicas = &replicas
@@ -374,6 +392,10 @@ func (r *ClusterReconciler) suspensionInFlightBackups(ctx context.Context, clust
 	if reader == nil {
 		reader = r.Client
 	}
+	liveCluster := &ledgerv1alpha1.Cluster{}
+	if err := reader.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: cluster.Name}, liveCluster); err != nil {
+		return fmt.Errorf("reading Cluster backup admission fence: %w", err)
+	}
 	backups := &ledgerv1alpha1.BackupList{}
 	if err := reader.List(ctx, backups, client.InNamespace(cluster.Namespace)); err != nil {
 		return fmt.Errorf("listing Backups before suspension: %w", err)
@@ -392,7 +414,12 @@ func (r *ClusterReconciler) suspensionInFlightBackups(ctx context.Context, clust
 		if owned[run.Spec.BackupRef] && run.Status.Phase == ledgerv1alpha1.BackupRunPhaseRunning {
 			return fmt.Errorf("BackupRun %s is still running", run.Name)
 		}
+		if uid, exists := liveCluster.Status.BackupReservations[run.Name]; exists && uid == string(run.UID) && !run.IsTerminal() {
+			return fmt.Errorf("BackupRun %s has reserved Cluster admission", run.Name)
+		}
 	}
+	// A reservation for a deleted or terminal run is inert: it cannot create a
+	// new Job. The run controller removes it on its terminal reconciliation.
 
 	return nil
 }
