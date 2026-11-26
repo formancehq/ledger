@@ -118,6 +118,14 @@ func TestValidatePostings(t *testing.T) {
 			wantErr: domain.ErrAccountAddressInvalidChar,
 		},
 		{
+			name: "empty source after resolution",
+			posting: &commonpb.Posting{
+				Destination: "users:alice",
+				Asset:       "USD",
+			},
+			wantErr: domain.ErrAccountAddressEmpty,
+		},
+		{
 			name: "invalid destination",
 			posting: &commonpb.Posting{
 				Source:      "bank",
@@ -128,12 +136,28 @@ func TestValidatePostings(t *testing.T) {
 			wantErr: domain.ErrAccountAddressInvalidChar,
 		},
 		{
+			name: "empty destination after resolution",
+			posting: &commonpb.Posting{
+				Source: "bank",
+				Asset:  "USD",
+			},
+			wantErr: domain.ErrAccountAddressEmpty,
+		},
+		{
 			name: "invalid asset",
 			posting: &commonpb.Posting{
 				Source:      "bank",
 				Destination: "users:alice",
 				Asset:       "usd",
 				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAssetInvalid,
+		},
+		{
+			name: "empty asset after resolution",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
 			},
 			wantErr: domain.ErrAssetInvalid,
 		},

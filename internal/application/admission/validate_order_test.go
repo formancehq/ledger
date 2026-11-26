@@ -1047,6 +1047,41 @@ func TestValidateOrderContent(t *testing.T) {
 			wantErr: ErrPostingAmountRequired,
 		},
 		{
+			name: "posting without source",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAccountAddressEmpty,
+		},
+		{
+			name: "posting without destination",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "world", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAccountAddressEmpty,
+		},
+		{
+			name: "posting without asset",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAssetInvalid,
+		},
+		{
+			name: "posting with malformed source",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "bad source", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAccountAddressInvalidChar,
+		},
+		{
+			name: "posting with malformed asset",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "usd", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAssetInvalid,
+		},
+		{
 			name: "second posting without amount",
 			ct: &raftcmdpb.CreateTransactionOrder{
 				Postings: []*commonpb.Posting{posting, {Source: "world", Destination: "users:alice", Asset: "USD"}},

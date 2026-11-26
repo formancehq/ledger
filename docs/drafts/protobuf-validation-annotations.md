@@ -23,6 +23,7 @@ generated methods.
 | Ledger names on existing gRPC read guards | Non-zero string | Generated checks replace eleven empty-name branches at their existing adapter positions and retain `ErrLedgerNameRequired`. |
 | Account names, metadata keys, signing key IDs | Value shape and context | Existing validators also enforce characters, length or scope and retain their error order. |
 | Posting amount, update target | Explicit presence | Generated check accepts a present zero value. |
+| Explicit posting source, destination and asset | Non-zero string plus shape | Generated input checks and existing shape validators reject malformed caller postings at admission. The FSM still validates Numscript output and historical orders. |
 | Sink batch size and query target enum | Valid zero/default | Must not use a non-zero rule. |
 | Cluster drain epochs and leadership transferee | Non-zero scalar plus lifecycle rules | Generated checks replace the existing zero guards at the same RPC positions; epoch length and cluster preconditions remain manual. |
 | Cluster state target, bootstrap fields and other IDs | Protocol and lifecycle invariants | Remain at their transport and lifecycle boundaries; zero is valid for the cluster-state target. |

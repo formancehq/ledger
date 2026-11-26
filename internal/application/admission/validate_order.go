@@ -2,6 +2,7 @@ package admission
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"maps"
 	"net/url"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -287,7 +289,9 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 // content source (no postings, no inline script, no script reference) and
 // orders that combine explicit postings with a script — both shapes silently
 // produce an unintended transaction at the FSM (#452).
-// Explicit postings must carry an amount; a present zero is valid.
+// Explicit postings must carry an amount, source, destination and asset; a
+// present zero amount is valid. Their address and asset shape is checked here;
+// the FSM repeats it for postings produced by Numscript and historical orders.
 //
 // The "result must contain ≥1 posting" invariant — needed to catch numscripts
 // that execute fine but emit no postings — lives on the FSM
@@ -336,7 +340,30 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 
 	for _, posting := range o.GetPostings() {
 		if err := posting.ValidateInput(); err != nil {
-			return ErrPostingAmountRequired
+			fieldErr := &inputvalidation.FieldError{}
+			ok := errors.As(err, &fieldErr)
+			if !ok {
+				panic("unexpected generated Posting validation error")
+			}
+			switch fieldErr.Path {
+			case "source", "destination":
+				return domain.ErrAccountAddressEmpty
+			case "amount":
+				return ErrPostingAmountRequired
+			case "asset":
+				return domain.ErrAssetInvalid
+			default:
+				panic("unexpected generated Posting validation field")
+			}
+		}
+		if err := domain.ValidateAccountAddress(posting.GetSource()); err != nil {
+			return err
+		}
+		if err := domain.ValidateAccountAddress(posting.GetDestination()); err != nil {
+			return err
+		}
+		if err := domain.ValidateAsset(posting.GetAsset()); err != nil {
+			return err
 		}
 	}
 

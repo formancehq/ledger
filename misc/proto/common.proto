@@ -131,10 +131,10 @@ message Uint256 {
 
 // Posting represents a single posting in a transaction
 message Posting {
-  string source = 1;
-  string destination = 2;
+  string source = 1 [(common.non_zero_for_input) = true];
+  string destination = 2 [(common.non_zero_for_input) = true];
   Uint256 amount = 3 [(common.required_for_input) = true];
-  string asset = 4;
+  string asset = 4 [(common.non_zero_for_input) = true];
   // Color of the funds being moved. The empty string is the "uncolored" bucket
   // and is treated as just another color from a segregation standpoint.
   // Color values are constrained to ^[A-Z]*$ at admission time.

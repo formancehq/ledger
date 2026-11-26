@@ -7,8 +7,17 @@ import (
 
 // ValidateInput checks declared direct-field input requirements.
 func (m *Posting) ValidateInput() error {
+	if m == nil || m.Source == "" {
+		return &inputvalidation.FieldError{Path: "source"}
+	}
+	if m == nil || m.Destination == "" {
+		return &inputvalidation.FieldError{Path: "destination"}
+	}
 	if m == nil || m.Amount == nil {
 		return &inputvalidation.FieldError{Path: "amount"}
+	}
+	if m == nil || m.Asset == "" {
+		return &inputvalidation.FieldError{Path: "asset"}
 	}
 	return nil
 }

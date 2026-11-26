@@ -16,6 +16,12 @@ The cluster drain RPCs also use generated validation for an empty epoch, while
 retaining the existing 128-byte limit and error. Leadership transfer uses it
 for a zero transferee ID; zero in cluster-state requests remains meaningful.
 
+New explicit postings with an empty source, destination or asset, or with an
+invalid address or asset shape, are rejected during admission with the existing
+validation reason. They no longer create an audited FSM refusal. Postings
+produced by Numscript continue through FSM validation and retain an audited
+failure when invalid. Previously committed orders retain their replay behavior.
+
 ### Restore-mode service lifetime
 
 `RestoreService.StartDownloadBackup` deliberately detaches the transfer from
