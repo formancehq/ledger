@@ -354,7 +354,7 @@ JWT/anonymous policy; no new endpoint or authorization requirement is introduced
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed). Exact totals, including above 2^256 (`BigUint` on gRPC since `v3.0.0-rc.5`) |
-| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ⚠️ | ✅ | `insertionDate` and `updatedAt` are returned for normal accounts with an incarnation. `firstUsage`, date filters, and date ordering remain absent ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
+| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ⚠️ | ✅ | `insertionDate` and `updatedAt` are returned for normal and live ephemeral accounts with an incarnation. `firstUsage`, date filters, and date ordering remain absent ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
 | List logs | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/logs` accepts text or structured JSON `id` filters (exact/range); the gRPC stream accepts the equivalent `QueryFilter` protobuf. `ledger == "foo"` selects one ledger when its opt-in index is ready. |
 | **Import/Export** |
@@ -1097,9 +1097,12 @@ in [ledger#2025](https://github.com/formancehq/ledger/issues/2025).
 
 - **Partial response.** The existing `Account.insertion_date` and `updated_at`
   proto fields are hydrated from the account incarnation on get and list reads.
-  They are omitted for accounts without an incarnation, including ephemeral and
-  transient accounts. `first_usage` is still unset. The dates describe accepted
-  account writes in this ledger, not the original ledger's account-row dates.
+  Normal and live ephemeral accounts expose them when an incarnation is stored.
+  Purging an ephemeral account's last retained volume closes its incarnation
+  and removes its dates; reopening it starts new dates. Accounts without a
+  stored incarnation, including transient accounts, omit the fields.
+  `first_usage` is still unset. The dates describe accepted account writes in
+  this ledger, not the original ledger's account-row dates.
 - **Not filterable.** The generated per-target validity table sets
   `ConditionKindBuiltinUint: false` for `QUERY_TARGET_ACCOUNTS`
   (`internal/proto/commonpb/common_queryfilter_validity.pb.go`), so no
