@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -543,6 +544,58 @@ func TestConvertToGRPCError_BusinessError(t *testing.T) {
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestConvertToGRPCError_MirrorNotCaughtUp(t *testing.T) {
+	t.Parallel()
+	err := &domain.ErrMirrorNotCaughtUp{Name: "m1", Cursor: 0, Head: 20}
+	encoded := convertToGRPCError(err, testLogger())
+	st := status.Convert(encoded)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "mirror not caught up")
+	require.Len(t, st.Details(), 1)
+	info, ok := st.Details()[0].(*errdetails.ErrorInfo)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrReasonMirrorNotCaughtUp, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	require.Equal(t, map[string]string{"name": "m1", "cursor": "0", "sourceLogCount": "20", "syncError": "false"}, info.GetMetadata())
+	forwarded := grpcerr.FromStatusError(encoded)
+	classification, ok := errors.AsType[domain.Classifiable](forwarded)
+	require.True(t, ok, "forwarding must preserve the precondition kind")
+	require.Equal(t, domain.KindPrecondition, classification.Kind())
+	require.Equal(t, codes.FailedPrecondition, status.Code(forwarded))
+}
+
+func TestConvertToGRPCError_InactiveCapability(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		err    error
+		code   codes.Code
+		reason string
+		kind   domain.ErrorKind
+	}{
+		{"unsupported", capabilities.ErrCapabilityUnsupported, codes.FailedPrecondition, grpcerr.CapabilityUnsupportedReason, domain.KindPrecondition},
+		{"activation pending", capabilities.ErrActivationPending, codes.Unavailable, grpcerr.CapabilityActivationPendingReason, domain.KindUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			encoded := convertToGRPCError(fmt.Errorf("mirror promotion: %w", tc.err), testLogger())
+			st := status.Convert(encoded)
+			require.Equal(t, tc.code, st.Code())
+			require.Equal(t, tc.err.Error(), st.Message())
+			require.Len(t, st.Details(), 1)
+			info, ok := st.Details()[0].(*errdetails.ErrorInfo)
+			require.True(t, ok)
+			require.Equal(t, tc.reason, info.GetReason())
+			require.Equal(t, errorDomain, info.GetDomain())
+
+			forwarded := grpcerr.FromStatusError(encoded)
+			classification, ok := errors.AsType[domain.Classifiable](forwarded)
+			require.True(t, ok)
+			require.Equal(t, tc.kind, classification.Kind())
+		})
+	}
 }
 
 // TestConvertToGRPCError_UnknownErrorIsSanitized pins the fix for #326.

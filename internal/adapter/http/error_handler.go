@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -132,6 +133,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 // leader-discovery sentinel from commonpb and the generic NotFoundError used
 // by route lookups.
 func classifyError(err error) errorClass {
+	if errors.Is(err, capabilities.ErrCapabilityUnsupported) {
+		return errorClass{status: http.StatusBadRequest, code: grpcerr.CapabilityUnsupportedReason, message: capabilities.ErrCapabilityUnsupported.Error()}
+	}
+	if errors.Is(err, capabilities.ErrActivationPending) {
+		return errorClass{status: http.StatusServiceUnavailable, code: grpcerr.CapabilityActivationPendingReason, message: capabilities.ErrActivationPending.Error()}
+	}
 	// A signing rejection answers the same whether raised here or decoded
 	// from the leader.
 	if reason, ok := grpcerr.SigningReason(err); ok {

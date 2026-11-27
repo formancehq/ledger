@@ -155,8 +155,8 @@ type stoppedUpgradeClaimLifecycle struct {
 
 type stoppedUpgradeReconciler struct {
 	client client.Client
-	// reader serves PVC and PV reads. The operator has no watch RBAC on them,
-	// so a read through the cached client starts an informer that never syncs.
+	// reader serves PVC and PV reads directly from the API server so storage
+	// safety checks use current state rather than the controller cache.
 	reader       client.Reader
 	config       *rest.Config
 	clientset    kubernetes.Interface
@@ -182,6 +182,10 @@ func (r *stoppedUpgradeReconciler) reconcile(ctx context.Context, ledger *ledger
 		}
 	}
 	if state == nil && sts == nil {
+		if err := validateRCUpgradeWithoutStatefulSet(ctx, r.client, r.storageReader(), ledger); err != nil {
+			return false, ctrl.Result{}, err
+		}
+
 		return true, ctrl.Result{}, nil
 	}
 	if state == nil {

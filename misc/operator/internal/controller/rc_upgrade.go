@@ -46,6 +46,12 @@ func rcCandidate(value string) bool {
 	return strings.Contains(value, "-rc")
 }
 
+func pinnedVersionTag(value string) bool {
+	version, err := semver.StrictNewVersion(strings.TrimPrefix(value, "v"))
+
+	return err == nil && "v"+version.String() == value
+}
+
 func ledgerImageTag(sts *appsv1.StatefulSet) (string, error) {
 	return ledgerContainerTag(sts.Spec.Template.Spec.Containers)
 }
@@ -73,16 +79,17 @@ func ledgerContainerTag(containers []corev1.Container) (string, error) {
 
 // A missing StatefulSet can be an interrupted orphan-and-recreate operation,
 // not a new cluster. The old Pods retain the source image, and the old PVCs
-// remain when Pods have already gone. Refuse a new RC while that source cannot
-// be verified from a complete StatefulSet rollout.
+// remain when Pods have already gone. Refuse replacement while that source
+// cannot be verified from a complete StatefulSet rollout, including moving
+// image tags that could cross a mandatory stopped-upgrade boundary.
 func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
-	if !rcCandidate(ledger.Spec.Image.Tag) {
-		return nil
-	}
+	return validateRCUpgradeWithoutStatefulSet(ctx, r.Client, r.storageAPIReader(), ledger)
+}
 
+func validateRCUpgradeWithoutStatefulSet(ctx context.Context, c client.Client, storageReader client.Reader, ledger *ledgerv1alpha1.Cluster) error {
 	name := resourceName(ledger.Name)
 	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
+	if err := c.List(ctx, pods, client.InNamespace(ledger.Namespace)); err != nil {
 		return fmt.Errorf("listing Pods for RC upgrade validation: %w", err)
 	}
 	matchingPod := false
@@ -92,7 +99,7 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 		}
 		matchingPod = true
 		source, err := ledgerContainerTag(pod.Spec.Containers)
-		if err != nil || source != ledger.Spec.Image.Tag {
+		if err != nil || source != ledger.Spec.Image.Tag || !pinnedVersionTag(source) {
 			return fmt.Errorf("cannot change RC while StatefulSet %q is absent and Pod %q retains another or unknown image; restore the source image tag first", name, pod.Name)
 		}
 	}
@@ -102,10 +109,10 @@ func (r *ClusterReconciler) validateRCUpgradeWithoutStatefulSet(ctx context.Cont
 		return nil
 	}
 
-	// PVCs are read uncached: the operator has no watch RBAC on them, so a
-	// cached List starts an informer that never syncs.
+	// Read PVCs directly from the API server so this storage safety check uses
+	// current state rather than the controller cache.
 	claims := &corev1.PersistentVolumeClaimList{}
-	if err := r.storageAPIReader().List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
+	if err := storageReader.List(ctx, claims, client.InNamespace(ledger.Namespace)); err != nil {
 		return fmt.Errorf("listing PVCs for RC upgrade validation: %w", err)
 	}
 	for _, claim := range claims.Items {

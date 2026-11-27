@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -292,7 +293,10 @@ func TestFinalizeRestorePublishesCompleteCheckpoint(t *testing.T) {
 
 	// Capture a complete Pebble checkpoint with both ledger projections.
 	batch := source.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, "restored-ledger", &commonpb.LedgerInfo{Name: "restored-ledger"}))
+	require.NoError(t, state.SaveLedger(batch, "restored-ledger", &commonpb.LedgerInfo{Name: "restored-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}))
+	_, err = attributes.New().Boundary.Set(batch, []byte("restored-ledger"), &raftcmdpb.LedgerBoundaries{LastMirrorV2LogId: 10})
+	require.NoError(t, err)
+	require.NoError(t, state.SetMirrorSourceHead(batch, "restored-ledger", 10))
 	require.NoError(t, state.SaveLedger(batch, "delta-ledger", &commonpb.LedgerInfo{Name: "delta-ledger"}))
 	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterTransient, dal.SubTransientDrainState}, &raftcmdpb.DrainState{
 		Epoch: "source-epoch", Index: 1, Members: []uint64{1, 2, 3}, PriorEpochs: []string{"released-source-epoch"},
@@ -325,6 +329,13 @@ func TestFinalizeRestorePublishesCompleteCheckpoint(t *testing.T) {
 		require.NoError(t, queryErr)
 		require.Equal(t, name, info.GetName())
 	}
+	// A complete checkpoint still cannot carry a source-head observation into
+	// the restored cluster. Promotion waits for a fresh worker observation.
+	progress, err := query.ReadMirrorSyncProgress(t.Context(), checkpoint, attributes.New().Boundary, "restored-ledger")
+	require.NoError(t, err)
+	require.Equal(t, uint64(10), progress.GetCursor())
+	require.Zero(t, progress.GetSourceLogCount())
+	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	for _, seq := range []uint64{1, 2} {
 		logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(seq).Build()
 		auditKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()

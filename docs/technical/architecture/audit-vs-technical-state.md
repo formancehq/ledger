@@ -63,6 +63,30 @@ log replay. The historical authenticity of operational policy is outside
 business-audit verification. Backup access control and artifact integrity
 remain required.
 
+### Known exception: mirror promotion observations (EN-3037)
+
+`MirrorSyncUpdate` persists the last observed source head
+(`SubPLMirrorSourceHead`) and synchronization error (`SubPLMirrorStatus`) without
+an audit entry. The FSM uses those rows to accept or reject a new mirror
+promotion, so they cross the boundary above. The checker verifies the applied
+mirror position (`LedgerBoundaries.last_mirror_v2_log_id`) against audited
+ingestion orders, but it cannot verify the independently observed source head
+or sync status. For example, changing a stored head from 120 to 100 when the
+applied position is 100 can make a lagging mirror appear caught up after
+recovery, without a checker finding. Raft replication does not detect this
+post-commit storage change.
+
+This is a known, explicitly accepted integrity gap for the current promotion
+workflow. Promotion is a discrete administrator-operated cutover: the operator
+must stop source writes, read the final head directly from the source, verify
+the mirror's applied position with the checker, and confirm the sync worker is
+healthy before promoting. The FSM catch-up check remains useful against
+ordinary lag or a reported sync error; it is not proof that the persisted
+observation was not altered. Do not generalize this exception to automatic
+promotion or other business acceptance decisions. If promotion becomes
+automatic or loses the independent operator check, bind the observation to
+verifiable evidence and add a checker comparison before relying on it.
+
 ### Audit-key root of trust (EN-2479)
 
 `ZoneGlobal/SubGlobAuditKey` is a 32-byte governance secret, not a derived

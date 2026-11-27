@@ -6925,6 +6925,7 @@ type FailureDetailsReader interface {
 	GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader
 	GetNumscriptDescriptionTooLong() NumscriptDescriptionTooLongDetailsReader
 	GetNumscriptDescriptionInvalidChar() NumscriptDescriptionInvalidCharDetailsReader
+	GetMirrorNotCaughtUp() MirrorNotCaughtUpDetailsReader
 	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
@@ -8155,6 +8156,14 @@ func (r *failureDetailsReadonly) GetNumscriptDescriptionInvalidChar() NumscriptD
 	return v.NumscriptDescriptionInvalidChar.AsReader()
 }
 
+func (r *failureDetailsReadonly) GetMirrorNotCaughtUp() MirrorNotCaughtUpDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_MirrorNotCaughtUp)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.MirrorNotCaughtUp.AsReader()
+}
+
 // FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type FailureDetails_KindReaderCase int32
 
@@ -8313,6 +8322,7 @@ const (
 	FailureDetails_KindReaderCase_MetadataOnlyReference                    FailureDetails_KindReaderCase = 151
 	FailureDetails_KindReaderCase_NumscriptDescriptionTooLong              FailureDetails_KindReaderCase = 152
 	FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar          FailureDetails_KindReaderCase = 153
+	FailureDetails_KindReaderCase_MirrorNotCaughtUp                        FailureDetails_KindReaderCase = 154
 )
 
 func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
@@ -8623,6 +8633,8 @@ func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
 		return FailureDetails_KindReaderCase_NumscriptDescriptionTooLong
 	case *FailureDetails_NumscriptDescriptionInvalidChar:
 		return FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar
+	case *FailureDetails_MirrorNotCaughtUp:
+		return FailureDetails_KindReaderCase_MirrorNotCaughtUp
 	default:
 		return FailureDetails_KindReaderCase_Unset
 	}
@@ -12313,6 +12325,88 @@ func (l mirrorHttpUrlInvalidDetailsListReadonly) Range(yield func(int, MirrorHtt
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMirrorHttpUrlInvalidDetailsListReader(s []*MirrorHttpUrlInvalidDetails) MirrorHttpUrlInvalidDetailsListReader {
 	return mirrorHttpUrlInvalidDetailsListReadonly(s)
+}
+
+// MirrorNotCaughtUpDetailsReader provides read-only access to MirrorNotCaughtUpDetails.
+// Call Mutate() to obtain a mutable clone.
+type MirrorNotCaughtUpDetailsReader interface {
+	GetName() string
+	GetCursor() uint64
+	GetSourceLogCount() uint64
+	GetSyncError() bool
+	Mutate() *MirrorNotCaughtUpDetails
+}
+
+type mirrorNotCaughtUpDetailsReadonly MirrorNotCaughtUpDetails
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetName() string {
+	return (*MirrorNotCaughtUpDetails)(r).GetName()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetCursor() uint64 {
+	return (*MirrorNotCaughtUpDetails)(r).GetCursor()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetSourceLogCount() uint64 {
+	return (*MirrorNotCaughtUpDetails)(r).GetSourceLogCount()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) GetSyncError() bool {
+	return (*MirrorNotCaughtUpDetails)(r).GetSyncError()
+}
+
+func (r *mirrorNotCaughtUpDetailsReadonly) Mutate() *MirrorNotCaughtUpDetails {
+	return (*MirrorNotCaughtUpDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorNotCaughtUpDetails.
+func (m *MirrorNotCaughtUpDetails) AsReader() MirrorNotCaughtUpDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorNotCaughtUpDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorNotCaughtUpDetails.
+func (m *MirrorNotCaughtUpDetails) Mutate() *MirrorNotCaughtUpDetails {
+	return m.CloneVT()
+}
+
+// MirrorNotCaughtUpDetailsListReader provides read-only iteration over []*MirrorNotCaughtUpDetails.
+type MirrorNotCaughtUpDetailsListReader interface {
+	Len() int
+	Get(i int) MirrorNotCaughtUpDetailsReader
+	Range(yield func(int, MirrorNotCaughtUpDetailsReader) bool)
+}
+
+type mirrorNotCaughtUpDetailsListReadonly []*MirrorNotCaughtUpDetails
+
+func (l mirrorNotCaughtUpDetailsListReadonly) Len() int { return len(l) }
+
+func (l mirrorNotCaughtUpDetailsListReadonly) Get(i int) MirrorNotCaughtUpDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorNotCaughtUpDetailsListReadonly) Range(yield func(int, MirrorNotCaughtUpDetailsReader) bool) {
+	for i, v := range l {
+		var r MirrorNotCaughtUpDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorNotCaughtUpDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorNotCaughtUpDetailsListReader(s []*MirrorNotCaughtUpDetails) MirrorNotCaughtUpDetailsListReader {
+	return mirrorNotCaughtUpDetailsListReadonly(s)
 }
 
 // MirrorIamRegionRequiredDetailsReader provides read-only access to MirrorIamRegionRequiredDetails.

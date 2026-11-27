@@ -13,11 +13,27 @@ then recreates the StatefulSet with the requested image. See the
 for preflight, recovery and rollback limits. Other adjacent RC upgrades roll;
 the same guide names the transitions that also need a maintenance barrier.
 
+RC.3 to RC.4 crosses a mandatory boundary because RC.3 cannot execute native
+proposal payloads and encodes mirror asset mappings differently. Upgrade the
+operator before changing the Ledger image; the drain barrier is available from
+RC.3.
+
 RC.4 to RC.5 is a second mandatory stopped boundary for the schema-3 control
 state migration and new native configuration/capability proposals. Keep the PVCs
 and existing server flags. Activation is automatic after all members advertise
 support; there is no activation setting in the Cluster CRD. Binary rollback
 closes when a volume's schema migration commits, not when a capability activates.
+
+The Kind/Chainsaw `rc-upgrade` scenario takes source and target image tags and
+an expected `rolling` or `stopped` mode. The operator E2E recipe runs it for
+the published rc.2→rc.3 rolling transition, rc.3→local rc.4 stopped transition,
+and rc.4→local rc.5 stopped transition, verifying workload identity, PVC
+retention, and nonempty business history after each upgrade.
+
+Changes to immutable volume claim templates also require a canonical pinned
+Ledger image tag. The operator rejects moving tags such as `latest` before
+deleting the StatefulSet, so an interrupted recreation cannot pull a different
+Ledger version onto retained volumes.
 
 ## Overview
 

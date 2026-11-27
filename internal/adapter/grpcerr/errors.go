@@ -92,6 +92,13 @@ import (
 // left alone.
 const errorDomain = "ledger"
 
+// Operational capability refusals occur before a proposal commits. They are
+// public transport reasons, not persisted FSM ErrorReason values.
+const (
+	CapabilityUnsupportedReason       = "CAPABILITY_UNSUPPORTED"
+	CapabilityActivationPendingReason = "CAPABILITY_ACTIVATION_PENDING"
+)
+
 // CodeForKind maps a semantic ErrorKind to the gRPC status code the server
 // sends it under. Adding a new Kind without a branch fails the `exhaustive`
 // golangci-lint rule, which is the whole point of this design (#431): a new
@@ -136,10 +143,11 @@ func CodeForKind(k domain.ErrorKind) codes.Code {
 // through describableToGRPCStatus (internal/adapter/grpc/errors.go), which
 // derives the status from CodeForKind and nothing else, so a second legitimate
 // code for a known reason cannot arise without a deliberate encoder change.
-// The three reasons the server hand-builds an ErrorInfo for
-// (EXTERNAL_SERVICE_ERROR, RAFT_NODE_NOT_IN_CLUSTER,
-// RAFT_NODE_REMOVAL_COMMITTED) are not enum members, so they decode down the
-// unknown-reason path and are never validated here.
+// The gRPC adapters also hand-build ErrorInfo for EXTERNAL_SERVICE_ERROR,
+// RAFT_NODE_NOT_IN_CLUSTER, RAFT_NODE_REMOVAL_COMMITTED,
+// STALE_RAFT_PROGRESS, CAPABILITY_UNSUPPORTED, and
+// CAPABILITY_ACTIVATION_PENDING. These are not enum members, so they decode
+// down the unknown-reason path and are never validated here.
 //
 // Should the transport and semantic axes have to disagree for some reason —
 // as they did for the removed READ_INDEX_NOT_CAUGHT_UP, sent as

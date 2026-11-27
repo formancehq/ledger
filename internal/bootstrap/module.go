@@ -2022,7 +2022,6 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 			}
 		}
 	}
-
 	// A stale leader must never overwrite newer configuration with local flags.
 	appliedRev := applied.GetRevision()
 	if applied != nil && appliedRev > cfg.ClusterPolicyRevision && !sameClusterPolicyConfiguration(applied, desired) {

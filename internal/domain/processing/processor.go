@@ -42,11 +42,16 @@ type RequestProcessor struct {
 // *RequestProcessor and live for the lifetime of a ProcessOrders call.
 type Context struct {
 	// auditReplay executes recorded business intent without operational quotas.
-	auditReplay bool
+	auditReplay                 bool
+	checkMirrorPromotionCatchUp bool
 	// strictCreateLedgerAccountTypes enables strict initial type validation for
 	// new orders. Audit replay retains the historical creation semantics.
 	strictCreateLedgerAccountTypes bool
 
+	// MirrorPromotionProgress reads the FSM's committed source observation plus
+	// technical updates staged earlier in this proposal. Audit replay bypasses
+	// the eligibility decision; live apply requires this callback.
+	MirrorPromotionProgress func(string) (uint64, bool)
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
 
@@ -233,8 +238,13 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, false, true)
+type MirrorPromotionCheck struct {
+	Required bool
+	Progress func(string) (uint64, bool)
+}
+
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, mirrorCheck ...MirrorPromotionCheck) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, false, true, mirrorCheck...)
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
@@ -246,7 +256,7 @@ func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scope
 	return p.processOrders(orders, scopeFactory, sink, true, false)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.Describable) {
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool, mirrorCheck ...MirrorPromotionCheck) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -261,6 +271,10 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 		CompiledTypes:                  p.compiledTypesCache,
 		AssetCache:                     p.assetCache,
 		batchInitialNextTxID:           make(map[string]uint64),
+	}
+	if len(mirrorCheck) != 0 {
+		ctx.checkMirrorPromotionCatchUp = mirrorCheck[0].Required
+		ctx.MirrorPromotionProgress = mirrorCheck[0].Progress
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}

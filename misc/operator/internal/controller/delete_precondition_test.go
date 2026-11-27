@@ -217,6 +217,7 @@ func TestStatefulSetRecreateNeverDeletesAReplacement(t *testing.T) {
 	ctx := context.Background()
 	scheme := ownershipTestScheme(t)
 	cluster := deletePreconditionCluster()
+	cluster.Spec.Image.Tag = "v3.0.0"
 	name := resourceName(cluster.Name)
 	// A VolumeClaimTemplate the desired spec does not have forces the
 	// orphan-and-recreate path.
@@ -247,6 +248,7 @@ func TestStatefulSetRecreateOrphansTheInspectedObject(t *testing.T) {
 	ctx := context.Background()
 	scheme := ownershipTestScheme(t)
 	cluster := deletePreconditionCluster()
+	cluster.Spec.Image.Tag = "v3.0.0"
 	owned := controlledByCluster(&appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: "ns", UID: "uid-owned"},
 		Spec: appsv1.StatefulSetSpec{
@@ -273,4 +275,25 @@ func TestStatefulSetRecreateOrphansTheInspectedObject(t *testing.T) {
 	require.Equal(t, owned.UID, *sent.Preconditions.UID)
 	getErr := c.Get(ctx, client.ObjectKeyFromObject(owned), &appsv1.StatefulSet{})
 	require.True(t, apierrors.IsNotFound(getErr), "the owned StatefulSet must be deleted, got %v", getErr)
+}
+
+func TestStatefulSetRecreateRequiresPinnedImageBeforeDelete(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	scheme := ownershipTestScheme(t)
+	cluster := deletePreconditionCluster()
+	cluster.Spec.Image.Tag = "latest"
+	owned := controlledByCluster(&appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName(cluster.Name), Namespace: cluster.Namespace, UID: "uid-owned"},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas:             new(int32(3)),
+			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "legacy"}}},
+		},
+	}, cluster)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster, owned).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	_, err := r.reconcileStatefulSetWithExec(ctx, cluster, "hash", nil, nil)
+	require.ErrorContains(t, err, "pin a canonical version tag")
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(owned), &appsv1.StatefulSet{}))
 }

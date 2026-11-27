@@ -37,6 +37,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -669,6 +670,28 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
+	// A capability-dependent proposal is refused until the replicated policy
+	// activates it and every member advertises support. This is an operator
+	// precondition, not an unexpected server failure.
+	if errors.Is(err, capabilities.ErrCapabilityUnsupported) {
+		st, detailErr := status.New(codes.FailedPrecondition, capabilities.ErrCapabilityUnsupported.Error()).WithDetails(
+			&errdetails.ErrorInfo{Reason: grpcerr.CapabilityUnsupportedReason, Domain: errorDomain})
+		if detailErr == nil {
+			return st.Err()
+		}
+
+		return status.Error(codes.FailedPrecondition, capabilities.ErrCapabilityUnsupported.Error())
+	}
+	if errors.Is(err, capabilities.ErrActivationPending) {
+		st, detailErr := status.New(codes.Unavailable, capabilities.ErrActivationPending.Error()).WithDetails(
+			&errdetails.ErrorInfo{Reason: grpcerr.CapabilityActivationPendingReason, Domain: errorDomain})
+		if detailErr == nil {
+			return st.Err()
+		}
+
+		return status.Error(codes.Unavailable, capabilities.ErrActivationPending.Error())
+	}
+
 	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
 	if errors.Is(err, node.ErrNodeRemoved) {
 		return status.Error(codes.FailedPrecondition, err.Error())
@@ -684,7 +707,8 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 	// a transport guard, a read-path argument check — flows through one
 	// exhaustive Kind switch in classifiableToGRPCStatus. Kind is all the
 	// status code needs; the Reason and its metadata are read there only from
-	// the errors that own a public wire contract.
+	// the errors that own a public wire contract. The mirror catch-up guard
+	// above adds a generic ErrorInfo solely to preserve forwarding semantics.
 	if c, ok := errors.AsType[domain.Classifiable](err); ok {
 		if c.Kind() == domain.KindInternal {
 			recordGRPCInternalError(ctx, logger, err)

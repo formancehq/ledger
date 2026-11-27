@@ -4,9 +4,43 @@ import (
 	"errors"
 	"maps"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
+
+// The model's mirror source is deliberately unconfigured. The oracle models
+// committed FSM orders but does not simulate worker source observations. A
+// checked promotion with no observed head fails atomically in the FSM.
+func isUnobservedMirrorPromotion(bulk oracle.Bulk, err error) bool {
+	if status.Code(err) != codes.FailedPrecondition {
+		return false
+	}
+	var info *errdetails.ErrorInfo
+	for _, detail := range status.Convert(err).Details() {
+		if candidate, ok := detail.(*errdetails.ErrorInfo); ok && candidate.GetReason() == domain.ErrReasonMirrorNotCaughtUp {
+			info = candidate
+
+			break
+		}
+	}
+	if info == nil || info.GetMetadata()["cursor"] != "0" || info.GetMetadata()["sourceLogCount"] != "0" {
+		return false
+	}
+	for _, req := range bulk.Requests {
+		promote := req.GetPromoteLedger()
+		if promote != nil && info.GetMetadata()["name"] == promote.GetLedger() {
+			return true
+		}
+	}
+
+	return false
+}
 
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.

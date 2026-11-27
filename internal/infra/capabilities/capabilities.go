@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -17,6 +18,10 @@ import (
 // CapabilityID is the stable numeric identity of a consensus capability.
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
+
+// MirrorPromotionCatchUp selects the catch-up precondition for newly committed
+// mirror promotions. Proposals without it retain their historical apply rule.
+const MirrorPromotionCatchUp CapabilityID = 1
 
 // PreparedProposal is the opaque capability metadata produced while preparing
 // a final proposal. Callers can inspect it through RequiredCapabilities, but
@@ -32,10 +37,10 @@ func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
 }
 
 // SupportedIDs is the immutable capability set implemented by this binary.
-// No protocol feature is activated yet; this empty registry keeps the
-// membership-evidence plumbing ready for the first real capability.
+// The mirror promotion contract is advertised here but activated separately
+// through the replicated cluster policy.
 func SupportedIDs() []CapabilityID {
-	return nil
+	return []CapabilityID{MirrorPromotionCatchUp}
 }
 
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
@@ -116,6 +121,12 @@ var (
 func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
 	if proposal == nil {
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
+	}
+
+	for _, order := range proposals.BatchOrders(proposal) {
+		if order.GetLedgerScoped().GetPromoteLedger() != nil {
+			return []CapabilityID{MirrorPromotionCatchUp}, nil
+		}
 	}
 
 	return nil, nil

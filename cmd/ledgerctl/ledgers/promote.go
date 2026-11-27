@@ -1,6 +1,7 @@
 package ledgers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -8,8 +9,20 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+// The progress read is best-effort. The server checks catch-up when applying
+// the promotion, so an unavailable preview must not block confirmation.
+func optionalPromotionProgress(ctx context.Context, name string, getLedger func(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error)) *commonpb.MirrorSyncProgress {
+	ledger, err := getLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
+	if err != nil {
+		return nil
+	}
+
+	return ledger.GetMirrorSyncProgress()
+}
 
 // NewPromoteCommand creates the ledgers promote command.
 func NewPromoteCommand() *cobra.Command {
@@ -59,8 +72,25 @@ func runPromote(cmd *cobra.Command, args []string) error {
 
 	yes, _ := cmd.Flags().GetBool("yes")
 	if !yes {
+		client, conn, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := cmdutil.GetContext(cmd)
+		progress := optionalPromotionProgress(ctx, name, func(ctx context.Context, request *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+			return client.GetLedger(ctx, request)
+		})
+		cancel()
+		_ = conn.Close()
 		pterm.Warning.Printfln("You are about to promote mirror ledger %s to normal mode", name)
 		pterm.Warning.Println("This will stop mirror replication permanently.")
+		if progress != nil {
+			pterm.Warning.Printfln("Mirror cursor: %d, source head: %d, remaining: %d",
+				progress.GetCursor(), progress.GetSourceLogCount(), progress.GetRemainingLogs())
+			if progress.GetError() != nil {
+				pterm.Warning.Println("Mirror synchronization currently reports an error.")
+			}
+		}
 
 		confirmed, err := cmdutil.PromptConfirm(pterm.DefaultInteractiveConfirm.
 			WithDefaultText(fmt.Sprintf("Promote ledger '%s'?", name)).

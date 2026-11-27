@@ -1432,6 +1432,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
