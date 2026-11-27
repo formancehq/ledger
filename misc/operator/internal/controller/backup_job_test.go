@@ -221,51 +221,48 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 	})
 }
 
-func TestJobTerminalCondition(t *testing.T) {
+func TestNextBackupRunJobAction(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		job       *batchv1.Job
-		succeeded bool
-		terminal  bool
+		name       string
+		conditions []batchv1.JobCondition
+		action     backupRunJobAction
+		message    string
 	}{
 		{
-			name:     "no conditions",
-			job:      &batchv1.Job{},
-			terminal: false,
+			name:   "no conditions",
+			action: backupRunWaitForJob,
 		},
 		{
-			name: "complete",
-			job: &batchv1.Job{Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{
-				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue, Message: "done"},
-			}}},
-			succeeded: true,
-			terminal:  true,
+			name:       "complete",
+			conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue, Message: "done"}},
+			action:     backupRunRecoverJobResult,
 		},
 		{
-			name: "failed",
-			job: &batchv1.Job{Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{
-				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded"},
-			}}},
-			succeeded: false,
-			terminal:  true,
+			name:       "success criteria met",
+			conditions: []batchv1.JobCondition{{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue}},
+			action:     backupRunRecoverJobResult,
 		},
 		{
-			name: "false complete is not terminal",
-			job: &batchv1.Job{Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{
-				{Type: batchv1.JobComplete, Status: corev1.ConditionFalse},
-			}}},
-			terminal: false,
+			name:       "failed",
+			conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded", Message: "too many attempts"}},
+			action:     backupRunRecordJobFailure,
+			message:    "BackoffLimitExceeded: too many attempts",
+		},
+		{
+			name:       "false complete keeps waiting",
+			conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionFalse}},
+			action:     backupRunWaitForJob,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ok, term, _ := jobTerminalCondition(tt.job)
-			require.Equal(t, tt.terminal, term)
-			require.Equal(t, tt.succeeded, ok)
+			action, message := nextBackupRunJobAction(&batchv1.Job{Status: batchv1.JobStatus{Conditions: tt.conditions}})
+			require.Equal(t, tt.action, action)
+			require.Equal(t, tt.message, message)
 		})
 	}
 }

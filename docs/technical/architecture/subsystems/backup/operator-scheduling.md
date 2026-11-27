@@ -151,6 +151,22 @@ write/delete failures, active runs, disabled
 and changed schedules, older retained history, and a parent informer lagging
 behind child deletion.
 
+## BackupRun execution decisions
+
+The controller derives the next action from the run and its deterministically
+named Job on each pass. `Running` is the durable reservation for one
+execution under a Backup. The decisions below are local to the controller;
+they do not add CRD phases.
+
+| Observation | Next action |
+|---|---|
+| A sibling has reserved execution | Keep this run pending and requeue. |
+| The run is eligible and not yet reserved | Persist `Running` before looking up or creating the Job. |
+| The reserved run has no visible Job | Try to create it under the same name. If the Create response is uncertain, keep the reservation and look up the same name again. A Job owned by another run does not count as execution evidence. |
+| The owned Job has neither a recognized success nor a failure condition | Wait for the Job watch and clear any previous provisioning diagnostic. |
+| The owned Job reports failure | Record the run's failure. |
+| The owned Job reports completion or that its success criteria were met | Read the result and persist it together with the run's terminal status. Until that write succeeds, the stored run still holds the reservation. |
+
 ## Completed Job result recovery
 
 A successful Job is execution evidence; the run becomes Succeeded only after its
@@ -176,5 +192,7 @@ The result-recovery regressions in `backuprun_result_recovery_test.go` exercise
 checkpoint runs, one-time Pod-list errors and missing Pods, fresh
 reconcilers, sibling exclusion, parent accounting and zero
 retention. `backuprun_result_logs_test.go` exercises fallback log opening and read
-failures followed by complete valid summaries. These client/HTTP fixtures prove
+failures followed by complete valid summaries. The completion-write regression
+restarts reconciliation after the terminal status update fails and verifies that
+the existing Job supplies the result without a new Job being created. These client/HTTP fixtures prove
 controller decisions, not kubelet execution or Kubernetes garbage collection.

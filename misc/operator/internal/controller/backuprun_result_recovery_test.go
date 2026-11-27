@@ -296,3 +296,77 @@ func TestBackupRunResultDiagnosticWriteRecovery(t *testing.T) {
 	require.Equal(t, 4, attempts)
 	require.Equal(t, 3, writes)
 }
+
+func TestBackupRunCompletionWriteRecovery(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	c, run := backupRunRecoveryFixture(t)
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
+	r := &BackupRunReconciler{Client: c, APIReader: c, Scheme: c.Scheme()}
+	_, err := r.Reconcile(ctx, req)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
+	start := run.Status.StartTime.DeepCopy()
+
+	jobKey := client.ObjectKey{Namespace: run.Namespace, Name: backupJobName(run)}
+	var job batchv1.Job
+	require.NoError(t, c.Get(ctx, jobKey, &job))
+	job.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
+	require.NoError(t, c.Status().Update(ctx, &job))
+	pods := k8sfake.NewClientset(&corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "result", Namespace: run.Namespace, Labels: map[string]string{"batch.kubernetes.io/job-name": job.Name}},
+		Status:     corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{Name: backupJobContainerName, State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Message: `{"filesUploaded":7,"lastAppliedIndex":42}`}}}}},
+	})
+	reads := 0
+	pods.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		reads++
+
+		return false, nil, nil
+	})
+	writes, creates := 0, 0
+	writeErr := errors.New("completion status write failed")
+	wrapped := interceptor.NewClient(c, interceptor.Funcs{
+		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if _, ok := obj.(*batchv1.Job); ok {
+				creates++
+			}
+
+			return c.Create(ctx, obj, opts...)
+		},
+		SubResourceUpdate: func(ctx context.Context, c client.Client, name string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			if updated, ok := obj.(*ledgerv1alpha1.BackupRun); ok && updated.Status.Phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
+				writes++
+				if writes == 1 {
+					return writeErr
+				}
+			}
+
+			return c.SubResource(name).Update(ctx, obj, opts...)
+		},
+	})
+
+	r = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: pods}
+	_, err = r.Reconcile(ctx, req)
+	require.ErrorIs(t, err, writeErr)
+	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
+	require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
+	require.Nil(t, run.Status.Result)
+	require.Nil(t, run.Status.CompletionTime)
+	require.Nil(t, meta.FindStatusCondition(run.Status.Conditions, "BackupCompleted"))
+
+	r = &BackupRunReconciler{Client: wrapped, APIReader: wrapped, Scheme: c.Scheme(), Clientset: pods}
+	_, err = r.Reconcile(ctx, req)
+	require.NoError(t, err)
+	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
+	require.Equal(t, ledgerv1alpha1.BackupRunPhaseSucceeded, run.Status.Phase)
+	require.Equal(t, start, run.Status.StartTime)
+	require.NotNil(t, run.Status.CompletionTime)
+	require.NotNil(t, run.Status.Result)
+	require.Equal(t, run.Status.CompletionTime, run.Status.Result.Time)
+	require.EqualValues(t, 7, run.Status.Result.FilesUploaded)
+	require.EqualValues(t, 42, run.Status.Result.LastAppliedIndex)
+	require.True(t, meta.IsStatusConditionTrue(run.Status.Conditions, "BackupCompleted"))
+	require.Equal(t, 2, reads)
+	require.Equal(t, 2, writes)
+	require.Zero(t, creates)
+}
