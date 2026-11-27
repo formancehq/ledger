@@ -125,8 +125,10 @@ func (b *WriteSession) Cancel() error {
 	return err
 }
 
-// Commit commits all operations atomically with NoSync. On success the owned
-// Pebble batch is finalised exactly once: it is closed and released back to
+// Commit commits all operations atomically with NoSync. Use CommitSync for
+// lifecycle writes that must be durable before a separate WAL marker/snapshot
+// makes their result authoritative. On success, the owned Pebble batch is
+// finalised exactly once: it is closed and released back to
 // Pebble's pool (or the release is deferred while the WAL commit pipeline still
 // holds a reference under NoSync), and the session enters the committed terminal
 // state. If the underlying commit fails, the batch remains owned by the session
@@ -134,11 +136,21 @@ func (b *WriteSession) Cancel() error {
 // described as rolled back. A Close error after commit violates ownership: the
 // batch reference is cleared before an invariant panic, not a normal commit error.
 func (b *WriteSession) Commit() error {
+	return b.commit(pebble.NoSync)
+}
+
+// CommitSync commits and fsyncs the batch before returning. Lifecycle writes
+// that cannot be recovered by replaying a committed Raft entry use this path.
+func (b *WriteSession) CommitSync() error {
+	return b.commit(pebble.Sync)
+}
+
+func (b *WriteSession) commit(sync *pebble.WriteOptions) error {
 	if err := b.checkActive(); err != nil {
 		return err
 	}
 
-	if err := b.batch.Commit(pebble.NoSync); err != nil {
+	if err := b.batch.Commit(sync); err != nil {
 		return fmt.Errorf("committing write session: %w", err)
 	}
 
