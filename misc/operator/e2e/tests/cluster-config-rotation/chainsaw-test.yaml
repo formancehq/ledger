@@ -126,3 +126,56 @@ spec:
               echo "$OUT"
               exit 1
             timeout: 360s
+
+    # 8. A new member starts with the updated local threshold while the donor
+    #    still retains both ClusterConfig entries in its WAL.
+    - name: Add fresh member after threshold change
+      try:
+        - apply:
+            file: cluster-scaled.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-ccr-cluster
+              status:
+                readyReplicas: 3
+
+    # 9. The fresh learner must fetch the donor's checkpoint before applying
+    #    retained entries. This assertion fails if the startup guard is removed.
+    - name: Verify fresh member synchronized before replay
+      try:
+        - script:
+            content: |
+              set -e
+              for pod in ledger-ccr-cluster-1 ledger-ccr-cluster-2; do
+                kubectl logs "$pod" -n "$NAMESPACE" -c ledger \
+                  | grep -q 'Startup recovery requires synchronization with leader'
+              done
+              for i in $(seq 1 30); do
+                VOTERS=$(kubectl exec ledger-ccr-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl cluster status --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                  | grep -c '"suffrage": "Voter"' || true)
+                [ "$VOTERS" -eq 3 ] && exit 0
+                sleep 5
+              done
+              echo "FAIL: fresh member was not promoted to voter"
+              exit 1
+            timeout: 180s
+
+    # 10. A business proposal made at the donor's epoch must be visible from
+    #     the new member. An extra epoch rotation during replay rejects it.
+    - name: Verify business proposal on all members
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl exec ledger-ccr-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create en3393-replay --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+              for pod in ledger-ccr-cluster-0 ledger-ccr-cluster-1 ledger-ccr-cluster-2; do
+                LEDGER=$(kubectl exec "$pod" -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl ledgers get en3393-replay --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+                echo "$LEDGER" | jq -e '.name == "en3393-replay"'
+              done
+            timeout: 60s

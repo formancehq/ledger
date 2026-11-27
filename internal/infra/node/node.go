@@ -853,7 +853,15 @@ func NewNode(
 		panic(err)
 	}
 
-	storeUpToDate, err := applier.RecoverAndReplay(context.Background())
+	// The persisted cluster config (including its cache epoch), rather than
+	// mutable learner/voter membership, proves that this member has a usable
+	// join state. Raft may promote a learner before its first checkpoint sync;
+	// conversely a synchronized member may still be a learner on restart.
+	// The sole bootstrap voter has no donor and establishes the initial state.
+	forceJoinCheckpoint := snapshot.GetMetadata().GetIndex() == 0 &&
+		fsm.State.LastClusterConfig == nil &&
+		(len(initialConfState.GetVoters()) > 1 || len(initialConfState.GetLearners()) > 0)
+	storeUpToDate, err := applier.recoverAndReplay(context.Background(), forceJoinCheckpoint)
 	if err != nil {
 		return nil, err
 	}

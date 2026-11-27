@@ -177,6 +177,7 @@ func TestNewNodeReplaysHistoricalRemovalCycles(t *testing.T) {
 	t.Parallel()
 
 	fixture, setup := newHistoricalRemovalLifecycleSetup(t)
+	seedRecoveredClusterConfig(t, setup, 1)
 	oldIdentity := []byte("old-instance-id-")
 	newIdentity := []byte("new-instance-id-")
 	require.NoError(t, fixture.membership.Register(2, "peer:7777", "peer:8888", oldIdentity, nil))

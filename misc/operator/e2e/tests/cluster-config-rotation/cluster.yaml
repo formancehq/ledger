@@ -10,6 +10,8 @@ spec:
     pullPolicy: Never
   cache:
     rotationThreshold: 1000
+  raft:
+    maintenanceInterval: 1h
   bloom:
     volumes:
       expectedKeys: 10000

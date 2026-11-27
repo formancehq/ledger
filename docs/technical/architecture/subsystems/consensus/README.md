@@ -2,6 +2,9 @@
 
 The replication and ordering layer (`internal/infra/node`, `internal/infra/transport`). A single Raft group orders every mutation across the cluster; the global log enables system-level atomic bulk operations over multiple ledgers; the hybrid logical clock provides monotonic timestamps across leader changes. Membership retries retain their operation's committed waiter through WAL persistence and durable FSM application. Committed peer routing retains its endpoint and Raft retry owner even when an initial optional-TLS probe precedes the joining listener. WAL compaction follows the acknowledged Raft apply cursor as well as durable FSM state, preserving entries still needed by election scans.
 
+Joining members without a durable cluster config synchronize a donor checkpoint before retained-log apply, even if Raft has already promoted them, so
+cache epoch recovery does not depend on their startup threshold.
+
 ## Documents
 
 | Document | Description |

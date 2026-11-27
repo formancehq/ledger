@@ -94,6 +94,10 @@ type Applier struct {
 	compactionMargin        uint64
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
+	// A fresh learner may resume only after a donor checkpoint includes the
+	// first committed ClusterConfig; otherwise later replay could still use
+	// its node-local threshold to derive the cache epoch.
+	requireJoinConfig bool
 
 	// snapshotMembership resolves donor candidates and refreshes the membership
 	// cache after a checkpoint has been installed.
@@ -561,9 +565,15 @@ func (a *Applier) setOutOfSync() {
 // if so, recovers the in-memory cache, replays Raft WAL entries and spooled
 // entries to bring the node fully up to date. When the store is not up to date
 // (e.g. the node crashed after receiving a leader snapshot but before syncing),
-// it marks the applier as out-of-sync so SynchronizeWithLeader runs.
+// it marks the applier as out-of-sync so SynchronizeWithLeader runs. NewNode
+// also uses the private variant to force that path for a fresh learner.
 // Returns true when the store was up to date and replay succeeded.
 func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
+	return a.recoverAndReplay(ctx, false)
+}
+
+func (a *Applier) recoverAndReplay(ctx context.Context, forceJoinCheckpoint bool) (bool, error) {
+	a.requireJoinConfig = forceJoinCheckpoint
 	recoveryStart := time.Now()
 	a.logger.Infof("Startup recovery started")
 
@@ -588,14 +598,15 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	a.logger.WithFields(map[string]any{
 		"duration":      time.Since(storeCheckStart).String(),
 		"storeUpToDate": isStoreUpToDate,
+		"forceJoinSync": forceJoinCheckpoint,
 	}).Infof("Startup store check completed")
 
-	if !isStoreUpToDate {
+	if !isStoreUpToDate || forceJoinCheckpoint {
 		a.logger.WithFields(map[string]any{
 			"duration": time.Since(recoveryStart).String(),
 		}).Infof("Startup recovery requires synchronization with leader")
 		if a.logger.Enabled(logging.DebugLevel) {
-			a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
+			a.logger.Debugf("Checkpoint synchronization required before apply; tagging node as out of sync")
 		}
 		a.setOutOfSync()
 
@@ -1131,6 +1142,12 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 				"leader": leader,
 				"error":  err,
 			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
+			a.syncProgress.Store(nil)
+
+			return maintenanceTaskResult{syncFailed: true}, nil
+		}
+		if a.requireJoinConfig && a.fsm.State.LastClusterConfig == nil {
+			a.logger.Infof("Donor checkpoint has no committed cluster config yet; retrying fresh learner synchronization")
 			a.syncProgress.Store(nil)
 
 			return maintenanceTaskResult{syncFailed: true}, nil

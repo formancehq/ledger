@@ -24,6 +24,7 @@ func TestNewNodeAcceptsReplayedRemovalBeforeConfStatePersistence(t *testing.T) {
 	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), func(entry *raftpb.Entry, session *dal.WriteSession) error {
 		return m.WriteConfChange(entry, session)
 	})
+	seedRecoveredClusterConfig(t, setup, 1)
 	var err error
 	m, err = membership.NewMembership(membership.NewPeerStore(setup.store), noopMemTransport{}, noopMemPool{},
 		1, "self:7777", "self:8888", []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
