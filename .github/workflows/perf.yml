@@ -129,7 +129,7 @@ jobs:
           oauth-client-id: ${{ vars.PERF_TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.PERF_TS_OAUTH_SECRET }}
           tags: ${{ vars.PERF_TS_TAGS || 'tag:github-actions-ledger-perf' }}
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      - uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         if: steps.run.outputs.enabled == 'true'
         with:
           role-to-assume: ${{ vars.PERF_AWS_ROLE_ARN }}
