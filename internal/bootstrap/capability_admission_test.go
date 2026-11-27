@@ -5,12 +5,55 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestDormantRestoredCheckpointKeepsBusinessAdmissionOpen(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	batch := store.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
+	require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{Sequence: 1}))
+	require.NoError(t, batch.Commit())
+	checkpoint, err := store.CreateTemporaryCheckpoint("legacy")
+	require.NoError(t, err)
+	restored, err := dal.OpenDirect(checkpoint, logging.Testing())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, restored.Close()) })
+	require.NoError(t, incarnationmigration.MigrateBeforeRaft(t.Context(), restored))
+	marker, err := incarnationmigration.ReadMarker(restored)
+	require.NoError(t, err)
+	require.False(t, marker.Complete)
+	ids, err := incarnationmigration.AdvertisedIDs(restored)
+	require.NoError(t, err)
+	require.Equal(t, []uint32{uint32(capabilities.AccountIncarnationWritesV1)}, ids)
+	member := capabilities.Member{NodeID: 1, Role: capabilities.Voter, Capabilities: []capabilities.CapabilityID{capabilities.CapabilityID(ids[0])}}
+	proposal, err := node.NewProposal(2, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "restored", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+	}}}}})
+	require.NoError(t, err)
+	require.NoError(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, proposal, []capabilities.Member{member}))
+	require.Empty(t, mustReadyForAutomaticActivation(t, []capabilities.Member{member}))
+
+	member.Capabilities = capabilities.SupportedIDs()
+	require.ErrorIs(t, validateProposalCapabilityAdmission(&commonpb.ClusterPolicy{}, proposal, []capabilities.Member{member}), capabilities.ErrActivationPending)
+}
+
+func mustReadyForAutomaticActivation(t *testing.T, members []capabilities.Member) []capabilities.CapabilityID {
+	t.Helper()
+	ready, err := readyForAutomaticActivation(capabilities.AutomaticallyActivatedIDs(), members)
+	require.NoError(t, err)
+
+	return ready
+}
 
 func TestValidateActiveRejectsIncompleteMembership(t *testing.T) {
 	t.Parallel()

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -165,7 +166,7 @@ func newCapabilityActivationReconciler(admission *admission.Admission, store *da
 		// The drain may be lifted only after every voter and learner has
 		// converted its own store. Do not activate writes from software-only
 		// evidence while another member is still migrating.
-		ready, err := capabilities.Ready([]capabilities.CapabilityID{capabilities.AccountIncarnationHistoryCompleteV1}, raftNode.CapabilityMembers())
+		ready, err := readyForAutomaticActivation(capabilities.AutomaticallyActivatedIDs(), raftNode.CapabilityMembers())
 		if err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Checking account migration evidence failed; activation will retry")
 
@@ -1321,7 +1322,7 @@ func validateProposalCapabilityAdmissionWithActivationSet(policy *commonpb.Clust
 		return err
 	}
 	if proposal.HasBusinessOrders() {
-		ready, err := capabilities.Ready(automatic, members)
+		ready, err := readyForAutomaticActivation(automatic, members)
 		if err != nil {
 			return err
 		}
@@ -1337,6 +1338,27 @@ func validateProposalCapabilityAdmissionWithActivationSet(policy *commonpb.Clust
 	}
 
 	return nil
+}
+
+// readyForAutomaticActivation applies the same migration prerequisite to the
+// reconciler and the business-write barrier. A restored legacy checkpoint can
+// keep accepting legacy writes until its members advertise completed history.
+func readyForAutomaticActivation(automatic []capabilities.CapabilityID, members []capabilities.Member) ([]capabilities.CapabilityID, error) {
+	ready, err := capabilities.Ready(automatic, members)
+	if err != nil {
+		return nil, err
+	}
+	if slices.Contains(automatic, capabilities.AccountIncarnationHistoryCompleteV1) {
+		if slices.Contains(ready, capabilities.AccountIncarnationHistoryCompleteV1) {
+			return ready, nil
+		}
+
+		return slices.DeleteFunc(ready, func(id capabilities.CapabilityID) bool {
+			return id == capabilities.AccountIncarnationWritesV1
+		}), nil
+	}
+
+	return ready, nil
 }
 
 // JoinAuthError is returned when a joining node is rejected by the target

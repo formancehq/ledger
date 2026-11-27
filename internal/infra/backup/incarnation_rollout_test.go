@@ -16,9 +16,47 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
+
+func TestDormantCheckpointRestoreCanCommitLegacyBusinessWrite(t *testing.T) {
+	ctx := logging.TestingContext()
+	meters := noop.NewMeterProvider()
+	store, err := dal.NewStore(filepath.Join(t.TempDir(), "source"), logging.Testing(), meters.Meter("legacy.restore"), dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	seedBackupTestAuditKey(t, store)
+	source := newScriptedNode(t, store)
+	source.applyClusterPolicy(&commonpb.ClusterPolicy{
+		Revision: 1, QueryCheckpointLimit: 10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+	})
+	source.apply(actions.CreateLedgerAction("before-restore", nil))
+	storage := newInMemoryBackupStorage()
+	_, err = RunBackup(ctx, logging.Testing(), store, storage, "legacy", "checkpoint")
+	require.NoError(t, err)
+	manifest, err := ReadManifest(ctx, storage, ManifestKey("legacy"))
+	require.NoError(t, err)
+	restored := restoreAuditKeyCheckpoint(t, storage, manifest)
+	require.NoError(t, incarnationmigration.MigrateBeforeRaft(ctx, restored))
+	marker, err := incarnationmigration.ReadMarker(restored)
+	require.NoError(t, err)
+	require.False(t, marker.Complete)
+	ids, err := incarnationmigration.AdvertisedIDs(restored)
+	require.NoError(t, err)
+	require.Equal(t, []uint32{uint32(capabilities.AccountIncarnationWritesV1)}, ids)
+	restarted := newScriptedNode(t, restored)
+	restarted.apply(actions.CreateLedgerAction("after-restore", nil))
+	ledger, err := query.GetLedgerByName(ctx, restored, "after-restore")
+	require.NoError(t, err)
+	require.Equal(t, "after-restore", ledger.GetName())
+}
 
 // The scripted node applies real admission proposals through the real FSM. Only
 // Raft transport and the cluster membership gate are replaced by the harness.
