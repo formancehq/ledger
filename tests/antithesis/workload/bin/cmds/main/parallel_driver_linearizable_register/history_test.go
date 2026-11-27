@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ func nodeOf(worker int) string {
 
 func results(ops ...porcupine.Operation) map[int]porcupine.CheckResult {
 	out := make(map[int]porcupine.CheckResult)
-	for _, v := range checkHistory(ops, time.Second) {
+	for _, v := range checkHistory(ops, time.Second, time.Time{}) {
 		out[v.Key] = v.Result
 	}
 
@@ -184,6 +185,46 @@ func TestPruneUnobservedKeepsVerdictTractable(t *testing.T) {
 	require.Len(t, pruneUnobserved([]porcupine.Operation{write(0, 0, "a", 0, 10)}), 1)
 }
 
+func TestCheckHistoryPastDeadlineIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	// An illegal history that would be caught with time left must come back
+	// Unknown, not searched without a bound and not reported as Ok.
+	ops := []porcupine.Operation{write(0, 0, "a", 0, 10), read(1, 0, absent, 20, 30)}
+	verdicts := checkHistory(ops, time.Second, time.Now().Add(-time.Second))
+	require.Len(t, verdicts, 1)
+	require.Equal(t, porcupine.Unknown, verdicts[0].Result)
+
+	verdicts = checkHistory(ops, time.Second, time.Now().Add(time.Minute))
+	require.Equal(t, porcupine.Illegal, verdicts[0].Result)
+}
+
+func TestBudgetReservesCheckTime(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	// No deadline: the full work budget, an unbounded check.
+	workEnd, checkDeadline := budget(t.Context(), now, 3)
+	require.Equal(t, now.Add(workBudget), workEnd)
+	require.True(t, checkDeadline.IsZero())
+
+	// Plenty of time left: the work budget applies unchanged.
+	ctx, cancel := context.WithDeadline(t.Context(), now.Add(time.Hour))
+	defer cancel()
+	workEnd, checkDeadline = budget(ctx, now, 3)
+	require.Equal(t, now.Add(workBudget), workEnd)
+	require.Equal(t, now.Add(time.Hour-reportMargin), checkDeadline)
+
+	// Setup spent most of the driver deadline: the workers give way so
+	// every register keeps its full search time before the deadline.
+	ctx, cancel = context.WithDeadline(t.Context(), now.Add(6*time.Minute))
+	defer cancel()
+	workEnd, checkDeadline = budget(ctx, now, 3)
+	require.Equal(t, now.Add(6*time.Minute-reportMargin), checkDeadline)
+	require.Equal(t, checkDeadline.Add(-3*perKeyTimeout), workEnd)
+}
+
 func TestIllegalHistoriesReportsEveryIllegalKey(t *testing.T) {
 	t.Parallel()
 
@@ -191,20 +232,20 @@ func TestIllegalHistoriesReportsEveryIllegalKey(t *testing.T) {
 		write(0, 0, "a", 0, 10), read(1, 0, absent, 20, 30), // key 0: lost write
 		write(0, 1, "b", 0, 10), read(1, 1, "b", 20, 30), // key 1: fine
 		read(1, 2, "c", 0, 10), // key 2: value never written
-	}, time.Second)
+	}, time.Second, time.Time{})
 
 	got := illegalHistories(verdicts)
 	require.Len(t, got, 2)
 	require.Contains(t, got, "key 0")
 	require.Contains(t, got, "key 2")
-	require.Empty(t, illegalHistories(checkHistory([]porcupine.Operation{write(0, 0, "a", 0, 10)}, time.Second)))
+	require.Empty(t, illegalHistories(checkHistory([]porcupine.Operation{write(0, 0, "a", 0, 10)}, time.Second, time.Time{})))
 }
 
 func TestConclusive(t *testing.T) {
 	t.Parallel()
 
 	verdictsOf := func(ops ...porcupine.Operation) ([]keyVerdict, []porcupine.Operation) {
-		return checkHistory(ops, time.Second), ops
+		return checkHistory(ops, time.Second, time.Time{}), ops
 	}
 
 	require.True(t, conclusive(verdictsOf(write(0, 0, "a", 0, 10), read(1, 0, "a", 20, 30))))

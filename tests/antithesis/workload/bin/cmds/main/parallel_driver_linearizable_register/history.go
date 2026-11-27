@@ -76,7 +76,12 @@ type keyVerdict struct {
 // interact, so the history is linearizable if and only if each per-key
 // sub-history is, and checking them apart keeps the search small. A key that
 // times out is reported as Unknown, never folded into Ok.
-func checkHistory(ops []porcupine.Operation, perKeyTimeout time.Duration) []keyVerdict {
+//
+// A non-zero deadline caps the whole check: each remaining key gets at most an
+// equal share of the time left, and a key with no time left is Unknown without
+// a search. Porcupine treats a zero timeout as unbounded, so an exhausted
+// budget must never reach it.
+func checkHistory(ops []porcupine.Operation, perKeyTimeout time.Duration, deadline time.Time) []keyVerdict {
 	byKey := make(map[int][]porcupine.Operation)
 	for _, op := range ops {
 		k := op.Input.(regInput).Key
@@ -90,12 +95,16 @@ func checkHistory(ops []porcupine.Operation, perKeyTimeout time.Duration) []keyV
 	sort.Ints(keys)
 
 	verdicts := make([]keyVerdict, 0, len(keys))
-	for _, k := range keys {
-		verdicts = append(verdicts, keyVerdict{
-			Key:    k,
-			Result: porcupine.CheckOperationsTimeout(registerModel, pruneUnobserved(byKey[k]), perKeyTimeout),
-			Ops:    byKey[k],
-		})
+	for i, k := range keys {
+		timeout := perKeyTimeout
+		if !deadline.IsZero() {
+			timeout = min(timeout, time.Until(deadline)/time.Duration(len(keys)-i))
+		}
+		result := porcupine.Unknown
+		if timeout > 0 {
+			result = porcupine.CheckOperationsTimeout(registerModel, pruneUnobserved(byKey[k]), timeout)
+		}
+		verdicts = append(verdicts, keyVerdict{Key: k, Result: result, Ops: byKey[k]})
 	}
 
 	return verdicts

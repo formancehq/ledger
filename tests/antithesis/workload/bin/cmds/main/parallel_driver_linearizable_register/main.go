@@ -63,12 +63,37 @@ const (
 	// are at most a few hundred operations; hitting it is reported as an
 	// inconclusive check, never as a pass.
 	perKeyTimeout = 60 * time.Second
-	// workBudget bounds the workers so the check always runs before the
-	// driver's 10-minute deadline: 5 minutes of operations plus at most 3
-	// registers × perKeyTimeout of search. Operations cut off by it are
+	// workBudget bounds the workers. Operations cut off by it are
 	// indeterminate writes or dropped reads, like any other interruption.
 	workBudget = 5 * time.Minute
+	// reportMargin is kept free at the end of the driver deadline for the
+	// assertions that follow the check.
+	reportMargin = 15 * time.Second
 )
+
+// budget splits what is left of the driver deadline between the workers and
+// the check. Setup RPCs share that deadline and may have spent minutes in
+// retry backoff, so the workers stop early enough to leave every register its
+// full search time plus reportMargin; the check itself is capped by
+// checkDeadline. A zero checkDeadline means the context has no deadline.
+func budget(ctx context.Context, now time.Time, keys int) (workEnd, checkDeadline time.Time) {
+	workEnd = now.Add(workBudget)
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return workEnd, time.Time{}
+	}
+	checkDeadline = deadline.Add(-reportMargin)
+
+	return minTime(workEnd, checkDeadline.Add(-time.Duration(keys)*perKeyTimeout)), checkDeadline
+}
+
+func minTime(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+
+	return a
+}
 
 // step is one planned operation. Plans are drawn from Hegel up front, on the
 // driver goroutine, because the generation source must not be shared with the
@@ -128,10 +153,11 @@ func main() {
 
 		details := internal.Details{"ledger": ledger, "run": run, "keys": keys, "workers": workers, "nodes": len(members)}
 
-		workCtx, cancel := context.WithTimeout(ctx, workBudget)
+		start := time.Now()
+		workEnd, checkDeadline := budget(ctx, start, keys)
+		workCtx, cancel := context.WithDeadline(ctx, workEnd)
 		defer cancel()
 
-		start := time.Now()
 		clock := func() int64 { return int64(time.Since(start)) }
 
 		var (
@@ -154,7 +180,7 @@ func main() {
 
 		details = details.With(internal.Details{"operations": len(history), "indeterminateWrites": unknown})
 
-		verdicts := checkHistory(history, perKeyTimeout)
+		verdicts := checkHistory(history, perKeyTimeout, checkDeadline)
 		// Only Illegal verdicts are reported here. An Always over every
 		// verdict would count a timed-out or vacuous search as a passing
 		// observation; coverage is owned by the conclusiveness probe below.
