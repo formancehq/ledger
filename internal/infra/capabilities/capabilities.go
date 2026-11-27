@@ -18,6 +18,8 @@ import (
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
 
+const RevertReversePostingOrder CapabilityID = 1
+
 // PreparedProposal is the opaque capability metadata produced while preparing
 // a final proposal. Callers can inspect it through RequiredCapabilities, but
 // cannot construct the declaration by passing an arbitrary slice to the node
@@ -32,10 +34,9 @@ func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
 }
 
 // SupportedIDs is the immutable capability set implemented by this binary.
-// No protocol feature is activated yet; this empty registry keeps the
-// membership-evidence plumbing ready for the first real capability.
+// RevertReversePostingOrder is activated only after all members advertise it.
 func SupportedIDs() []CapabilityID {
-	return nil
+	return []CapabilityID{RevertReversePostingOrder}
 }
 
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
@@ -116,6 +117,16 @@ var (
 func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) {
 	if proposal == nil {
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
+	}
+
+	orders := proposal.GetOrders()
+	if proposal.GetBatch() != nil {
+		orders = proposal.GetBatch().GetOrders()
+	}
+	for _, order := range orders {
+		if order.GetLedgerScoped().GetApply().GetRevertTransaction() != nil {
+			return []CapabilityID{RevertReversePostingOrder}, nil
+		}
 	}
 
 	return nil, nil

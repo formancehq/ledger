@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -18,6 +19,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+func currentCapabilities() []uint32 {
+	return capabilities.IDsAsUint32(capabilities.SupportedIDs())
+}
 
 // phantomPeer returns loopback addresses for a learner that is deliberately
 // never started. The addresses come from the allocator instead of literals: a
@@ -70,6 +75,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   currentCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -183,6 +189,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   currentCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -237,6 +244,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   currentCapabilities(),
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 5)
@@ -323,6 +331,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   currentCapabilities(),
 			})
 			Expect(err).To(Succeed())
 
@@ -333,6 +342,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   currentCapabilities(),
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -348,6 +358,7 @@ var _ = Describe("Learner node", func() {
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
 				InstanceId:     instanceID,
+				Capabilities:   currentCapabilities(),
 			})
 			Expect(err).To(Succeed())
 

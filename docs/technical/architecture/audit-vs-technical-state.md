@@ -40,7 +40,7 @@ The capability aggregate (`ZoneGlobal/0x18`) is deployment compatibility
 governance, not an extension of the quota exemption. Its monotonic active
 state is explicitly trusted deployment state, preserved by Raft and
 versioned backups, rather than re-derived from business audit. It controls
-which semantic marker admission declares; that immutable marker and resulting
+which capability admission declares on a proposal; that immutable declaration and resulting
 business effects remain audit-bound and checker-verified. The checker does not
 prove when deployment activation was authorized. Store/backup
 integrity and access control remain part of the existing trust boundary. This
@@ -146,14 +146,18 @@ stored format, restore classification or committed-entry semantics.
 
 ### Technical execution metadata is excluded from the audit business-intent hash (EN-1558)
 
-`AuditItem.serialized_order` stores the *business-intent* bytes of the order — the
+`AuditItem.serialized_order` stores the audit-bound bytes of the order — the
 order with its `OrderTechnical` sub-message (`coverage_bits`,
 `inputs_resolution_hash`, `preload_unavailable`, `revert_target_digest`) excluded. These fields are
 admission-derived execution metadata that rides in the Raft entry for the FSM apply
 path but is not part of the accepted user intent, so it must not participate in the
-audit hash. The exclusion is defined once in `processing.MarshalOrderBusinessIntent`
-and shared by both the audit serialization (`marshalOrdersForAudit`) and the
-idempotency hash (`processor.hashOrder`), so the two can never diverge. Audit entries
+audit hash. The exclusion is defined in `processing.MarshalOrderBusinessIntent`
+and used by audit serialization (`marshalOrdersForAudit`). Idempotency hashing
+also excludes the proposal-level capability declaration: it is selected by
+admission rather than the caller, and an RC.4 request retried after RC.5
+activation must match its frozen outcome. The audit header retains the
+declaration for replay semantics.
+Audit entries
 persisted before EN-1558 embed `OrderTechnical` in `serialized_order` and remain
 verifiable: the verifier hashes the stored bytes verbatim, requiring no migration.
 
@@ -195,8 +199,9 @@ checker pass that verifies the stored value against audit-bound data.
 ## Accepted Order Enrichment
 
 An accepted order is audit-bound: its serialized bytes feed the hash chain
-(`AuditItem.SerializedOrder`, via `state.BuildPerItemPayload`). The order must
-therefore carry only **caller intent** — the fields the caller submitted.
+(`AuditItem.SerializedOrder`, via `state.BuildPerItemPayload`). The proposal's
+required capability declaration is also bound into the audit header. These
+bytes must be stable across replay and must not contain state-derived inputs.
 Admission must not enrich it with state-derived execution data, even when that
 data is deterministic given the request. Doing so binds admission-time state into
 the audit chain and makes the serialized order depend on which node admitted it
@@ -210,7 +215,9 @@ Because the apply path cannot read Pebble (invariant #3), the value comes from t
 cache the preload seeded — never from the order.
 
 **Revert is the canonical example.** `RevertTransactionOrder` carries only
-`transaction_id`, `force`, `at_effective_date`, and `metadata`.
+`transaction_id`, `force`, `at_effective_date`, and `metadata`. Capability ID 1
+is selected when the final proposal contains a revert, persists in the audit
+header, and selects the same posting sequence on replay.
 The original postings the FSM reverses are **not** on the order: admission
 preloads the target `TransactionState` (`addTransactionTargetNeeds`) and
 `processRevertTransaction` reads `origState.GetPostings()` through the coverage

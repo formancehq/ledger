@@ -333,7 +333,19 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("still rejects a double revert after restore", func() {
+		It("still rejects a double revert after the rebuild", func() {
+			// Capability activation follows leader election after restore. Wait for
+			// the new revert order to pass the proposal gate before checking the
+			// restored already-reverted state.
+			Eventually(func() string {
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+					actions.RevertTransactionAction(ledgerName, revertedTxID, false, false, nil),
+				))
+				if err == nil {
+					return "double revert succeeded"
+				}
+				return err.Error()
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(ContainSubstring("already reverted"))
 			expectAlreadyReverted(client, "restored")
 			// A successful double revert would have moved another 100 out of
 			// the account; the volumes pin that no funds moved.

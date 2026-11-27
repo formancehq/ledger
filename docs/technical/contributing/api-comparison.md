@@ -32,8 +32,8 @@ equivalent. `BeginDrain` and `EndDrain` require `ledger:WriteCluster` and become
 only after every current member confirms the new capability; an older server
 returns `Unimplemented` for `GetDrainStatus`. The new `ClusterState` drain fields
 are additive and absent on older binaries. The service protocol revision stays
-at 40. A committed marker adds internal Raft and cluster-transient state but
-does not change audit or business data formats. See
+at 40. A committed proposal capability declaration changes internal Raft and
+audit data but does not change client request formats. See
 [controlled shutdown](../architecture/subsystems/consensus/controlled-shutdown.md).
 
 HTTP typed metadata preserves exact integer values, including signed 64-bit
@@ -1381,11 +1381,11 @@ also keyed per `(account, asset, color)` while `first_usage` is per address.
 
 ### 3. Posting Order in Revert
 
-**POC:** Postings are reversed (source ↔ destination) AND the order is reversed.
+**V3:** New reverts swap source and destination and apply postings in reverse order. Historical committed reverts retain their original order during replay.
 
 **Original:** Same behavior.
 
-**Status:** ✅ Compliant
+**Status:** ✅ Compliant after capability activation
 
 ### 4. Idempotency
 

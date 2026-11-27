@@ -77,6 +77,27 @@ func TestGlobalState_Apply_RevertPreservesColor(t *testing.T) {
 	require.False(t, ls.volumes.Has(VolumeKey{"a:1", "USD", ""}))
 }
 
+func TestGlobalState_Apply_RevertChainedPostings(t *testing.T) {
+	t.Parallel()
+	created := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
+		commonpb.NewPosting("world", "A", "USD", big.NewInt(10)),
+		commonpb.NewPosting("A", "B", "USD", big.NewInt(10)),
+	)))
+	require.True(t, created.OK)
+	reverted := created.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, false)))
+	require.True(t, reverted.OK)
+	require.Equal(t, "B", reverted.Orders[0].Revert.postings[0].GetSource())
+	require.Equal(t, "A", reverted.Orders[0].Revert.postings[1].GetSource())
+	ledger := reverted.State.Ledger("L")
+	require.Equal(t, dec(ledger.vol(VolumeKey{"A", "USD", ""}).Input), dec(ledger.vol(VolumeKey{"A", "USD", ""}).Output))
+	require.Equal(t, "10", dec(ledger.vol(VolumeKey{"B", "USD", ""}).Output))
+
+	spent := created.State.Apply(bulkOf(oracletest.TxReq("B", "C", "USD", 10)))
+	require.True(t, spent.OK)
+	rejected := spent.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, false)))
+	require.Equal(t, domain.ErrReasonInsufficientFunds, rejected.Reason)
+}
+
 // Two bulks differing only in the color of an otherwise identical posting are
 // different states, so the fingerprint must separate them — otherwise the
 // serialization search would accept one as an explanation for the other.

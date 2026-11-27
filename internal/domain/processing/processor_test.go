@@ -179,6 +179,25 @@ func TestHashOrders_MatchesHashProposal(t *testing.T) {
 		"HashOrders must be byte-identical to HashProposal so the checker re-derives the frozen hash")
 }
 
+func TestHashOrders_RevertRetryAcrossPostingOrderUpgrade(t *testing.T) {
+	t.Parallel()
+
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L", Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+				RevertTransaction: &raftcmdpb.RevertTransactionOrder{TransactionId: 7},
+			}},
+		}},
+	}}
+	historical := &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{order}}
+	upgraded := &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{order}, RequiredCapabilities: []uint32{1}}
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, processor.HashProposal(historical), processor.HashProposal(upgraded),
+		"proposal capability declaration must not change keyed request identity")
+	require.Equal(t, MarshalOrderBusinessIntent(historical.GetOrders()[0], nil), MarshalOrderBusinessIntent(upgraded.GetOrders()[0], nil))
+}
+
 func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	t.Parallel()
 
