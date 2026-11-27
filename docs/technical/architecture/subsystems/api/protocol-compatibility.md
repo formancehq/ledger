@@ -3,8 +3,12 @@
 Backup endpoint case exclusion retains revision 40 and all published
 protobuf contracts. Leader admission now returns the existing busy-destination
 failure for scheme/host aliases of a running backup, before accessing storage.
-Committed job orders and their persisted destination keys are unchanged, so
-mixed-version voters apply them identically. Older leaders retain the defect;
+The public protobuf contract and persisted destination keys are unchanged.
+Unmarked backup Starts retain the released FSM behavior during a mixed-version
+rollout. Starts marked with capability 2 select physical-destination exclusion
+and require a binary that supports capability 2 for replay; after activation,
+rollback to a binary without that capability is unsupported. Older leaders
+retain the defect;
 see [backup deployment precautions](../../../../ops/backup-restore.md#endpoint-case-and-rolling-deployment).
 
 ## Requirement and decision (EN-1851)
