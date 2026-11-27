@@ -20,27 +20,24 @@ func TestOptionalPromotionProgressAllowsWriteOnlyCaller(t *testing.T) {
 
 		return nil, status.Error(codes.PermissionDenied, "missing ledger:ReadLedger")
 	}
-	progress, err := optionalPromotionProgress(t.Context(), "mirror", read)
-	require.NoError(t, err)
+	progress := optionalPromotionProgress(t.Context(), "mirror", read)
 	require.Nil(t, progress, "missing read scope must not block the promotion confirmation")
 }
 
-func TestOptionalPromotionProgressPreservesReadErrors(t *testing.T) {
+func TestOptionalPromotionProgressAllowsTransientReadErrors(t *testing.T) {
 	t.Parallel()
 	want := errors.New("network unavailable")
-	progress, err := optionalPromotionProgress(t.Context(), "mirror", func(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	progress := optionalPromotionProgress(t.Context(), "mirror", func(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 		return nil, want
 	})
-	require.Nil(t, progress)
-	require.ErrorIs(t, err, want)
+	require.Nil(t, progress, "an unavailable preview must not block confirmation")
 }
 
 func TestOptionalPromotionProgressReturnsVisibleProgress(t *testing.T) {
 	t.Parallel()
 	want := &commonpb.MirrorSyncProgress{Cursor: 5, SourceLogCount: 10}
-	progress, err := optionalPromotionProgress(t.Context(), "mirror", func(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	progress := optionalPromotionProgress(t.Context(), "mirror", func(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 		return &commonpb.LedgerInfo{MirrorSyncProgress: want}, nil
 	})
-	require.NoError(t, err)
 	require.Equal(t, want, progress)
 }

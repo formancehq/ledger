@@ -577,9 +577,10 @@ ledgerctl ledgers delete
 Promote a mirror ledger to normal mode. This stops mirror replication and converts the ledger to a regular read-write ledger.
 
 The confirmation shows the mirror cursor, observed source head and remaining
-logs when the caller can read the ledger. With an explicit ledger name, a caller
-with `ledger:WriteLedger` but without `ledger:ReadLedger` can still confirm;
-the progress display is omitted. The server rejects promotion while the head is unknown, the cursor is
+logs when the optional progress read succeeds. With an explicit ledger name, a
+caller can still confirm if that read fails, including when the caller has
+`ledger:WriteLedger` but not `ledger:ReadLedger`; the progress display is omitted.
+The server rejects promotion while the head is unknown, the cursor is
 behind it, or synchronization reports an error. `--yes` skips only the prompt;
 it does not bypass the server check. Stop source writes, read the final head
 directly from the source, verify the mirror's applied position with the
