@@ -73,33 +73,33 @@ func (it *ReverseEventResolveIterator) settleFrom(seekTarget []byte) bool {
 // preceding group.
 func (it *ReverseEventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := it.parseCurrent()
+		row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 			return false
 		}
 
-		group := append([]byte(nil), g...)
+		group := append([]byte(nil), row.group...)
 		live := false
 		decided := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := it.parseCurrent()
+			row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 				return false
 			}
 
-			if !bytes.Equal(g, group) {
+			if !bytes.Equal(row.group, group) {
 				break
 			}
 
 			// Walking backwards, the first event at or below the pin is the
 			// LATEST such event — the one the forward pass settles on.
-			if !decided && seq <= it.pin {
-				live = op == MetadataEventAdd
+			if !decided && row.seq <= it.pin {
+				live = row.op == MetadataEventAdd
 				decided = true
 			}
 
@@ -118,18 +118,6 @@ func (it *ReverseEventResolveIterator) settle() bool {
 	it.exhausted = true
 
 	return false
-}
-
-func (it *ReverseEventResolveIterator) parseCurrent() (group []byte, seq uint64, op byte, ok bool) {
-	// TODO: Remove the RC.5 value-decoding path with the forward reader once
-	// retained RC.5 read stores are no longer supported; keep ADD-only checks.
-	if len(it.seekPrefix) > 0 && it.seekPrefix[0] == PrefixAccountByAsset {
-		group, seq, _, ok = parseAccountAssetKey(it.iter.Key(), it.iter.Value(), it.prefixLen)
-
-		return group, seq, MetadataEventAdd, ok
-	}
-
-	return parseEventKey(it.iter.Key(), it.prefixLen)
 }
 
 func (it *ReverseEventResolveIterator) Next() bool {

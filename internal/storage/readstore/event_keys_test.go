@@ -5,7 +5,120 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+type eventRowFixture struct {
+	key        []byte
+	value      []byte
+	valueReads int
+}
+
+func (f *eventRowFixture) Key() []byte { return f.key }
+func (f *eventRowFixture) Value() []byte {
+	f.valueReads++
+
+	return f.value
+}
+
+func TestParseIndexEventRowAcrossZones(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+	assetPrefix := AccountByAssetPrefix(kb, "ledger", "USD", 2)
+	legacyKey := legacyAccountAssetKey(kb, "a")
+	tests := []struct {
+		name           string
+		key            []byte
+		value          []byte
+		prefixLen      int
+		wantGroup      []byte
+		wantSeq        uint64
+		wantOp         byte
+		wantLegacy     bool
+		wantOK         bool
+		wantValueReads int
+	}{
+		{
+			name:      "metadata DEL",
+			key:       eventKey([]byte{PrefixMetadataIndex}, []byte("a"), 5, MetadataEventDel),
+			prefixLen: 1, wantGroup: []byte("a"), wantSeq: 5, wantOp: MetadataEventDel, wantOK: true,
+		},
+		{
+			name:      "exists ADD",
+			key:       eventKey([]byte{PrefixEntityExists}, []byte("b"), 7, MetadataEventAdd),
+			prefixLen: 1, wantGroup: []byte("b"), wantSeq: 7, wantOp: MetadataEventAdd, wantOK: true,
+		},
+		{
+			name:      "account asset event",
+			key:       AccountByAssetEventKey(kb, "ledger", "USD", 2, "a", 9),
+			prefixLen: len(assetPrefix), wantGroup: []byte("a"), wantSeq: 9, wantOp: MetadataEventAdd, wantOK: true,
+		},
+		{
+			name: "account asset legacy row",
+			key:  legacyKey, value: binary.BigEndian.AppendUint64(nil, 11),
+			prefixLen: len(assetPrefix), wantGroup: []byte("a"), wantSeq: 11, wantOp: MetadataEventAdd,
+			wantLegacy: true, wantOK: true, wantValueReads: 1,
+		},
+		{
+			name:      "account asset DEL rejected",
+			key:       eventKey(assetPrefix, []byte("a"), 9, MetadataEventDel),
+			prefixLen: len(assetPrefix),
+		},
+		{
+			name: "malformed legacy stamp rejected",
+			key:  legacyKey, value: []byte{1}, prefixLen: len(assetPrefix), wantValueReads: 1,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := &eventRowFixture{key: test.key, value: test.value}
+			row, ok := parseIndexEventRow(fixture, test.prefixLen)
+			require.Equal(t, test.wantOK, ok)
+			require.Equal(t, test.wantValueReads, fixture.valueReads)
+			if !ok {
+				require.Equal(t, indexEventRow{}, row)
+
+				return
+			}
+
+			require.Equal(t, test.wantGroup, row.group)
+			require.Equal(t, test.wantSeq, row.seq)
+			require.Equal(t, test.wantOp, row.op)
+			require.Equal(t, test.wantLegacy, row.legacy)
+		})
+	}
+}
+
+func BenchmarkParseIndexEventRow(b *testing.B) {
+	kb := dal.NewKeyBuilder()
+	assetPrefix := AccountByAssetPrefix(kb, "ledger", "USD", 2)
+	for _, test := range []struct {
+		name      string
+		key       []byte
+		value     []byte
+		prefixLen int
+	}{
+		{"metadata", eventKey([]byte{PrefixMetadataIndex}, []byte("accounts:alice"), 42, MetadataEventAdd), nil, 1},
+		{"asset event", AccountByAssetEventKey(kb, "ledger", "USD", 2, "accounts:alice", 42), nil, len(assetPrefix)},
+		{"RC.5 asset row", legacyAccountAssetKey(kb, "accounts:alice"), binary.BigEndian.AppendUint64(nil, 42), len(assetPrefix)},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			source := &eventRowFixture{key: test.key, value: test.value}
+			b.ReportAllocs()
+			for b.Loop() {
+				row, ok := parseIndexEventRow(source, test.prefixLen)
+				if !ok || row.seq != 42 {
+					b.Fatal("event row did not decode")
+				}
+			}
+		})
+	}
+}
 
 // eventKey builds [prefix][group]\x00[seq BE 8][op] the way
 // MetadataIndexEventKeyV and the EntityExists* builders do.

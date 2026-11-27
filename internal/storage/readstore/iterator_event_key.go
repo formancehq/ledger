@@ -9,6 +9,46 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// indexEventRow is one decoded row in an event-backed read index. group aliases
+// the key and must be copied before advancing a Pebble iterator.
+type indexEventRow struct {
+	group  []byte
+	seq    uint64
+	op     byte
+	legacy bool
+}
+
+type indexEventRowSource interface {
+	Key() []byte
+	Value() []byte
+}
+
+// parseIndexEventRow is the shared row decoder for forward and reverse pin
+// resolution. Account-by-asset also accepts RC.5 first-touch rows; all other
+// event zones use the common event suffix directly and do not read the value.
+func parseIndexEventRow(source indexEventRowSource, prefixLen int) (indexEventRow, bool) {
+	key := source.Key()
+	if len(key) == 0 {
+		return indexEventRow{}, false
+	}
+
+	if key[0] == PrefixAccountByAsset {
+		group, seq, legacy, ok := parseAccountAssetKey(source, prefixLen)
+		if !ok {
+			return indexEventRow{}, false
+		}
+
+		return indexEventRow{group: group, seq: seq, op: MetadataEventAdd, legacy: legacy}, true
+	}
+
+	group, seq, op, ok := parseEventKey(key, prefixLen)
+	if !ok {
+		return indexEventRow{}, false
+	}
+
+	return indexEventRow{group: group, seq: seq, op: op}, true
+}
+
 // parseEventKey splits an event key into (group, seq, op) independently of
 // scan direction. The fixed suffix locates the terminator from the right.
 // Unknown operations and malformed keys must fail the caller's scan loudly.
@@ -35,7 +75,8 @@ func parseEventKey(key []byte, prefixLen int) (group []byte, seq uint64, op byte
 // TODO: Remove the plain-row branch and its value decoder only after supported
 // upgrades, restores, and retained query checkpoints can no longer expose
 // RC.5 account-by-asset rows. Live GC completion alone is insufficient.
-func parseAccountAssetKey(key, value []byte, prefixLen int) (group []byte, seq uint64, legacy bool, ok bool) {
+func parseAccountAssetKey(source indexEventRowSource, prefixLen int) (group []byte, seq uint64, legacy bool, ok bool) {
+	key := source.Key()
 	if len(key) <= prefixLen || key[0] != PrefixAccountByAsset {
 		return nil, 0, false, false
 	}
@@ -47,6 +88,7 @@ func parseAccountAssetKey(key, value []byte, prefixLen int) (group []byte, seq u
 
 		return group, seq, false, valid && op == MetadataEventAdd
 	}
+	value := source.Value()
 	if len(value) != 8 || invariants.ValidateLedgerAccountAddress(string(account)) != nil {
 		return nil, 0, false, false
 	}

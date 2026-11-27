@@ -49,6 +49,12 @@ at or below the pin decides — `ADD` means the entity matches, `DEL` or nothing
 means it does not. Groups never consult each other, so iteration stays one
 ordered scan (`iterator_event_resolve.go`).
 
+The forward and reverse readers share one row decoder for these three event
+zones. It reads the value only for an RC.5 account-by-asset row; current event
+keys carry their sequence and operation in the key. Traversal, seek bounds,
+and exhaustion proofs remain direction-specific. The GC reuses the decoder's
+legacy sequence but keeps its conservative handling of malformed groups.
+
 A transition away from a value therefore writes into *two* ranges: an `ADD` in
 the new value's range and a `DEL` in the old value's own range. Without the
 second write, "does E match V at P?" could not be answered from V's range

@@ -110,13 +110,17 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 		tpos := len(key) - suffix
 		var identity []byte
 		var legacy bool
+		var legacySeq uint64
 		// TODO: Remove legacy detection, Value() from eventGCIterator, and
 		// the conversion branch below when no supported live read store or
 		// restore path can contain RC.5 plain account-by-asset rows.
 		if len(key) > 0 && key[0] == PrefixAccountByAsset {
 			prefixLen, prefixOK := accountAssetPrefixLen(key)
 			if prefixOK {
-				_, _, legacy, prefixOK = parseAccountAssetKey(key, iter.Value(), prefixLen)
+				row, ok := parseIndexEventRow(iter, prefixLen)
+				prefixOK = ok
+				legacy = row.legacy
+				legacySeq = row.seq
 			}
 			if !prefixOK {
 				tpos = -1
@@ -172,11 +176,10 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 			// A legacy stamp is a synthetic ADD. Rewrite it atomically and
 			// skip pruning this group: its physical position precedes newer
 			// event keys regardless of the stamp's sequence.
-			seq := binary.BigEndian.Uint64(iter.Value())
 			converted := make([]byte, 0, len(key)+10)
 			converted = append(converted, key...)
 			converted = append(converted, metadataEventTerminator)
-			converted = binary.BigEndian.AppendUint64(converted, seq)
+			converted = binary.BigEndian.AppendUint64(converted, legacySeq)
 			converted = append(converted, MetadataEventAdd)
 			if err := batch.Set(converted, nil, nil); err != nil {
 				return 0, nil, err

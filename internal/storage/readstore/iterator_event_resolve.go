@@ -100,33 +100,33 @@ func (it *EventResolveIterator) settleFrom(seekTarget []byte) bool {
 
 func (it *EventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := it.parseCurrent()
+		row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 			return false
 		}
 
-		group := append([]byte(nil), g...)
+		group := append([]byte(nil), row.group...)
 		live := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := it.parseCurrent()
+			row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 				return false
 			}
 
-			if !bytes.Equal(g, group) {
+			if !bytes.Equal(row.group, group) {
 				break
 			}
 
 			// Event keys are seq-ascending. An RC.5 plain row sorts first
 			// regardless of its stamp, but 0x0C only has ADD events, so any
 			// visible row makes that account a member at the pin.
-			if seq <= it.pin {
-				live = op == MetadataEventAdd
+			if row.seq <= it.pin {
+				live = row.op == MetadataEventAdd
 			}
 
 			if !it.iter.Next() {
@@ -150,18 +150,6 @@ func (it *EventResolveIterator) settle() bool {
 	it.exhausted = true
 
 	return false
-}
-
-func (it *EventResolveIterator) parseCurrent() (group []byte, seq uint64, op byte, ok bool) {
-	// TODO: Remove the RC.5 value-decoding path when legacy rows are retired.
-	// Keep the account-by-asset ADD-only operation check in the event path.
-	if len(it.seekPrefix) > 0 && it.seekPrefix[0] == PrefixAccountByAsset {
-		group, seq, _, ok = parseAccountAssetKey(it.iter.Key(), it.iter.Value(), it.prefixLen)
-
-		return group, seq, MetadataEventAdd, ok
-	}
-
-	return parseEventKey(it.iter.Key(), it.prefixLen)
 }
 
 func (it *EventResolveIterator) Next() bool {
