@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -395,6 +396,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
+			sourcePaused  bool
 		)
 
 		BeforeAll(func() {
@@ -419,6 +421,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// has happened" a fact instead of a timing bet: parked requests are
 			// held at the handler entry, before the counter moves.
 			mockV2.pause()
+			sourcePaused = true
 			preRestoreRequests = mockV2.requestCount()
 
 			Expect(server.Start(ctx)).To(Succeed())
@@ -437,8 +440,6 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				requestsAtSample = mockV2.requestCount()
 			}).Within(30 * time.Second).ProbeEvery(50 * time.Millisecond).Should(Succeed())
 
-			mockV2.resume()
-
 			Eventually(func(g Gomega) bool {
 				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
@@ -447,12 +448,42 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			if sourcePaused {
+				mockV2.resume()
+			}
 			_ = grpcConn.Close()
 			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			Expect(server.Stop(stopCtx)).To(Succeed())
 			_ = os.RemoveAll(restoreWalDir)
 			_ = os.RemoveAll(restoreDataDir)
+		})
+
+		It("rejects promotion after the second checkpoint before a fresh source observation", func() {
+			Expect(mockV2.requestCount()).To(Equal(preRestoreRequests))
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty())
+			Expect(result.Progress).ToNot(BeEmpty())
+
+			// The restored node must first advertise and activate the promotion
+			// capability. Once active, the same request must reach the restored
+			// FSM's catch-up gate.
+			Eventually(func(g Gomega) {
+				_, applyErr := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					Type: &servicepb.Request_PromoteLedger{
+						PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: ledgerName},
+					},
+				}))
+				g.Expect(applyErr).To(HaveOccurred())
+				info := actions.ExtractGRPCErrorInfo(applyErr)
+				g.Expect(info).ToNot(BeNil())
+				g.Expect(info.GetReason()).To(Equal(domain.ErrReasonMirrorNotCaughtUp))
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+			Expect(mockV2.requestCount()).To(Equal(preRestoreRequests), "the worker must not refresh the source head before the promotion decision")
+
+			mockV2.resume()
+			sourcePaused = false
 		})
 
 		It("retains the mirror high-water mark from the later checkpoint", func() {
