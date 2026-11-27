@@ -93,6 +93,10 @@ service BucketService {
   rpc ListLogs(ListLogsRequest) returns (stream common.Log) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
   }
+  // SubscribeLogs delivers committed global logs to a configured sink.
+  rpc SubscribeLogs(stream SubscribeLogsRequest) returns (stream SubscribeLogsResponse) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS };
+  }
   // GetLog returns a single system log by sequence number
   rpc GetLog(GetLogRequest) returns (common.Log) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
@@ -1639,4 +1643,38 @@ message BarrierResponse {
   // if two barriers return the same commit_index, no proposals were committed
   // between them.
   fixed64 commit_index = 1;
+}
+
+// A configured, acknowledged inbound global-log stream.
+message SubscribeLogsRequest {
+  oneof kind {
+    OpenLogSink open = 1;
+    AcknowledgeLog ack = 2;
+  }
+}
+
+message OpenLogSink {
+  string sink_name = 1;
+  string client_id = 2;
+}
+
+message AcknowledgeLog {
+  fixed64 sequence = 1;
+}
+
+message SubscribeLogsResponse {
+  oneof kind {
+    OpenedLogSink opened = 1;
+    common.Log log = 2;
+    AcknowledgedLog acked = 3;
+  }
+}
+
+message OpenedLogSink {
+  fixed64 acknowledged_sequence = 1;
+  string cluster_id = 2;
+}
+
+message AcknowledgedLog {
+  fixed64 sequence = 1;
 }

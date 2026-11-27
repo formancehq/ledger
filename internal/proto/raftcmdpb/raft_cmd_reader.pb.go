@@ -4772,6 +4772,7 @@ type TechnicalUpdateReader interface {
 	GetAuditKey() []byte
 	GetDrainMarker() DrainMarkerReader
 	GetDrainRelease() DrainReleaseReader
+	GetGrpcLogSinkAck() GrpcLogSinkAckReader
 	WhichKind() TechnicalUpdate_KindReaderCase
 	Mutate() *TechnicalUpdate
 }
@@ -4854,6 +4855,14 @@ func (r *technicalUpdateReadonly) GetDrainRelease() DrainReleaseReader {
 	return v.DrainRelease.AsReader()
 }
 
+func (r *technicalUpdateReadonly) GetGrpcLogSinkAck() GrpcLogSinkAckReader {
+	v, ok := (*TechnicalUpdate)(r).GetKind().(*TechnicalUpdate_GrpcLogSinkAck)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.GrpcLogSinkAck.AsReader()
+}
+
 // TechnicalUpdate_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type TechnicalUpdate_KindReaderCase int32
 
@@ -4868,6 +4877,7 @@ const (
 	TechnicalUpdate_KindReaderCase_AuditKey               TechnicalUpdate_KindReaderCase = 8
 	TechnicalUpdate_KindReaderCase_DrainMarker            TechnicalUpdate_KindReaderCase = 9
 	TechnicalUpdate_KindReaderCase_DrainRelease           TechnicalUpdate_KindReaderCase = 10
+	TechnicalUpdate_KindReaderCase_GrpcLogSinkAck         TechnicalUpdate_KindReaderCase = 11
 )
 
 func (r *technicalUpdateReadonly) WhichKind() TechnicalUpdate_KindReaderCase {
@@ -4890,6 +4900,8 @@ func (r *technicalUpdateReadonly) WhichKind() TechnicalUpdate_KindReaderCase {
 		return TechnicalUpdate_KindReaderCase_DrainMarker
 	case *TechnicalUpdate_DrainRelease:
 		return TechnicalUpdate_KindReaderCase_DrainRelease
+	case *TechnicalUpdate_GrpcLogSinkAck:
+		return TechnicalUpdate_KindReaderCase_GrpcLogSinkAck
 	default:
 		return TechnicalUpdate_KindReaderCase_Unset
 	}
@@ -7239,4 +7251,81 @@ func (l attributeIDListReadonly) Range(yield func(int, AttributeIDReader) bool) 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewAttributeIDListReader(s []*AttributeID) AttributeIDListReader {
 	return attributeIDListReadonly(s)
+}
+
+// GrpcLogSinkAckReader provides read-only access to GrpcLogSinkAck.
+// Call Mutate() to obtain a mutable clone.
+type GrpcLogSinkAckReader interface {
+	GetSinkName() string
+	GetIncarnation() uint64
+	GetSequence() uint64
+	Mutate() *GrpcLogSinkAck
+}
+
+type grpcLogSinkAckReadonly GrpcLogSinkAck
+
+func (r *grpcLogSinkAckReadonly) GetSinkName() string {
+	return (*GrpcLogSinkAck)(r).GetSinkName()
+}
+
+func (r *grpcLogSinkAckReadonly) GetIncarnation() uint64 {
+	return (*GrpcLogSinkAck)(r).GetIncarnation()
+}
+
+func (r *grpcLogSinkAckReadonly) GetSequence() uint64 {
+	return (*GrpcLogSinkAck)(r).GetSequence()
+}
+
+func (r *grpcLogSinkAckReadonly) Mutate() *GrpcLogSinkAck {
+	return (*GrpcLogSinkAck)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GrpcLogSinkAck.
+func (m *GrpcLogSinkAck) AsReader() GrpcLogSinkAckReader {
+	if m == nil {
+		return nil
+	}
+	return (*grpcLogSinkAckReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GrpcLogSinkAck.
+func (m *GrpcLogSinkAck) Mutate() *GrpcLogSinkAck {
+	return m.CloneVT()
+}
+
+// GrpcLogSinkAckListReader provides read-only iteration over []*GrpcLogSinkAck.
+type GrpcLogSinkAckListReader interface {
+	Len() int
+	Get(i int) GrpcLogSinkAckReader
+	Range(yield func(int, GrpcLogSinkAckReader) bool)
+}
+
+type grpcLogSinkAckListReadonly []*GrpcLogSinkAck
+
+func (l grpcLogSinkAckListReadonly) Len() int { return len(l) }
+
+func (l grpcLogSinkAckListReadonly) Get(i int) GrpcLogSinkAckReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l grpcLogSinkAckListReadonly) Range(yield func(int, GrpcLogSinkAckReader) bool) {
+	for i, v := range l {
+		var r GrpcLogSinkAckReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGrpcLogSinkAckListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGrpcLogSinkAckListReader(s []*GrpcLogSinkAck) GrpcLogSinkAckListReader {
+	return grpcLogSinkAckListReadonly(s)
 }

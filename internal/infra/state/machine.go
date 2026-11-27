@@ -1459,7 +1459,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// above. Anything else returned from a TU handler is FSM-fatal.
 		if errors.Is(err, ErrBackupInProgress) ||
 			errors.Is(err, ErrBackupJobIDCollision) ||
-			errors.Is(err, ErrBackupJobNotFound) {
+			errors.Is(err, ErrBackupJobNotFound) ||
+			errors.Is(err, ErrGrpcLogSinkStale) {
 			return &ApplyResult{
 				ProposalID: proposal.GetId(),
 				Error:      err,

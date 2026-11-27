@@ -2346,3 +2346,85 @@ func (x *BarrierResponse) MarshalJSON() ([]byte, error) {
 		CommitIndex: x.CommitIndex,
 	})
 }
+
+func (x *SubscribeLogsRequest) MarshalJSON() ([]byte, error) {
+	switch oneofValueKind := x.Kind.(type) {
+	case *SubscribeLogsRequest_Open:
+		return jsonv2.Marshal(struct {
+			Open any `json:"open"`
+		}{
+			Open: oneofValueKind.Open,
+		})
+	case *SubscribeLogsRequest_Ack:
+		return jsonv2.Marshal(struct {
+			Ack any `json:"ack"`
+		}{
+			Ack: oneofValueKind.Ack,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *OpenLogSink) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		SinkName string `json:"sinkName"`
+		ClientId string `json:"clientId"`
+	}{
+		SinkName: x.SinkName,
+		ClientId: x.ClientId,
+	})
+}
+
+func (x *AcknowledgeLog) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Sequence uint64 `json:"sequence"`
+	}{
+		Sequence: x.Sequence,
+	})
+}
+
+func (x *SubscribeLogsResponse) MarshalJSON() ([]byte, error) {
+	switch oneofValueKind := x.Kind.(type) {
+	case *SubscribeLogsResponse_Opened:
+		return jsonv2.Marshal(struct {
+			Opened any `json:"opened"`
+		}{
+			Opened: oneofValueKind.Opened,
+		})
+	case *SubscribeLogsResponse_Log:
+		return jsonv2.Marshal(struct {
+			Log any `json:"log"`
+		}{
+			Log: oneofValueKind.Log,
+		})
+	case *SubscribeLogsResponse_Acked:
+		return jsonv2.Marshal(struct {
+			Acked any `json:"acked"`
+		}{
+			Acked: oneofValueKind.Acked,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *OpenedLogSink) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		AcknowledgedSequence uint64 `json:"acknowledgedSequence"`
+		ClusterId            string `json:"clusterId"`
+	}{
+		AcknowledgedSequence: x.AcknowledgedSequence,
+		ClusterId:            x.ClusterId,
+	})
+}
+
+func (x *AcknowledgedLog) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		Sequence uint64 `json:"sequence"`
+	}{
+		Sequence: x.Sequence,
+	})
+}

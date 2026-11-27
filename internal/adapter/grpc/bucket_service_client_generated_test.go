@@ -1625,3 +1625,47 @@ func (c *MockBucketServiceClientListTransactionsCall) DoAndReturn(f func(context
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// SubscribeLogs mocks base method.
+func (m *MockBucketServiceClient) SubscribeLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[servicepb.SubscribeLogsRequest, servicepb.SubscribeLogsResponse], error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "SubscribeLogs", varargs...)
+	ret0, _ := ret[0].(grpc.BidiStreamingClient[servicepb.SubscribeLogsRequest, servicepb.SubscribeLogsResponse])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SubscribeLogs indicates an expected call of SubscribeLogs.
+func (mr *MockBucketServiceClientMockRecorder) SubscribeLogs(ctx any, opts ...any) *MockBucketServiceClientSubscribeLogsCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeLogs", reflect.TypeOf((*MockBucketServiceClient)(nil).SubscribeLogs), varargs...)
+	return &MockBucketServiceClientSubscribeLogsCall{Call: call}
+}
+
+// MockBucketServiceClientSubscribeLogsCall wrap *gomock.Call
+type MockBucketServiceClientSubscribeLogsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientSubscribeLogsCall) Return(arg0 grpc.BidiStreamingClient[servicepb.SubscribeLogsRequest, servicepb.SubscribeLogsResponse], arg1 error) *MockBucketServiceClientSubscribeLogsCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientSubscribeLogsCall) Do(f func(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[servicepb.SubscribeLogsRequest, servicepb.SubscribeLogsResponse], error)) *MockBucketServiceClientSubscribeLogsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientSubscribeLogsCall) DoAndReturn(f func(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[servicepb.SubscribeLogsRequest, servicepb.SubscribeLogsResponse], error)) *MockBucketServiceClientSubscribeLogsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}

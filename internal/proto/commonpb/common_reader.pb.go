@@ -5196,6 +5196,7 @@ type SinkConfigReader interface {
 	GetKafka() KafkaSinkConfigReader
 	GetHttp() HttpSinkConfigReader
 	GetDatabricks() DatabricksSinkConfigReader
+	GetGrpcLog() GrpcLogSinkConfigReader
 	GetFormat() string
 	GetBatchSize() int32
 	GetBatchDelayMs() int64
@@ -5251,6 +5252,14 @@ func (r *sinkConfigReadonly) GetDatabricks() DatabricksSinkConfigReader {
 	return v.Databricks.AsReader()
 }
 
+func (r *sinkConfigReadonly) GetGrpcLog() GrpcLogSinkConfigReader {
+	v, ok := (*SinkConfig)(r).GetType().(*SinkConfig_GrpcLog)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.GrpcLog.AsReader()
+}
+
 func (r *sinkConfigReadonly) GetFormat() string {
 	return (*SinkConfig)(r).GetFormat()
 }
@@ -5281,6 +5290,7 @@ const (
 	SinkConfig_TypeReaderCase_Kafka      SinkConfig_TypeReaderCase = 4
 	SinkConfig_TypeReaderCase_Http       SinkConfig_TypeReaderCase = 5
 	SinkConfig_TypeReaderCase_Databricks SinkConfig_TypeReaderCase = 6
+	SinkConfig_TypeReaderCase_GrpcLog    SinkConfig_TypeReaderCase = 12
 )
 
 func (r *sinkConfigReadonly) WhichType() SinkConfig_TypeReaderCase {
@@ -5295,6 +5305,8 @@ func (r *sinkConfigReadonly) WhichType() SinkConfig_TypeReaderCase {
 		return SinkConfig_TypeReaderCase_Http
 	case *SinkConfig_Databricks:
 		return SinkConfig_TypeReaderCase_Databricks
+	case *SinkConfig_GrpcLog:
+		return SinkConfig_TypeReaderCase_GrpcLog
 	default:
 		return SinkConfig_TypeReaderCase_Unset
 	}
@@ -27260,4 +27272,81 @@ func (m accountMetadataUpdated_accountMetadataMapReadonly) Range(yield func(stri
 			return
 		}
 	}
+}
+
+// GrpcLogSinkConfigReader provides read-only access to GrpcLogSinkConfig.
+// Call Mutate() to obtain a mutable clone.
+type GrpcLogSinkConfigReader interface {
+	GetClientId() string
+	GetIncarnation() uint64
+	GetSecretSha256() []byte
+	Mutate() *GrpcLogSinkConfig
+}
+
+type grpcLogSinkConfigReadonly GrpcLogSinkConfig
+
+func (r *grpcLogSinkConfigReadonly) GetClientId() string {
+	return (*GrpcLogSinkConfig)(r).GetClientId()
+}
+
+func (r *grpcLogSinkConfigReadonly) GetIncarnation() uint64 {
+	return (*GrpcLogSinkConfig)(r).GetIncarnation()
+}
+
+func (r *grpcLogSinkConfigReadonly) GetSecretSha256() []byte {
+	return bytes.Clone((*GrpcLogSinkConfig)(r).GetSecretSha256())
+}
+
+func (r *grpcLogSinkConfigReadonly) Mutate() *GrpcLogSinkConfig {
+	return (*GrpcLogSinkConfig)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GrpcLogSinkConfig.
+func (m *GrpcLogSinkConfig) AsReader() GrpcLogSinkConfigReader {
+	if m == nil {
+		return nil
+	}
+	return (*grpcLogSinkConfigReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GrpcLogSinkConfig.
+func (m *GrpcLogSinkConfig) Mutate() *GrpcLogSinkConfig {
+	return m.CloneVT()
+}
+
+// GrpcLogSinkConfigListReader provides read-only iteration over []*GrpcLogSinkConfig.
+type GrpcLogSinkConfigListReader interface {
+	Len() int
+	Get(i int) GrpcLogSinkConfigReader
+	Range(yield func(int, GrpcLogSinkConfigReader) bool)
+}
+
+type grpcLogSinkConfigListReadonly []*GrpcLogSinkConfig
+
+func (l grpcLogSinkConfigListReadonly) Len() int { return len(l) }
+
+func (l grpcLogSinkConfigListReadonly) Get(i int) GrpcLogSinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l grpcLogSinkConfigListReadonly) Range(yield func(int, GrpcLogSinkConfigReader) bool) {
+	for i, v := range l {
+		var r GrpcLogSinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGrpcLogSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGrpcLogSinkConfigListReader(s []*GrpcLogSinkConfig) GrpcLogSinkConfigListReader {
+	return grpcLogSinkConfigListReadonly(s)
 }

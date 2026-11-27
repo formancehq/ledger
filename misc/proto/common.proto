@@ -38,6 +38,7 @@ enum DynamicAuthResolver {
   DYNAMIC_AUTH_RESOLVER_GET_INDEX = 2;
   DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS = 3;
   DYNAMIC_AUTH_RESOLVER_LIST_INDEXES = 4;
+  DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS = 5;
 }
 
 // MethodAuthPolicy requires every public-service RPC to choose exactly one
@@ -695,6 +696,7 @@ message SinkConfig {
     KafkaSinkConfig kafka = 4;
     HttpSinkConfig http = 5;
     DatabricksSinkConfig databricks = 6;
+    GrpcLogSinkConfig grpc_log = 12;
   }
   string format = 7;          // "json" or "protobuf" (default: "json")
   int32 batch_size = 8;       // Max events per batch (default: 64)
@@ -2910,4 +2912,17 @@ message CapabilityActivation {
 // no transaction ID, postings, or TransactionState are created.
 message AccountMetadataUpdated {
   map<string, MetadataMap> account_metadata = 1;
+}
+
+// GrpcLogSinkConfig binds an acknowledged inbound global log stream to one
+// client identity. secret_sha256 verifies the per-sink connection credential.
+// incarnation is assigned from the AddEventsSink log sequence
+// in the stored projection. Clients must leave it zero when registering.
+message GrpcLogSinkConfig {
+  option (ledger_json) = true;
+  string client_id = 1;
+  fixed64 incarnation = 2;
+  // SHA-256 of a client-generated, high-entropy secret. The secret itself is
+  // never committed or returned by the server.
+  bytes secret_sha256 = 3;
 }

@@ -65,6 +65,7 @@ func TestRPCAuthPoliciesPinExceptionalMethods(t *testing.T) {
 		"/ledger.BucketService/GetIndex":            commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX,
 		"/ledger.BucketService/GetIndexEntryStatus": commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS,
 		"/ledger.BucketService/ListIndexes":         commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES,
+		"/ledger.BucketService/SubscribeLogs":       commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS,
 	}, dynamicMethods)
 	require.Equal(t, expectedFixedRPCAuthPolicies(), fixedMethods)
 }

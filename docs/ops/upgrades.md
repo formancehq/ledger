@@ -112,13 +112,35 @@ separate from the backup artifact exception above.
 
 ### Configuration and capability state
 
+The acknowledged gRPC global-log sink introduces capability ID 1. Before
+registering this sink type or accepting its acknowledgements, use the operator
+stopped-restart procedure for the adjacent RC carrying the feature: drain and
+stop every voter and learner, retain the main-store and Raft volumes, upgrade
+all members, restart, and wait for committed support evidence from every
+member. A cluster with an older learner must not activate the capability.
+Preserve a non-empty source history through the restart and verify replay and
+cursor resume before admitting client traffic. No mixed-version rolling
+activation is supported for this feature.
+
+The gRPC sink configuration requires `secret_sha256`. Since the sink is gated
+and not yet released, no owner-token configuration requires migration. The committed
+configuration, audit history, checkpoint and restored state contain only the
+SHA-256 verifier, never the usable client-generated secret. A restored
+secret-backed sink accepts that same secret until the sink is removed and
+recreated; operators should rotate it when moving a backup to another trust
+boundary. The secret has no JWT expiry and grants the current raw global log
+stream, including credential-bearing configuration records. Redaction and
+ledger filtering are separate future changes.
+
 RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
 capability state into a separate record. Use the operator-required stopped restart:
 stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+RC.5 shipped with an empty supported registry. This change registers capability
+ID 1, which activates automatically after every current voter and learner has
+committed support evidence.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own

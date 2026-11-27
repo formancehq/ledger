@@ -14,6 +14,15 @@ WAL files if present. The manifest is published after required uploads and
 before stale-object pruning. A failed upload or manifest write must leave the
 previous published backup restorable. A failed prune may leave harmless orphans.
 
+An acknowledged gRPC sink cursor is operational progress associated with the
+audited subscription creation sequence and ledger identity. It is stored in
+the primary checkpoint with that configuration and log history. A restore
+from a second checkpoint taken after an ack must report the acked ledger-local
+ID before sending later logs; the client must see the destination cluster ID
+and treat it as a distinct source. A local recovery test that rebuilds the
+FSM's in-memory cursor map proves only restart hydration, not checkpoint
+publication or cross-cluster restore parity.
+
 For restore parity, take a first checkpoint, commit a distinctive transaction
 or other persisted mutation, then take a second checkpoint. Restore the second
 checkpoint through a production entry point, compare exact business values,

@@ -1617,6 +1617,15 @@ func (m *SinkConfig_Databricks) CloneVT() isSinkConfig_Type {
 	return r
 }
 
+func (m *SinkConfig_GrpcLog) CloneVT() isSinkConfig_Type {
+	if m == nil {
+		return (*SinkConfig_GrpcLog)(nil)
+	}
+	r := new(SinkConfig_GrpcLog)
+	r.GrpcLog = m.GrpcLog.CloneVT()
+	return r
+}
+
 func (m *SinkStatus) CloneVT() *SinkStatus {
 	if m == nil {
 		return (*SinkStatus)(nil)
@@ -9150,6 +9159,29 @@ func (m *AccountMetadataUpdated) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *GrpcLogSinkConfig) CloneVT() *GrpcLogSinkConfig {
+	if m == nil {
+		return (*GrpcLogSinkConfig)(nil)
+	}
+	r := new(GrpcLogSinkConfig)
+	r.ClientId = m.ClientId
+	r.Incarnation = m.Incarnation
+	if rhs := m.SecretSha256; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.SecretSha256 = tmpBytes
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GrpcLogSinkConfig) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (this *MethodAuthPolicy) EqualVT(that *MethodAuthPolicy) bool {
 	if this == that {
 		return true
@@ -11781,6 +11813,31 @@ func (this *SinkConfig_Databricks) EqualVT(thatIface isSinkConfig_Type) bool {
 		}
 		if q == nil {
 			q = &DatabricksSinkConfig{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SinkConfig_GrpcLog) EqualVT(thatIface isSinkConfig_Type) bool {
+	that, ok := thatIface.(*SinkConfig_GrpcLog)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.GrpcLog, that.GrpcLog; p != q {
+		if p == nil {
+			p = &GrpcLogSinkConfig{}
+		}
+		if q == nil {
+			q = &GrpcLogSinkConfig{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -23785,6 +23842,31 @@ func (this *AccountMetadataUpdated) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *GrpcLogSinkConfig) EqualVT(that *GrpcLogSinkConfig) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.ClientId != that.ClientId {
+		return false
+	}
+	if this.Incarnation != that.Incarnation {
+		return false
+	}
+	if string(this.SecretSha256) != string(that.SecretSha256) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GrpcLogSinkConfig) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GrpcLogSinkConfig)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (m *MethodAuthPolicy) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -27793,6 +27875,25 @@ func (m *SinkConfig_Databricks) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SinkConfig_GrpcLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SinkConfig_GrpcLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.GrpcLog != nil {
+		size, err := m.GrpcLog.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
 	}
 	return len(dAtA) - i, nil
 }
@@ -44481,6 +44582,59 @@ func (m *AccountMetadataUpdated) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
+func (m *GrpcLogSinkConfig) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GrpcLogSinkConfig) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GrpcLogSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.SecretSha256) > 0 {
+		i -= len(m.SecretSha256)
+		copy(dAtA[i:], m.SecretSha256)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SecretSha256)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Incarnation != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Incarnation))
+		i--
+		dAtA[i] = 0x11
+	}
+	if len(m.ClientId) > 0 {
+		i -= len(m.ClientId)
+		copy(dAtA[i:], m.ClientId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ClientId)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *MethodAuthPolicy) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -46198,6 +46352,18 @@ func (m *SinkConfig_Databricks) SizeVT() (n int) {
 	_ = l
 	if m.Databricks != nil {
 		l = m.Databricks.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *SinkConfig_GrpcLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.GrpcLog != nil {
+		l = m.GrpcLog.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -53363,6 +53529,27 @@ func (m *AccountMetadataUpdated) SizeVT() (n int) {
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *GrpcLogSinkConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ClientId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Incarnation != 0 {
+		n += 9
+	}
+	l = len(m.SecretSha256)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -62832,6 +63019,47 @@ func (m *SinkConfig) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.ControllerId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GrpcLog", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*SinkConfig_GrpcLog); ok {
+				if err := oneof.GrpcLog.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &GrpcLogSinkConfig{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &SinkConfig_GrpcLog{GrpcLog: v}
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -98512,6 +98740,133 @@ func (m *AccountMetadataUpdated) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.AccountMetadata[mapkey] = mapvalue
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GrpcLogSinkConfig) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GrpcLogSinkConfig: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GrpcLogSinkConfig: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClientId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClientId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Incarnation", wireType)
+			}
+			m.Incarnation = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Incarnation = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SecretSha256", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SecretSha256 = append(m.SecretSha256[:0], dAtA[iNdEx:postIndex]...)
+			if m.SecretSha256 == nil {
+				m.SecretSha256 = []byte{}
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

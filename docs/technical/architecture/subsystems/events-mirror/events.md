@@ -192,6 +192,69 @@ Key formats:
 - Per-sink cursor: `[0x06][0x08][sink_name]` (`ZoneGlobal` + `SubGlobSinkCursor`) → `uint64` (big-endian encoded sequence)
 - Per-sink error status: `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`) → `SinkStatus` protobuf
 
+### Acknowledged gRPC global-log sink
+
+`SinkConfig.grpc_log` configures an inbound subscription for one `client_id`
+and a 32-byte SHA-256 verifier for a client-generated secret.
+The events Manager skips this sink type; event formatting and
+event-type filters do not apply. The stored configuration records the creation
+log's global sequence as an incarnation. Removing and recreating a sink name
+retains its global-sequence cursor, while the new incarnation rejects
+acknowledgements from the old connection.
+
+`BucketService.SubscribeLogs` is a bidirectional stream over system logs across
+all ledgers. The first client message is `Open {sink_name, client_id}`. The
+client sends the exact client-generated secret in
+`x-ledger-sink-secret` gRPC metadata; the server compares its SHA-256 digest
+with the persisted verifier. A secret must be 43–128 non-whitespace characters,
+generated from at least 32 cryptographically random bytes. Never persist or
+log the usable secret. Bearer tokens are not accepted on this RPC. The secret
+has no JWT expiry; remove and recreate the sink to revoke it,
+which also fences the active stream by incarnation. Until redaction is designed,
+the stream exposes raw logs, including credential-bearing configuration logs.
+The server replies with
+`Opened {acknowledged_sequence, cluster_id}`, then sends unchanged
+`common.Log` values in increasing global `common.Log.sequence` order. A client
+sends `Ack {sequence}` only after processing that log; it may acknowledge
+cumulatively through a sequence actually delivered on the connection. The
+server replies with `Acked {sequence}` only after a Raft technical update has
+applied. Repeating the durable cursor is idempotent. The client should retain
+its processed sequence until `Acked` arrives and deduplicate by
+`(cluster_id, sequence)` after reconnection. Delivery is at least once: an
+unacknowledged log may be sent again after a disconnect, leader change, or
+lost response.
+
+The cursor key is `[ZoneGlobal][SubGlobGrpcLogSinkCursor][sink_name]` with a
+global-sequence value. A gRPC sink recreated under the same name resumes from
+this cursor. The separate key prevents a late outbound sink update from
+advancing the gRPC cursor without an acknowledgement. `GetEventsSinks` reports
+this cursor for gRPC sinks and the outbound cursor for other sink types. The
+FSM reads the sink config through declared
+coverage, rejects an ack whose incarnation no longer matches, and advances
+the cursor monotonically from in-memory state recovered from these rows. The
+cursor and config ride in flushed checkpoint backups. A second checkpoint
+after an ack must restore the acknowledged position with the same sink and
+global log history; a different cluster identity is exposed in `Opened` so
+clients do not confuse sources.
+
+The server bounds each stream to 16 unacknowledged logs, an 8 MiB catch-up
+page budget (or one larger log), and 30 seconds without an ack while logs are
+outstanding. The server admits at most two pending Open requests and eight
+verified active streams, counted separately. Each active connection is counted under its sink name;
+duplicate connections for the same sink are rejected. The server rescans the
+committed global log every 250 ms from the last sent sequence;
+an empty scan never advances the cursor. Leadership loss, sink removal, or a
+configuration change closes the stream so the client reconnects or repairs
+the configuration. The public transport reserves 32 bytes above the existing
+64 MiB `ListLogs` payload ceiling for the stream wrapper, so every log that
+`ListLogs` could send still fits the subscription message.
+
+The new persisted sink type and ack update require capability ID 1. Activation
+uses the coordinated stopped upgrade with retained state; every voter and
+learner must advertise support through committed membership evidence before
+the feature can be admitted. The capability stays active afterward. Protocol
+revision 40 is unchanged because the new RPC and protobuf fields are additive.
+
 ### Sink Error Status
 
 Operators need startup failures visible without access to leader logs: a sink

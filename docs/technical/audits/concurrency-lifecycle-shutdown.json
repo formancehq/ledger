@@ -7,6 +7,8 @@
     "cmd/server/**",
     "internal/bootstrap/**",
     "internal/adapter/grpc/server.go",
+    "internal/adapter/grpc/server_bucket_log_sink.go",
+    "internal/adapter/grpc/server_bucket_log_sink_test.go",
     "internal/adapter/grpc/server_test.go",
     "internal/adapter/grpc/server_restore*.go",
     "internal/adapter/grpc/server_snapshot*.go",
@@ -92,6 +94,7 @@
     "docs/ops/cli.md"
   ],
   "invariants": [
+    "An acknowledged gRPC log-sink session reserves one of two pending Open slots, then claims one of eight separate active stream slots under its sink name only after its secret matches the configured verifier. Duplicate active connections for a sink are rejected. The receiver goroutine, bounded send goroutine, read cursor and Raft ack wait must not survive stream cancellation, leadership loss, sink removal or recreation, send or outstanding-ack timeout, or server shutdown as an unbounded leak. No transport send advances the durable cursor.",
     "A PostgreSQL mirror gap reread owns its pooled transaction until commit or rollback. NOWAIT lock conflicts return no batch. Caller cancellation must not return a live transaction or SHARE lock to the pool: rollback uses a detached context bounded to five seconds, and pgx closes a connection whose rollback fails. No source transaction survives into translation, preload or Raft application; distinguish this source-session cleanup from the unchanged applied-cursor contract.",
     "Every asynchronous task, callback, registration, and mutable runtime snapshot has one explicit authority token: Fx process lifetime, node run generation, ordered leadership generation, replicated resource identity, local resource-entry identity, pending index version, task invocation, durable cursor, or request/session context. A callback or cached snapshot captured under an older token must be rejected or joined before it can mutate, publish, propose, restart, tear down, or observe a replacement generation.",
     "Process-scoped ownership is defined by the Fx lifecycle: bootstrap hooks, listeners, gRPC/HTTP servers, stores, health workers, metric callbacks, observers, and shared workers must unwind startup failures in dependency order. Start and Stop must be safe under the component's documented call cardinality, and a synchronous Stop or OnStop must not return while its owned goroutines or callbacks can still use dependencies that later hooks close.",
@@ -112,6 +115,7 @@
     "Learner preflight owns its outbound connections and termination subscription before inbound Raft startup. A latched signal cancels only its registration child context and retains Fx Shutdown; the private startup context remains live for rollback until the positive signal-time startup deadline. Timer, subscription release and concurrent completion must not leak, double-close or lose cancellation. Zero is unlimited; normal successful startup keeps its separate Fx stop budget. Rollback and logger failure or expiry cannot become success, and timeout is not a join or closure proof."
   ],
   "adversarial_questions": [
+    "Can a pending Open that times out, duplicate connection, stalled Send, half-closed Recv, outstanding-ack timeout, sink removal or recreation, leader transfer, stream cancellation, or shutdown leave a sink slot held indefinitely or let an old stream ack a replacement? Are goroutines and readers joined or canceled at the actual handler/transport boundary, including a Send that times out?",
     "For each goroutine, callback, registration, and mutable snapshot in scope, which exact authority token from the invariants owns it? If repository evidence does not define the token, report an audit question instead of assuming a generic generation invariant.",
     "Can Start race Stop, Stop race itself, or an Fx OnStart failure/OnStop timeout leave a goroutine or registered callback using a listener, transport, main store, readstore, usagestore, metrics provider, observer, or notification channel after the owning hook has returned? Which documented call cardinality makes close-once behavior valid?",
     "Does the entered bootstrap node OnStop join Run after every Stop result, including an expired caller context or early successful Stop, before cancelling the run context or returning? Distinguish this hook completion from the outer Fx timeout and skipped dependency hooks.",
@@ -130,6 +134,7 @@
     "Can a signal before subscription, during registration RPC/backoff, or concurrent with successful/fatal registration lose cancellation, suppress a marker/fatal error, cancel Fx rollback too early, or leak the subscription/timer? Does startup deadline expiry bound outer waiting and signal-time logger finalization without claiming worker closure or replacing the separate normal-stop budget?"
   ],
   "dynamic_checks_to_consider": [
+    "Use a real bidi stream with a slow or canceled client, duplicate Open and leader transfer while an ack is pending. Observe active connection counts, goroutine completion and cursor value before/after teardown; a mock that returns from Send immediately does not prove transport backpressure cleanup.",
     "Complete a fatal peer Canceled registration response before local termination while holding caller-side classification or connection cleanup; preserve that fatal result and retain independent in-flight local cancellation coverage.",
     "Inspect the integration-only PostgreSQL gap-cancellation regression in internal/adapter/v2: a real pgx query tracer cancels immediately after successful SHARE lock acquisition, then checks no returned rows, a successful retry with one pooled connection and a subsequent source INSERT without a leaked lock. Preserve independent manager startup-cancellation tests. Use an explicitly supplied disposable native PostgreSQL service when Docker is prohibited locally; otherwise these integration fixtures require Docker.",
     "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",

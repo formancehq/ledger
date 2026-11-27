@@ -136,6 +136,7 @@ service BucketService {
   rpc GetAccount(GetAccountRequest) returns (Account);
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc ListTransactions(ListTransactionsRequest) returns (stream Transaction);
+  rpc SubscribeLogs(stream SubscribeLogsRequest) returns (stream SubscribeLogsResponse);
 
   // Write operations (unified Apply method)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
@@ -151,6 +152,25 @@ service BucketService {
   // ... and 20+ more RPCs (see bucket.proto for the full list)
 }
 ```
+
+`SubscribeLogs` is an acknowledged, client-initiated stream for a
+configured gRPC log sink. `Open` names the sink and client. The client sends
+the exact secret string in `x-ledger-sink-secret` gRPC metadata, without a JWT.
+Only `GrpcLogSinkConfig.secret_sha256` contains the SHA-256 digest of that
+string as protobuf bytes; the secret itself must never be placed in sink
+configuration. Use at least 32 bytes
+of cryptographic randomness encoded without whitespace (43–128 characters).
+Use TLS for the public gRPC connection outside a trusted local test environment.
+`Opened` reports
+the durable global-sequence cursor and cluster ID; `Log` carries the unchanged
+`common.Log`; `Ack` asks to advance the cursor; and `Acked` confirms that the
+Raft update applied. The first connection starts at the beginning of the
+global log history. The secret has no JWT expiry; removal
+and recreation revoke the secret and close the old stream. Both modes close
+on leadership loss and can redeliver unacknowledged logs. The stream currently
+sends raw logs, including configuration logs that can contain credentials.
+See [the delivery contract](../events-mirror/events.md#acknowledged-grpc-global-log-sink)
+for identity fencing, resource limits and RC activation.
 
 `ClusterService.GetDiskUsage` is a node-local diagnostic RPC: it is not
 forwarded to the leader. Its WAL and data `VolumeUsage` messages contain the

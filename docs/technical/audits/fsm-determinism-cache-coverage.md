@@ -12,6 +12,16 @@ The manifest adds scope and evidence requirements to the native deep-audit
 workflow. It does not change product behavior, add a runner, or authorize an
 audit before this contract has been reviewed and merged.
 
+The gRPC log sink acknowledgement is a technical update, not an audited
+business order. Its producer declares the sink-config key, and apply reads that
+key only through the per-update gated scope. The committed configuration's
+creation sequence fences an ack from a removed and recreated sink. The
+name-scoped global-sequence cursor survives that recreation and is recovered
+from durable rows before apply resumes; a
+corrupt or missing coverage declaration cannot be repaired by a Pebble read
+inside the FSM. Compare a stale-ack rejection and a valid ack across replicas
+with different cache residency, including recovery before the next ack.
+
 ## Equivalence oracle
 
 Evaluate one transition as a tuple:

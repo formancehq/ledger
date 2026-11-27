@@ -407,6 +407,7 @@ func systemProducerAllowed(path string) bool {
 	case "internal/application/backup/cleanup.go",
 		"internal/application/backup/orchestrator.go",
 		"internal/application/events/emitter.go",
+		"internal/application/events/grpc_log_sink_ack.go",
 		"internal/application/mirror/worker.go",
 		"internal/adapter/auth/caller_snapshot.go",
 		"internal/bootstrap/module.go",

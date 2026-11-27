@@ -4938,6 +4938,48 @@ components:
         secret:
           type: string
       type: object
+    AtomicApplyGrpcLogSinkConfig:
+      additionalProperties: false
+      required: [clientId, secretSha256]
+      properties:
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        incarnation:
+          anyOf:
+            - pattern: '^[0-9]+$'
+              type: string
+            - format: uint64
+              type: integer
+          description: Server-assigned; omit when registering.
+        secretSha256:
+          type: string
+          format: byte
+          description: Base64-encoded SHA-256 of a client-generated secret; the secret is sent only as gRPC metadata.
+      type: object
+    AtomicApplyCallerIdentity:
+      additionalProperties: false
+      oneOf:
+        - required: [issuer, subject]
+          not:
+            required: [keyId]
+          properties:
+            subject:
+              minLength: 1
+        - required: [keyId]
+          not:
+            required: [issuer]
+      properties:
+        subject:
+          type: string
+        issuer:
+          type: string
+          minLength: 1
+        keyId:
+          type: string
+          minLength: 1
+      type: object
     AtomicApplyIndexID:
       additionalProperties: false
       allOf:
@@ -6022,6 +6064,8 @@ components:
                 - http
             - required:
                 - databricks
+            - required:
+                - grpcLog
             - additionalProperties: false
               properties:
                 batchDelayMs:
@@ -6094,6 +6138,8 @@ components:
           type: array
         format:
           type: string
+        grpcLog:
+          $ref: '#/components/schemas/AtomicApplyGrpcLogSinkConfig'
         http:
           $ref: '#/components/schemas/AtomicApplyHttpSinkConfig'
         kafka:
@@ -6302,6 +6348,7 @@ components:
         - required: [kafka]
         - required: [http]
         - required: [databricks]
+        - required: [grpcLog]
       properties:
         name:
           type: string
@@ -6317,6 +6364,8 @@ components:
           $ref: '#/components/schemas/HttpSinkConfig'
         databricks:
           $ref: '#/components/schemas/DatabricksSinkConfig'
+        grpcLog:
+          $ref: '#/components/schemas/GrpcLogSinkConfig'
         format:
           type: string
           description: Event encoding, json or protobuf; defaults to json. Not validated at admission.
@@ -6423,6 +6472,28 @@ components:
         secret:
           type: string
           description: Optional HMAC-SHA256 secret for the X-Webhook-Signature header
+
+    GrpcLogSinkConfig:
+      type: object
+      additionalProperties: false
+      description: Inbound acknowledged global log stream authenticated by a client-generated per-sink secret.
+      required: [clientId, secretSha256]
+      properties:
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        incarnation:
+          description: Server-assigned; omit when registering.
+          oneOf:
+            - type: string
+              pattern: '^[0-9]+$'
+            - type: integer
+              format: uint64
+        secretSha256:
+          type: string
+          format: byte
+          description: Base64-encoded SHA-256 of a client-generated secret; the secret is sent only as gRPC metadata.
 
     DatabricksSinkConfig:
       type: object

@@ -39,6 +39,7 @@
     "docs/technical/audits/authentication-authorization-boundaries.md",
     "docs/technical/architecture/subsystems/api/README.md",
     "docs/technical/architecture/subsystems/api/auth.md",
+    "docs/technical/architecture/subsystems/events-mirror/events.md",
     "docs/technical/architecture/subsystems/api/grpc-api.md",
     "docs/technical/architecture/subsystems/api/http-api.md",
     "docs/technical/architecture/subsystems/api/protocol-compatibility.md",
@@ -55,6 +56,7 @@
     "docs/ops/signing.md"
   ],
   "invariants": [
+    "The registered SubscribeLogs bidi RPC must use its generated dynamic resolver and require an exact per-sink SHA-256 verifier match before Opened or Log. A client_id is only a label; a JWT cannot replace the sink secret. Secret streams end on sink removal or recreation and cannot authorize another RPC. Client Ack never grants system attribution.",
     "Every hypothesis must identify an actually registered route or RPC, server mode, installed guards, credential state and downstream operation. Protected methods enforce their established granular scope requirements when authentication is enabled. Inventory unary and streaming methods separately, including request-dependent policies; a declared policy or helper test alone does not prove runtime enforcement. Public, internal and restore surfaces follow their own explicit contracts (companion contract A).",
     "With authentication enabled, no bearer uses configured anonymous scopes; insufficient anonymous scopes deny as HTTP 401 or gRPC Unauthenticated, invalid bearer credentials deny as unauthenticated, and a valid bearer lacking required scopes denies as HTTP 403 or gRPC PermissionDenied. Preserve deliberate public bypasses, configured anonymous writes, auth-disabled behavior and the documented non-Bearer-as-absent classification. Do not infer tenant or ledger-name restrictions from granular scope names (contract B).",
     "Accepted client JWTs must satisfy the established signature, expiry, issuer and configured static-key scope/superuser restrictions of the applicable trust path before granting privileges. Scope expansion must not manufacture authority outside that policy. Assess OIDC audience and static-key exceptions against the approved EN-1926 decision and its actual landed implementation; the known missing-audience cause and verification-source work are deduplication context, not new findings or a claim that the base already implements them (contract C).",
@@ -72,6 +74,7 @@
     "Atomic HTTP Apply checks RequiredScopeForRequest for every decoded command before its single service dispatch, with no incidental /_ read-ops scope or universal write scope. A later unauthorized command rejects the whole batch. Signed intent does not grant JWT scopes or caller/system trust; transport-only caller fields are not HTTP input."
   ],
   "adversarial_questions": [
+    "Can a caller without the configured sink secret receive any global log on SubscribeLogs? Are missing, malformed, duplicate, wrong-sink, and bearer-plus-secret credentials rejected before Opened/Log? Does secret delivery remain bound to the configured sink and stop after removal or recreation? Is client Ack separate from system attribution?",
     "Which HTTP method/path and unary/streaming RPC pairs are registered in normal, Raft and restore modes at this SHA? Which exact public exceptions exist, and do actual installed middleware/interceptors or handler checks enforce the stated policy before protected work or stream output? Recount descriptors instead of copying historical method counts.",
     "Can a dynamic GetIndex, GetIndexEntryStatus or ListIndexes target select a different scope branch? Do HTTP facade, RPC and corresponding Apply variant agree where the repository requires that agreement? Are independently installed stream guards exercised, including any first-message policy after future refactors land?",
     "For absent, non-Bearer, empty Bearer, malformed, expired, wrong-issuer, invalid-signature and valid-insufficient-scope credentials, which guard runs and what exact status and downstream-call count result? Which public paths bypass credential validation even with an invalid bearer, and which merely require no scopes?",
@@ -91,6 +94,7 @@
     "Can POST /v3/_/apply admit a mixed batch because only its first element is authorized, require an unrelated ops scope for ledger-only work, lose a checkpoint cluster-write requirement, or replace the authenticated caller with signing identity?"
   ],
   "dynamic_checks_to_consider": [
+    "Exercise SubscribeLogs through the registered public gRPC server with absent, valid, malformed, duplicate, wrong-sink and bearer-plus-secret metadata. Assert denied calls never send Opened/Log; verify secret-mode persistence until sink removal or recreation, and acks' server-originated proposal attribution.",
     "These are optional diagnostics for a separately authorized later audit. Use existing tests and allowed temporary diagnostics with the pinned Nix/native validation environment, synthetic keys/tokens and disposable local fixtures. Do not edit tracked files, implement reproducer patches, probe deployed services, expose real credentials, or invoke audit/challenge/Jira orchestration from a leaf provider. Report executed checks separately from reproduction plans.",
     "Use HTTP route_scope_exhaustiveness_test.go, handlers_bulk_test.go and auth/http_middleware_test.go as seeds. Send requests through the registered router with valid non-auth inputs, capturing controller call counts and exact 401/403/allowed responses. Pair each denied case with a valid authorized control so an unrelated missing ledger or malformed body cannot satisfy the assertion.",
     "Use server_bucket_auth_test.go, server_mutation_auth_context_test.go, server_bucket_test.go and client_bucket_test.go for per-element decisions and caller propagation. Verify the real service registration and protocol revision as well as handler behavior. For streams, observe the first Recv and terminal status plus protected backend entry; helper authorization success alone cannot prove the installed stream path.",

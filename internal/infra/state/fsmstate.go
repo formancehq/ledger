@@ -61,6 +61,9 @@ type FSMState struct {
 	// and reject deletes of non-live IDs deterministically, without a Pebble read
 	// on the apply path.
 	LiveQueryCheckpointIDs map[uint64]struct{}
+	// GrpcLogSinkCursors mirrors the replicated operational cursor rows so
+	// apply can enforce monotonic acknowledgements without Pebble reads.
+	GrpcLogSinkCursors map[string]uint64
 
 	// Last cluster config applied + derived hash generator. Persisted under
 	// ZoneGlobal so it survives restarts.
@@ -94,6 +97,7 @@ func NewFSMState(auditKey string) *FSMState {
 		AuditKey:               auditKey,
 		ClusterPolicy:          &commonpb.ClusterPolicy{},
 		LiveQueryCheckpointIDs: map[uint64]struct{}{},
+		GrpcLogSinkCursors:     map[string]uint64{},
 	}
 	if auditKey != "" {
 		s.HashGenerator = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
@@ -180,6 +184,11 @@ func (s *FSMState) AppendAuditEntry(hash []byte) (uint64, *domain.ErrSequenceExh
 // current state intact instead of half-written.
 func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle) (*FSMState, error) {
 	s := NewFSMState("")
+	cursors, err := query.ReadAllGrpcLogSinkCursors(handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading gRPC log sink cursors: %w", err)
+	}
+	s.GrpcLogSinkCursors = cursors
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(reader)
 	if err != nil {

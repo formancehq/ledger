@@ -945,6 +945,14 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 	switch p := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_AddedEventsSink:
 		cfg := p.AddedEventsSink.GetConfig()
+		if cfg.GetGrpcLog() != nil {
+			// The audited payload retains the submitted business intent. The
+			// stored projection records this creation's globally unique log
+			// sequence, fencing an old stream after name reuse without mutating
+			// the log or order payload.
+			cfg = cfg.CloneVT()
+			cfg.GetGrpcLog().Incarnation = log.GetSequence()
+		}
 		b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: cfg.GetName()}, cfg)
 		b.sinkConfigChanged = true
 	case *commonpb.LogPayload_RemovedEventsSink:

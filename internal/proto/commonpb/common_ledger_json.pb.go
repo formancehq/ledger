@@ -744,6 +744,56 @@ func (x *SinkConfig) MarshalJSON() ([]byte, error) {
 			}(),
 			ControllerId: x.ControllerId,
 		})
+	case *SinkConfig_GrpcLog:
+		return jsonv2.Marshal(struct {
+			Name         string `json:"name"`
+			GrpcLog      any    `json:"grpcLog"`
+			Format       string `json:"format"`
+			BatchSize    int32  `json:"batchSize"`
+			BatchDelayMs int64  `json:"batchDelayMs"`
+			EventTypes   any    `json:"eventTypes"`
+			ControllerId string `json:"controllerId"`
+		}{
+			Name:         x.Name,
+			GrpcLog:      oneofValueType.GrpcLog,
+			Format:       x.Format,
+			BatchSize:    x.BatchSize,
+			BatchDelayMs: x.BatchDelayMs,
+			EventTypes: func() any {
+				if x.EventTypes == nil {
+					return []any{}
+				}
+				out := make([]any, len(x.EventTypes))
+				for i := range x.EventTypes {
+					out[i] = func() any {
+						switch x.EventTypes[i] {
+						case EventType_EVENT_TYPE_UNSPECIFIED:
+							return "EVENT_TYPE_UNSPECIFIED"
+						case EventType_COMMITTED_TRANSACTION:
+							return "COMMITTED_TRANSACTION"
+						case EventType_REVERTED_TRANSACTION:
+							return "REVERTED_TRANSACTION"
+						case EventType_SAVED_METADATA:
+							return "SAVED_METADATA"
+						case EventType_DELETED_METADATA:
+							return "DELETED_METADATA"
+						case EventType_CREATED_LEDGER:
+							return "CREATED_LEDGER"
+						case EventType_DELETED_LEDGER:
+							return "DELETED_LEDGER"
+						case EventType_SKIPPED_ORDER:
+							return "SKIPPED_ORDER"
+						case EventType_ACCOUNT_METADATA_UPDATED:
+							return "ACCOUNT_METADATA_UPDATED"
+						default:
+							return int32(x.EventTypes[i])
+						}
+					}()
+				}
+				return out
+			}(),
+			ControllerId: x.ControllerId,
+		})
 	default:
 		return jsonv2.Marshal(struct {
 			Name         string `json:"name"`
@@ -1847,4 +1897,16 @@ func (x *CallerSnapshot) MarshalJSON() ([]byte, error) {
 		return jsonv2.Marshal(struct {
 		}{})
 	}
+}
+
+func (x *GrpcLogSinkConfig) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		ClientId     string `json:"clientId"`
+		Incarnation  uint64 `json:"incarnation"`
+		SecretSha256 []byte `json:"secretSha256"`
+	}{
+		ClientId:     x.ClientId,
+		Incarnation:  x.Incarnation,
+		SecretSha256: x.SecretSha256,
+	})
 }
