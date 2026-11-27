@@ -224,17 +224,18 @@ type AggregateOptions struct {
 	CollapseColors bool
 }
 
-// groupedAggregator dispatches volume entries to per-prefix volumeAggregators.
-// Each account is assigned to the first matching prefix.
+// groupedAggregator dispatches volume entries to one volumeAggregator per
+// requested prefix entry. Each account is assigned to the first matching entry,
+// so a repeated prefix yields an empty group.
 type groupedAggregator struct {
 	prefixes    []string
-	aggregators map[string]*volumeAggregator
+	aggregators []*volumeAggregator
 }
 
 func newGroupedAggregator(opts AggregateOptions) *groupedAggregator {
-	aggs := make(map[string]*volumeAggregator, len(opts.GroupByPrefixes))
-	for _, p := range opts.GroupByPrefixes {
-		aggs[p] = newVolumeAggregator(opts)
+	aggs := make([]*volumeAggregator, len(opts.GroupByPrefixes))
+	for i := range aggs {
+		aggs[i] = newVolumeAggregator(opts)
 	}
 
 	return &groupedAggregator{
@@ -243,14 +244,14 @@ func newGroupedAggregator(opts AggregateOptions) *groupedAggregator {
 	}
 }
 
-func (ga *groupedAggregator) matchPrefix(account string) (string, bool) {
-	for _, p := range ga.prefixes {
+func (ga *groupedAggregator) matchPrefix(account string) (int, bool) {
+	for i, p := range ga.prefixes {
 		if strings.HasPrefix(account, p) {
-			return p, true
+			return i, true
 		}
 	}
 
-	return "", false
+	return 0, false
 }
 
 func (ga *groupedAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
@@ -259,20 +260,20 @@ func (ga *groupedAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdp
 		return fmt.Errorf("unmarshaling volume key: %w", err)
 	}
 
-	prefix, ok := ga.matchPrefix(vk.Account)
+	i, ok := ga.matchPrefix(vk.Account)
 	if !ok {
 		return nil // account doesn't match any prefix, skip
 	}
 
-	ga.aggregators[prefix].accumulateAsset(vk.AssetBase, vk.AssetPrecision, vk.Color, entry.Value)
+	ga.aggregators[i].accumulateAsset(vk.AssetBase, vk.AssetPrecision, vk.Color, entry.Value)
 
 	return nil
 }
 
 func (ga *groupedAggregator) result() (*commonpb.AggregateResult, error) {
 	groups := make([]*commonpb.GroupedAggregateResult, 0, len(ga.prefixes))
-	for _, p := range ga.prefixes {
-		res, err := ga.aggregators[p].result()
+	for i, p := range ga.prefixes {
+		res, err := ga.aggregators[i].result()
 		if err != nil {
 			return nil, err
 		}

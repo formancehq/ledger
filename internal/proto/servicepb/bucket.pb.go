@@ -8263,8 +8263,10 @@ type AggregateVolumesRequest struct {
 	// When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
 	// under the highest precision observed, with lower-precision amounts rescaled.
 	UseMaxPrecision bool `protobuf:"varint,3,opt,name=use_max_precision,json=useMaxPrecision,proto3" json:"use_max_precision,omitempty"`
-	// When set, results are grouped by account prefix. Each account is assigned
-	// to the first matching prefix. Accounts not matching any prefix are excluded.
+	// When set, results are grouped by account prefix, one group per entry in
+	// request order. Each account is assigned to the first matching entry, so a
+	// repeated prefix yields an empty group. Accounts not matching any prefix are
+	// excluded.
 	GroupByPrefixes []string `protobuf:"bytes,4,rep,name=group_by_prefixes,json=groupByPrefixes,proto3" json:"group_by_prefixes,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
 	CheckpointId uint64 `protobuf:"fixed64,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`

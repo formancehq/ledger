@@ -1409,8 +1409,10 @@ message AggregateVolumesRequest {
   // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
   // under the highest precision observed, with lower-precision amounts rescaled.
   bool use_max_precision = 3;
-  // When set, results are grouped by account prefix. Each account is assigned
-  // to the first matching prefix. Accounts not matching any prefix are excluded.
+  // When set, results are grouped by account prefix, one group per entry in
+  // request order. Each account is assigned to the first matching entry, so a
+  // repeated prefix yields an empty group. Accounts not matching any prefix are
+  // excluded.
   repeated string group_by_prefixes = 4;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 5;
