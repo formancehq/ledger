@@ -57,6 +57,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	rootCmd.AddCommand(NewRunCommand())
+	rootCmd.AddCommand(NewMigrateIncarnationsCommand())
 
 	return rootCmd
 }
@@ -388,6 +389,12 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	originalContext := cmd.Context()
 	cmd.SetContext(termination.startup)
 	defer cmd.SetContext(originalContext)
+	// Fx constructs the store before its signal-handling invoke runs. Give the
+	// pre-Raft migration its own signal-aware context so SIGTERM can stop a long
+	// backfill at the next durable cursor instead of waiting for Fx startup.
+	migrationCtx, stopMigration := signal.NotifyContext(termination.startup, os.Interrupt, syscall.SIGTERM)
+	defer stopMigration()
+	opts = append(opts, fx.Supply(bootstrap.StartupMigrationContext{Context: migrationCtx}))
 	err = service.NewWithLogger(logger, opts...).Run(cmd)
 
 	return termination.finish(err, func(ctx context.Context) error {

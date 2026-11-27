@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -481,6 +482,21 @@ func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, insta
 	return nil
 }
 
+// RegisterGenesisSelf establishes the local member in a newly created Raft
+// ConfState. Bootstrap and restored bootstrap have no prior committed member
+// in this Raft history, so their validated local evidence is the initial
+// evidence. Ordinary restarts must continue to use Register and PutLocal.
+func (m *Membership) RegisterGenesisSelf(capabilityIDs []uint32) error {
+	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, capabilityIDs); err != nil {
+		return fmt.Errorf("persisting genesis peer %d: %w", m.selfNodeID, err)
+	}
+	if err := m.Set(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, capabilityIDs); err != nil {
+		return fmt.Errorf("registering genesis peer %d: %w", m.selfNodeID, err)
+	}
+
+	return nil
+}
+
 // Unregister is the dual of Register: Pebble delete + cache delete.
 // Pebble first so a crash between the two leaves a state the next boot
 // can heal from (LoadAll won't see the deleted peer).
@@ -725,7 +741,10 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	selfCapabilities := capabilities.IDsAsUint32(capabilities.SupportedIDs())
+	selfCapabilities, err := incarnationmigration.AdvertisedIDs(m.store.store)
+	if err != nil {
+		panic(fmt.Errorf("reading local account migration evidence after snapshot install: %w", err))
+	}
 	if _, err := m.store.PutLocal(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID, selfCapabilities); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,

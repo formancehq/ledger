@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -114,7 +115,10 @@ func newScriptedNode(t *testing.T, store *dal.Store) *scriptedNode {
 		admission: admission.NewAdmission(store, logger,
 			&applyingProposer{t: t, machine: machine, store: store, tracker: tracker}, &membership.Coordinator{},
 			builder, meters, writeGate, keyStore, sharedState, attrs,
-			numscript.NewNumscriptCache(0), func(context.Context) error { return nil }),
+			numscript.NewNumscriptCache(0), func(context.Context) error { return nil },
+			func() (commonpb.ClusterPolicyReader, error) {
+				return machine.CommittedClusterPolicy(), nil
+			}),
 	}
 }
 
@@ -131,6 +135,13 @@ func (n *scriptedNode) applyClusterPolicy(policy *commonpb.ClusterPolicy) {
 
 	ctx := internalauth.WithSystemActor(logging.TestingContext(), commands.ComponentClusterPolicy)
 	_, err := n.admission.AdmitClusterPolicy(ctx, policy)
+	require.NoError(n.t, err)
+}
+
+func (n *scriptedNode) activateCapability(id capabilities.CapabilityID) {
+	n.t.Helper()
+	ctx := internalauth.WithSystemActor(logging.TestingContext(), commands.ComponentClusterPolicy)
+	_, err := n.admission.AdmitCapabilityTransition(ctx, &commonpb.CapabilityActivation{Id: uint32(id), Active: true})
 	require.NoError(n.t, err)
 }
 

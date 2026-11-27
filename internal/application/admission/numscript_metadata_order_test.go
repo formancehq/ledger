@@ -33,9 +33,9 @@ func TestExecuteNumscriptOrderIsPlannedAndValidated(t *testing.T) {
 	require.NoError(t, validateOrder(order))
 	orders := []*raftcmdpb.Order{order}
 	overlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(t.Context(), orders, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(t.Context(), orders, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(t.Context(), orders, overlay, needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(t.Context(), orders, overlay, needs, perOrder, false, true))
 }
 
 func TestExecuteNumscriptReferenceIsPlanned(t *testing.T) {
@@ -56,7 +56,7 @@ func TestExecuteNumscriptReferenceIsPlanned(t *testing.T) {
 		Ledger:  testLedgerName,
 		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: apply},
 	}}}
-	needs, _, err := admission.extractPreloadNeeds(t.Context(), []*raftcmdpb.Order{order}, newBulkOverlay())
+	needs, _, err := admission.extractPreloadNeeds(t.Context(), []*raftcmdpb.Order{order}, newBulkOverlay(), true)
 	require.NoError(t, err)
 	require.True(t, needs.Has(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: testLedgerName, Reference: "ref-1"}.Bytes()))
 }
@@ -80,8 +80,8 @@ func TestNumscriptCompetingMetadataErrorsReachProposalPreparation(t *testing.T) 
 	}}}
 	orders := []*raftcmdpb.Order{order}
 	overlay := newBulkOverlay()
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay, true)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, true))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, true, true))
 	require.False(t, order.GetTechnical().GetPreloadUnavailable())
 }

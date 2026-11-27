@@ -90,6 +90,16 @@ expanded size must fit in an int64. Negative values and overflow are rejected;
 zero keeps the flag's documented default or disabled meaning. See the
 [server configuration contract](deployment.md#configuration) for details.
 
+## Account-incarnation upgrade commands
+
+`ledgerctl cluster incarnation-capabilities --json` is an internal read-only
+command used by the operator during the rc.4 to rc.5 stopped upgrade. It reports
+whether the two account-incarnation capabilities are committed; the operator
+does not release the drain until both are active. The normal `ledger-server run`
+command performs the local history migration before Raft starts. The separate
+`ledger-server migrate-incarnations` command remains for recovery on a stopped
+store with an active, applied drain barrier.
+
 ## Server termination
 
 SIGTERM and interrupt request graceful server shutdown. During learner

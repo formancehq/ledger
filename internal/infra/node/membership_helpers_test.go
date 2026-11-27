@@ -66,10 +66,11 @@ func TestRegisterInitialPeersPersistsInstanceIDs(t *testing.T) {
 	instanceID := []byte("peer-instance-id")
 	selfInstanceID := []byte("self-instance-id")
 	err := registerInitialPeers(m, NodeConfig{
-		NodeID:               42,
-		AdvertiseAddr:        "self:7777",
-		ServiceAdvertiseAddr: "self:8888",
-		InstanceID:           selfInstanceID,
+		NodeID:                 42,
+		AdvertiseAddr:          "self:7777",
+		ServiceAdvertiseAddr:   "self:8888",
+		InstanceID:             selfInstanceID,
+		AdvertisedCapabilities: []uint32{1, 2},
 		Peers: []Peer{{
 			ID:             1,
 			Address:        "peer:7777",
@@ -87,6 +88,7 @@ func TestRegisterInitialPeersPersistsInstanceIDs(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, selfInstanceID, storedSelf)
 	require.Equal(t, []uint32{7, 9}, m.PeerAddresses()[1].Capabilities)
+	require.Equal(t, []uint32{1, 2}, m.PeerAddresses()[42].Capabilities)
 }
 
 func TestRegisterInitialPeersRejectsMissingInstanceID(t *testing.T) {

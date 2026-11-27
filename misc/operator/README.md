@@ -19,6 +19,12 @@ and existing server flags. Activation is automatic after all members advertise
 support; there is no activation setting in the Cluster CRD. Binary rollback
 closes when a volume's schema migration commits, not when a capability activates.
 
+The RC.4 to RC.5 stopped boundary also covers account-incarnation history. Each
+replacement Pod migrates its own retained data before Raft starts. The
+StatefulSet starts Pods in order, and the operator holds the drain until every
+Pod is ready and both incarnation capabilities are committed. The default
+startup probe permits two hours for the resumable migration.
+
 ## Overview
 
 The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:

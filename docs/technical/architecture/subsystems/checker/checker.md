@@ -4,9 +4,9 @@
 
 The checker (`internal/application/check`) verifies that the data persisted in Pebble matches what the [audit hash chain](audit-chain.md) says it should hold. It is invoked **on demand** through the `BucketService.CheckStore` gRPC streaming RPC — there is no built-in cron — and emits a stream of `CheckStoreEvent`s, one per finding, plus periodic `progress` events.
 
-Its job is to verify audit-bound business truth and the persisted projections derived from it. Operational consensus state such as native cluster policy is outside the business audit and checker; its durability and restore behavior have separate contracts. A business projection the checker does not verify is an integrity gap unless it is rebuilt or explicitly exempted by its lifecycle contract.
+Its job is to verify audit-bound business truth and the persisted projections derived from it. Operational consensus state such as native cluster policy is not compared with business audit history; its durability and restore behavior have separate contracts. The incarnation pass reads activation state to decide whether its projection can be compared. A business projection the checker does not verify is an integrity gap unless it is rebuilt or explicitly exempted by its lifecycle contract.
 
-`Checker.Check` runs four ordered phases: `pinCheckSnapshot` pins the primary-store snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state. The replay store and primary snapshot stay open through the projection phase. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
+`Checker.Check` runs five ordered phases: `pinCheckSnapshot` pins the primary-store snapshot and reads the log head from the primary Log key; `verifyCheckAudit` verifies the audit chain and builds the business oracle even when there are no logs; `replayLogs` scans logs once, emits replay findings and progress, and derives expected state; `compareProjections` checks stored rows against that state; `incarnationmigration.Verify` compares incarnations when their writes are active and the local migration is complete. The replay store and primary snapshot stay open through both projection phases. This ordering is part of the streamed event contract: audit findings precede replay progress, and projection findings follow it.
 
 ## Numscript projection ownership
 
@@ -458,4 +458,13 @@ compares `SubGlobClusterPolicy` nor uses it for metadata ceilings or checkpoint
 capacity during isolated business replay. Historical policy orders still replay
 to preserve released log positions. Actual metadata, accounting, semantic
 constraints, checkpoint records and frozen idempotency outcomes remain verified.
+The incarnation pass reads the current policy and capability aggregate only to
+decide whether incarnation writes are active. With a complete local migration
+marker, unreadable activation state makes the check inconclusive instead of
+reporting a valid store. Without that marker, unreadable activation state does
+not make the business check fail, and the incarnation comparison is skipped.
+The comparison is skipped when incarnation writes are inactive, or when the
+marker is incomplete and the history capability is inactive. If both
+capabilities are active but the marker is incomplete, the check fails with
+`account history is active without a complete local migration`.
 See [the explicit exemption](../../audit-vs-technical-state.md#operational-cluster-policy).

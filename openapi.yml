@@ -7476,6 +7476,14 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Account metadata (typed values)
+        insertionDate:
+          type: string
+          format: date-time
+          description: First accepted write to this account's current incarnation in this ledger. Available for normal and live ephemeral accounts with a stored incarnation. Closing an ephemeral incarnation removes this date; reopening starts a new date.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Latest accepted write to a volume or metadata of this account's current incarnation in this ledger. Available for normal and live ephemeral accounts with a stored incarnation. Closing an ephemeral incarnation removes this date; reopening starts a new date.
         volumes:
           type: array
           items:

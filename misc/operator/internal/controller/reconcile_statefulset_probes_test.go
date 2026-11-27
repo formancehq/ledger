@@ -42,6 +42,8 @@ func TestBuildPodTemplate_NormalModeUsesHTTPProbes(t *testing.T) {
 	require.NotNil(t, c.StartupProbe)
 	require.NotNil(t, c.StartupProbe.HTTPGet)
 	assert.Equal(t, "/livez", c.StartupProbe.HTTPGet.Path)
+	assert.Equal(t, int32(10), c.StartupProbe.PeriodSeconds)
+	assert.Equal(t, int32(720), c.StartupProbe.FailureThreshold, "stopped upgrade migration must have two hours before probe-driven restart")
 }
 
 // TestBuildPodTemplate_RestoreModeUsesTCPProbes is the headline guarantee:

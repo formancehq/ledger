@@ -1,0 +1,816 @@
+package incarnationmigration
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+	"maps"
+	"os"
+	"time"
+
+	"github.com/cockroachdb/pebble/v2"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+)
+
+const definitionVersion = 1
+const batchSize = 256
+
+var markerKey = []byte{dal.ZoneGlobal, dal.SubGlobAccountIncarnationMigration}
+
+// Marker describes the audit prefix reconstructed in this local Pebble store.
+// A complete marker is copied with checkpoints. Its applied index identifies
+// the exact frozen FSM state from which the local backfill was built.
+type Marker struct {
+	Cursor       uint64
+	AppliedIndex uint64
+	Complete     bool
+}
+
+func ReadMarker(reader dal.PebbleGetter) (Marker, error) {
+	raw, closer, err := reader.Get(markerKey)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return Marker{}, nil
+		}
+
+		return Marker{}, fmt.Errorf("reading account incarnation migration marker: %w", err)
+	}
+	defer func() { _ = closer.Close() }()
+	if len(raw) != 18 || raw[0] != definitionVersion || raw[1] > 1 {
+		return Marker{}, errors.New("invalid account incarnation migration marker")
+	}
+
+	return Marker{
+		Complete:     raw[1] == 1,
+		Cursor:       binary.BigEndian.Uint64(raw[2:10]),
+		AppliedIndex: binary.BigEndian.Uint64(raw[10:18]),
+	}, nil
+}
+
+// AdvertisedIDs includes data readiness only after this store has a completed
+// migration. Software support alone is insufficient evidence for activation.
+func AdvertisedIDs(reader dal.PebbleGetter) ([]uint32, error) {
+	marker, err := ReadMarker(reader)
+	if err != nil {
+		return nil, err
+	}
+	ids := []uint32{uint32(capabilities.AccountIncarnationWritesV1)}
+	if marker.Complete {
+		ids = append(ids, uint32(capabilities.AccountIncarnationHistoryCompleteV1))
+	}
+
+	return ids, nil
+}
+
+// RequireReady prevents a node from starting Raft on an unmigrated store.
+func RequireReady(reader dal.PebbleGetter) error {
+	policy, err := query.ReadClusterPolicy(reader)
+	if err != nil {
+		return err
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+		return nil
+	}
+	marker, err := ReadMarker(reader)
+	if err != nil {
+		return err
+	}
+	if !marker.Complete {
+		return errors.New("account incarnation history is not migrated; stop this node and run ledger-server migrate-incarnations --data-dir <path>")
+	}
+
+	return nil
+}
+
+// RequireDrainBarrier checks that this local store has applied the active
+// cluster drain before its history is changed outside Raft. The check must run
+// before both the standalone migration command and startup migration.
+func RequireDrainBarrier(reader dal.PebbleGetter) error {
+	drain, err := query.ReadDrainState(reader)
+	if err != nil {
+		return fmt.Errorf("reading drain state before account incarnation migration: %w", err)
+	}
+	if drain == nil || drain.GetReleasedIndex() != 0 {
+		return errors.New("account incarnation migration requires an active cluster drain")
+	}
+	applied, err := query.ReadLastAppliedIndex(reader)
+	if err != nil {
+		return fmt.Errorf("reading applied index before account incarnation migration: %w", err)
+	}
+	if applied < drain.GetIndex() {
+		return fmt.Errorf("account incarnation migration requires the drain barrier at index %d to be applied (last applied %d)", drain.GetIndex(), applied)
+	}
+
+	return nil
+}
+
+// MigrateBeforeRaft converts an unmigrated store while startup still owns it
+// exclusively. The completed marker makes ordinary restarts a no-op; an
+// interrupted run resumes from its last atomically committed audit cursor.
+func MigrateBeforeRaft(ctx context.Context, store *dal.Store) error {
+	policy, err := query.ReadClusterPolicy(store)
+	if err != nil {
+		return err
+	}
+	writesActive := capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1)
+	if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) && !writesActive {
+		return errors.New("account history capability active without incarnation writes")
+	}
+	marker, err := ReadMarker(store)
+	if err != nil {
+		return err
+	}
+	if marker.Complete {
+		return nil
+	}
+	if !writesActive {
+		reader, err := store.NewDirectReadHandle()
+		if err != nil {
+			return err
+		}
+		lastAudit, readErr := query.ReadLastAuditSequence(reader)
+		applied, appliedErr := query.ReadLastAppliedIndex(reader)
+		closeErr := reader.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if appliedErr != nil {
+			return appliedErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if lastAudit == 0 && applied == 0 {
+			return run(ctx, store, 0, true)
+		}
+	}
+	drain, err := query.ReadDrainState(store)
+	if err != nil {
+		return err
+	}
+	if !writesActive && (drain == nil || drain.GetReleasedIndex() != 0) {
+		return nil
+	}
+	if err := RequireDrainBarrier(store); err != nil {
+		return err
+	}
+	if err := run(ctx, store, 0, true); err != nil {
+		return err
+	}
+
+	return RequireReady(store)
+}
+
+func putMarker(batch *dal.WriteSession, marker Marker) error {
+	var raw [18]byte
+	raw[0] = definitionVersion
+	if marker.Complete {
+		raw[1] = 1
+	}
+	binary.BigEndian.PutUint64(raw[2:10], marker.Cursor)
+	binary.BigEndian.PutUint64(raw[10:18], marker.AppliedIndex)
+
+	return batch.SetBytes(markerKey, raw[:])
+}
+
+// Run converts the stopped node's durable account history in bounded commits.
+// The caller must hold exclusive ownership of this Pebble store and must not
+// start Raft, admission, or account reads until Run returns successfully.
+func Run(ctx context.Context, store *dal.Store) error {
+	return run(ctx, store, 0, false)
+}
+
+// RunWithPause lets the explicit migration command limit sustained Pebble load.
+// The pause is applied after each committed batch of 256 audit entries.
+func RunWithPause(ctx context.Context, store *dal.Store, pause time.Duration) error {
+	if pause < 0 {
+		return errors.New("migration batch pause must be non-negative")
+	}
+
+	return run(ctx, store, pause, false)
+}
+
+func run(ctx context.Context, store *dal.Store, pause time.Duration, allowDormant bool) error {
+	policy, err := query.ReadClusterPolicy(store)
+	if err != nil {
+		return err
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
+			return errors.New("account history capability active without incarnation writes")
+		}
+
+		if !allowDormant {
+			return nil
+		}
+	}
+
+	marker, err := ReadMarker(store)
+	if err != nil {
+		return err
+	}
+	if marker.Complete {
+		return nil
+	}
+	// A stopped migration can replay the complete audit into an empty
+	// projection. In particular, incarnations written after the writes
+	// capability activated must not contribute their volume counts twice.
+	// The range tombstone is safe to repeat while the cursor remains zero.
+	if marker.Cursor == 0 {
+		batch := store.OpenWriteSession()
+		defer func() { _ = batch.Cancel() }()
+		prefix := []byte{dal.ZoneAttributes, dal.SubAttrAccountIncarnation}
+		if err := batch.DeleteRange(prefix, dal.PrefixUpperBound(prefix), nil); err != nil {
+			return err
+		}
+		if err := batch.Commit(); err != nil {
+			return err
+		}
+	}
+
+	// This store is exclusively owned by the offline migrator. Audit and log
+	// history remain immutable while the new incarnation projection is written.
+	reader, err := store.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("opening incarnation migration snapshot: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+	seen, err := readExistingIncarnations(reader)
+	if err != nil {
+		return err
+	}
+	lastAudit, err := query.ReadLastAuditSequence(reader)
+	if err != nil {
+		return err
+	}
+	applied, err := query.ReadLastAppliedIndex(reader)
+	if err != nil {
+		return err
+	}
+	if marker.Cursor > lastAudit || marker.AppliedIndex != 0 && marker.AppliedIndex != applied {
+		return errors.New("incarnation migration cursor does not match frozen store")
+	}
+	logger := logging.FromContext(ctx)
+	logger.WithFields(map[string]any{
+		"cursor": marker.Cursor, "lastAudit": lastAudit,
+	}).Infof("Starting local account incarnation migration")
+
+	cursor, err := query.ReadAuditEntries(ctx, reader, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cursor.Close() }()
+	logs, err := newAuditLogReader(ctx, reader)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logs.close() }()
+	items, err := newAuditItemsReader(reader)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = items.close() }()
+
+	fold := &folder{
+		reader:   reader,
+		logs:     logs,
+		items:    items,
+		current:  store,
+		attrs:    attributes.New(),
+		types:    make(map[string]map[string]*commonpb.AccountType),
+		compiled: make(map[string][]accounttype.CompiledType),
+		rows:     make(map[domain.AccountKey]*commonpb.AccountIncarnation),
+		deletes:  make(map[string]struct{}),
+		seen:     seen,
+	}
+	var previous uint64
+	var pending int
+	for {
+		entry, nextErr := cursor.Next()
+		if errors.Is(nextErr, io.EOF) {
+			break
+		}
+		if nextErr != nil {
+			return fmt.Errorf("reading audit during incarnation migration: %w", nextErr)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.GetSequence() != previous+1 {
+			return fmt.Errorf("account incarnation migration requires complete audit history: expected %d, found %d", previous+1, entry.GetSequence())
+		}
+		previous = entry.GetSequence()
+		if previous > lastAudit {
+			return errors.New("audit snapshot advanced beyond migration horizon")
+		}
+		if err := fold.process(ctx, entry, previous > marker.Cursor); err != nil {
+			return fmt.Errorf("folding audit entry %d: %w", previous, err)
+		}
+		if previous <= marker.Cursor {
+			continue
+		}
+		pending++
+		if pending == batchSize {
+			if err := fold.commit(store, Marker{Cursor: previous, AppliedIndex: applied}); err != nil {
+				return err
+			}
+			pending = 0
+			if previous%16384 == 0 {
+				logger.WithFields(map[string]any{"cursor": previous, "lastAudit": lastAudit}).Infof("Account incarnation migration progress")
+			}
+			if pause > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(pause):
+				}
+			}
+		}
+	}
+	if previous != lastAudit {
+		return fmt.Errorf("account incarnation migration ended at audit %d, expected %d", previous, lastAudit)
+	}
+	if pending > 0 {
+		if err := fold.commit(store, Marker{Cursor: previous, AppliedIndex: applied}); err != nil {
+			return err
+		}
+	}
+	if err := clearIncarnationCacheAndSeal(store, Marker{Cursor: lastAudit, AppliedIndex: applied, Complete: true}); err != nil {
+		return err
+	}
+	logger.WithField("lastAudit", lastAudit).Infof("Local account incarnation migration complete")
+
+	return nil
+}
+
+// Verify reconstructs the account incarnation projection from the
+// chain-checked audit history into a disposable bounded store, then compares
+// both directions of the durable attribute range. Callers must first verify
+// the audit chain itself.
+func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger) error {
+	marker, err := ReadMarker(source)
+	if err != nil {
+		return err
+	}
+	// A complete marker can precede write activation on an empty store, so it
+	// cannot by itself establish that this projection is authoritative.
+	// Operational policy is outside the store checker's business-state contract
+	// for unmigrated stores. Once migration is complete, an unreadable policy
+	// leaves incarnation verification inconclusive rather than clean.
+	policy, err := query.ReadClusterPolicy(source)
+	if err != nil {
+		if !marker.Complete {
+			return nil
+		}
+
+		return fmt.Errorf("account incarnation verification inconclusive: reading activation state: %w", err)
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+		return nil
+	}
+	if !marker.Complete {
+		if capabilities.IsActive(policy, capabilities.AccountIncarnationHistoryCompleteV1) {
+			return errors.New("account history is active without a complete local migration")
+		}
+
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "checker-incarnations-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	config := dal.DefaultConfig()
+	config.DisableWAL = true
+	expected, err := dal.NewStore(dir, logger, noop.NewMeterProvider().Meter("checker.incarnations"), config)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = expected.Close() }()
+	cursor, err := query.ReadAuditEntries(ctx, source, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cursor.Close() }()
+	logs, err := newAuditLogReader(ctx, source)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logs.close() }()
+	items, err := newAuditItemsReader(source)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = items.close() }()
+	fold := &folder{reader: source, logs: logs, items: items, current: expected, attrs: attributes.New(), types: make(map[string]map[string]*commonpb.AccountType), compiled: make(map[string][]accounttype.CompiledType), rows: make(map[domain.AccountKey]*commonpb.AccountIncarnation), deletes: make(map[string]struct{}), seen: newAccountSeen()}
+	var sequence uint64
+	var pending int
+	for {
+		entry, nextErr := cursor.Next()
+		if errors.Is(nextErr, io.EOF) {
+			break
+		}
+		if nextErr != nil {
+			return nextErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.GetSequence() != sequence+1 {
+			return fmt.Errorf("account history verification has an audit gap at %d", sequence+1)
+		}
+		sequence++
+		if err := fold.process(ctx, entry, true); err != nil {
+			return err
+		}
+		pending++
+		if pending == batchSize {
+			if err := fold.commit(expected, Marker{}); err != nil {
+				return err
+			}
+			pending = 0
+		}
+	}
+	if pending > 0 {
+		if err := fold.commit(expected, Marker{}); err != nil {
+			return err
+		}
+	}
+	if sequence < marker.Cursor {
+		return fmt.Errorf("account history verification ends at %d before migration cursor %d", sequence, marker.Cursor)
+	}
+	prefix := []byte{dal.ZoneAttributes, dal.SubAttrAccountIncarnation}
+	options := &pebble.IterOptions{LowerBound: prefix, UpperBound: dal.PrefixUpperBound(prefix)}
+	expectedReader, err := expected.NewReadHandle()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = expectedReader.Close() }()
+	want, err := expectedReader.NewIter(options)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = want.Close() }()
+	got, err := source.NewIter(options)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = got.Close() }()
+	var compared uint64
+	for hasWant, hasGot := want.First(), got.First(); hasWant || hasGot; hasWant, hasGot = want.Next(), got.Next() {
+		if compared%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+		if !hasWant || !hasGot || !bytes.Equal(want.Key(), got.Key()) || !bytes.Equal(want.Value(), got.Value()) {
+			return errors.New("account incarnation projection differs from audited history")
+		}
+		compared++
+	}
+	if err := want.Error(); err != nil {
+		return err
+	}
+
+	return got.Error()
+}
+
+type folder struct {
+	reader   dal.PebbleReader
+	logs     *auditLogReader
+	items    *auditItemsReader
+	current  dal.PebbleGetter
+	attrs    *attributes.Attributes
+	types    map[string]map[string]*commonpb.AccountType
+	compiled map[string][]accounttype.CompiledType
+	rows     map[domain.AccountKey]*commonpb.AccountIncarnation
+	closed   map[domain.AccountKey]struct{}
+	deletes  map[string]struct{}
+	seen     *accountSeen
+	newKeys  [][]byte
+}
+
+func readExistingIncarnations(reader dal.PebbleReader) (*accountSeen, error) {
+	seen := newAccountSeen()
+	prefix := []byte{dal.ZoneAttributes, dal.SubAttrAccountIncarnation}
+	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: dal.PrefixUpperBound(prefix)})
+	if err != nil {
+		return nil, fmt.Errorf("scanning existing account incarnations: %w", err)
+	}
+	for iter.First(); iter.Valid(); iter.Next() {
+		seen.add(iter.Key()[len(prefix):])
+	}
+	if err := iter.Error(); err != nil {
+		_ = iter.Close()
+
+		return nil, fmt.Errorf("scanning existing account incarnations: %w", err)
+	}
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("closing account incarnation scan: %w", err)
+	}
+
+	return seen, nil
+}
+
+func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write bool) error {
+	success := entry.GetSuccess()
+	if success == nil {
+		return nil
+	}
+	items, err := f.items.read(ctx, entry.GetSequence())
+	if err != nil {
+		return err
+	}
+	if len(items) != int(entry.GetOrderCount()) {
+		return errors.New("audit item count mismatch")
+	}
+	touched := make(map[domain.AccountKey]struct{})
+	volumeDeltas := make(map[domain.AccountKey]int64)
+	volumeTouched := make(map[domain.AccountKey]struct{})
+	seenNew := make(map[domain.VolumeKey]struct{})
+	seenPurged := make(map[domain.VolumeKey]struct{})
+	deletedHere := make(map[string]struct{})
+	for _, item := range items {
+		sequence := item.GetLogSequence()
+		if sequence == 0 || sequence < success.GetMinLogSequence() || sequence > success.GetMaxLogSequence() {
+			continue
+		}
+		log, err := f.logs.get(ctx, sequence)
+		if err != nil || log == nil {
+			return fmt.Errorf("reading audit-linked log %d: %w", sequence, err)
+		}
+		if err := f.processLog(log, touched, deletedHere, write); err != nil {
+			return err
+		}
+		if apply := log.GetPayload().GetApply(); apply != nil {
+			ledger := apply.GetLedgerName()
+			for _, volume := range apply.GetLog().GetNewKeptVolumes() {
+				key := domain.NewVolumeKey(ledger, volume.GetAccount(), volume.GetAsset(), volume.GetColor())
+				touched[key.AccountKey] = struct{}{}
+				volumeTouched[key.AccountKey] = struct{}{}
+				if _, ok := seenNew[key]; !ok {
+					seenNew[key] = struct{}{}
+					volumeDeltas[key.AccountKey]++
+				}
+			}
+			for _, volume := range apply.GetLog().GetPurgedVolumes() {
+				key := domain.NewVolumeKey(ledger, volume.GetAccount(), volume.GetAsset(), volume.GetColor())
+				touched[key.AccountKey] = struct{}{}
+				volumeTouched[key.AccountKey] = struct{}{}
+				if _, ok := seenPurged[key]; !ok {
+					seenPurged[key] = struct{}{}
+					volumeDeltas[key.AccountKey]--
+				}
+			}
+			for _, volume := range apply.GetLog().GetEphemeralVolumes() {
+				key := domain.AccountKey{LedgerName: ledger, Account: volume.GetAccount()}
+				touched[key] = struct{}{}
+				volumeTouched[key] = struct{}{}
+			}
+		}
+	}
+	if !write {
+		return nil
+	}
+	for key := range touched {
+		if _, deleted := deletedHere[key.LedgerName]; deleted {
+			continue
+		}
+		_, exists := f.types[key.LedgerName]
+		if !exists {
+			return fmt.Errorf("account write without live ledger %q", key.LedgerName)
+		}
+		persistence := commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL
+		if matched := accounttype.FindMatchingType(key.Account, f.compiled[key.LedgerName]); matched != nil {
+			persistence = matched.GetPersistence()
+		}
+		if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+			if err := f.touchExistingWithVolumeDelta(key, entry.GetTimestamp(), volumeDeltas[key]); err != nil {
+				return err
+			}
+
+			continue
+		}
+		_, volumeWrite := volumeTouched[key]
+		if err := f.touchWithVolumeDelta(key, entry.GetTimestamp(), persistence, volumeDeltas[key], volumeWrite); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (f *folder) processLog(log *commonpb.Log, touched map[domain.AccountKey]struct{}, deletedHere map[string]struct{}, write bool) error {
+	payload := log.GetPayload()
+	if create := payload.GetCreateLedger(); create != nil {
+		accountTypes := maps.Clone(create.GetAccountTypes())
+		if accountTypes == nil {
+			accountTypes = make(map[string]*commonpb.AccountType)
+		}
+		f.types[create.GetName()] = accountTypes
+		f.compiled[create.GetName()] = accounttype.CompileTypes(accountTypes)
+
+		return nil
+	}
+	if deleted := payload.GetDeleteLedger(); deleted != nil {
+		name := deleted.GetName()
+		delete(f.types, name)
+		delete(f.compiled, name)
+		deletedHere[name] = struct{}{}
+		if write {
+			f.deletes[name] = struct{}{}
+			for key := range f.rows {
+				if key.LedgerName == name {
+					delete(f.rows, key)
+				}
+			}
+		}
+
+		return nil
+	}
+	apply := payload.GetApply()
+	if apply == nil {
+		return nil
+	}
+	ledger := apply.GetLedgerName()
+	data := apply.GetLog().GetData()
+	if added := data.GetAddedAccountType(); added != nil {
+		if f.types[ledger] == nil {
+			return fmt.Errorf("account type added to unknown ledger %q", ledger)
+		}
+		typ := added.GetAccountType()
+		f.types[ledger][typ.GetName()] = typ
+		f.compiled[ledger] = accounttype.CompileTypes(f.types[ledger])
+	}
+	if removed := data.GetRemovedAccountType(); removed != nil {
+		delete(f.types[ledger], removed.GetName())
+		f.compiled[ledger] = accounttype.CompileTypes(f.types[ledger])
+	}
+	add := func(account string) { touched[domain.AccountKey{LedgerName: ledger, Account: account}] = struct{}{} }
+	if created := data.GetCreatedTransaction(); created != nil {
+		for _, posting := range created.GetTransaction().GetPostings() {
+			add(posting.GetSource())
+			add(posting.GetDestination())
+		}
+		for account, metadata := range created.GetAccountMetadata() {
+			if len(metadata.GetValues()) > 0 {
+				add(account)
+			}
+		}
+	}
+	if reverted := data.GetRevertedTransaction(); reverted != nil {
+		for _, posting := range reverted.GetRevertTransaction().GetPostings() {
+			add(posting.GetSource())
+			add(posting.GetDestination())
+		}
+	}
+	if saved := data.GetSavedMetadata(); saved != nil && len(saved.GetMetadata()) > 0 {
+		if account := saved.GetTarget().GetAccount(); account != nil {
+			add(account.GetAddr())
+		}
+	}
+	if deleted := data.GetDeletedMetadata(); deleted != nil {
+		if account := deleted.GetTarget().GetAccount(); account != nil {
+			add(account.GetAddr())
+		}
+	}
+
+	return nil
+}
+
+func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
+	return f.touchWithVolumeDelta(key, date, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, 0, false)
+}
+
+// Reclassified transient accounts retain and update an existing incarnation.
+// Accounts that were always transient do not open one.
+func (f *folder) touchExistingWithVolumeDelta(key domain.AccountKey, date *commonpb.Timestamp, delta int64) error {
+	return f.touchWithVolumeDeltaMode(key, date, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, delta, true, false)
+}
+
+func (f *folder) touchWithVolumeDelta(key domain.AccountKey, date *commonpb.Timestamp, persistence commonpb.AccountTypePersistence, delta int64, volumeWrite bool) error {
+	return f.touchWithVolumeDeltaMode(key, date, persistence, delta, volumeWrite, true)
+}
+
+func (f *folder) touchWithVolumeDeltaMode(key domain.AccountKey, date *commonpb.Timestamp, persistence commonpb.AccountTypePersistence, delta int64, volumeWrite, createIfMissing bool) error {
+	if date == nil {
+		return errors.New("accepted audit entry has no timestamp")
+	}
+	row := f.rows[key]
+	if row == nil {
+		canonicalKey := key.Bytes()
+		// The migration's own rows soon occupy large SSTs. Probing every
+		// never-before-seen account would repeatedly read their filter blocks;
+		// the migration-local filter avoids those guaranteed misses.
+		_, closed := f.closed[key]
+		if _, deleted := f.deletes[key.LedgerName]; !deleted && !closed && f.seen.mayContain(canonicalKey) {
+			var err error
+			row, err = f.attrs.AccountIncarnation.Get(f.current, canonicalKey)
+			if err != nil {
+				return err
+			}
+		}
+		if row == nil {
+			if !createIfMissing {
+				return nil
+			}
+			row = &commonpb.AccountIncarnation{Persistence: persistence}
+			f.newKeys = append(f.newKeys, canonicalKey)
+		}
+		f.rows[key] = row
+	}
+	row.Persistence = persistence
+	if delta < 0 && uint64(-delta) > row.GetVolumeCount() {
+		return errors.New("historical account incarnation volume count underflow")
+	}
+	if delta < 0 {
+		row.VolumeCount -= uint64(-delta)
+	} else {
+		row.VolumeCount += uint64(delta)
+	}
+	if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL && row.GetVolumeCount() == 0 && volumeWrite {
+		delete(f.rows, key)
+		if f.closed == nil {
+			f.closed = make(map[domain.AccountKey]struct{})
+		}
+		f.closed[key] = struct{}{}
+
+		return nil
+	}
+	if row.GetInsertedAt() == nil || date.GetData() < row.GetInsertedAt().GetData() {
+		row.InsertedAt = date.CloneVT()
+	}
+	if row.GetUpdatedAt() == nil || date.GetData() > row.GetUpdatedAt().GetData() {
+		row.UpdatedAt = date.CloneVT()
+	}
+
+	return nil
+}
+
+func (f *folder) commit(store *dal.Store, marker Marker) error {
+	batch := store.OpenWriteSession()
+	defer func() { _ = batch.Cancel() }()
+	for ledger := range f.deletes {
+		prefix := make([]byte, 2+dal.LedgerNameFixedSize)
+		prefix[0], prefix[1] = dal.ZoneAttributes, dal.SubAttrAccountIncarnation
+		copy(prefix[2:], ledger)
+		if err := batch.DeleteRange(prefix, dal.PrefixUpperBound(prefix), nil); err != nil {
+			return err
+		}
+	}
+	for key := range f.closed {
+		if err := f.attrs.AccountIncarnation.Delete(batch, key.Bytes()); err != nil {
+			return err
+		}
+	}
+	for key, row := range f.rows {
+		if _, err := f.attrs.AccountIncarnation.Set(batch, key.Bytes(), row); err != nil {
+			return err
+		}
+	}
+	if err := putMarker(batch, marker); err != nil {
+		return err
+	}
+	if err := batch.Commit(); err != nil {
+		return err
+	}
+	for _, key := range f.newKeys {
+		f.seen.add(key)
+	}
+	clear(f.rows)
+	clear(f.closed)
+	clear(f.deletes)
+	f.newKeys = f.newKeys[:0]
+
+	return nil
+}
+
+func clearIncarnationCacheAndSeal(store *dal.Store, marker Marker) error {
+	batch := store.OpenWriteSession()
+	defer func() { _ = batch.Cancel() }()
+	for gen := byte(0); gen <= 1; gen++ {
+		prefix := []byte{dal.ZoneCache, gen, dal.SubAttrAccountIncarnation}
+		if err := batch.DeleteRange(prefix, dal.PrefixUpperBound(prefix), nil); err != nil {
+			return err
+		}
+	}
+	if err := putMarker(batch, marker); err != nil {
+		return err
+	}
+
+	return batch.Commit()
+}

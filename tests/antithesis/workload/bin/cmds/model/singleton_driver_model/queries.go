@@ -889,16 +889,15 @@ func accountMatchesCollapsed(ls oracle.LedgerState, addr string, serverAcct *com
 		return false
 	}
 
-	// assembleAccount fills address, metadata and volumes and nothing else, so
-	// these three carry no value the model could be held to. Their absence is
-	// a settled decision, not a gap awaiting a fix (ledger#2025, documented in
-	// docs/technical/contributing/api-comparison.md under Missing Features):
-	// the replacement is typed `datetime` account metadata, which the oracle
-	// already predicts through metadataMatches. Pinned as absent so a
-	// regression that starts stamping them fails here rather than being waved
-	// through.
-	if serverAcct.GetFirstUsage() != nil || serverAcct.GetInsertionDate() != nil ||
-		serverAcct.GetUpdatedAt() != nil {
+	// First usage has no server-side lifecycle yet. Incarnation dates appear
+	// together once history is active; the model does not predict their HLC
+	// values, but a served last update cannot precede insertion.
+	if serverAcct.GetFirstUsage() != nil {
+		return false
+	}
+	inserted, updated := serverAcct.GetInsertionDate(), serverAcct.GetUpdatedAt()
+	if (inserted == nil) != (updated == nil) ||
+		inserted != nil && updated.GetData() < inserted.GetData() {
 		return false
 	}
 

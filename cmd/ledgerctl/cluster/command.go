@@ -20,6 +20,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewBeginDrainCommand())
 	cmd.AddCommand(NewEndDrainCommand())
 	cmd.AddCommand(NewDrainStatusCommand())
+	cmd.AddCommand(NewIncarnationCapabilitiesCommand())
 
 	return cmd
 }

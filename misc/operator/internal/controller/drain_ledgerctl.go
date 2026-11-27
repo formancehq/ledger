@@ -54,6 +54,11 @@ type ledgerctlLocalDrainStatus struct {
 	SyncStatus         string          `json:"syncStatus"`
 }
 
+type ledgerctlIncarnationCapabilities struct {
+	WritesActive    bool `json:"writesActive"`
+	HistoryComplete bool `json:"historyComplete"`
+}
+
 func (c *ledgerctlDrainCluster) run(ctx context.Context, ordinal int, args ...string) (string, error) {
 	cluster := c.cluster
 	serverAddr := podSelfServerAddr(headlessServiceName(cluster.Name), cluster.Spec.GrpcPort)
@@ -67,6 +72,19 @@ func (c *ledgerctlDrainCluster) run(ctx context.Context, ordinal int, args ...st
 	}
 
 	return result.Stdout, nil
+}
+
+func (c *ledgerctlDrainCluster) IncarnationCapabilitiesActive(ctx context.Context) (bool, error) {
+	output, err := c.run(ctx, 0, "cluster", "incarnation-capabilities", "--json")
+	if err != nil {
+		return false, err
+	}
+	var state ledgerctlIncarnationCapabilities
+	if err := json.Unmarshal([]byte(output), &state); err != nil {
+		return false, fmt.Errorf("decoding committed account incarnation capabilities: %w", err)
+	}
+
+	return state.WritesActive && state.HistoryComplete, nil
 }
 
 func (c *ledgerctlDrainCluster) BeginDrain(ctx context.Context, epoch string) (drainDecision, error) {

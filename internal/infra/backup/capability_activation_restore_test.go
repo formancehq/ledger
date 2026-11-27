@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/incarnationmigration"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -33,6 +34,9 @@ func TestCapabilityActivationDirectCheckpointRestore(t *testing.T) {
 		result, err := source.ApplyEntries(t.Context(), store, &raftpb.Entry{Index: new(index), Term: new(uint64(1)), Type: new(raftpb.EntryNormal), Data: data})
 		require.NoError(t, err)
 		require.NoError(t, result.Results[0].Error)
+		if capabilityID == 1 {
+			require.NoError(t, incarnationmigration.Run(t.Context(), store))
+		}
 		_, err = RunBackup(t.Context(), logging.Testing(), store, storage, "direct", fmt.Sprintf("next-%d", capabilityID))
 		require.NoError(t, err)
 		manifest, err := ReadManifest(t.Context(), storage, ManifestKey("direct"))

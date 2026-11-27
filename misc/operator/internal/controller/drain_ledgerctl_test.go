@@ -46,6 +46,26 @@ func TestLedgerctlDrainReadsLocalDurableCursors(t *testing.T) {
 	require.Equal(t, uint64(2), status.NodeID)
 }
 
+func TestLedgerctlIncarnationCapabilitiesBeforeDrainRelease(t *testing.T) {
+	t.Parallel()
+	response := `{"writesActive":true,"historyComplete":false}`
+	c := &ledgerctlDrainCluster{
+		cluster: &ledgerv1alpha1.Cluster{},
+		exec: func(_ context.Context, _ *rest.Config, _ kubernetes.Interface, _, _, _ string, command []string) (*execResult, error) {
+			require.Contains(t, command[2], "'cluster' 'incarnation-capabilities' '--json'")
+
+			return &execResult{Stdout: response}, nil
+		},
+	}
+	active, err := c.IncarnationCapabilitiesActive(t.Context())
+	require.NoError(t, err)
+	require.False(t, active)
+	response = `{"writesActive":true,"historyComplete":true}`
+	active, err = c.IncarnationCapabilitiesActive(t.Context())
+	require.NoError(t, err)
+	require.True(t, active)
+}
+
 func TestLedgerctlCurrentDrainFindsLeaderBeyondPodZero(t *testing.T) {
 	t.Parallel()
 	c := &ledgerctlDrainCluster{
