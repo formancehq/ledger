@@ -73,6 +73,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderQueryCheckpointSchedule(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	return nil
 }
 

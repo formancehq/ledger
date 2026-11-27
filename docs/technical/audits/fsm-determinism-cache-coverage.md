@@ -486,6 +486,15 @@ the historical filter-only log, including during audit replay. Compare the
 same committed order across voters at a supported upgrade boundary; target
 changes must not be admitted while old and new processors can coexist.
 
+## Query checkpoint schedule time zones (EN-3428)
+
+`SetQueryCheckpointSchedule` apply parses the committed cron. A `TZ=` or
+`CRON_TZ=` zone resolves through node-local tzdata and `ZONEINFO`, so admission
+accepts only `UTC` followed by a space. Treat a schedule admitted with any other
+zone, by an older leader or before the check, as the documented accepted
+residual in `docs/ops/upgrades.md`, not a new finding. Report any other apply
+path whose validity depends on a library's implicit node-local lookup.
+
 ## Transaction account metadata address failures
 
 Caller metadata and merged script metadata must use the same deterministic
