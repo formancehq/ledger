@@ -54,9 +54,13 @@ with business audit history and skips operational quotas in isolated replay.
 Its account-incarnation pass reads the current policy and capability aggregate
 to determine whether incarnation writes are active. If that activation state
 is unreadable after local migration is complete, the check is inconclusive
-rather than valid; without a complete migration marker, the business check
-continues without incarnation comparison. It still verifies semantic validations,
-actual effects, audit integrity and the absolute expiry already frozen in each
+rather than valid. Without a complete marker, unreadable activation state
+does not fail the business check, and the incarnation comparison is skipped.
+The comparison is skipped when incarnation writes are inactive, or when the
+marker is incomplete and the history capability is inactive. If both
+capabilities are active but the marker is incomplete, the check fails because
+local history has not been migrated. The checker still verifies semantic
+validations, actual effects, audit integrity and the absolute expiry frozen in each
 idempotency outcome; it does not prove the historical TTL or resource ceiling.
 Admission does not permit operational quota errors as skippable order reasons.
 Historical policy orders are still replayed to reproduce their released log

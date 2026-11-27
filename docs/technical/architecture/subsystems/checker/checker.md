@@ -463,4 +463,8 @@ decide whether incarnation writes are active. With a complete local migration
 marker, unreadable activation state makes the check inconclusive instead of
 reporting a valid store. Without that marker, unreadable activation state does
 not make the business check fail, and the incarnation comparison is skipped.
+The comparison is skipped when incarnation writes are inactive, or when the
+marker is incomplete and the history capability is inactive. If both
+capabilities are active but the marker is incomplete, the check fails with
+`account history is active without a complete local migration`.
 See [the explicit exemption](../../audit-vs-technical-state.md#operational-cluster-policy).
