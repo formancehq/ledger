@@ -368,7 +368,10 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 	}
 	// Operational policy is outside the store checker's business-state contract.
 	policy, err := query.ReadClusterPolicy(source)
-	if err != nil || !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
+	if err != nil {
+		return fmt.Errorf("reading account incarnation activation policy: %w", err)
+	}
+	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
 		return nil
 	}
 	if !marker.Complete {

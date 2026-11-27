@@ -293,6 +293,28 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 	require.ErrorContains(t, check(), "differs from audited history")
 }
 
+func TestVerifyRejectsUnreadableActivationState(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		key  []byte
+	}{
+		{name: "policy", key: []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}},
+		{name: "capabilities", key: []byte{dal.ZoneGlobal, dal.SubGlobCapabilityState}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := migrationStore(t)
+			batch := store.OpenWriteSession()
+			require.NoError(t, putMarker(batch, Marker{Complete: true}))
+			require.NoError(t, batch.SetBytes(test.key, []byte{0xff}))
+			require.NoError(t, batch.Commit())
+			reader, err := store.NewReadHandle()
+			require.NoError(t, err)
+			defer func() { require.NoError(t, reader.Close()) }()
+			require.ErrorContains(t, Verify(t.Context(), reader, logging.Testing()), "reading account incarnation activation policy")
+		})
+	}
+}
+
 func TestIncomingCheckpointMigratesBeforeInstallation(t *testing.T) {
 	store := migrationStore(t)
 	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
