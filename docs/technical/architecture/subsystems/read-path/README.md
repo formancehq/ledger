@@ -24,7 +24,7 @@ their general materializing path.
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
 | [readstore-event-keys.md](readstore-event-keys.md) | Append-only metadata/existence event resolution, lease-bounded reclamation, and edge-triggered GC cycles. |
 | [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: atomic target/filter updates, filter DSL, execution, shared LIST page-size limits, unfiltered volume aggregation, bloom acceleration. |
-| [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots, per-replica readiness, historical replay results, and concurrent deletion. |
+| [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots, per-replica readiness, historical replay results, concurrent deletion, and safe cron scheduling. |
 | [typed-metadata.md](typed-metadata.md) | Typed values, immutable primary metadata, declared schemas, and versioned index coercion. |
 | [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured field parity and operator asymmetries, date coercion, AND-combination, audit field resolution. |
 | [query-profile.md](query-profile.md) | Per-request read diagnostics: server-side phase breakdown (prepare/execute/barrier/deliver), why barrier and delivery are excluded from the server total, gRPC/HTTP parity, iterator tree. |
