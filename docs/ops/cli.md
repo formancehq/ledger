@@ -62,6 +62,18 @@ just build-client
 go build -o build/ledgerctl ./cmd/ledgerctl
 ```
 
+## Offline Pebble inspection
+
+`ledgerctl pebble` exposes the Pebble tool's `db`, `find`, `lsm`, `manifest`,
+`remotecat`, `sstable`, `wal`, and `blob` commands. For example, run
+`ledgerctl pebble db lsm <data-directory>` to inspect an offline database.
+Run `ledgerctl pebble --help` or a nested command's `--help` for its flags.
+
+The tool opens databases read-only by default, but some subcommands explicitly
+modify files or databases. Use a copy or checkpoint for investigation, and
+inspect the selected subcommand before running it against live data. These
+commands operate on local files; they do not connect to a Ledger server.
+
 ## Server compatibility
 
 `ledgerctl` sends its compiled protocol revision on every gRPC call. The server

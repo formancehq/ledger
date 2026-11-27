@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/logs"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/numscripts"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/pebble"
 	profilecmd "github.com/formancehq/ledger/v3/cmd/ledgerctl/profile"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/provision"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
@@ -80,6 +81,11 @@ func newRootCommand() *cobra.Command {
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			for parent := cmd; parent != nil; parent = parent.Parent() {
+				if parent.Name() == "pebble" && parent.Parent() == cmd.Root() {
+					return nil
+				}
+			}
 			// Refine the root span name now that the target subcommand is known
 			// (e.g. "ledgerctl transactions get").
 			cmdutil.NameCommandSpan(cmd)
@@ -160,6 +166,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(querycheckpoint.NewCommand())
 	rootCmd.AddCommand(queries.NewCommand())
 	rootCmd.AddCommand(numscripts.NewCommand())
+	rootCmd.AddCommand(pebble.NewCommand())
 
 	// Wire shell completion for every --ledger flag in the tree.
 	registerLedgerFlagCompletion(rootCmd)
