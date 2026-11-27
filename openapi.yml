@@ -4936,7 +4936,14 @@ components:
       type: object
     AtomicApplyGrpcLogSinkConfig:
       additionalProperties: false
-      required: [clientId, owner]
+      required: [clientId]
+      oneOf:
+        - required: [owner]
+          not:
+            required: [secretSha256]
+        - required: [secretSha256]
+          not:
+            required: [owner]
       properties:
         clientId:
           type: string
@@ -4951,6 +4958,10 @@ components:
           description: Server-assigned; omit when registering.
         owner:
           $ref: '#/components/schemas/AtomicApplyCallerIdentity'
+        secretSha256:
+          type: string
+          format: byte
+          description: Base64-encoded SHA-256 of a client-generated secret; the secret is sent only as gRPC metadata.
       type: object
     AtomicApplyCallerIdentity:
       additionalProperties: false
@@ -6470,8 +6481,15 @@ components:
     GrpcLogSinkConfig:
       type: object
       additionalProperties: false
-      description: Inbound acknowledged global log stream for an authenticated owner; requires ops:read to connect.
-      required: [clientId, owner]
+      description: Inbound acknowledged global log stream. Configure exactly one of an owner token requiring ops:read or a client-generated sink-secret SHA-256 verifier.
+      required: [clientId]
+      oneOf:
+        - required: [owner]
+          not:
+            required: [secretSha256]
+        - required: [secretSha256]
+          not:
+            required: [owner]
       properties:
         clientId:
           type: string
@@ -6486,6 +6504,10 @@ components:
               format: uint64
         owner:
           $ref: '#/components/schemas/GrpcLogSinkOwner'
+        secretSha256:
+          type: string
+          format: byte
+          description: Base64-encoded SHA-256 of a client-generated secret; the secret is sent only as gRPC metadata.
 
     GrpcLogSinkOwner:
       type: object

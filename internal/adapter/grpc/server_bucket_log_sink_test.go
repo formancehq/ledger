@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/sha256"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -136,11 +137,26 @@ func TestSubscribeWrapperFitsListLogsBoundary(t *testing.T) {
 	require.LessOrEqual(t, wrapped.SizeVT(), serviceMaxMsgSize)
 }
 
-func TestSubscribeLogsUsesOpsReadScope(t *testing.T) {
+func TestSubscribeLogsUsesCredentialResolver(t *testing.T) {
 	t.Parallel()
 	policy, err := commonpb.RPCAuthPolicyForMethod(servicepb.BucketService_SubscribeLogs_FullMethodName)
 	require.NoError(t, err)
-	require.Equal(t, commonpb.AuthScope_AUTH_SCOPE_OPS_READ, policy.GetFixedScope())
+	require.Equal(t, commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS, policy.GetDynamicResolver())
+}
+
+func TestLogSinkSecretVerifier(t *testing.T) {
+	t.Parallel()
+	secret := "a-client-generated-random-secret-with-at-least-32-bytes"
+	digest := sha256.Sum256([]byte(secret))
+	require.True(t, logSinkSecretMatches(secret, digest[:]))
+	require.False(t, logSinkSecretMatches(secret+"x", digest[:]))
+	require.False(t, logSinkSecretMatches(secret, digest[:31]))
+	ctx := context.WithValue(t.Context(), logSinkSecretKey{}, secret)
+	authorized, cancel, expiry, err := logSinkAuthorizationContext(ctx)
+	require.NoError(t, err)
+	defer cancel()
+	require.True(t, expiry.IsZero())
+	require.False(t, authorized == nil)
 }
 
 func TestLogSinkConnectionLimitsAndRelease(t *testing.T) {

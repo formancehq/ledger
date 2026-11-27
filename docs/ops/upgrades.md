@@ -122,6 +122,16 @@ Preserve a non-empty source history through the restart and verify replay and
 cursor resume before admitting client traffic. No mixed-version rolling
 activation is supported for this feature.
 
+The optional sink-secret mode appends `secret_sha256` to the gated gRPC sink
+configuration. Existing owner-token configurations remain valid. The committed
+configuration, audit history, checkpoint and restored state contain only the
+SHA-256 verifier, never the usable client-generated secret. A restored
+secret-backed sink accepts that same secret until the sink is removed and
+recreated; operators should rotate it when moving a backup to another trust
+boundary. The secret has no JWT expiry and grants the current raw global log
+stream, including credential-bearing configuration records. Redaction and
+ledger filtering are separate future changes.
+
 RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
 capability state into a separate record. Use the operator-required stopped restart:
 stop all RC.4 voters and learners before starting RC.5 on the retained volumes.

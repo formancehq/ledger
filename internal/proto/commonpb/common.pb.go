@@ -125,6 +125,7 @@ const (
 	DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX              DynamicAuthResolver = 2
 	DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS DynamicAuthResolver = 3
 	DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES           DynamicAuthResolver = 4
+	DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS         DynamicAuthResolver = 5
 )
 
 // Enum value maps for DynamicAuthResolver.
@@ -135,6 +136,7 @@ var (
 		2: "DYNAMIC_AUTH_RESOLVER_GET_INDEX",
 		3: "DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS",
 		4: "DYNAMIC_AUTH_RESOLVER_LIST_INDEXES",
+		5: "DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS",
 	}
 	DynamicAuthResolver_value = map[string]int32{
 		"DYNAMIC_AUTH_RESOLVER_UNSPECIFIED":            0,
@@ -142,6 +144,7 @@ var (
 		"DYNAMIC_AUTH_RESOLVER_GET_INDEX":              2,
 		"DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS": 3,
 		"DYNAMIC_AUTH_RESOLVER_LIST_INDEXES":           4,
+		"DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS":         5,
 	}
 )
 
@@ -22589,10 +22592,13 @@ func (x *AccountMetadataUpdated) GetAccountMetadata() map[string]*MetadataMap {
 // incarnation is assigned from the AddEventsSink log sequence
 // in the stored projection. Clients must leave it zero when registering.
 type GrpcLogSinkConfig struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	Incarnation   uint64                 `protobuf:"fixed64,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	Owner         *CallerIdentity        `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ClientId    string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	Incarnation uint64                 `protobuf:"fixed64,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
+	Owner       *CallerIdentity        `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	// SHA-256 of a client-generated, high-entropy secret. The secret itself is
+	// never committed or returned by the server.
+	SecretSha256  []byte `protobuf:"bytes,4,opt,name=secret_sha256,json=secretSha256,proto3" json:"secret_sha256,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -22644,6 +22650,13 @@ func (x *GrpcLogSinkConfig) GetIncarnation() uint64 {
 func (x *GrpcLogSinkConfig) GetOwner() *CallerIdentity {
 	if x != nil {
 		return x.Owner
+	}
+	return nil
+}
+
+func (x *GrpcLogSinkConfig) GetSecretSha256() []byte {
+	if x != nil {
+		return x.SecretSha256
 	}
 	return nil
 }
@@ -24300,11 +24313,12 @@ const file_common_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x01 \x03(\v23.common.AccountMetadataUpdated.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\x86\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xab\x01\n" +
 	"\x11GrpcLogSinkConfig\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12 \n" +
 	"\vincarnation\x18\x02 \x01(\x06R\vincarnation\x12,\n" +
-	"\x05owner\x18\x03 \x01(\v2\x16.common.CallerIdentityR\x05owner:\x04\xd8\xd5\"\x01*\xdd\x03\n" +
+	"\x05owner\x18\x03 \x01(\v2\x16.common.CallerIdentityR\x05owner\x12#\n" +
+	"\rsecret_sha256\x18\x04 \x01(\fR\fsecretSha256:\x04\xd8\xd5\"\x01*\xdd\x03\n" +
 	"\tAuthScope\x12\x1a\n" +
 	"\x16AUTH_SCOPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AUTH_SCOPE_LEDGER_READ\x10\x01\x12\x1b\n" +
@@ -24322,13 +24336,14 @@ const file_common_proto_rawDesc = "" +
 	"\x16AUTH_SCOPE_QUERY_WRITE\x10\f\x12\x1b\n" +
 	"\x17AUTH_SCOPE_CLUSTER_READ\x10\r\x12\x1c\n" +
 	"\x18AUTH_SCOPE_CLUSTER_WRITE\x10\x0e\x12 \n" +
-	"\x1cAUTH_SCOPE_EXECUTE_NUMSCRIPT\x10\x0f*\xdc\x01\n" +
+	"\x1cAUTH_SCOPE_EXECUTE_NUMSCRIPT\x10\x0f*\x86\x02\n" +
 	"\x13DynamicAuthResolver\x12%\n" +
 	"!DYNAMIC_AUTH_RESOLVER_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bDYNAMIC_AUTH_RESOLVER_APPLY\x10\x01\x12#\n" +
 	"\x1fDYNAMIC_AUTH_RESOLVER_GET_INDEX\x10\x02\x120\n" +
 	",DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS\x10\x03\x12&\n" +
-	"\"DYNAMIC_AUTH_RESOLVER_LIST_INDEXES\x10\x04*Z\n" +
+	"\"DYNAMIC_AUTH_RESOLVER_LIST_INDEXES\x10\x04\x12(\n" +
+	"$DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS\x10\x05*Z\n" +
 	"\n" +
 	"TargetType\x12\x17\n" +
 	"\x13TARGET_TYPE_ACCOUNT\x10\x00\x12\x1b\n" +

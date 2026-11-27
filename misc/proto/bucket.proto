@@ -95,7 +95,7 @@ service BucketService {
   }
   // SubscribeLogs delivers committed global logs to a configured sink.
   rpc SubscribeLogs(stream SubscribeLogsRequest) returns (stream SubscribeLogsResponse) {
-    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS };
   }
   // GetLog returns a single system log by sequence number
   rpc GetLog(GetLogRequest) returns (common.Log) {

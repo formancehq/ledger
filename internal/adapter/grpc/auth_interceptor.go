@@ -27,6 +27,15 @@ type queryProfileClock struct {
 
 type queryProfileClockKey struct{}
 type applyBatchSizeKey struct{}
+type logSinkSecretKey struct{}
+
+const logSinkSecretMetadataKey = "x-ledger-sink-secret"
+
+func logSinkSecretFromContext(ctx context.Context) string {
+	secret, _ := ctx.Value(logSinkSecretKey{}).(string)
+
+	return secret
+}
 
 type indexedScope struct {
 	scope internalauth.Scope
@@ -125,6 +134,30 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 			return err
 		}
 		if !protected {
+			return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
+		}
+		if typed, ok := policy.GetPolicy().(*commonpb.MethodAuthPolicy_DynamicResolver); ok &&
+			typed.DynamicResolver == commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS {
+			if peerOnly {
+				return status.Error(codes.PermissionDenied, "log sink streams are only available on the public service")
+			}
+			md, _ := metadata.FromIncomingContext(ctx)
+			if secrets := md.Get(logSinkSecretMetadataKey); len(secrets) != 0 {
+				if len(md.Get("authorization")) != 0 || len(secrets) != 1 || len(secrets[0]) < 43 || len(secrets[0]) > 128 || strings.ContainsAny(secrets[0], " \t\r\n") {
+					return status.Error(codes.Unauthenticated, "invalid log sink credential")
+				}
+				ctx = context.WithValue(ctx, logSinkSecretKey{}, secrets[0])
+
+				return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
+			}
+			ctx, err = evaluatePeerOrUserCredentials(ctx, cfg, false)
+			if err != nil {
+				return err
+			}
+			if err := internalauth.AuthorizeGRPC(ctx, internalauth.ScopeOpsRead); err != nil {
+				return err
+			}
+
 			return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
 		}
 

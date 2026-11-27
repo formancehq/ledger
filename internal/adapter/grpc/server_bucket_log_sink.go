@@ -2,6 +2,8 @@ package grpc
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"slices"
@@ -68,7 +70,7 @@ func (impl *BucketServiceServerImpl) SubscribeLogs(stream servicepb.BucketServic
 	}
 	defer cancel()
 	authorizationError := func() error {
-		if !time.Now().Before(expiry) {
+		if !expiry.IsZero() && !time.Now().Before(expiry) {
 			return status.Error(codes.Unauthenticated, "log sink token expired")
 		}
 
@@ -95,14 +97,23 @@ func (impl *BucketServiceServerImpl) SubscribeLogs(stream servicepb.BucketServic
 	if cfg.GetGrpcLog() == nil || cfg.GetGrpcLog().GetClientId() != open.GetClientId() {
 		return status.Error(codes.PermissionDenied, "log sink client does not match configuration")
 	}
-	if !logSinkOwnerMatches(ctx, cfg.GetGrpcLog().GetOwner()) {
+	secret := logSinkSecretFromContext(ctx)
+	if secret != "" {
+		if !logSinkSecretMatches(secret, cfg.GetGrpcLog().GetSecretSha256()) {
+			return status.Error(codes.PermissionDenied, "log sink credential does not match configuration")
+		}
+	} else if !logSinkOwnerMatches(ctx, cfg.GetGrpcLog().GetOwner()) {
 		return status.Error(codes.PermissionDenied, "log sink principal does not match configuration")
 	}
 	incarnation := cfg.GetGrpcLog().GetIncarnation()
 	if incarnation == 0 {
 		return status.Error(codes.Internal, "log sink has no creation incarnation")
 	}
-	err = impl.promoteLogSinkOpen(open.GetSinkName(), logSinkPrincipal(ctx))
+	principal := logSinkPrincipal(ctx)
+	if secret != "" {
+		principal = "sink:" + open.GetSinkName()
+	}
+	err = impl.promoteLogSinkOpen(open.GetSinkName(), principal)
 	reserved = false
 	if err != nil {
 		return err
@@ -219,7 +230,19 @@ func (impl *BucketServiceServerImpl) SubscribeLogs(stream servicepb.BucketServic
 	}
 }
 
+func logSinkSecretMatches(secret string, stored []byte) bool {
+	if len(stored) != sha256.Size {
+		return false
+	}
+	hash := sha256.Sum256([]byte(secret))
+
+	return subtle.ConstantTimeCompare(hash[:], stored) == 1
+}
+
 func logSinkAuthorizationContext(ctx context.Context) (context.Context, context.CancelFunc, time.Time, error) {
+	if logSinkSecretFromContext(ctx) != "" {
+		return ctx, func() {}, time.Time{}, nil
+	}
 	claims := internalauth.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, nil, time.Time{}, status.Error(codes.Unauthenticated, "log sink requires an authenticated token")

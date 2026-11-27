@@ -38,6 +38,7 @@ enum DynamicAuthResolver {
   DYNAMIC_AUTH_RESOLVER_GET_INDEX = 2;
   DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS = 3;
   DYNAMIC_AUTH_RESOLVER_LIST_INDEXES = 4;
+  DYNAMIC_AUTH_RESOLVER_SUBSCRIBE_LOGS = 5;
 }
 
 // MethodAuthPolicy requires every public-service RPC to choose exactly one
@@ -2922,4 +2923,7 @@ message GrpcLogSinkConfig {
   string client_id = 1;
   fixed64 incarnation = 2;
   CallerIdentity owner = 3;
+  // SHA-256 of a client-generated, high-entropy secret. The secret itself is
+  // never committed or returned by the server.
+  bytes secret_sha256 = 4;
 }

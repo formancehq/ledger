@@ -255,6 +255,50 @@ func TestPeerStreamTrustRequiresTLS(t *testing.T) {
 	}
 }
 
+func TestSubscribeLogsSecretCredentialIsLimitedToStream(t *testing.T) {
+	t.Parallel()
+	secret := hex.EncodeToString(make([]byte, 32))
+	interceptor := authStreamInterceptor(internalauth.AuthConfig{Enabled: true}, false)
+	info := &ggrpc.StreamServerInfo{FullMethod: servicepb.BucketService_SubscribeLogs_FullMethodName}
+	for _, tc := range []struct {
+		name    string
+		md      metadata.MD
+		allowed bool
+	}{
+		{name: "secret", md: metadata.Pairs(logSinkSecretMetadataKey, secret), allowed: true},
+		{name: "short secret", md: metadata.Pairs(logSinkSecretMetadataKey, "short")},
+		{name: "duplicate secret", md: metadata.Pairs(logSinkSecretMetadataKey, secret, logSinkSecretMetadataKey, secret)},
+		{name: "secret and bearer", md: metadata.Pairs(logSinkSecretMetadataKey, secret, "authorization", "Bearer token")},
+		{name: "secret and other authorization", md: metadata.Pairs(logSinkSecretMetadataKey, secret, "authorization", "Basic token")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(t.Context(), tc.md)
+			called := false
+			err := interceptor(nil, &authTestServerStream{ctx: ctx}, info, func(_ any, stream ggrpc.ServerStream) error {
+				called = true
+				require.Equal(t, secret, logSinkSecretFromContext(stream.Context()))
+
+				return nil
+			})
+			if tc.allowed {
+				require.NoError(t, err)
+				require.True(t, called)
+			} else {
+				require.Equal(t, codes.Unauthenticated, status.Code(err))
+				require.False(t, called)
+			}
+		})
+	}
+	peerInterceptor := authStreamInterceptor(internalauth.AuthConfig{Enabled: true}, true)
+	ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs(logSinkSecretMetadataKey, secret))
+	err := peerInterceptor(nil, &authTestServerStream{ctx: ctx}, info, func(_ any, _ ggrpc.ServerStream) error {
+		t.Fatal("peer listener must reject the sink secret")
+
+		return nil
+	})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
 func TestBearerTokenFromGRPCContextRejectsAmbiguousAuthorization(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"authorization", "Bearer first",

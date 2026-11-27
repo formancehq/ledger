@@ -195,18 +195,27 @@ Key formats:
 ### Acknowledged gRPC global-log sink
 
 `SinkConfig.grpc_log` configures an inbound subscription for one `client_id`
-and an authenticated owner (`CallerIdentity` issuer and subject or static key
-ID and subject). The events Manager skips this sink type; event formatting and
+and either an authenticated owner (`CallerIdentity` issuer and subject or static key
+ID and subject) or a 32-byte SHA-256 verifier for a client-generated secret.
+The events Manager skips this sink type; event formatting and
 event-type filters do not apply. The stored configuration records the creation
 log's global sequence as an incarnation. Removing and recreating a sink name
 retains its global-sequence cursor, while the new incarnation rejects
 acknowledgements from the old connection.
 
-`BucketService.SubscribeLogs` is a bidirectional stream under the
-`ledger:ReadOps` (`ops:read`) policy because it includes system logs across
+`BucketService.SubscribeLogs` is a bidirectional stream over system logs across
 all ledgers. The first client message is `Open {sink_name, client_id}`. The
-token principal must match the configured owner; an anonymous or auth-disabled
-caller cannot open the stream. The server replies with
+owner-token mode requires `ledger:ReadOps` (`ops:read`) and a matching principal.
+The alternative sink-secret mode sends the exact client-generated secret in
+`x-ledger-sink-secret` gRPC metadata; the server compares its SHA-256 digest
+with the persisted verifier. A secret must be 43–128 non-whitespace characters,
+generated from at least 32 cryptographically random bytes. Never persist or
+log the usable secret. A sink has exactly one credential mode. Anonymous and
+auth-disabled callers without the configured secret cannot open the stream.
+The secret mode has no JWT expiry; remove and recreate the sink to revoke it,
+which also fences the active stream by incarnation. Until redaction is designed,
+the stream exposes raw logs, including credential-bearing configuration logs.
+The server replies with
 `Opened {acknowledged_sequence, cluster_id}`, then sends unchanged
 `common.Log` values in increasing global `common.Log.sequence` order. A client
 sends `Ack {sequence}` only after processing that log; it may acknowledge

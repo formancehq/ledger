@@ -10388,7 +10388,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\"\x06\xd2\xd5\"\x02\x10\a\x12W\n" +
 	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\"\x06\xd2\xd5\"\x02\x10\t\x12:\n" +
 	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\x010\x01\x12X\n" +
-	"\rSubscribeLogs\x12\x1c.ledger.SubscribeLogsRequest\x1a\x1d.ledger.SubscribeLogsResponse\"\x06\xd2\xd5\"\x02\x10\t(\x010\x01\x124\n" +
+	"\rSubscribeLogs\x12\x1c.ledger.SubscribeLogsRequest\x1a\x1d.ledger.SubscribeLogsResponse\"\x06\xd2\xd5\"\x02\x18\x05(\x010\x01\x124\n" +
 	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\t\x12O\n" +
 	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey\"\x06\xd2\xd5\"\x02\x10\t0\x01\x12]\n" +
 	"\x10GetSigningConfig\x12\x1f.ledger.GetSigningConfigRequest\x1a .ledger.GetSigningConfigResponse\"\x06\xd2\xd5\"\x02\x10\t\x12H\n" +

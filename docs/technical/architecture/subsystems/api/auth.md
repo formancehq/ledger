@@ -93,6 +93,15 @@ Every BucketService and ClusterService RPC declares a typed `common.auth_policy`
 
 The public service consumes this inventory in unary and streaming interceptors before generated handlers run. Credential evaluation produces immutable authentication state, then fixed policies check their declared scope. Dynamic resolvers inspect the request: `Apply` checks every embedded request, `GetIndex` and `GetIndexEntryStatus` choose ledger-read or ops-read from the ledger field, and `ListIndexes` authorizes the first received request message before handler business logic. An unparsable signed Apply payload still reaches admission so signature verification keeps precedence over payload parsing.
 
+`SubscribeLogs` has a dedicated streaming resolver. An owner JWT must pass
+`ledger:ReadOps` and match the sink's configured principal; its verified expiry
+closes the stream. Alternatively, the public interceptor accepts exactly one
+`x-ledger-sink-secret` metadata value, without a bearer token. The handler
+checks its SHA-256 digest against the configured sink before sending any
+response. This credential authorizes no other RPC and has no JWT deadline;
+removal and recreation of the sink fences an existing stream. The persisted
+configuration contains only the verifier, never the usable secret.
+
 The public service, loopback-by-default restore service, and Raft transport have distinct trust modes. Restore does not install JWT interceptors. Raft uses its own cluster-secret interceptor.
 
 HTTP fixed-scope routes use `RequireScope` middleware

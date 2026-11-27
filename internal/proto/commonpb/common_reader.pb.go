@@ -27280,6 +27280,7 @@ type GrpcLogSinkConfigReader interface {
 	GetClientId() string
 	GetIncarnation() uint64
 	GetOwner() CallerIdentityReader
+	GetSecretSha256() []byte
 	Mutate() *GrpcLogSinkConfig
 }
 
@@ -27299,6 +27300,10 @@ func (r *grpcLogSinkConfigReadonly) GetOwner() CallerIdentityReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *grpcLogSinkConfigReadonly) GetSecretSha256() []byte {
+	return bytes.Clone((*GrpcLogSinkConfig)(r).GetSecretSha256())
 }
 
 func (r *grpcLogSinkConfigReadonly) Mutate() *GrpcLogSinkConfig {

@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,5 +24,13 @@ func TestGrpcLogSinkRequiresExplicitAuthenticatedOwner(t *testing.T) {
 	config.GetGrpcLog().Owner = &commonpb.CallerIdentity{Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-1"}}
 	require.NoError(t, validateOrderSinkConfig(order), "static credentials may have an empty subject")
 	config.GetGrpcLog().Owner = &commonpb.CallerIdentity{Subject: "sink-owner", Source: &commonpb.CallerIdentity_Issuer{}}
+	require.ErrorIs(t, validateOrderSinkConfig(order), ErrGrpcLogSinkConfigInvalid)
+	config.GetGrpcLog().Owner = nil
+	config.GetGrpcLog().SecretSha256 = bytes.Repeat([]byte{1}, 32)
+	require.NoError(t, validateOrderSinkConfig(order))
+	config.GetGrpcLog().Owner = &commonpb.CallerIdentity{Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-1"}}
+	require.ErrorIs(t, validateOrderSinkConfig(order), ErrGrpcLogSinkConfigInvalid, "owner and secret cannot both be configured")
+	config.GetGrpcLog().Owner = nil
+	config.GetGrpcLog().SecretSha256 = []byte{1}
 	require.ErrorIs(t, validateOrderSinkConfig(order), ErrGrpcLogSinkConfigInvalid)
 }
