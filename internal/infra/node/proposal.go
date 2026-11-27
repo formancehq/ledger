@@ -153,7 +153,8 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 
 // SelectActiveCapabilities chooses the persisted semantics at the serialized
 // admission boundary. Both wire variants were built from the same final command
-// before the proposal guard was acquired.
+// before admission: normally before acquiring the proposal guard, or under the
+// guard when stale preloads require rebuilding the execution plan.
 func (p *Proposal) SelectActiveCapabilities(active bool) {
 	if p.legacyData == nil {
 		return

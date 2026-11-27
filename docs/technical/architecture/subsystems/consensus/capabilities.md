@@ -98,8 +98,10 @@ the account-metadata validation rule. A batch with either order declares ID 1
 once. After activation, new transaction and Numscript executions carry ID 1
 even without account metadata, because Numscript can produce metadata during
 apply. The serialized proposal gate chooses the marked or unmarked wire form
-from the committed policy before reserving its Raft index. Both forms are built
-from the same final order batch before the proposal guard is acquired.
+from the committed policy before reserving its Raft index. On the normal path,
+both forms are built from the same final order batch before the proposal guard
+is acquired. If stale preloads require a rebuilt execution plan, `Runner.Run`
+builds both forms again while holding that guard.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
