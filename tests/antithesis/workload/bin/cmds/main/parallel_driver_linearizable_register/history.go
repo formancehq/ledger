@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/anishathalye/porcupine"
@@ -149,7 +150,7 @@ func renderOps(ops []porcupine.Operation) []string {
 
 	lines := make([]string, 0, len(sorted))
 	for _, op := range sorted {
-		ret := fmt.Sprintf("%d", op.Return)
+		ret := strconv.FormatInt(op.Return, 10)
 		if op.Return == indeterminate {
 			ret = "?"
 		}
