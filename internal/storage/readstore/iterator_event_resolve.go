@@ -126,7 +126,7 @@ func (it *EventResolveIterator) settle() bool {
 			// regardless of its stamp, but 0x0C only has ADD events, so any
 			// visible row makes that account a member at the pin.
 			if row.seq <= it.pin {
-				live = row.op == MetadataEventAdd
+				live = row.op == IndexEventAdd
 			}
 
 			if !it.iter.Next() {

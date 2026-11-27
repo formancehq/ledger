@@ -310,23 +310,23 @@ func (wb *WriteBatch) ReplaceMetadataIndexV(
 		isNullEncoded(oldEncodedValue) != isNullEncoded(newEncodedValue)
 
 	if oldEncodedValue != nil {
-		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
+		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, IndexEventDel); err != nil {
 			return err
 		}
 
 		if nullFlagChanged {
-			if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
+			if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, IndexEventDel); err != nil {
 				return err
 			}
 		}
 	}
 
-	if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID, MetadataEventAdd); err != nil {
+	if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID, IndexEventAdd); err != nil {
 		return err
 	}
 
 	if nullFlagChanged {
-		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID, MetadataEventAdd); err != nil {
+		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID, IndexEventAdd); err != nil {
 			return err
 		}
 	}
@@ -351,11 +351,11 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPreviousV(
 	oldEncodedValue, entityID []byte,
 ) error {
 	if oldEncodedValue != nil {
-		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
+		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, IndexEventDel); err != nil {
 			return err
 		}
 
-		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
+		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, IndexEventDel); err != nil {
 			return err
 		}
 	}

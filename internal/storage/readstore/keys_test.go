@@ -265,7 +265,7 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			wantErr: ErrReverseMapKeyPrefix,
 		},
 		"wrong prefix byte must be rejected": {
-			key:     MetadataIndexEventKeyV(dal.NewKeyBuilder(), "main", NamespaceAccount, "wallet_id", 1, []byte{0x01}, []byte("users:1"), 1, MetadataEventAdd),
+			key:     MetadataIndexEventKeyV(dal.NewKeyBuilder(), "main", NamespaceAccount, "wallet_id", 1, []byte{0x01}, []byte("users:1"), 1, IndexEventAdd),
 			wantErr: ErrReverseMapKeyPrefix,
 		},
 		"key truncated before the namespace must be rejected": {

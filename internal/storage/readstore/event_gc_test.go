@@ -46,9 +46,9 @@ func TestGCEventZone_IteratorFailureDiscardsPendingDeletes(t *testing.T) {
 	t.Parallel()
 
 	s, _ := eventFixture(t, "v",
-		ev{"a", 10, MetadataEventAdd},
-		ev{"a", 20, MetadataEventDel},
-		ev{"b", 10, MetadataEventAdd},
+		ev{"a", 10, IndexEventAdd},
+		ev{"a", 20, IndexEventDel},
+		ev{"b", 10, IndexEventAdd},
 	)
 
 	iter, err := s.DB().NewIter(&pebble.IterOptions{
@@ -71,8 +71,8 @@ func TestGCEventZone_IteratorFailureDiscardsPendingDeletes(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	for _, key := range [][]byte{
-		MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), 10, MetadataEventAdd),
-		MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), 20, MetadataEventDel),
+		MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), 10, IndexEventAdd),
+		MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), 20, IndexEventDel),
 	} {
 		_, closer, getErr := s.DB().Get(key)
 		require.NoError(t, getErr, "iterator failure must discard the whole pending delete batch")
@@ -87,14 +87,14 @@ func TestGCEventZone(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
-		ev{"dead", 10, MetadataEventAdd}, // add@10 del@20: whole pair reclaimed
-		ev{"dead", 20, MetadataEventDel},
-		ev{"live", 10, MetadataEventAdd}, // superseded by re-add
-		ev{"live", 20, MetadataEventDel},
-		ev{"live", 25, MetadataEventAdd}, // latest below watermark, ADD: survives
-		ev{"old", 10, MetadataEventAdd},  // single old ADD: survives
-		ev{"span", 10, MetadataEventAdd}, // ADD below + DEL above: both survive
-		ev{"span", 40, MetadataEventDel},
+		ev{"dead", 10, IndexEventAdd}, // add@10 del@20: whole pair reclaimed
+		ev{"dead", 20, IndexEventDel},
+		ev{"live", 10, IndexEventAdd}, // superseded by re-add
+		ev{"live", 20, IndexEventDel},
+		ev{"live", 25, IndexEventAdd}, // latest below watermark, ADD: survives
+		ev{"old", 10, IndexEventAdd},  // single old ADD: survives
+		ev{"span", 10, IndexEventAdd}, // ADD below + DEL above: both survive
+		ev{"span", 40, IndexEventDel},
 	)
 
 	const watermark = 30
@@ -130,11 +130,11 @@ func TestGCEventZone_BudgetedResume(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
-		ev{"a", 10, MetadataEventAdd},
-		ev{"a", 20, MetadataEventDel},
-		ev{"b", 10, MetadataEventAdd},
-		ev{"b", 20, MetadataEventDel},
-		ev{"c", 10, MetadataEventAdd},
+		ev{"a", 10, IndexEventAdd},
+		ev{"a", 20, IndexEventDel},
+		ev{"b", 10, IndexEventAdd},
+		ev{"b", 20, IndexEventDel},
+		ev{"c", 10, IndexEventAdd},
 	)
 
 	const watermark = 30

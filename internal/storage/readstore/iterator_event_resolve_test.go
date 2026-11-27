@@ -68,13 +68,13 @@ func TestEventResolveIterator_TransitionTimeline(t *testing.T) {
 	t.Parallel()
 
 	s, redPrefix := eventFixture(t, "red",
-		ev{"E", 10, MetadataEventAdd},
-		ev{"E", 25, MetadataEventDel},
+		ev{"E", 10, IndexEventAdd},
+		ev{"E", 25, IndexEventDel},
 	)
 
 	kb := dal.NewKeyBuilder()
-	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 25, MetadataEventAdd), nil, pebble.NoSync))
-	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 40, MetadataEventDel), nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 25, IndexEventAdd), nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 40, IndexEventDel), nil, pebble.NoSync))
 	bluePrefix := eventValuePrefix("l", NamespaceAccount, "k", 1, []byte("blue"))
 
 	require.Empty(t, collect(t, s, redPrefix, 5), "before the first ADD")
@@ -90,9 +90,9 @@ func TestEventResolveIterator_ReAddHistory(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
-		ev{"E", 10, MetadataEventAdd},
-		ev{"E", 20, MetadataEventDel},
-		ev{"E", 30, MetadataEventAdd},
+		ev{"E", 10, IndexEventAdd},
+		ev{"E", 20, IndexEventDel},
+		ev{"E", 30, IndexEventAdd},
 	)
 
 	require.Equal(t, []string{"E"}, collect(t, s, prefix, 15))
@@ -106,9 +106,9 @@ func TestEventResolveIterator_PrefixNestedEntities(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
-		ev{"a", 10, MetadataEventAdd},
-		ev{"ab", 10, MetadataEventAdd},
-		ev{"ab", 20, MetadataEventDel},
+		ev{"a", 10, IndexEventAdd},
+		ev{"ab", 10, IndexEventAdd},
+		ev{"ab", 20, IndexEventDel},
 	)
 
 	require.Equal(t, []string{"a", "ab"}, collect(t, s, prefix, 15))
@@ -121,10 +121,10 @@ func TestEventResolveIterator_SeekContract(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
-		ev{"a:1", 10, MetadataEventAdd},
-		ev{"a:2", 10, MetadataEventAdd},
-		ev{"a:2", 20, MetadataEventDel},
-		ev{"a:3", 10, MetadataEventAdd},
+		ev{"a:1", 10, IndexEventAdd},
+		ev{"a:2", 10, IndexEventAdd},
+		ev{"a:2", 20, IndexEventDel},
+		ev{"a:3", 10, IndexEventAdd},
 	)
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
@@ -150,9 +150,9 @@ func TestEventResolveIterator_SeekFloor(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
-		ev{"a:1", 10, MetadataEventAdd},
-		ev{"a:5", 10, MetadataEventAdd},
-		ev{"a:5", 20, MetadataEventDel},
+		ev{"a:1", 10, IndexEventAdd},
+		ev{"a:5", 10, IndexEventAdd},
+		ev{"a:5", 20, IndexEventDel},
 	)
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
@@ -183,7 +183,7 @@ func TestEventResolveIterator_SeekFloor(t *testing.T) {
 func TestEventResolveIterator_SeekFloorIgnoresFaults(t *testing.T) {
 	t.Parallel()
 
-	s, prefix := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
+	s, prefix := eventFixture(t, "v", ev{"a:1", 10, IndexEventAdd})
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ var errFaultProbe = errors.New("probe: simulated storage fault")
 func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 	t.Parallel()
 
-	s, prefix := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
+	s, prefix := eventFixture(t, "v", ev{"a:1", 10, IndexEventAdd})
 
 	kb := dal.NewKeyBuilder()
 	corrupt := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)...)
@@ -233,9 +233,9 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 		return append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:3"), seq, op)...)
 	}
 	survivors := [][]byte{
-		event(5, MetadataEventAdd),
+		event(5, IndexEventAdd),
 		event(6, 0x7f),
-		event(7, MetadataEventDel),
+		event(7, IndexEventDel),
 	}
 	for _, key := range survivors {
 		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
@@ -258,9 +258,9 @@ func TestGCEventZone_ReclaimsReadableGroups(t *testing.T) {
 	t.Parallel()
 
 	s, _ := eventFixture(t, "v",
-		ev{"a:1", 5, MetadataEventAdd},
-		ev{"a:1", 6, MetadataEventDel},
-		ev{"a:1", 7, MetadataEventAdd},
+		ev{"a:1", 5, IndexEventAdd},
+		ev{"a:1", 6, IndexEventDel},
+		ev{"a:1", 7, IndexEventAdd},
 	)
 
 	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
@@ -268,7 +268,7 @@ func TestGCEventZone_ReclaimsReadableGroups(t *testing.T) {
 	require.Equal(t, 2, pruned, "the two superseded events are reclaimed")
 
 	kb := dal.NewKeyBuilder()
-	live := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 7, MetadataEventAdd)
+	live := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 7, IndexEventAdd)
 	_, closer, err := s.DB().Get(live)
 	require.NoError(t, err, "the latest below-watermark ADD decides membership and must survive")
 	require.NoError(t, closer.Close())
@@ -280,7 +280,7 @@ func TestGCEventZone_ReclaimsReadableGroups(t *testing.T) {
 func TestInspectIndex_RejectsUnknownOp(t *testing.T) {
 	t.Parallel()
 
-	s, _ := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
+	s, _ := eventFixture(t, "v", ev{"a:1", 10, IndexEventAdd})
 
 	kb := dal.NewKeyBuilder()
 	corrupt := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)
@@ -339,15 +339,15 @@ func TestInspectIndex_ResolvesMembershipAtMainHorizon(t *testing.T) {
 	// also contains their post-H mutations: a:1 becomes silver and a:3 becomes
 	// null. Inspect must reconstruct H rather than report the projection head.
 	for _, entity := range []string{"a:1", "a:2", "a:3"} {
-		putMetadata(gold, entity, 10, MetadataEventAdd)
-		putExists(false, entity, 10, MetadataEventAdd)
+		putMetadata(gold, entity, 10, IndexEventAdd)
+		putExists(false, entity, 10, IndexEventAdd)
 	}
-	putMetadata(gold, "a:1", 30, MetadataEventDel)
-	putMetadata(silver, "a:1", 30, MetadataEventAdd)
-	putMetadata(gold, "a:3", 30, MetadataEventDel)
-	putMetadata(nullValue, "a:3", 30, MetadataEventAdd)
-	putExists(false, "a:3", 30, MetadataEventDel)
-	putExists(true, "a:3", 30, MetadataEventAdd)
+	putMetadata(gold, "a:1", 30, IndexEventDel)
+	putMetadata(silver, "a:1", 30, IndexEventAdd)
+	putMetadata(gold, "a:3", 30, IndexEventDel)
+	putMetadata(nullValue, "a:3", 30, IndexEventAdd)
+	putExists(false, "a:3", 30, IndexEventDel)
+	putExists(true, "a:3", 30, IndexEventAdd)
 
 	base := InspectParams{
 		Reader:          s.DB(),
@@ -413,9 +413,9 @@ func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T
 	// Two condemnable events below the watermark, then one above it (which
 	// settles them), then the unreadable one.
 	keys := [][]byte{
-		event(5, MetadataEventAdd),
-		event(7, MetadataEventDel),
-		event(150, MetadataEventAdd),
+		event(5, IndexEventAdd),
+		event(7, IndexEventDel),
+		event(150, IndexEventAdd),
 		event(160, 0x7f),
 	}
 	for _, key := range keys {
@@ -451,7 +451,7 @@ func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
 
 	// a:1 is condemnable on its own: an ADD superseded by a DEL, both below
 	// the watermark.
-	keys := [][]byte{event("a:1", 5, MetadataEventAdd), event("a:1", 7, MetadataEventDel)}
+	keys := [][]byte{event("a:1", 5, IndexEventAdd), event("a:1", 7, IndexEventDel)}
 
 	// The malformed key is a:1's own key with its tail cut off, so it sorts
 	// ahead of both — and its terminator is no longer where the layout says.
@@ -489,8 +489,8 @@ func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
 		return append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte(entity), seq, op)...)
 	}
 
-	first := [][]byte{event("a:0", 5, MetadataEventAdd), event("a:0", 7, MetadataEventDel)}
-	second := [][]byte{event("a:1", 5, MetadataEventAdd), event("a:1", 7, MetadataEventDel)}
+	first := [][]byte{event("a:0", 5, IndexEventAdd), event("a:0", 7, IndexEventDel)}
+	second := [][]byte{event("a:1", 5, IndexEventAdd), event("a:1", 7, IndexEventDel)}
 
 	// Truncated a:1 key: sorts ahead of a:1's events, identity unparseable.
 	truncated := append([]byte(nil), second[0][:len(second[0])-3]...)
@@ -523,10 +523,10 @@ func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
 func TestEventResolveIterator_RejectsAnUnreadableGroupHead(t *testing.T) {
 	t.Parallel()
 
-	s, prefix := eventFixture(t, "v", ev{"a:9", 10, MetadataEventAdd})
+	s, prefix := eventFixture(t, "v", ev{"a:9", 10, IndexEventAdd})
 
 	kb := dal.NewKeyBuilder()
-	head := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 10, MetadataEventAdd)...)
+	head := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 10, IndexEventAdd)...)
 	require.NoError(t, s.DB().Set(head[:len(head)-3], nil, pebble.NoSync))
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)

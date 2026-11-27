@@ -51,7 +51,7 @@ func TestCompileHistoricalAddressIndependentOfCurrentAccount(t *testing.T) {
 			binary.BigEndian.PutUint64(id, 100)
 			require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(kb,
 				parityLedger, readstore.NamespaceTransaction, "colour", 1,
-				readstore.EncodeString(nil, "blue"), id, 10, readstore.MetadataEventAdd), nil))
+				readstore.EncodeString(nil, "blue"), id, 10, readstore.IndexEventAdd), nil))
 			require.NoError(t, batch.Commit())
 			for _, reverse := range []bool{false, true} {
 				// Account-target membership still requires current attributes.

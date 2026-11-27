@@ -99,7 +99,7 @@ func (it *ReverseEventResolveIterator) settle() bool {
 			// Walking backwards, the first event at or below the pin is the
 			// LATEST such event — the one the forward pass settles on.
 			if !decided && row.seq <= it.pin {
-				live = row.op == MetadataEventAdd
+				live = row.op == IndexEventAdd
 				decided = true
 			}
 
@@ -170,7 +170,7 @@ func (it *ReverseEventResolveIterator) Seek(target []byte) bool {
 	seekKey := make([]byte, 0, len(it.seekPrefix)+len(target)+1)
 	seekKey = append(seekKey, it.seekPrefix...)
 	seekKey = append(seekKey, target...)
-	seekKey = append(seekKey, metadataEventTerminator+1)
+	seekKey = append(seekKey, indexEventTerminator+1)
 
 	if it.iter.SeekGE(seekKey) {
 		if !it.iter.Prev() {

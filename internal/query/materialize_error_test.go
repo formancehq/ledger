@@ -46,9 +46,9 @@ func TestMaterializeIterator_PropagatesADrainFailure(t *testing.T) {
 		seq    uint64
 		op     byte
 	}{
-		{"a", 5, 10, readstore.MetadataEventAdd},
+		{"a", 5, 10, readstore.IndexEventAdd},
 		{"b", 10, 10, 0x7f},
-		{"c", 15, 10, readstore.MetadataEventAdd},
+		{"c", 15, 10, readstore.IndexEventAdd},
 	} {
 		key := readstore.MetadataIndexEventKeyV(kb, ledger, readstore.NamespaceAccount, metaKey, version,
 			encoded(e.value), []byte(e.entity), e.seq, e.op)

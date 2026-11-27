@@ -14,10 +14,10 @@ import (
 func TestReverseEventResolveIterator_PinnedHistories(t *testing.T) {
 	t.Parallel()
 	s, prefix := eventFixture(t, "v",
-		ev{"a", 10, MetadataEventAdd}, ev{"a", 20, MetadataEventDel}, ev{"a", 30, MetadataEventAdd},
-		ev{"ab", 10, MetadataEventAdd}, ev{"ab", 20, MetadataEventDel},
-		ev{"b", 20, MetadataEventDel}, ev{"b", 20, MetadataEventAdd},
-		ev{"z", 40, MetadataEventAdd},
+		ev{"a", 10, IndexEventAdd}, ev{"a", 20, IndexEventDel}, ev{"a", 30, IndexEventAdd},
+		ev{"ab", 10, IndexEventAdd}, ev{"ab", 20, IndexEventDel},
+		ev{"b", 20, IndexEventDel}, ev{"b", 20, IndexEventAdd},
+		ev{"z", 40, IndexEventAdd},
 	)
 	for _, tc := range []struct {
 		pin  uint64
@@ -42,8 +42,8 @@ func TestReverseEventResolveIterator_PinnedHistories(t *testing.T) {
 
 func TestReverseEventResolveIterator_AbsoluteSeek(t *testing.T) {
 	t.Parallel()
-	s, prefix := eventFixture(t, "v", ev{"a", 10, MetadataEventAdd}, ev{"ab", 10, MetadataEventAdd},
-		ev{"b", 10, MetadataEventAdd}, ev{"b", 20, MetadataEventDel}, ev{"c", 10, MetadataEventAdd})
+	s, prefix := eventFixture(t, "v", ev{"a", 10, IndexEventAdd}, ev{"ab", 10, IndexEventAdd},
+		ev{"b", 10, IndexEventAdd}, ev{"b", 20, IndexEventDel}, ev{"c", 10, IndexEventAdd})
 	it, err := NewReverseEventResolveIterator(s.DB(), prefix, 25)
 	require.NoError(t, err)
 	defer it.Close()
@@ -83,15 +83,15 @@ func TestReverseEventResolveIterator_MalformedKeys(t *testing.T) {
 		for _, seek := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/seek=%t", corruption, seek), func(t *testing.T) {
 				t.Parallel()
-				s, prefix := eventFixture(t, "v", ev{"a", 10, MetadataEventAdd})
-				key := append([]byte(nil), MetadataIndexEventKeyV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte("v"), []byte("z"), 20, MetadataEventAdd)...)
+				s, prefix := eventFixture(t, "v", ev{"a", 10, IndexEventAdd})
+				key := append([]byte(nil), MetadataIndexEventKeyV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte("v"), []byte("z"), 20, IndexEventAdd)...)
 				switch corruption {
 				case "unknown operation":
 					key[len(key)-1] = 0x7f
 				case "truncated tail":
 					key = key[:len(key)-3]
 				case "missing terminator":
-					key[len(key)-metadataEventSuffixLen-1] = 2
+					key[len(key)-indexEventSuffixLen-1] = 2
 				}
 				require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
 				it, err := NewReverseEventResolveIterator(s.DB(), prefix, 25)
@@ -112,7 +112,7 @@ func TestReverseEventResolveIterator_MalformedKeys(t *testing.T) {
 
 func TestReverseEventResolveIterator_MalformedEarlierEvent(t *testing.T) {
 	t.Parallel()
-	s, prefix := eventFixture(t, "v", ev{"a", 10, MetadataEventAdd}, ev{"z", 30, MetadataEventAdd})
+	s, prefix := eventFixture(t, "v", ev{"a", 10, IndexEventAdd}, ev{"z", 30, IndexEventAdd})
 	key := append([]byte(nil), MetadataIndexEventKeyV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte("v"), []byte("z"), 20, 0x7f)...)
 	require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
 	it, err := NewReverseEventResolveIterator(s.DB(), prefix, 30)

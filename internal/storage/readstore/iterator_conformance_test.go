@@ -138,12 +138,12 @@ func conformancePairs() []iterPair {
 			name: "EventResolveIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s, prefix := eventFixture(t, "v",
-					ev{"a", 5, MetadataEventAdd},
-					ev{"b", 6, MetadataEventAdd},
-					ev{"c", 7, MetadataEventAdd},
+					ev{"a", 5, IndexEventAdd},
+					ev{"b", 6, IndexEventAdd},
+					ev{"c", 7, IndexEventAdd},
 					// d was added then removed below the pin: dead either way.
-					ev{"d", 8, MetadataEventAdd},
-					ev{"d", 9, MetadataEventDel},
+					ev{"d", 8, IndexEventAdd},
+					ev{"d", 9, IndexEventDel},
 				)
 
 				fwd, err := NewEventResolveIterator(s.DB(), prefix, 100)
@@ -457,15 +457,15 @@ func gatedPairs() []gatedPair {
 			name: "EventResolveAtPin",
 			build: func(t *testing.T, pin uint64) (EntityIterator, ReverseIterator) {
 				s, prefix := eventFixture(t, "v",
-					ev{"a", 5, MetadataEventAdd},
+					ev{"a", 5, IndexEventAdd},
 					// b is ADDed above the pin: invisible at pin=10.
-					ev{"b", 50, MetadataEventAdd},
+					ev{"b", 50, IndexEventAdd},
 					// c is ADDed below and DELeted above: still visible at pin=10.
-					ev{"c", 6, MetadataEventAdd},
-					ev{"c", 60, MetadataEventDel},
+					ev{"c", 6, IndexEventAdd},
+					ev{"c", 60, IndexEventDel},
 					// d is ADDed then DELeted below the pin: invisible.
-					ev{"d", 3, MetadataEventAdd},
-					ev{"d", 4, MetadataEventDel},
+					ev{"d", 3, IndexEventAdd},
+					ev{"d", 4, IndexEventDel},
 				)
 
 				fwd, err := NewEventResolveIterator(s.DB(), prefix, pin)

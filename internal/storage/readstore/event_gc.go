@@ -62,7 +62,7 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 	batch := db.NewBatch()
 	defer func() { _ = batch.Close() }()
 
-	suffix := metadataEventSuffixLen + 1 // terminator + seq + op
+	suffix := indexEventSuffixLen + 1 // terminator + seq + op
 
 	var (
 		group        []byte // current group identity (key bytes before the terminator)
@@ -128,7 +128,7 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 				identity = key
 			}
 		}
-		if tpos < 1 || (!legacy && key[tpos] != metadataEventTerminator) {
+		if tpos < 1 || (!legacy && key[tpos] != indexEventTerminator) {
 			// The identity cannot be parsed, so which group the key belongs to
 			// is unknowable: a truncated key sorts before the very events it
 			// shares an identity with, so it lands between two groups and
@@ -178,9 +178,9 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 			// event keys regardless of the stamp's sequence.
 			converted := make([]byte, 0, len(key)+10)
 			converted = append(converted, key...)
-			converted = append(converted, metadataEventTerminator)
+			converted = append(converted, indexEventTerminator)
 			converted = binary.BigEndian.AppendUint64(converted, legacySeq)
-			converted = append(converted, MetadataEventAdd)
+			converted = append(converted, IndexEventAdd)
 			if err := batch.Set(converted, nil, nil); err != nil {
 				return 0, nil, err
 			}
@@ -224,7 +224,7 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 		}
 
 		pendingBelow = append(pendingBelow[:0], key...)
-		pendingIsAdd = op == MetadataEventAdd
+		pendingIsAdd = op == IndexEventAdd
 	}
 
 	// !Valid means either clean exhaustion or an iterator failure. Settling the

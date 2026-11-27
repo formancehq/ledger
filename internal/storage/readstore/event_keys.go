@@ -4,9 +4,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// Event-suffixed metadata index keys (EN-1748). The suffix encoding and op
-// bytes are also used by the exists and account-by-asset indexes; the
-// MetadataEvent names reflect where this shared format was introduced.
+// Event-suffixed read index keys (EN-1748). Metadata, existence, and
+// account-by-asset indexes share the suffix encoding and operation bytes.
 //
 // The metadata value index is stored as an append-only event log so that a
 // reader pinned at an applied sequence reconstructs the exact membership at
@@ -34,28 +33,28 @@ import (
 // (account addresses are [a-zA-Z0-9:_-]+; transaction ids are their fixed
 // 8-byte encoding, terminated uniformly for one parse rule).
 const (
-	// MetadataEventDel orders before MetadataEventAdd so that an ADD and a
+	// IndexEventDel orders before IndexEventAdd so that an ADD and a
 	// DEL carrying the same sequence (impossible today — one log cannot both
 	// add and remove the same (value, entity) — but cheap to make total)
 	// resolve to ADD.
-	MetadataEventDel byte = 0x00
-	MetadataEventAdd byte = 0x01
+	IndexEventDel byte = 0x00
+	IndexEventAdd byte = 0x01
 
-	// metadataEventSuffixLen is the fixed tail after the entity terminator:
+	// indexEventSuffixLen is the fixed tail after the entity terminator:
 	// 8 bytes of big-endian raft sequence plus the op byte.
-	metadataEventSuffixLen = 9
+	indexEventSuffixLen = 9
 
-	// metadataEventTerminator separates the variable-length entity from the
+	// indexEventTerminator separates the variable-length entity from the
 	// fixed event suffix.
-	metadataEventTerminator byte = 0x00
+	indexEventTerminator byte = 0x00
 )
 
 // validEventOp reports whether op is one this package writes. Anything else in
 // that byte is a corrupt or foreign key: readers must refuse it rather than
-// fold it into the DEL arm of an `op == MetadataEventAdd` test, which would
+// fold it into the DEL arm of an `op == IndexEventAdd` test, which would
 // silently drop matching entities.
 func validEventOp(op byte) bool {
-	return op == MetadataEventAdd || op == MetadataEventDel
+	return op == IndexEventAdd || op == IndexEventDel
 }
 
 // MetadataIndexEventKeyV builds one event key. Layout mirrors
@@ -79,7 +78,7 @@ func MetadataIndexEventKeyV(
 		PutUint32(version).
 		PutBytes(encodedValue).
 		PutBytes(entityID).
-		PutByte(metadataEventTerminator).
+		PutByte(indexEventTerminator).
 		PutUint64(seq).
 		PutByte(op).
 		Consume()
@@ -112,7 +111,7 @@ func EntityExistsEventKeyV(
 		PutUint32(version).
 		PutByte(nullFlag).
 		PutBytes(entityID).
-		PutByte(metadataEventTerminator).
+		PutByte(indexEventTerminator).
 		PutUint64(seq).
 		PutByte(op).
 		Consume()
@@ -131,6 +130,6 @@ func AccountByAssetEventKey(kb *dal.KeyBuilder, ledgerName, assetBase string, pr
 		PutByte(precision).
 		PutStringNull(account).
 		PutUint64(seq).
-		PutByte(MetadataEventAdd).
+		PutByte(IndexEventAdd).
 		Consume()
 }

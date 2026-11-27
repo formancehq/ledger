@@ -42,28 +42,28 @@ func TestParseIndexEventRowAcrossZones(t *testing.T) {
 	}{
 		{
 			name:      "metadata DEL",
-			key:       eventKey([]byte{PrefixMetadataIndex}, []byte("a"), 5, MetadataEventDel),
-			prefixLen: 1, wantGroup: []byte("a"), wantSeq: 5, wantOp: MetadataEventDel, wantOK: true,
+			key:       eventKey([]byte{PrefixMetadataIndex}, []byte("a"), 5, IndexEventDel),
+			prefixLen: 1, wantGroup: []byte("a"), wantSeq: 5, wantOp: IndexEventDel, wantOK: true,
 		},
 		{
 			name:      "exists ADD",
-			key:       eventKey([]byte{PrefixEntityExists}, []byte("b"), 7, MetadataEventAdd),
-			prefixLen: 1, wantGroup: []byte("b"), wantSeq: 7, wantOp: MetadataEventAdd, wantOK: true,
+			key:       eventKey([]byte{PrefixEntityExists}, []byte("b"), 7, IndexEventAdd),
+			prefixLen: 1, wantGroup: []byte("b"), wantSeq: 7, wantOp: IndexEventAdd, wantOK: true,
 		},
 		{
 			name:      "account asset event",
 			key:       AccountByAssetEventKey(kb, "ledger", "USD", 2, "a", 9),
-			prefixLen: len(assetPrefix), wantGroup: []byte("a"), wantSeq: 9, wantOp: MetadataEventAdd, wantOK: true,
+			prefixLen: len(assetPrefix), wantGroup: []byte("a"), wantSeq: 9, wantOp: IndexEventAdd, wantOK: true,
 		},
 		{
 			name: "account asset legacy row",
 			key:  legacyKey, value: binary.BigEndian.AppendUint64(nil, 11),
-			prefixLen: len(assetPrefix), wantGroup: []byte("a"), wantSeq: 11, wantOp: MetadataEventAdd,
+			prefixLen: len(assetPrefix), wantGroup: []byte("a"), wantSeq: 11, wantOp: IndexEventAdd,
 			wantLegacy: true, wantOK: true, wantValueReads: 1,
 		},
 		{
 			name:      "account asset DEL rejected",
-			key:       eventKey(assetPrefix, []byte("a"), 9, MetadataEventDel),
+			key:       eventKey(assetPrefix, []byte("a"), 9, IndexEventDel),
 			prefixLen: len(assetPrefix),
 		},
 		{
@@ -103,7 +103,7 @@ func BenchmarkParseIndexEventRow(b *testing.B) {
 		value     []byte
 		prefixLen int
 	}{
-		{"metadata", eventKey([]byte{PrefixMetadataIndex}, []byte("accounts:alice"), 42, MetadataEventAdd), nil, 1},
+		{"metadata", eventKey([]byte{PrefixMetadataIndex}, []byte("accounts:alice"), 42, IndexEventAdd), nil, 1},
 		{"asset event", AccountByAssetEventKey(kb, "ledger", "USD", 2, "accounts:alice", 42), nil, len(assetPrefix)},
 		{"RC.5 asset row", legacyAccountAssetKey(kb, "accounts:alice"), binary.BigEndian.AppendUint64(nil, 42), len(assetPrefix)},
 	} {
@@ -124,7 +124,7 @@ func BenchmarkParseIndexEventRow(b *testing.B) {
 // MetadataIndexEventKeyV and the EntityExists* builders do.
 func eventKey(prefix, group []byte, seq uint64, op byte) []byte {
 	key := append(append([]byte(nil), prefix...), group...)
-	key = append(key, metadataEventTerminator)
+	key = append(key, indexEventTerminator)
 	key = binary.BigEndian.AppendUint64(key, seq)
 
 	return append(key, op)
@@ -151,39 +151,39 @@ func TestParseEventKey(t *testing.T) {
 	}{
 		{
 			name:      "add event",
-			key:       eventKey(prefix, []byte("acc:alice"), 42, MetadataEventAdd),
+			key:       eventKey(prefix, []byte("acc:alice"), 42, IndexEventAdd),
 			prefixLen: len(prefix),
 			wantOK:    true,
 			wantGroup: []byte("acc:alice"),
 			wantSeq:   42,
-			wantOp:    MetadataEventAdd,
+			wantOp:    IndexEventAdd,
 		},
 		{
 			name:      "del event",
-			key:       eventKey(prefix, []byte("acc:bob"), 7, MetadataEventDel),
+			key:       eventKey(prefix, []byte("acc:bob"), 7, IndexEventDel),
 			prefixLen: len(prefix),
 			wantOK:    true,
 			wantGroup: []byte("acc:bob"),
 			wantSeq:   7,
-			wantOp:    MetadataEventDel,
+			wantOp:    IndexEventDel,
 		},
 		{
 			name:      "empty group",
-			key:       eventKey(prefix, nil, 1, MetadataEventAdd),
+			key:       eventKey(prefix, nil, 1, IndexEventAdd),
 			prefixLen: len(prefix),
 			wantOK:    true,
 			wantGroup: []byte{},
 			wantSeq:   1,
-			wantOp:    MetadataEventAdd,
+			wantOp:    IndexEventAdd,
 		},
 		{
 			name:      "group with embedded terminator byte",
-			key:       eventKey(prefix, []byte{'a', 0x00, 'b'}, 9, MetadataEventAdd),
+			key:       eventKey(prefix, []byte{'a', 0x00, 'b'}, 9, IndexEventAdd),
 			prefixLen: len(prefix),
 			wantOK:    true,
 			wantGroup: []byte{'a', 0x00, 'b'},
 			wantSeq:   9,
-			wantOp:    MetadataEventAdd,
+			wantOp:    IndexEventAdd,
 		},
 		{
 			name:      "unknown op rejected",
@@ -193,13 +193,13 @@ func TestParseEventKey(t *testing.T) {
 		},
 		{
 			name:      "missing terminator rejected",
-			key:       append(append(append([]byte(nil), prefix...), []byte("acc:alice")...), append([]byte{0x01}, make([]byte, metadataEventSuffixLen-1)...)...),
+			key:       append(append(append([]byte(nil), prefix...), []byte("acc:alice")...), append([]byte{0x01}, make([]byte, indexEventSuffixLen-1)...)...),
 			prefixLen: len(prefix),
 			wantOK:    false,
 		},
 		{
 			name:      "suffix shorter than the fixed tail rejected",
-			key:       append(append([]byte(nil), prefix...), make([]byte, metadataEventSuffixLen)...),
+			key:       append(append([]byte(nil), prefix...), make([]byte, indexEventSuffixLen)...),
 			prefixLen: len(prefix),
 			wantOK:    false,
 		},

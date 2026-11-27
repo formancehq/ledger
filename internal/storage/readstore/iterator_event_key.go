@@ -38,7 +38,7 @@ func parseIndexEventRow(source indexEventRowSource, prefixLen int) (indexEventRo
 			return indexEventRow{}, false
 		}
 
-		return indexEventRow{group: group, seq: seq, op: MetadataEventAdd, legacy: legacy}, true
+		return indexEventRow{group: group, seq: seq, op: IndexEventAdd, legacy: legacy}, true
 	}
 
 	group, seq, op, ok := parseEventKey(key, prefixLen)
@@ -57,8 +57,8 @@ func parseEventKey(key []byte, prefixLen int) (group []byte, seq uint64, op byte
 		return nil, 0, 0, false
 	}
 	rest := key[prefixLen:]
-	tpos := len(rest) - metadataEventSuffixLen - 1
-	if tpos < 0 || rest[tpos] != metadataEventTerminator {
+	tpos := len(rest) - indexEventSuffixLen - 1
+	if tpos < 0 || rest[tpos] != indexEventTerminator {
 		return nil, 0, 0, false
 	}
 
@@ -81,12 +81,12 @@ func parseAccountAssetKey(source indexEventRowSource, prefixLen int) (group []by
 		return nil, 0, false, false
 	}
 	account := key[prefixLen:]
-	if bytes.IndexByte(account, metadataEventTerminator) >= 0 {
+	if bytes.IndexByte(account, indexEventTerminator) >= 0 {
 		// The event suffix format is shared with metadata; this index only
 		// permits ADD because a historical asset touch is never revoked.
 		group, seq, op, valid := parseEventKey(key, prefixLen)
 
-		return group, seq, false, valid && op == MetadataEventAdd
+		return group, seq, false, valid && op == IndexEventAdd
 	}
 	value := source.Value()
 	if len(value) != 8 || invariants.ValidateLedgerAccountAddress(string(account)) != nil {

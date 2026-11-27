@@ -872,7 +872,7 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKey, rawEncoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID, 1, readstore.IndexEventAdd)
 
 	// The "age" account index is still backfilling; incremental writes flow to it.
 	cfg := newLedgerIndexConfig()
@@ -1004,8 +1004,8 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 	require.NoError(t, seed.SetBytes(v1Rmap, encoded))
 	require.NoError(t, seed.SetBytes(v2Rmap, encoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd)
-	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID, 1, readstore.IndexEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID, 1, readstore.IndexEventAdd)
 
 	dm := &commonpb.DeletedMetadata{
 		Target: &commonpb.Target{
@@ -1213,8 +1213,8 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 			require.NoError(t, seed.SetBytes(v1Rmap, oldEncoded))
 			require.NoError(t, seed.SetBytes(v2Rmap, oldEncoded))
 			require.NoError(t, seed.Commit())
-			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 1, oldEncoded, entityID, 1, readstore.MetadataEventAdd)
-			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 2, oldEncoded, entityID, 1, readstore.MetadataEventAdd)
+			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 1, oldEncoded, entityID, 1, readstore.IndexEventAdd)
+			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 2, oldEncoded, entityID, 1, readstore.IndexEventAdd)
 
 			batch := b.readStore.NewBatch()
 			b.wb.Init(batch)
@@ -1405,8 +1405,8 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 
 	// v=1 forward entry (the pre-retype state). The rewrite no longer
 	// touches v=1 (in-place mutation is gone); v=1 stays until GC.
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, firstEntityID, 1, readstore.MetadataEventAdd)
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, secondEntityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, firstEntityID, 1, readstore.IndexEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, secondEntityID, 1, readstore.IndexEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.
@@ -1817,7 +1817,7 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.IndexEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.
@@ -1921,7 +1921,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.IndexEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.
