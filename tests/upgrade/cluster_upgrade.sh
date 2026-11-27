@@ -17,6 +17,14 @@ cli() {
 	k exec "$(pod_name "$i")" -c ledger -- /app/ledgerctl "$@" \
 		--insecure --server 127.0.0.1:8888
 }
+# Run the candidate CLI through another voter's gRPC endpoint. The RC.5 CLI
+# predates --idempotency-key, but the old voter's forwarding path still needs
+# to be exercised after leadership transfers to the candidate.
+cli_via() {
+	local executor="$1" target="$2"; shift 2
+	k exec "$(pod_name "$executor")" -c ledger -- /app/ledgerctl "$@" \
+		--insecure --server "$(pod_name "$target").ledger-upgrade.$namespace.svc.cluster.local:8888"
+}
 status() {
 	local id="$1" i output
 	for i in 0 1 2; do
@@ -330,10 +338,23 @@ if [ "${UPGRADE_ROLLING_CAPABILITY:-}" = 1 ]; then
 		wait_consistent false
 	}
 	replace_rolling_pod "${followers[0]}"
+	mixed_old_key="$ledger-mixed-old-leader"
+	mixed_new_key="$ledger-mixed-new-leader"
+	after_activation_key="$ledger-after-activation"
+	assert_capability_audit() {
+		local key="$1" expected="$2"
+		cli "${followers[0]}" audit list --filter "idempotency_key == \"$key\"" \
+			--page-size 2 --json --timeout 120s |
+			jq -e --arg key "$key" --argjson expected "$expected" \
+				'length == 1 and .[0].idempotency.key == $key and
+				 (.[0].success != null) and .[0].orderCount == 1 and
+				 ((.[0].requiredCapabilities // []) == $expected)' >/dev/null
+	}
 	[ "$(cluster_health | cut -d' ' -f1)" = "$original_leader" ] || {
 		echo 'source leader changed before mixed-version write' >&2; exit 1;
 	}
-	cli "${followers[0]}" transactions create --ledger "$ledger" --posting world,bank,1,USD --reference mixed-old-leader
+	cli "${followers[0]}" transactions create --ledger "$ledger" --posting world,bank,1,USD \
+		--reference mixed-old-leader --idempotency-key "$mixed_old_key"
 	wait_consistent false
 	cli "$((original_leader-1))" cluster transfer-leader "$((followers[0]+1))"
 	wait_consistent false
@@ -348,26 +369,27 @@ if [ "${UPGRADE_ROLLING_CAPABILITY:-}" = 1 ]; then
 		[ "$(date +%s)" -lt "$deadline" ] || { echo 'old voter did not regain forwarding connectivity' >&2; exit 1; }
 		sleep 2
 	done
-	cli "$((original_leader-1))" transactions create --ledger "$ledger" --posting world,bank,1,USD --reference mixed-new-leader
+	cli_via "${followers[0]}" "$((original_leader-1))" transactions create --ledger "$ledger" \
+		--posting world,bank,1,USD --reference mixed-new-leader --idempotency-key "$mixed_new_key"
 	wait_consistent false
 	mixed="$(account 0)"
 	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "102")' <<<"$mixed" >/dev/null
 	check_data "$mixed"
-	cli "${followers[0]}" audit list --reverse --page-size 1 --json |
-		jq -e '.[0].requiredCapabilities == null or .[0].requiredCapabilities == []' >/dev/null
+	assert_capability_audit "$mixed_old_key" '[]'
+	assert_capability_audit "$mixed_new_key" '[]'
 	replace_rolling_pod "${followers[1]}"
 	replace_rolling_pod "$((original_leader-1))"
 	# Raft convergence does not imply that capability activation has committed.
 	# Probe the committed policy before issuing this non-idempotent write once.
 	wait_capability_activation "${followers[0]}"
 	cli "${followers[0]}" transactions create --ledger "$ledger" \
-		--posting world,bank,1,USD --reference after-activation --timeout 120s
+		--posting world,bank,1,USD --reference after-activation \
+		--idempotency-key "$after_activation_key" --timeout 120s
 	wait_consistent false
 	after="$(account 0)"
 	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "103")' <<<"$after" >/dev/null
 	check_data "$after"
-	cli "${followers[0]}" audit list --reverse --page-size 1 --json |
-		jq -e '.[0].requiredCapabilities == [1]' >/dev/null
+	assert_capability_audit "$after_activation_key" '[1]'
 	for i in 0 1 2; do cli "$i" store check; done
 	echo 'PASS: published RC.5 and candidate mixed-version writes, leadership transfer, activation, audit and retained data'
 	exit 0

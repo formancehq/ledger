@@ -671,7 +671,7 @@ UPGRADE_ROLLING_CAPABILITY=1 just test-rolling-upgrade v3.0.0-rc.5 <candidate-sh
 
 This mode replaces voters one at a time without maintenance. It commits
 transactions while an RC.5 leader and a candidate voter coexist, transfers
-leadership to the candidate voter, commits another transaction from the RC.5
+leadership to the candidate voter, commits another transaction through the RC.5
 node, then upgrades the remaining voters. It verifies a post-activation write,
 unmarked mixed-version audit entries, a marked post-activation audit entry,
 equal account state and the audit/store checker on all three nodes. The source

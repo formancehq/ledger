@@ -38,6 +38,7 @@ Examples:
 	cmdutil.AddLedgerFlag(cmd)
 	cmd.Flags().StringArray("posting", nil, "Posting in format: source,destination,amount,asset[,color] (can be repeated)")
 	cmd.Flags().String("reference", "", "Transaction reference")
+	cmd.Flags().String("idempotency-key", "", "Batch idempotency key, recorded in the audit entry")
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
 	cmdutil.AddOutputFlags(cmd)
@@ -88,6 +89,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	// Get reference (optional)
 	reference, _ := cmd.Flags().GetString("reference")
+	idempotencyKey, _ := cmd.Flags().GetString("idempotency-key")
 
 	// Get metadata (optional)
 	metadata, _ := cmd.Flags().GetStringToString("metadata")
@@ -121,7 +123,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		},
 	}
 
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	applyReq, err := cmdutil.BuildApplyRequestWithIdempotencyKey(cmd, idempotencyKey, requests...)
 	if err != nil {
 		spinner.Fail("Failed to sign request")
 
