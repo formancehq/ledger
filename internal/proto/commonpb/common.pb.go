@@ -22584,18 +22584,15 @@ func (x *AccountMetadataUpdated) GetAccountMetadata() map[string]*MetadataMap {
 	return nil
 }
 
-// GrpcLogSinkConfig binds an acknowledged inbound stream to one ledger and
+// GrpcLogSinkConfig binds an acknowledged inbound global log stream to one
 // client identity. owner is the authenticated principal allowed to connect.
 // incarnation is assigned from the AddEventsSink log sequence
-// in the stored projection. ledger_id is resolved at creation. Clients must
-// leave both technical fields zero when registering.
+// in the stored projection. Clients must leave it zero when registering.
 type GrpcLogSinkConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	Incarnation   uint64                 `protobuf:"fixed64,3,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	LedgerId      uint32                 `protobuf:"fixed32,4,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
-	Owner         *CallerIdentity        `protobuf:"bytes,5,opt,name=owner,proto3" json:"owner,omitempty"`
+	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	Incarnation   uint64                 `protobuf:"fixed64,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
+	Owner         *CallerIdentity        `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -22630,13 +22627,6 @@ func (*GrpcLogSinkConfig) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{319}
 }
 
-func (x *GrpcLogSinkConfig) GetLedger() string {
-	if x != nil {
-		return x.Ledger
-	}
-	return ""
-}
-
 func (x *GrpcLogSinkConfig) GetClientId() string {
 	if x != nil {
 		return x.ClientId
@@ -22647,13 +22637,6 @@ func (x *GrpcLogSinkConfig) GetClientId() string {
 func (x *GrpcLogSinkConfig) GetIncarnation() uint64 {
 	if x != nil {
 		return x.Incarnation
-	}
-	return 0
-}
-
-func (x *GrpcLogSinkConfig) GetLedgerId() uint32 {
-	if x != nil {
-		return x.LedgerId
 	}
 	return 0
 }
@@ -24317,13 +24300,11 @@ const file_common_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x01 \x03(\v23.common.AccountMetadataUpdated.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xbb\x01\n" +
-	"\x11GrpcLogSinkConfig\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12 \n" +
-	"\vincarnation\x18\x03 \x01(\x06R\vincarnation\x12\x1b\n" +
-	"\tledger_id\x18\x04 \x01(\aR\bledgerId\x12,\n" +
-	"\x05owner\x18\x05 \x01(\v2\x16.common.CallerIdentityR\x05owner:\x04\xd8\xd5\"\x01*\xdd\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\x86\x01\n" +
+	"\x11GrpcLogSinkConfig\x12\x1b\n" +
+	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12 \n" +
+	"\vincarnation\x18\x02 \x01(\x06R\vincarnation\x12,\n" +
+	"\x05owner\x18\x03 \x01(\v2\x16.common.CallerIdentityR\x05owner:\x04\xd8\xd5\"\x01*\xdd\x03\n" +
 	"\tAuthScope\x12\x1a\n" +
 	"\x16AUTH_SCOPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AUTH_SCOPE_LEDGER_READ\x10\x01\x12\x1b\n" +

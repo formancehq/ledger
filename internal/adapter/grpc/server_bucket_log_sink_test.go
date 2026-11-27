@@ -7,27 +7,27 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
+	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
 	internalAuth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 type blockedLogSinkStream struct {
-	servicepb.BucketService_SubscribeLedgerLogsServer
+	servicepb.BucketService_SubscribeLogsServer
 
 	started chan struct{}
 	release chan struct{}
 }
 
-func (stream *blockedLogSinkStream) Send(*servicepb.SubscribeLedgerLogsResponse) error {
+func (stream *blockedLogSinkStream) Send(*servicepb.SubscribeLogsResponse) error {
 	close(stream.started)
 	<-stream.release
 
@@ -51,7 +51,7 @@ func TestLogSinkTokenExpiryInterruptsBlockedDelivery(t *testing.T) {
 		}()
 		result := make(chan error, 1)
 		go func() {
-			result <- sendLogSinkResponse(ctx, stream, &servicepb.SubscribeLedgerLogsResponse{})
+			result <- sendLogSinkResponse(ctx, stream, &servicepb.SubscribeLogsResponse{})
 		}()
 		<-stream.started
 		synctest.Wait()
@@ -76,43 +76,52 @@ func TestLogSinkAuthorizationDeadlineFollowsTokenExpiry(t *testing.T) {
 
 func TestReadLogSinkPageContinuesAfterLargeHistoricalLog(t *testing.T) {
 	t.Parallel()
-	controller := NewMockController(gomock.NewController(t))
 	large := testLedgerLog(1)
 	large.ResponseSignature = &signaturepb.SignedLog{Payload: make([]byte, maxLogSinkPageBytes+1)}
 	next := testLedgerLog(2)
-	controller.EXPECT().ListLogs(gomock.Any(), "ledger", uint64(0), uint32(2), nil, false).
-		Return(cursor.NewSliceCursor([]*commonpb.Log{large, next}), nil)
-	controller.EXPECT().ListLogs(gomock.Any(), "ledger", uint64(1), uint32(2), nil, false).
-		Return(cursor.NewSliceCursor([]*commonpb.Log{next}), nil)
-	impl := &BucketServiceServerImpl{ctrl: controller}
-	first, err := impl.readLogSinkPage(context.Background(), "ledger", 0, 2)
+	store := newLogSinkTestStore(t, large, next)
+	impl := &BucketServiceServerImpl{store: store}
+	first, err := impl.readLogSinkPage(t.Context(), 0, 2)
 	require.NoError(t, err)
 	require.Equal(t, []*commonpb.Log{large}, first)
-	second, err := impl.readLogSinkPage(context.Background(), "ledger", 1, 2)
+	second, err := impl.readLogSinkPage(t.Context(), 1, 2)
 	require.NoError(t, err)
 	require.Equal(t, []*commonpb.Log{next}, second)
 }
 
 func TestReadLogSinkPageDefersLogThatExceedsNonemptyPageBudget(t *testing.T) {
 	t.Parallel()
-	controller := NewMockController(gomock.NewController(t))
 	firstLog := testLedgerLog(1)
 	firstLog.ResponseSignature = &signaturepb.SignedLog{Payload: make([]byte, 7<<20)}
 	secondLog := testLedgerLog(2)
 	secondLog.ResponseSignature = &signaturepb.SignedLog{Payload: make([]byte, 7<<20)}
 	require.Less(t, firstLog.SizeVT(), maxLogSinkPageBytes)
 	require.Greater(t, firstLog.SizeVT()+secondLog.SizeVT(), maxLogSinkPageBytes)
-	controller.EXPECT().ListLogs(gomock.Any(), "ledger", uint64(0), uint32(2), nil, false).
-		Return(cursor.NewSliceCursor([]*commonpb.Log{firstLog, secondLog}), nil)
-	controller.EXPECT().ListLogs(gomock.Any(), "ledger", uint64(1), uint32(2), nil, false).
-		Return(cursor.NewSliceCursor([]*commonpb.Log{secondLog}), nil)
-	impl := &BucketServiceServerImpl{ctrl: controller}
-	page, err := impl.readLogSinkPage(context.Background(), "ledger", 0, 2)
+	store := newLogSinkTestStore(t, firstLog, secondLog)
+	impl := &BucketServiceServerImpl{store: store}
+	page, err := impl.readLogSinkPage(t.Context(), 0, 2)
 	require.NoError(t, err)
 	require.Equal(t, []*commonpb.Log{firstLog}, page)
-	page, err = impl.readLogSinkPage(context.Background(), "ledger", 1, 2)
+	page, err = impl.readLogSinkPage(t.Context(), 1, 2)
 	require.NoError(t, err)
 	require.Equal(t, []*commonpb.Log{secondLog}, page)
+}
+
+func TestReadLogSinkPageIncludesOtherLedgersAndSystemLogs(t *testing.T) {
+	t.Parallel()
+	first := testLedgerLog(1)
+	second := testLedgerLog(2)
+	second.GetPayload().GetApply().LedgerName = "other-ledger"
+	system := &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
+		RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "old-sink"},
+	}}}
+	impl := &BucketServiceServerImpl{store: newLogSinkTestStore(t, first, second, system)}
+	page, err := impl.readLogSinkPage(t.Context(), 0, 3)
+	require.NoError(t, err)
+	require.Equal(t, []*commonpb.Log{first, second, system}, page)
+	page, err = impl.readLogSinkPage(t.Context(), 1, 3)
+	require.NoError(t, err)
+	require.Equal(t, []*commonpb.Log{second, system}, page)
 }
 
 func TestSubscribeWrapperFitsListLogsBoundary(t *testing.T) {
@@ -123,15 +132,15 @@ func TestSubscribeWrapperFitsListLogsBoundary(t *testing.T) {
 		log.ResponseSignature.Payload = log.GetResponseSignature().GetPayload()[:len(log.GetResponseSignature().GetPayload())-1]
 	}
 	require.Equal(t, 64<<20, log.SizeVT())
-	wrapped := &servicepb.SubscribeLedgerLogsResponse{Kind: &servicepb.SubscribeLedgerLogsResponse_Log{Log: log}}
+	wrapped := &servicepb.SubscribeLogsResponse{Kind: &servicepb.SubscribeLogsResponse_Log{Log: log}}
 	require.LessOrEqual(t, wrapped.SizeVT(), serviceMaxMsgSize)
 }
 
-func TestSubscribeLedgerLogsUsesLedgerReadScope(t *testing.T) {
+func TestSubscribeLogsUsesOpsReadScope(t *testing.T) {
 	t.Parallel()
-	policy, err := commonpb.RPCAuthPolicyForMethod(servicepb.BucketService_SubscribeLedgerLogs_FullMethodName)
+	policy, err := commonpb.RPCAuthPolicyForMethod(servicepb.BucketService_SubscribeLogs_FullMethodName)
 	require.NoError(t, err)
-	require.Equal(t, commonpb.AuthScope_AUTH_SCOPE_LEDGER_READ, policy.GetFixedScope())
+	require.Equal(t, commonpb.AuthScope_AUTH_SCOPE_OPS_READ, policy.GetFixedScope())
 }
 
 func TestLogSinkConnectionLimitsAndRelease(t *testing.T) {
@@ -174,7 +183,22 @@ func TestLogSinkOwnerMatchesAuthenticatedPrincipal(t *testing.T) {
 }
 
 func testLedgerLog(id uint64) *commonpb.Log {
-	return &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+	return &commonpb.Log{Sequence: id, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 		LedgerName: "ledger", Log: &commonpb.LedgerLog{Id: id},
 	}}}}
+}
+
+func newLogSinkTestStore(t *testing.T, logs ...*commonpb.Log) *dal.Store {
+	t.Helper()
+	store, err := dal.NewStore(t.TempDir(), noopLogger{}, noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	batch := store.OpenWriteSession()
+	for _, log := range logs {
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(log.GetSequence()).Build()
+		require.NoError(t, batch.SetProto(key, log))
+	}
+	require.NoError(t, batch.Commit())
+
+	return store
 }

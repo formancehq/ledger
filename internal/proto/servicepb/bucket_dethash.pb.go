@@ -2617,7 +2617,7 @@ func (m *BarrierResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SubscribeLedgerLogsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SubscribeLogsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2628,7 +2628,7 @@ func (m *SubscribeLedgerLogsRequest) MarshalDeterministicVT(dAtA []byte) []byte 
 	return append(dAtA, b...)
 }
 
-func (m *OpenLedgerLogSink) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *OpenLogSink) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2639,7 +2639,7 @@ func (m *OpenLedgerLogSink) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *AcknowledgeLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *AcknowledgeLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2650,7 +2650,7 @@ func (m *AcknowledgeLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SubscribeLedgerLogsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SubscribeLogsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2660,7 +2660,7 @@ func (m *SubscribeLedgerLogsResponse) MarshalDeterministicVT(dAtA []byte) []byte
 	return append(dAtA, buf[sz-n:]...)
 }
 
-func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2670,7 +2670,7 @@ func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferDeterministicVT(dAtA [
 		copy(dAtA[i:], m.unknownFields)
 	}
 	switch v := m.Kind.(type) {
-	case *SubscribeLedgerLogsResponse_Opened:
+	case *SubscribeLogsResponse_Opened:
 		if v.Opened != nil {
 			size, _ := v.Opened.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
@@ -2678,7 +2678,7 @@ func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferDeterministicVT(dAtA [
 			i--
 			dAtA[i] = 0xa
 		}
-	case *SubscribeLedgerLogsResponse_Log:
+	case *SubscribeLogsResponse_Log:
 		if v.Log != nil {
 			size, _ := v.Log.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
@@ -2686,7 +2686,7 @@ func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferDeterministicVT(dAtA [
 			i--
 			dAtA[i] = 0x12
 		}
-	case *SubscribeLedgerLogsResponse_Acked:
+	case *SubscribeLogsResponse_Acked:
 		if v.Acked != nil {
 			size, _ := v.Acked.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
@@ -2698,7 +2698,7 @@ func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferDeterministicVT(dAtA [
 	return len(dAtA) - i, nil
 }
 
-func (m *OpenedLedgerLogSink) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *OpenedLogSink) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2709,7 +2709,7 @@ func (m *OpenedLedgerLogSink) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *AcknowledgedLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *AcknowledgedLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

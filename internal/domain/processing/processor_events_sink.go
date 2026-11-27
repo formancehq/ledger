@@ -25,17 +25,6 @@ func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*c
 	if existing != nil {
 		return nil, &domain.ErrSinkAlreadyExists{Name: cfg.GetName()}
 	}
-	if grpcLog := cfg.GetGrpcLog(); grpcLog != nil {
-		ledger, err := ctx.Scope.Ledgers().Get(domain.LedgerKey{Name: grpcLog.GetLedger()})
-		if err != nil {
-			return nil, domain.StoreFailure("checking gRPC log sink ledger", err)
-		}
-		if ledger == nil {
-			return nil, &domain.ErrLedgerNotFound{Name: grpcLog.GetLedger()}
-		}
-		cfg = cfg.CloneVT()
-		cfg.GetGrpcLog().LedgerId = ledger.GetId()
-	}
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_AddedEventsSink{

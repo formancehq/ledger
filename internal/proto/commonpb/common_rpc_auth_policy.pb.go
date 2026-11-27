@@ -84,8 +84,8 @@ func RPCAuthPolicyForMethod(fullMethod string) (*MethodAuthPolicy, error) {
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
 	case "/ledger.BucketService/ListLogs":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
-	case "/ledger.BucketService/SubscribeLedgerLogs":
-		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}}, nil
+	case "/ledger.BucketService/SubscribeLogs":
+		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
 	case "/ledger.BucketService/GetLog":
 		return &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}}, nil
 	case "/ledger.BucketService/ListSigningKeys":
@@ -170,7 +170,7 @@ func AllRPCAuthPolicies() map[string]*MethodAuthPolicy {
 		"/ledger.BucketService/GetAuditEntry":                &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_AUDIT_READ}},
 		"/ledger.BucketService/GetEventsSinks":               &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/ledger.BucketService/ListLogs":                     &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
-		"/ledger.BucketService/SubscribeLedgerLogs":          &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_LEDGER_READ}},
+		"/ledger.BucketService/SubscribeLogs":                &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/ledger.BucketService/GetLog":                       &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/ledger.BucketService/ListSigningKeys":              &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},
 		"/ledger.BucketService/GetSigningConfig":             &MethodAuthPolicy{Policy: &MethodAuthPolicy_FixedScope{FixedScope: AuthScope_AUTH_SCOPE_OPS_READ}},

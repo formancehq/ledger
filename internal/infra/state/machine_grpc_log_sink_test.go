@@ -19,19 +19,22 @@ func TestGrpcLogSinkAckFencesRecreatedSink(t *testing.T) {
 	fsm, dataStore, _ := newTestMachine(t)
 	key := domain.SinkConfigKey{Name: "log-sink"}
 	stored := &commonpb.SinkConfig{Name: "log-sink", Type: &commonpb.SinkConfig_GrpcLog{GrpcLog: &commonpb.GrpcLogSinkConfig{
-		Ledger: "ledger", ClientId: "client", Incarnation: 42,
+		ClientId: "client", Incarnation: 42,
 	}}}
 	seed := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.SinkConfigs.PutWithCache(seed, 0, key.Bytes(), stored)
 	require.NoError(t, err)
+	// An older gRPC incarnation left its name-scoped cursor behind.
+	require.NoError(t, seed.SetBytes(query.GrpcLogSinkCursorKey("log-sink"), []byte{0, 0, 0, 0, 0, 0, 0, 5}))
 	require.NoError(t, seed.Commit())
+	fsm.State.GrpcLogSinkCursors["log-sink"] = 5
 
 	attrID, _ := attributes.MakeKey(key.Bytes())
 	plan := &raftcmdpb.ExecutionPlan{LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
 		Attributes: []*raftcmdpb.AttributeCoverage{declareTestPlan(attrID, dal.SubAttrSinkConfig)}}
 	proposal := &raftcmdpb.Proposal{Id: 1, Date: &commonpb.Timestamp{Data: 1700000000}, ExecutionPlan: plan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_GrpcLogSinkAck{
-			GrpcLogSinkAck: &raftcmdpb.GrpcLogSinkAck{SinkName: "log-sink", Incarnation: 41, LogId: 7},
+			GrpcLogSinkAck: &raftcmdpb.GrpcLogSinkAck{SinkName: "log-sink", Incarnation: 41, Sequence: 7},
 		}}}}
 	sealProposal(proposal)
 	fsm.writeSet.Reset(proposal.GetDate())
@@ -40,23 +43,23 @@ func TestGrpcLogSinkAckFencesRecreatedSink(t *testing.T) {
 	defer func() { _ = batch.Cancel() }()
 	err = fsm.applyTechnicalUpdates(scopeFactory, batch, proposal.GetId(), proposal)
 	require.True(t, errors.Is(err, ErrGrpcLogSinkStale), "old incarnation must not advance the recreated sink")
-	require.Empty(t, fsm.State.GrpcLogSinkCursors)
+	require.Equal(t, uint64(5), fsm.State.GrpcLogSinkCursors["log-sink"])
 
 	proposal.TechnicalUpdates[0].Kind = &raftcmdpb.TechnicalUpdate_GrpcLogSinkAck{
-		GrpcLogSinkAck: &raftcmdpb.GrpcLogSinkAck{SinkName: "log-sink", Incarnation: 42, LogId: 8},
+		GrpcLogSinkAck: &raftcmdpb.GrpcLogSinkAck{SinkName: "log-sink", Incarnation: 42, Sequence: 8},
 	}
 	require.NoError(t, fsm.applyTechnicalUpdates(scopeFactory, batch, proposal.GetId(), proposal))
 	require.NoError(t, batch.Commit())
 	handle, err := dataStore.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
-	cursor, err := query.ReadGrpcLogSinkCursor(handle, 42)
+	cursor, err := query.ReadGrpcLogSinkCursor(handle, "log-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(8), cursor)
-	cursor, err = query.ReadGrpcLogSinkCursor(handle, 41)
+	statuses, err := query.BuildSinkStatuses(handle, []*commonpb.SinkConfig{stored})
 	require.NoError(t, err)
-	require.Zero(t, cursor)
-	fsm.State.GrpcLogSinkCursors = map[uint64]uint64{}
+	require.Equal(t, uint64(8), statuses[0].GetCursor(), "the common sink status must expose the gRPC cursor")
+	fsm.State.GrpcLogSinkCursors = map[string]uint64{}
 	require.NoError(t, NewRecovery(fsm, dataStore).RecoverState())
-	require.Equal(t, uint64(8), fsm.State.GrpcLogSinkCursors[42], "recovery must restore the monotonic apply fence")
+	require.Equal(t, uint64(8), fsm.State.GrpcLogSinkCursors["log-sink"], "recovery must restore the monotonic apply fence")
 }

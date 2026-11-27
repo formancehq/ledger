@@ -22,9 +22,9 @@ func NewGrpcLogSinkAcker(builder *plan.Builder, proposer Proposer) *GrpcLogSinkA
 	return &GrpcLogSinkAcker{builder: builder, proposer: proposer}
 }
 
-func (a *GrpcLogSinkAcker) Ack(ctx context.Context, sinkName string, incarnation, logID uint64) error {
+func (a *GrpcLogSinkAcker) Ack(ctx context.Context, sinkName string, incarnation, sequence uint64) error {
 	update := &raftcmdpb.TechnicalUpdate{Kind: &raftcmdpb.TechnicalUpdate_GrpcLogSinkAck{
-		GrpcLogSinkAck: &raftcmdpb.GrpcLogSinkAck{SinkName: sinkName, Incarnation: incarnation, LogId: logID},
+		GrpcLogSinkAck: &raftcmdpb.GrpcLogSinkAck{SinkName: sinkName, Incarnation: incarnation, Sequence: sequence},
 	}}
 	proposal := &raftcmdpb.Proposal{
 		Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{

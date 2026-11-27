@@ -7258,7 +7258,7 @@ func NewAttributeIDListReader(s []*AttributeID) AttributeIDListReader {
 type GrpcLogSinkAckReader interface {
 	GetSinkName() string
 	GetIncarnation() uint64
-	GetLogId() uint64
+	GetSequence() uint64
 	Mutate() *GrpcLogSinkAck
 }
 
@@ -7272,8 +7272,8 @@ func (r *grpcLogSinkAckReadonly) GetIncarnation() uint64 {
 	return (*GrpcLogSinkAck)(r).GetIncarnation()
 }
 
-func (r *grpcLogSinkAckReadonly) GetLogId() uint64 {
-	return (*GrpcLogSinkAck)(r).GetLogId()
+func (r *grpcLogSinkAckReadonly) GetSequence() uint64 {
+	return (*GrpcLogSinkAck)(r).GetSequence()
 }
 
 func (r *grpcLogSinkAckReadonly) Mutate() *GrpcLogSinkAck {

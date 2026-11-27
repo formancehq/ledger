@@ -30,13 +30,13 @@ const (
 )
 
 type logSinkInput struct {
-	ack *servicepb.AcknowledgeLedgerLog
+	ack *servicepb.AcknowledgeLog
 	err error
 }
 
-// SubscribeLedgerLogs is an inbound, acknowledged sink. Its cursor is a
-// ledger-local log ID and is never confused with the global events cursor.
-func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.BucketService_SubscribeLedgerLogsServer) error {
+// SubscribeLogs is an inbound, acknowledged sink over the global log.
+// Its cursor is the same global sequence used by outbound event sinks.
+func (impl *BucketServiceServerImpl) SubscribeLogs(stream servicepb.BucketService_SubscribeLogsServer) error {
 	if impl.logSinkAcker == nil || impl.forwarder.node == nil {
 		return status.Error(codes.Unavailable, "log sink service is not ready")
 	}
@@ -74,7 +74,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 
 		return ctx.Err()
 	}
-	send := func(response *servicepb.SubscribeLedgerLogsResponse) error {
+	send := func(response *servicepb.SubscribeLogsResponse) error {
 		if err := authorizationError(); err != nil {
 			return err
 		}
@@ -102,7 +102,6 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 	if incarnation == 0 {
 		return status.Error(codes.Internal, "log sink has no creation incarnation")
 	}
-	ledger := cfg.GetGrpcLog().GetLedger()
 	err = impl.promoteLogSinkOpen(open.GetSinkName(), logSinkPrincipal(ctx))
 	reserved = false
 	if err != nil {
@@ -110,9 +109,9 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 	}
 	defer impl.releaseLogSink(open.GetSinkName())
 
-	if err := send(&servicepb.SubscribeLedgerLogsResponse{
-		Kind: &servicepb.SubscribeLedgerLogsResponse_Opened{Opened: &servicepb.OpenedLedgerLogSink{
-			AcknowledgedLogId: acknowledged, ClusterId: impl.clusterID,
+	if err := send(&servicepb.SubscribeLogsResponse{
+		Kind: &servicepb.SubscribeLogsResponse_Opened{Opened: &servicepb.OpenedLogSink{
+			AcknowledgedSequence: acknowledged, ClusterId: impl.clusterID,
 		}},
 	}); err != nil {
 		return err
@@ -136,7 +135,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 			return err
 		}
 		if len(inflight) < maxUnacknowledgedLogs {
-			logs, err := impl.readLogSinkPage(ctx, ledger, sent, maxUnacknowledgedLogs-len(inflight))
+			logs, err := impl.readLogSinkPage(ctx, sent, maxUnacknowledgedLogs-len(inflight))
 			if err != nil {
 				if authErr := authorizationError(); authErr != nil {
 					return authErr
@@ -154,18 +153,17 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 				if len(inflight) == 0 {
 					lastAck = time.Now()
 				}
-				apply := log.GetPayload().GetApply()
-				if apply == nil || apply.GetLog() == nil || apply.GetLog().GetId() <= sent {
-					return status.Error(codes.Internal, "log sink read returned an unordered or non-ledger log")
+				if log.GetSequence() <= sent {
+					return status.Error(codes.Internal, "log sink read returned an unordered log")
 				}
-				id := apply.GetLog().GetId()
-				if err := send(&servicepb.SubscribeLedgerLogsResponse{
-					Kind: &servicepb.SubscribeLedgerLogsResponse_Log{Log: log},
+				sequence := log.GetSequence()
+				if err := send(&servicepb.SubscribeLogsResponse{
+					Kind: &servicepb.SubscribeLogsResponse_Log{Log: log},
 				}); err != nil {
 					return err
 				}
-				inflight = append(inflight, id)
-				sent = id
+				inflight = append(inflight, sequence)
+				sent = sequence
 			}
 			if len(logs) > 0 {
 				continue
@@ -188,12 +186,12 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 
 				return message.err
 			}
-			id := message.ack.GetLogId()
-			if id != acknowledged && !slices.Contains(inflight, id) {
-				return status.Error(codes.InvalidArgument, "acknowledgement must name a delivered ledger log")
+			sequence := message.ack.GetSequence()
+			if sequence != acknowledged && !slices.Contains(inflight, sequence) {
+				return status.Error(codes.InvalidArgument, "acknowledgement must name a delivered log")
 			}
-			if id != acknowledged {
-				if err := impl.proposeLogSinkAck(ctx, open.GetSinkName(), incarnation, id); err != nil {
+			if sequence != acknowledged {
+				if err := impl.proposeLogSinkAck(ctx, open.GetSinkName(), incarnation, sequence); err != nil {
 					if authErr := authorizationError(); authErr != nil {
 						return authErr
 					}
@@ -203,21 +201,20 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 				if err := authorizationError(); err != nil {
 					return err
 				}
-				acknowledged = id
-				for len(inflight) > 0 && inflight[0] <= id {
+				acknowledged = sequence
+				for len(inflight) > 0 && inflight[0] <= sequence {
 					inflight = inflight[1:]
 				}
 			}
 			lastAck = time.Now()
-			if err := send(&servicepb.SubscribeLedgerLogsResponse{
-				Kind: &servicepb.SubscribeLedgerLogsResponse_Acked{Acked: &servicepb.AcknowledgedLedgerLog{LogId: id}},
+			if err := send(&servicepb.SubscribeLogsResponse{
+				Kind: &servicepb.SubscribeLogsResponse_Acked{Acked: &servicepb.AcknowledgedLog{Sequence: sequence}},
 			}); err != nil {
 				return err
 			}
 		case <-ticker.C:
-			// A rescan reads from the last sent ID. The index read is aligned to
-			// a committed main-store horizon, so a commit cannot be lost between
-			// an empty page and this wakeup.
+			// A rescan reads from the last sent global sequence. Rechecking on
+			// every tick closes the gap between an empty read and a new commit.
 		}
 	}
 }
@@ -236,9 +233,9 @@ func logSinkAuthorizationContext(ctx context.Context) (context.Context, context.
 	return authorized, cancel, expiry, nil
 }
 
-func receiveLogSinkOpen(stream servicepb.BucketService_SubscribeLedgerLogsServer) (*servicepb.SubscribeLedgerLogsRequest, error) {
+func receiveLogSinkOpen(stream servicepb.BucketService_SubscribeLogsServer) (*servicepb.SubscribeLogsRequest, error) {
 	type result struct {
-		request *servicepb.SubscribeLedgerLogsRequest
+		request *servicepb.SubscribeLogsRequest
 		err     error
 	}
 	done := make(chan result, 1)
@@ -361,14 +358,7 @@ func (impl *BucketServiceServerImpl) readLogSinkState(name string) (*commonpb.Si
 	if cfg.GetGrpcLog() == nil {
 		return cfg, 0, nil
 	}
-	ledger, err := impl.attrs.Ledger.Get(handle, domain.LedgerKey{Name: cfg.GetGrpcLog().GetLedger()}.Bytes())
-	if err != nil {
-		return nil, 0, status.Errorf(codes.Internal, "reading log sink ledger identity: %v", err)
-	}
-	if ledger == nil || ledger.GetId() != cfg.GetGrpcLog().GetLedgerId() {
-		return nil, 0, status.Error(codes.Unavailable, "log sink ledger was removed or recreated")
-	}
-	acknowledged, err := query.ReadGrpcLogSinkCursor(handle, cfg.GetGrpcLog().GetIncarnation())
+	acknowledged, err := query.ReadGrpcLogSinkCursor(handle, name)
 	if err != nil {
 		return nil, 0, status.Errorf(codes.Internal, "reading log sink cursor: %v", err)
 	}
@@ -388,10 +378,15 @@ func (impl *BucketServiceServerImpl) checkLogSinkIncarnation(name string, incarn
 	return nil
 }
 
-func (impl *BucketServiceServerImpl) readLogSinkPage(ctx context.Context, ledger string, after uint64, limit int) ([]*commonpb.Log, error) {
-	cur, err := impl.ctrl.ListLogs(ctx, ledger, after, uint32(limit), nil, false)
+func (impl *BucketServiceServerImpl) readLogSinkPage(ctx context.Context, after uint64, limit int) ([]*commonpb.Log, error) {
+	handle, err := impl.store.NewDirectReadHandle()
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "reading committed ledger logs: %v", err)
+		return nil, status.Errorf(codes.Unavailable, "opening committed global log: %v", err)
+	}
+	defer func() { _ = handle.Close() }()
+	cur, err := query.ReadLogsSince(ctx, handle, after)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "reading committed global logs: %v", err)
 	}
 	defer func() { _ = cur.Close() }()
 	logs := make([]*commonpb.Log, 0, limit)
@@ -402,7 +397,7 @@ func (impl *BucketServiceServerImpl) readLogSinkPage(ctx context.Context, ledger
 			break
 		}
 		if err != nil {
-			return nil, status.Errorf(codes.Unavailable, "reading committed ledger log: %v", err)
+			return nil, status.Errorf(codes.Unavailable, "reading committed global log: %v", err)
 		}
 		logBytes := log.SizeVT()
 		if len(logs) > 0 && pageBytes+logBytes > maxLogSinkPageBytes {
@@ -418,7 +413,7 @@ func (impl *BucketServiceServerImpl) readLogSinkPage(ctx context.Context, ledger
 	return logs, nil
 }
 
-func receiveLogSinkInput(stream servicepb.BucketService_SubscribeLedgerLogsServer, output chan<- logSinkInput) {
+func receiveLogSinkInput(stream servicepb.BucketService_SubscribeLogsServer, output chan<- logSinkInput) {
 	for {
 		message, err := stream.Recv()
 		if err != nil {
@@ -443,7 +438,7 @@ func receiveLogSinkInput(stream servicepb.BucketService_SubscribeLedgerLogsServe
 	}
 }
 
-func sendLogSinkResponse(ctx context.Context, stream servicepb.BucketService_SubscribeLedgerLogsServer, response *servicepb.SubscribeLedgerLogsResponse) error {
+func sendLogSinkResponse(ctx context.Context, stream servicepb.BucketService_SubscribeLogsServer, response *servicepb.SubscribeLogsResponse) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -462,13 +457,13 @@ func sendLogSinkResponse(ctx context.Context, stream servicepb.BucketService_Sub
 	}
 }
 
-func (impl *BucketServiceServerImpl) proposeLogSinkAck(ctx context.Context, sinkName string, incarnation, logID uint64) error {
-	err := impl.logSinkAcker.Ack(ctx, sinkName, incarnation, logID)
+func (impl *BucketServiceServerImpl) proposeLogSinkAck(ctx context.Context, sinkName string, incarnation, sequence uint64) error {
+	err := impl.logSinkAcker.Ack(ctx, sinkName, incarnation, sequence)
 	if errors.Is(err, state.ErrGrpcLogSinkStale) {
 		return status.Error(codes.Unavailable, "log sink configuration changed")
 	}
 	if err != nil {
-		return status.Errorf(codes.Unavailable, "acknowledging ledger log: %v", err)
+		return status.Errorf(codes.Unavailable, "acknowledging global log: %v", err)
 	}
 
 	return nil

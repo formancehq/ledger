@@ -16,7 +16,8 @@ The gRPC log sink acknowledgement is a technical update, not an audited
 business order. Its producer declares the sink-config key, and apply reads that
 key only through the per-update gated scope. The committed configuration's
 creation sequence fences an ack from a removed and recreated sink. The
-monotonic cursor is recovered from durable rows before apply resumes; a
+name-scoped global-sequence cursor survives that recreation and is recovered
+from durable rows before apply resumes; a
 corrupt or missing coverage declaration cannot be repaired by a Pebble read
 inside the FSM. Compare a stale-ack rejection and a valid ack across replicas
 with different cache residency, including recovery before the next ack.

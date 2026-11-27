@@ -12,7 +12,7 @@ import (
 func TestGrpcLogSinkRequiresExplicitAuthenticatedOwner(t *testing.T) {
 	t.Parallel()
 	config := &commonpb.SinkConfig{Name: "log-sink", Type: &commonpb.SinkConfig_GrpcLog{GrpcLog: &commonpb.GrpcLogSinkConfig{
-		Ledger: "ledger", ClientId: "client",
+		ClientId: "client",
 	}}}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
 		Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &raftcmdpb.AddEventsSinkOrder{Config: config}},

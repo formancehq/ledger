@@ -4937,8 +4937,6 @@ components:
     AtomicApplyGrpcLogSinkConfig:
       additionalProperties: false
       properties:
-        ledger:
-          type: string
         clientId:
           type: string
         incarnation:
@@ -4947,10 +4945,6 @@ components:
               type: string
             - format: uint64
               type: integer
-          description: Server-assigned; omit when registering.
-        ledgerId:
-          format: uint32
-          type: integer
           description: Server-assigned; omit when registering.
         owner:
           $ref: '#/components/schemas/AtomicApplyCallerIdentity'
@@ -6461,11 +6455,9 @@ components:
     GrpcLogSinkConfig:
       type: object
       additionalProperties: false
-      description: Inbound acknowledged log stream for one ledger and authenticated owner.
-      required: [ledger, clientId, owner]
+      description: Inbound acknowledged global log stream for an authenticated owner; requires ops:read to connect.
+      required: [clientId, owner]
       properties:
-        ledger:
-          type: string
         clientId:
           type: string
         incarnation:
@@ -6475,10 +6467,6 @@ components:
               pattern: '^[0-9]+$'
             - type: integer
               format: uint64
-        ledgerId:
-          type: integer
-          format: uint32
-          description: Server-assigned; omit when registering.
         owner:
           $ref: '#/components/schemas/GrpcLogSinkOwner'
 

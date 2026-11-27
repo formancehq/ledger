@@ -63,7 +63,7 @@ type FSMState struct {
 	LiveQueryCheckpointIDs map[uint64]struct{}
 	// GrpcLogSinkCursors mirrors the replicated operational cursor rows so
 	// apply can enforce monotonic acknowledgements without Pebble reads.
-	GrpcLogSinkCursors map[uint64]uint64
+	GrpcLogSinkCursors map[string]uint64
 
 	// Last cluster config applied + derived hash generator. Persisted under
 	// ZoneGlobal so it survives restarts.
@@ -97,7 +97,7 @@ func NewFSMState(auditKey string) *FSMState {
 		AuditKey:               auditKey,
 		ClusterPolicy:          &commonpb.ClusterPolicy{},
 		LiveQueryCheckpointIDs: map[uint64]struct{}{},
-		GrpcLogSinkCursors:     map[uint64]uint64{},
+		GrpcLogSinkCursors:     map[string]uint64{},
 	}
 	if auditKey != "" {
 		s.HashGenerator = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)

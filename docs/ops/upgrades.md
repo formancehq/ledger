@@ -112,7 +112,7 @@ separate from the backup artifact exception above.
 
 ### Configuration and capability state
 
-The acknowledged gRPC ledger-log sink introduces capability ID 1. Before
+The acknowledged gRPC global-log sink introduces capability ID 1. Before
 registering this sink type or accepting its acknowledgements, use the operator
 stopped-restart procedure for the adjacent RC carrying the feature: drain and
 stop every voter and learner, retain the main-store and Raft volumes, upgrade

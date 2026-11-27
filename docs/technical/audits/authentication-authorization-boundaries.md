@@ -7,11 +7,12 @@ internals; configuration and operator domains cover value wiring and rollout,
 not the resulting per-request authorization decision. This domain fills that
 gap using the existing native runner and schema.
 
-`SubscribeLedgerLogs` is a bidirectional public stream. The generated fixed
-scope and installed stream interceptor must authorize it before the first
+`SubscribeLogs` is a bidirectional public stream over all global logs. The
+generated `ledger:ReadOps` policy and installed stream interceptor must
+authorize it before the first
 `Open` reaches the handler. A configured `client_id` is an identity label, not
-credential evidence; evaluate any owner-binding claim only against the policy
-actually selected for the feature. A client ack causes the server's named
+credential evidence; the configured owner principal must match the verified
+caller identity. A client ack causes the server's named
 system producer to submit a technical update, but the client cannot mint that
 system attribution. The stream must close by the verified token expiry,
 including during delivery and acknowledgement waits.

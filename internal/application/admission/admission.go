@@ -1703,9 +1703,6 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_AddEventsSink:
 		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.AddEventsSink.GetConfig().GetName()}.Bytes())
-		if grpcLog := payload.AddEventsSink.GetConfig().GetGrpcLog(); grpcLog != nil {
-			p.Add(dal.SubAttrLedger, domain.LedgerKey{Name: grpcLog.GetLedger()}.Bytes())
-		}
 	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
 		// LogPayload_RemovedEventsSink cascades via WriteSet.Absorb into
 		// b.Derived.SinkConfigs.Delete(...) directly (NOT via

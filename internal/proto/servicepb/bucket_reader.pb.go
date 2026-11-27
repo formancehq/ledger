@@ -10997,82 +10997,82 @@ func NewBarrierResponseListReader(s []*BarrierResponse) BarrierResponseListReade
 	return barrierResponseListReadonly(s)
 }
 
-// SubscribeLedgerLogsRequestReader provides read-only access to SubscribeLedgerLogsRequest.
+// SubscribeLogsRequestReader provides read-only access to SubscribeLogsRequest.
 // Call Mutate() to obtain a mutable clone.
-type SubscribeLedgerLogsRequestReader interface {
-	GetOpen() OpenLedgerLogSinkReader
-	GetAck() AcknowledgeLedgerLogReader
-	WhichKind() SubscribeLedgerLogsRequest_KindReaderCase
-	Mutate() *SubscribeLedgerLogsRequest
+type SubscribeLogsRequestReader interface {
+	GetOpen() OpenLogSinkReader
+	GetAck() AcknowledgeLogReader
+	WhichKind() SubscribeLogsRequest_KindReaderCase
+	Mutate() *SubscribeLogsRequest
 }
 
-type subscribeLedgerLogsRequestReadonly SubscribeLedgerLogsRequest
+type subscribeLogsRequestReadonly SubscribeLogsRequest
 
-func (r *subscribeLedgerLogsRequestReadonly) GetOpen() OpenLedgerLogSinkReader {
-	v, ok := (*SubscribeLedgerLogsRequest)(r).GetKind().(*SubscribeLedgerLogsRequest_Open)
+func (r *subscribeLogsRequestReadonly) GetOpen() OpenLogSinkReader {
+	v, ok := (*SubscribeLogsRequest)(r).GetKind().(*SubscribeLogsRequest_Open)
 	if !ok || v == nil {
 		return nil
 	}
 	return v.Open.AsReader()
 }
 
-func (r *subscribeLedgerLogsRequestReadonly) GetAck() AcknowledgeLedgerLogReader {
-	v, ok := (*SubscribeLedgerLogsRequest)(r).GetKind().(*SubscribeLedgerLogsRequest_Ack)
+func (r *subscribeLogsRequestReadonly) GetAck() AcknowledgeLogReader {
+	v, ok := (*SubscribeLogsRequest)(r).GetKind().(*SubscribeLogsRequest_Ack)
 	if !ok || v == nil {
 		return nil
 	}
 	return v.Ack.AsReader()
 }
 
-// SubscribeLedgerLogsRequest_KindReaderCase identifies a selected oneof arm by its protobuf field number.
-type SubscribeLedgerLogsRequest_KindReaderCase int32
+// SubscribeLogsRequest_KindReaderCase identifies a selected oneof arm by its protobuf field number.
+type SubscribeLogsRequest_KindReaderCase int32
 
 const (
-	SubscribeLedgerLogsRequest_KindReaderCase_Unset SubscribeLedgerLogsRequest_KindReaderCase = 0
-	SubscribeLedgerLogsRequest_KindReaderCase_Open  SubscribeLedgerLogsRequest_KindReaderCase = 1
-	SubscribeLedgerLogsRequest_KindReaderCase_Ack   SubscribeLedgerLogsRequest_KindReaderCase = 2
+	SubscribeLogsRequest_KindReaderCase_Unset SubscribeLogsRequest_KindReaderCase = 0
+	SubscribeLogsRequest_KindReaderCase_Open  SubscribeLogsRequest_KindReaderCase = 1
+	SubscribeLogsRequest_KindReaderCase_Ack   SubscribeLogsRequest_KindReaderCase = 2
 )
 
-func (r *subscribeLedgerLogsRequestReadonly) WhichKind() SubscribeLedgerLogsRequest_KindReaderCase {
-	switch (*SubscribeLedgerLogsRequest)(r).GetKind().(type) {
-	case *SubscribeLedgerLogsRequest_Open:
-		return SubscribeLedgerLogsRequest_KindReaderCase_Open
-	case *SubscribeLedgerLogsRequest_Ack:
-		return SubscribeLedgerLogsRequest_KindReaderCase_Ack
+func (r *subscribeLogsRequestReadonly) WhichKind() SubscribeLogsRequest_KindReaderCase {
+	switch (*SubscribeLogsRequest)(r).GetKind().(type) {
+	case *SubscribeLogsRequest_Open:
+		return SubscribeLogsRequest_KindReaderCase_Open
+	case *SubscribeLogsRequest_Ack:
+		return SubscribeLogsRequest_KindReaderCase_Ack
 	default:
-		return SubscribeLedgerLogsRequest_KindReaderCase_Unset
+		return SubscribeLogsRequest_KindReaderCase_Unset
 	}
 }
 
-func (r *subscribeLedgerLogsRequestReadonly) Mutate() *SubscribeLedgerLogsRequest {
-	return (*SubscribeLedgerLogsRequest)(r).CloneVT()
+func (r *subscribeLogsRequestReadonly) Mutate() *SubscribeLogsRequest {
+	return (*SubscribeLogsRequest)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this SubscribeLedgerLogsRequest.
-func (m *SubscribeLedgerLogsRequest) AsReader() SubscribeLedgerLogsRequestReader {
+// AsReader returns a read-only view of this SubscribeLogsRequest.
+func (m *SubscribeLogsRequest) AsReader() SubscribeLogsRequestReader {
 	if m == nil {
 		return nil
 	}
-	return (*subscribeLedgerLogsRequestReadonly)(m)
+	return (*subscribeLogsRequestReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this SubscribeLedgerLogsRequest.
-func (m *SubscribeLedgerLogsRequest) Mutate() *SubscribeLedgerLogsRequest {
+// Mutate returns a mutable deep clone of this SubscribeLogsRequest.
+func (m *SubscribeLogsRequest) Mutate() *SubscribeLogsRequest {
 	return m.CloneVT()
 }
 
-// SubscribeLedgerLogsRequestListReader provides read-only iteration over []*SubscribeLedgerLogsRequest.
-type SubscribeLedgerLogsRequestListReader interface {
+// SubscribeLogsRequestListReader provides read-only iteration over []*SubscribeLogsRequest.
+type SubscribeLogsRequestListReader interface {
 	Len() int
-	Get(i int) SubscribeLedgerLogsRequestReader
-	Range(yield func(int, SubscribeLedgerLogsRequestReader) bool)
+	Get(i int) SubscribeLogsRequestReader
+	Range(yield func(int, SubscribeLogsRequestReader) bool)
 }
 
-type subscribeLedgerLogsRequestListReadonly []*SubscribeLedgerLogsRequest
+type subscribeLogsRequestListReadonly []*SubscribeLogsRequest
 
-func (l subscribeLedgerLogsRequestListReadonly) Len() int { return len(l) }
+func (l subscribeLogsRequestListReadonly) Len() int { return len(l) }
 
-func (l subscribeLedgerLogsRequestListReadonly) Get(i int) SubscribeLedgerLogsRequestReader {
+func (l subscribeLogsRequestListReadonly) Get(i int) SubscribeLogsRequestReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -11080,9 +11080,9 @@ func (l subscribeLedgerLogsRequestListReadonly) Get(i int) SubscribeLedgerLogsRe
 	return v.AsReader()
 }
 
-func (l subscribeLedgerLogsRequestListReadonly) Range(yield func(int, SubscribeLedgerLogsRequestReader) bool) {
+func (l subscribeLogsRequestListReadonly) Range(yield func(int, SubscribeLogsRequestReader) bool) {
 	for i, v := range l {
-		var r SubscribeLedgerLogsRequestReader
+		var r SubscribeLogsRequestReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -11092,59 +11092,59 @@ func (l subscribeLedgerLogsRequestListReadonly) Range(yield func(int, SubscribeL
 	}
 }
 
-// NewSubscribeLedgerLogsRequestListReader wraps s for read-only iteration. The returned
+// NewSubscribeLogsRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSubscribeLedgerLogsRequestListReader(s []*SubscribeLedgerLogsRequest) SubscribeLedgerLogsRequestListReader {
-	return subscribeLedgerLogsRequestListReadonly(s)
+func NewSubscribeLogsRequestListReader(s []*SubscribeLogsRequest) SubscribeLogsRequestListReader {
+	return subscribeLogsRequestListReadonly(s)
 }
 
-// OpenLedgerLogSinkReader provides read-only access to OpenLedgerLogSink.
+// OpenLogSinkReader provides read-only access to OpenLogSink.
 // Call Mutate() to obtain a mutable clone.
-type OpenLedgerLogSinkReader interface {
+type OpenLogSinkReader interface {
 	GetSinkName() string
 	GetClientId() string
-	Mutate() *OpenLedgerLogSink
+	Mutate() *OpenLogSink
 }
 
-type openLedgerLogSinkReadonly OpenLedgerLogSink
+type openLogSinkReadonly OpenLogSink
 
-func (r *openLedgerLogSinkReadonly) GetSinkName() string {
-	return (*OpenLedgerLogSink)(r).GetSinkName()
+func (r *openLogSinkReadonly) GetSinkName() string {
+	return (*OpenLogSink)(r).GetSinkName()
 }
 
-func (r *openLedgerLogSinkReadonly) GetClientId() string {
-	return (*OpenLedgerLogSink)(r).GetClientId()
+func (r *openLogSinkReadonly) GetClientId() string {
+	return (*OpenLogSink)(r).GetClientId()
 }
 
-func (r *openLedgerLogSinkReadonly) Mutate() *OpenLedgerLogSink {
-	return (*OpenLedgerLogSink)(r).CloneVT()
+func (r *openLogSinkReadonly) Mutate() *OpenLogSink {
+	return (*OpenLogSink)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this OpenLedgerLogSink.
-func (m *OpenLedgerLogSink) AsReader() OpenLedgerLogSinkReader {
+// AsReader returns a read-only view of this OpenLogSink.
+func (m *OpenLogSink) AsReader() OpenLogSinkReader {
 	if m == nil {
 		return nil
 	}
-	return (*openLedgerLogSinkReadonly)(m)
+	return (*openLogSinkReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this OpenLedgerLogSink.
-func (m *OpenLedgerLogSink) Mutate() *OpenLedgerLogSink {
+// Mutate returns a mutable deep clone of this OpenLogSink.
+func (m *OpenLogSink) Mutate() *OpenLogSink {
 	return m.CloneVT()
 }
 
-// OpenLedgerLogSinkListReader provides read-only iteration over []*OpenLedgerLogSink.
-type OpenLedgerLogSinkListReader interface {
+// OpenLogSinkListReader provides read-only iteration over []*OpenLogSink.
+type OpenLogSinkListReader interface {
 	Len() int
-	Get(i int) OpenLedgerLogSinkReader
-	Range(yield func(int, OpenLedgerLogSinkReader) bool)
+	Get(i int) OpenLogSinkReader
+	Range(yield func(int, OpenLogSinkReader) bool)
 }
 
-type openLedgerLogSinkListReadonly []*OpenLedgerLogSink
+type openLogSinkListReadonly []*OpenLogSink
 
-func (l openLedgerLogSinkListReadonly) Len() int { return len(l) }
+func (l openLogSinkListReadonly) Len() int { return len(l) }
 
-func (l openLedgerLogSinkListReadonly) Get(i int) OpenLedgerLogSinkReader {
+func (l openLogSinkListReadonly) Get(i int) OpenLogSinkReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -11152,9 +11152,9 @@ func (l openLedgerLogSinkListReadonly) Get(i int) OpenLedgerLogSinkReader {
 	return v.AsReader()
 }
 
-func (l openLedgerLogSinkListReadonly) Range(yield func(int, OpenLedgerLogSinkReader) bool) {
+func (l openLogSinkListReadonly) Range(yield func(int, OpenLogSinkReader) bool) {
 	for i, v := range l {
-		var r OpenLedgerLogSinkReader
+		var r OpenLogSinkReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -11164,54 +11164,54 @@ func (l openLedgerLogSinkListReadonly) Range(yield func(int, OpenLedgerLogSinkRe
 	}
 }
 
-// NewOpenLedgerLogSinkListReader wraps s for read-only iteration. The returned
+// NewOpenLogSinkListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewOpenLedgerLogSinkListReader(s []*OpenLedgerLogSink) OpenLedgerLogSinkListReader {
-	return openLedgerLogSinkListReadonly(s)
+func NewOpenLogSinkListReader(s []*OpenLogSink) OpenLogSinkListReader {
+	return openLogSinkListReadonly(s)
 }
 
-// AcknowledgeLedgerLogReader provides read-only access to AcknowledgeLedgerLog.
+// AcknowledgeLogReader provides read-only access to AcknowledgeLog.
 // Call Mutate() to obtain a mutable clone.
-type AcknowledgeLedgerLogReader interface {
-	GetLogId() uint64
-	Mutate() *AcknowledgeLedgerLog
+type AcknowledgeLogReader interface {
+	GetSequence() uint64
+	Mutate() *AcknowledgeLog
 }
 
-type acknowledgeLedgerLogReadonly AcknowledgeLedgerLog
+type acknowledgeLogReadonly AcknowledgeLog
 
-func (r *acknowledgeLedgerLogReadonly) GetLogId() uint64 {
-	return (*AcknowledgeLedgerLog)(r).GetLogId()
+func (r *acknowledgeLogReadonly) GetSequence() uint64 {
+	return (*AcknowledgeLog)(r).GetSequence()
 }
 
-func (r *acknowledgeLedgerLogReadonly) Mutate() *AcknowledgeLedgerLog {
-	return (*AcknowledgeLedgerLog)(r).CloneVT()
+func (r *acknowledgeLogReadonly) Mutate() *AcknowledgeLog {
+	return (*AcknowledgeLog)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this AcknowledgeLedgerLog.
-func (m *AcknowledgeLedgerLog) AsReader() AcknowledgeLedgerLogReader {
+// AsReader returns a read-only view of this AcknowledgeLog.
+func (m *AcknowledgeLog) AsReader() AcknowledgeLogReader {
 	if m == nil {
 		return nil
 	}
-	return (*acknowledgeLedgerLogReadonly)(m)
+	return (*acknowledgeLogReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this AcknowledgeLedgerLog.
-func (m *AcknowledgeLedgerLog) Mutate() *AcknowledgeLedgerLog {
+// Mutate returns a mutable deep clone of this AcknowledgeLog.
+func (m *AcknowledgeLog) Mutate() *AcknowledgeLog {
 	return m.CloneVT()
 }
 
-// AcknowledgeLedgerLogListReader provides read-only iteration over []*AcknowledgeLedgerLog.
-type AcknowledgeLedgerLogListReader interface {
+// AcknowledgeLogListReader provides read-only iteration over []*AcknowledgeLog.
+type AcknowledgeLogListReader interface {
 	Len() int
-	Get(i int) AcknowledgeLedgerLogReader
-	Range(yield func(int, AcknowledgeLedgerLogReader) bool)
+	Get(i int) AcknowledgeLogReader
+	Range(yield func(int, AcknowledgeLogReader) bool)
 }
 
-type acknowledgeLedgerLogListReadonly []*AcknowledgeLedgerLog
+type acknowledgeLogListReadonly []*AcknowledgeLog
 
-func (l acknowledgeLedgerLogListReadonly) Len() int { return len(l) }
+func (l acknowledgeLogListReadonly) Len() int { return len(l) }
 
-func (l acknowledgeLedgerLogListReadonly) Get(i int) AcknowledgeLedgerLogReader {
+func (l acknowledgeLogListReadonly) Get(i int) AcknowledgeLogReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -11219,9 +11219,9 @@ func (l acknowledgeLedgerLogListReadonly) Get(i int) AcknowledgeLedgerLogReader 
 	return v.AsReader()
 }
 
-func (l acknowledgeLedgerLogListReadonly) Range(yield func(int, AcknowledgeLedgerLogReader) bool) {
+func (l acknowledgeLogListReadonly) Range(yield func(int, AcknowledgeLogReader) bool) {
 	for i, v := range l {
-		var r AcknowledgeLedgerLogReader
+		var r AcknowledgeLogReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -11231,100 +11231,100 @@ func (l acknowledgeLedgerLogListReadonly) Range(yield func(int, AcknowledgeLedge
 	}
 }
 
-// NewAcknowledgeLedgerLogListReader wraps s for read-only iteration. The returned
+// NewAcknowledgeLogListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAcknowledgeLedgerLogListReader(s []*AcknowledgeLedgerLog) AcknowledgeLedgerLogListReader {
-	return acknowledgeLedgerLogListReadonly(s)
+func NewAcknowledgeLogListReader(s []*AcknowledgeLog) AcknowledgeLogListReader {
+	return acknowledgeLogListReadonly(s)
 }
 
-// SubscribeLedgerLogsResponseReader provides read-only access to SubscribeLedgerLogsResponse.
+// SubscribeLogsResponseReader provides read-only access to SubscribeLogsResponse.
 // Call Mutate() to obtain a mutable clone.
-type SubscribeLedgerLogsResponseReader interface {
-	GetOpened() OpenedLedgerLogSinkReader
+type SubscribeLogsResponseReader interface {
+	GetOpened() OpenedLogSinkReader
 	GetLog() commonpb.LogReader
-	GetAcked() AcknowledgedLedgerLogReader
-	WhichKind() SubscribeLedgerLogsResponse_KindReaderCase
-	Mutate() *SubscribeLedgerLogsResponse
+	GetAcked() AcknowledgedLogReader
+	WhichKind() SubscribeLogsResponse_KindReaderCase
+	Mutate() *SubscribeLogsResponse
 }
 
-type subscribeLedgerLogsResponseReadonly SubscribeLedgerLogsResponse
+type subscribeLogsResponseReadonly SubscribeLogsResponse
 
-func (r *subscribeLedgerLogsResponseReadonly) GetOpened() OpenedLedgerLogSinkReader {
-	v, ok := (*SubscribeLedgerLogsResponse)(r).GetKind().(*SubscribeLedgerLogsResponse_Opened)
+func (r *subscribeLogsResponseReadonly) GetOpened() OpenedLogSinkReader {
+	v, ok := (*SubscribeLogsResponse)(r).GetKind().(*SubscribeLogsResponse_Opened)
 	if !ok || v == nil {
 		return nil
 	}
 	return v.Opened.AsReader()
 }
 
-func (r *subscribeLedgerLogsResponseReadonly) GetLog() commonpb.LogReader {
-	v, ok := (*SubscribeLedgerLogsResponse)(r).GetKind().(*SubscribeLedgerLogsResponse_Log)
+func (r *subscribeLogsResponseReadonly) GetLog() commonpb.LogReader {
+	v, ok := (*SubscribeLogsResponse)(r).GetKind().(*SubscribeLogsResponse_Log)
 	if !ok || v == nil {
 		return nil
 	}
 	return v.Log.AsReader()
 }
 
-func (r *subscribeLedgerLogsResponseReadonly) GetAcked() AcknowledgedLedgerLogReader {
-	v, ok := (*SubscribeLedgerLogsResponse)(r).GetKind().(*SubscribeLedgerLogsResponse_Acked)
+func (r *subscribeLogsResponseReadonly) GetAcked() AcknowledgedLogReader {
+	v, ok := (*SubscribeLogsResponse)(r).GetKind().(*SubscribeLogsResponse_Acked)
 	if !ok || v == nil {
 		return nil
 	}
 	return v.Acked.AsReader()
 }
 
-// SubscribeLedgerLogsResponse_KindReaderCase identifies a selected oneof arm by its protobuf field number.
-type SubscribeLedgerLogsResponse_KindReaderCase int32
+// SubscribeLogsResponse_KindReaderCase identifies a selected oneof arm by its protobuf field number.
+type SubscribeLogsResponse_KindReaderCase int32
 
 const (
-	SubscribeLedgerLogsResponse_KindReaderCase_Unset  SubscribeLedgerLogsResponse_KindReaderCase = 0
-	SubscribeLedgerLogsResponse_KindReaderCase_Opened SubscribeLedgerLogsResponse_KindReaderCase = 1
-	SubscribeLedgerLogsResponse_KindReaderCase_Log    SubscribeLedgerLogsResponse_KindReaderCase = 2
-	SubscribeLedgerLogsResponse_KindReaderCase_Acked  SubscribeLedgerLogsResponse_KindReaderCase = 3
+	SubscribeLogsResponse_KindReaderCase_Unset  SubscribeLogsResponse_KindReaderCase = 0
+	SubscribeLogsResponse_KindReaderCase_Opened SubscribeLogsResponse_KindReaderCase = 1
+	SubscribeLogsResponse_KindReaderCase_Log    SubscribeLogsResponse_KindReaderCase = 2
+	SubscribeLogsResponse_KindReaderCase_Acked  SubscribeLogsResponse_KindReaderCase = 3
 )
 
-func (r *subscribeLedgerLogsResponseReadonly) WhichKind() SubscribeLedgerLogsResponse_KindReaderCase {
-	switch (*SubscribeLedgerLogsResponse)(r).GetKind().(type) {
-	case *SubscribeLedgerLogsResponse_Opened:
-		return SubscribeLedgerLogsResponse_KindReaderCase_Opened
-	case *SubscribeLedgerLogsResponse_Log:
-		return SubscribeLedgerLogsResponse_KindReaderCase_Log
-	case *SubscribeLedgerLogsResponse_Acked:
-		return SubscribeLedgerLogsResponse_KindReaderCase_Acked
+func (r *subscribeLogsResponseReadonly) WhichKind() SubscribeLogsResponse_KindReaderCase {
+	switch (*SubscribeLogsResponse)(r).GetKind().(type) {
+	case *SubscribeLogsResponse_Opened:
+		return SubscribeLogsResponse_KindReaderCase_Opened
+	case *SubscribeLogsResponse_Log:
+		return SubscribeLogsResponse_KindReaderCase_Log
+	case *SubscribeLogsResponse_Acked:
+		return SubscribeLogsResponse_KindReaderCase_Acked
 	default:
-		return SubscribeLedgerLogsResponse_KindReaderCase_Unset
+		return SubscribeLogsResponse_KindReaderCase_Unset
 	}
 }
 
-func (r *subscribeLedgerLogsResponseReadonly) Mutate() *SubscribeLedgerLogsResponse {
-	return (*SubscribeLedgerLogsResponse)(r).CloneVT()
+func (r *subscribeLogsResponseReadonly) Mutate() *SubscribeLogsResponse {
+	return (*SubscribeLogsResponse)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this SubscribeLedgerLogsResponse.
-func (m *SubscribeLedgerLogsResponse) AsReader() SubscribeLedgerLogsResponseReader {
+// AsReader returns a read-only view of this SubscribeLogsResponse.
+func (m *SubscribeLogsResponse) AsReader() SubscribeLogsResponseReader {
 	if m == nil {
 		return nil
 	}
-	return (*subscribeLedgerLogsResponseReadonly)(m)
+	return (*subscribeLogsResponseReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this SubscribeLedgerLogsResponse.
-func (m *SubscribeLedgerLogsResponse) Mutate() *SubscribeLedgerLogsResponse {
+// Mutate returns a mutable deep clone of this SubscribeLogsResponse.
+func (m *SubscribeLogsResponse) Mutate() *SubscribeLogsResponse {
 	return m.CloneVT()
 }
 
-// SubscribeLedgerLogsResponseListReader provides read-only iteration over []*SubscribeLedgerLogsResponse.
-type SubscribeLedgerLogsResponseListReader interface {
+// SubscribeLogsResponseListReader provides read-only iteration over []*SubscribeLogsResponse.
+type SubscribeLogsResponseListReader interface {
 	Len() int
-	Get(i int) SubscribeLedgerLogsResponseReader
-	Range(yield func(int, SubscribeLedgerLogsResponseReader) bool)
+	Get(i int) SubscribeLogsResponseReader
+	Range(yield func(int, SubscribeLogsResponseReader) bool)
 }
 
-type subscribeLedgerLogsResponseListReadonly []*SubscribeLedgerLogsResponse
+type subscribeLogsResponseListReadonly []*SubscribeLogsResponse
 
-func (l subscribeLedgerLogsResponseListReadonly) Len() int { return len(l) }
+func (l subscribeLogsResponseListReadonly) Len() int { return len(l) }
 
-func (l subscribeLedgerLogsResponseListReadonly) Get(i int) SubscribeLedgerLogsResponseReader {
+func (l subscribeLogsResponseListReadonly) Get(i int) SubscribeLogsResponseReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -11332,9 +11332,9 @@ func (l subscribeLedgerLogsResponseListReadonly) Get(i int) SubscribeLedgerLogsR
 	return v.AsReader()
 }
 
-func (l subscribeLedgerLogsResponseListReadonly) Range(yield func(int, SubscribeLedgerLogsResponseReader) bool) {
+func (l subscribeLogsResponseListReadonly) Range(yield func(int, SubscribeLogsResponseReader) bool) {
 	for i, v := range l {
-		var r SubscribeLedgerLogsResponseReader
+		var r SubscribeLogsResponseReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -11344,59 +11344,59 @@ func (l subscribeLedgerLogsResponseListReadonly) Range(yield func(int, Subscribe
 	}
 }
 
-// NewSubscribeLedgerLogsResponseListReader wraps s for read-only iteration. The returned
+// NewSubscribeLogsResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSubscribeLedgerLogsResponseListReader(s []*SubscribeLedgerLogsResponse) SubscribeLedgerLogsResponseListReader {
-	return subscribeLedgerLogsResponseListReadonly(s)
+func NewSubscribeLogsResponseListReader(s []*SubscribeLogsResponse) SubscribeLogsResponseListReader {
+	return subscribeLogsResponseListReadonly(s)
 }
 
-// OpenedLedgerLogSinkReader provides read-only access to OpenedLedgerLogSink.
+// OpenedLogSinkReader provides read-only access to OpenedLogSink.
 // Call Mutate() to obtain a mutable clone.
-type OpenedLedgerLogSinkReader interface {
-	GetAcknowledgedLogId() uint64
+type OpenedLogSinkReader interface {
+	GetAcknowledgedSequence() uint64
 	GetClusterId() string
-	Mutate() *OpenedLedgerLogSink
+	Mutate() *OpenedLogSink
 }
 
-type openedLedgerLogSinkReadonly OpenedLedgerLogSink
+type openedLogSinkReadonly OpenedLogSink
 
-func (r *openedLedgerLogSinkReadonly) GetAcknowledgedLogId() uint64 {
-	return (*OpenedLedgerLogSink)(r).GetAcknowledgedLogId()
+func (r *openedLogSinkReadonly) GetAcknowledgedSequence() uint64 {
+	return (*OpenedLogSink)(r).GetAcknowledgedSequence()
 }
 
-func (r *openedLedgerLogSinkReadonly) GetClusterId() string {
-	return (*OpenedLedgerLogSink)(r).GetClusterId()
+func (r *openedLogSinkReadonly) GetClusterId() string {
+	return (*OpenedLogSink)(r).GetClusterId()
 }
 
-func (r *openedLedgerLogSinkReadonly) Mutate() *OpenedLedgerLogSink {
-	return (*OpenedLedgerLogSink)(r).CloneVT()
+func (r *openedLogSinkReadonly) Mutate() *OpenedLogSink {
+	return (*OpenedLogSink)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this OpenedLedgerLogSink.
-func (m *OpenedLedgerLogSink) AsReader() OpenedLedgerLogSinkReader {
+// AsReader returns a read-only view of this OpenedLogSink.
+func (m *OpenedLogSink) AsReader() OpenedLogSinkReader {
 	if m == nil {
 		return nil
 	}
-	return (*openedLedgerLogSinkReadonly)(m)
+	return (*openedLogSinkReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this OpenedLedgerLogSink.
-func (m *OpenedLedgerLogSink) Mutate() *OpenedLedgerLogSink {
+// Mutate returns a mutable deep clone of this OpenedLogSink.
+func (m *OpenedLogSink) Mutate() *OpenedLogSink {
 	return m.CloneVT()
 }
 
-// OpenedLedgerLogSinkListReader provides read-only iteration over []*OpenedLedgerLogSink.
-type OpenedLedgerLogSinkListReader interface {
+// OpenedLogSinkListReader provides read-only iteration over []*OpenedLogSink.
+type OpenedLogSinkListReader interface {
 	Len() int
-	Get(i int) OpenedLedgerLogSinkReader
-	Range(yield func(int, OpenedLedgerLogSinkReader) bool)
+	Get(i int) OpenedLogSinkReader
+	Range(yield func(int, OpenedLogSinkReader) bool)
 }
 
-type openedLedgerLogSinkListReadonly []*OpenedLedgerLogSink
+type openedLogSinkListReadonly []*OpenedLogSink
 
-func (l openedLedgerLogSinkListReadonly) Len() int { return len(l) }
+func (l openedLogSinkListReadonly) Len() int { return len(l) }
 
-func (l openedLedgerLogSinkListReadonly) Get(i int) OpenedLedgerLogSinkReader {
+func (l openedLogSinkListReadonly) Get(i int) OpenedLogSinkReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -11404,9 +11404,9 @@ func (l openedLedgerLogSinkListReadonly) Get(i int) OpenedLedgerLogSinkReader {
 	return v.AsReader()
 }
 
-func (l openedLedgerLogSinkListReadonly) Range(yield func(int, OpenedLedgerLogSinkReader) bool) {
+func (l openedLogSinkListReadonly) Range(yield func(int, OpenedLogSinkReader) bool) {
 	for i, v := range l {
-		var r OpenedLedgerLogSinkReader
+		var r OpenedLogSinkReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -11416,54 +11416,54 @@ func (l openedLedgerLogSinkListReadonly) Range(yield func(int, OpenedLedgerLogSi
 	}
 }
 
-// NewOpenedLedgerLogSinkListReader wraps s for read-only iteration. The returned
+// NewOpenedLogSinkListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewOpenedLedgerLogSinkListReader(s []*OpenedLedgerLogSink) OpenedLedgerLogSinkListReader {
-	return openedLedgerLogSinkListReadonly(s)
+func NewOpenedLogSinkListReader(s []*OpenedLogSink) OpenedLogSinkListReader {
+	return openedLogSinkListReadonly(s)
 }
 
-// AcknowledgedLedgerLogReader provides read-only access to AcknowledgedLedgerLog.
+// AcknowledgedLogReader provides read-only access to AcknowledgedLog.
 // Call Mutate() to obtain a mutable clone.
-type AcknowledgedLedgerLogReader interface {
-	GetLogId() uint64
-	Mutate() *AcknowledgedLedgerLog
+type AcknowledgedLogReader interface {
+	GetSequence() uint64
+	Mutate() *AcknowledgedLog
 }
 
-type acknowledgedLedgerLogReadonly AcknowledgedLedgerLog
+type acknowledgedLogReadonly AcknowledgedLog
 
-func (r *acknowledgedLedgerLogReadonly) GetLogId() uint64 {
-	return (*AcknowledgedLedgerLog)(r).GetLogId()
+func (r *acknowledgedLogReadonly) GetSequence() uint64 {
+	return (*AcknowledgedLog)(r).GetSequence()
 }
 
-func (r *acknowledgedLedgerLogReadonly) Mutate() *AcknowledgedLedgerLog {
-	return (*AcknowledgedLedgerLog)(r).CloneVT()
+func (r *acknowledgedLogReadonly) Mutate() *AcknowledgedLog {
+	return (*AcknowledgedLog)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this AcknowledgedLedgerLog.
-func (m *AcknowledgedLedgerLog) AsReader() AcknowledgedLedgerLogReader {
+// AsReader returns a read-only view of this AcknowledgedLog.
+func (m *AcknowledgedLog) AsReader() AcknowledgedLogReader {
 	if m == nil {
 		return nil
 	}
-	return (*acknowledgedLedgerLogReadonly)(m)
+	return (*acknowledgedLogReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this AcknowledgedLedgerLog.
-func (m *AcknowledgedLedgerLog) Mutate() *AcknowledgedLedgerLog {
+// Mutate returns a mutable deep clone of this AcknowledgedLog.
+func (m *AcknowledgedLog) Mutate() *AcknowledgedLog {
 	return m.CloneVT()
 }
 
-// AcknowledgedLedgerLogListReader provides read-only iteration over []*AcknowledgedLedgerLog.
-type AcknowledgedLedgerLogListReader interface {
+// AcknowledgedLogListReader provides read-only iteration over []*AcknowledgedLog.
+type AcknowledgedLogListReader interface {
 	Len() int
-	Get(i int) AcknowledgedLedgerLogReader
-	Range(yield func(int, AcknowledgedLedgerLogReader) bool)
+	Get(i int) AcknowledgedLogReader
+	Range(yield func(int, AcknowledgedLogReader) bool)
 }
 
-type acknowledgedLedgerLogListReadonly []*AcknowledgedLedgerLog
+type acknowledgedLogListReadonly []*AcknowledgedLog
 
-func (l acknowledgedLedgerLogListReadonly) Len() int { return len(l) }
+func (l acknowledgedLogListReadonly) Len() int { return len(l) }
 
-func (l acknowledgedLedgerLogListReadonly) Get(i int) AcknowledgedLedgerLogReader {
+func (l acknowledgedLogListReadonly) Get(i int) AcknowledgedLogReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -11471,9 +11471,9 @@ func (l acknowledgedLedgerLogListReadonly) Get(i int) AcknowledgedLedgerLogReade
 	return v.AsReader()
 }
 
-func (l acknowledgedLedgerLogListReadonly) Range(yield func(int, AcknowledgedLedgerLogReader) bool) {
+func (l acknowledgedLogListReadonly) Range(yield func(int, AcknowledgedLogReader) bool) {
 	for i, v := range l {
-		var r AcknowledgedLedgerLogReader
+		var r AcknowledgedLogReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -11483,8 +11483,8 @@ func (l acknowledgedLedgerLogListReadonly) Range(yield func(int, AcknowledgedLed
 	}
 }
 
-// NewAcknowledgedLedgerLogListReader wraps s for read-only iteration. The returned
+// NewAcknowledgedLogListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAcknowledgedLedgerLogListReader(s []*AcknowledgedLedgerLog) AcknowledgedLedgerLogListReader {
-	return acknowledgedLedgerLogListReadonly(s)
+func NewAcknowledgedLogListReader(s []*AcknowledgedLog) AcknowledgedLogListReader {
+	return acknowledgedLogListReadonly(s)
 }

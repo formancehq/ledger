@@ -9164,10 +9164,8 @@ func (m *GrpcLogSinkConfig) CloneVT() *GrpcLogSinkConfig {
 		return (*GrpcLogSinkConfig)(nil)
 	}
 	r := new(GrpcLogSinkConfig)
-	r.Ledger = m.Ledger
 	r.ClientId = m.ClientId
 	r.Incarnation = m.Incarnation
-	r.LedgerId = m.LedgerId
 	r.Owner = m.Owner.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -23846,16 +23844,10 @@ func (this *GrpcLogSinkConfig) EqualVT(that *GrpcLogSinkConfig) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
 	if this.ClientId != that.ClientId {
 		return false
 	}
 	if this.Incarnation != that.Incarnation {
-		return false
-	}
-	if this.LedgerId != that.LedgerId {
 		return false
 	}
 	if !this.Owner.EqualVT(that.Owner) {
@@ -44624,31 +44616,18 @@ func (m *GrpcLogSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
-	}
-	if m.LedgerId != 0 {
-		i -= 4
-		binary.LittleEndian.PutUint32(dAtA[i:], uint32(m.LedgerId))
-		i--
-		dAtA[i] = 0x25
+		dAtA[i] = 0x1a
 	}
 	if m.Incarnation != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Incarnation))
 		i--
-		dAtA[i] = 0x19
+		dAtA[i] = 0x11
 	}
 	if len(m.ClientId) > 0 {
 		i -= len(m.ClientId)
 		copy(dAtA[i:], m.ClientId)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ClientId)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -53560,19 +53539,12 @@ func (m *GrpcLogSinkConfig) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	l = len(m.ClientId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Incarnation != 0 {
 		n += 9
-	}
-	if m.LedgerId != 0 {
-		n += 5
 	}
 	if m.Owner != nil {
 		l = m.Owner.SizeVT()
@@ -98821,38 +98793,6 @@ func (m *GrpcLogSinkConfig) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ClientId", wireType)
 			}
 			var stringLen uint64
@@ -98883,7 +98823,7 @@ func (m *GrpcLogSinkConfig) UnmarshalVT(dAtA []byte) error {
 			}
 			m.ClientId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Incarnation", wireType)
 			}
@@ -98893,17 +98833,7 @@ func (m *GrpcLogSinkConfig) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Incarnation = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 4:
-			if wireType != 5 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LedgerId", wireType)
-			}
-			m.LedgerId = 0
-			if (iNdEx + 4) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.LedgerId = uint32(binary.LittleEndian.Uint32(dAtA[iNdEx:]))
-			iNdEx += 4
-		case 5:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Owner", wireType)
 			}

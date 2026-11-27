@@ -2913,16 +2913,13 @@ message AccountMetadataUpdated {
   map<string, MetadataMap> account_metadata = 1;
 }
 
-// GrpcLogSinkConfig binds an acknowledged inbound stream to one ledger and
+// GrpcLogSinkConfig binds an acknowledged inbound global log stream to one
 // client identity. owner is the authenticated principal allowed to connect.
 // incarnation is assigned from the AddEventsSink log sequence
-// in the stored projection. ledger_id is resolved at creation. Clients must
-// leave both technical fields zero when registering.
+// in the stored projection. Clients must leave it zero when registering.
 message GrpcLogSinkConfig {
   option (ledger_json) = true;
-  string ledger = 1;
-  string client_id = 2;
-  fixed64 incarnation = 3;
-  fixed32 ledger_id = 4;
-  CallerIdentity owner = 5;
+  string client_id = 1;
+  fixed64 incarnation = 2;
+  CallerIdentity owner = 3;
 }

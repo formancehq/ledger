@@ -879,10 +879,10 @@ message AttributeID {
   fixed64 tag = 2;
 }
 
-// GrpcLogSinkAck advances a ledger-local cursor only for the matching
+// GrpcLogSinkAck advances a global log-sequence cursor only for the matching
 // AddEventsSink incarnation. The FSM checks the committed sink configuration.
 message GrpcLogSinkAck {
   string sink_name = 1;
   fixed64 incarnation = 2;
-  fixed64 log_id = 3;
+  fixed64 sequence = 3;
 }

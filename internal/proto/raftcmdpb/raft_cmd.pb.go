@@ -5930,13 +5930,13 @@ func (x *AttributeID) GetTag() uint64 {
 	return 0
 }
 
-// GrpcLogSinkAck advances a ledger-local cursor only for the matching
+// GrpcLogSinkAck advances a global log-sequence cursor only for the matching
 // AddEventsSink incarnation. The FSM checks the committed sink configuration.
 type GrpcLogSinkAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SinkName      string                 `protobuf:"bytes,1,opt,name=sink_name,json=sinkName,proto3" json:"sink_name,omitempty"`
 	Incarnation   uint64                 `protobuf:"fixed64,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	LogId         uint64                 `protobuf:"fixed64,3,opt,name=log_id,json=logId,proto3" json:"log_id,omitempty"`
+	Sequence      uint64                 `protobuf:"fixed64,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5985,9 +5985,9 @@ func (x *GrpcLogSinkAck) GetIncarnation() uint64 {
 	return 0
 }
 
-func (x *GrpcLogSinkAck) GetLogId() uint64 {
+func (x *GrpcLogSinkAck) GetSequence() uint64 {
 	if x != nil {
-		return x.LogId
+		return x.Sequence
 	}
 	return 0
 }
@@ -6408,11 +6408,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\"/\n" +
 	"\vAttributeID\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x10\n" +
-	"\x03tag\x18\x02 \x01(\x06R\x03tag\"f\n" +
+	"\x03tag\x18\x02 \x01(\x06R\x03tag\"k\n" +
 	"\x0eGrpcLogSinkAck\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12 \n" +
-	"\vincarnation\x18\x02 \x01(\x06R\vincarnation\x12\x15\n" +
-	"\x06log_id\x18\x03 \x01(\x06R\x05logId*\\\n" +
+	"\vincarnation\x18\x02 \x01(\x06R\vincarnation\x12\x1a\n" +
+	"\bsequence\x18\x03 \x01(\x06R\bsequence*\\\n" +
 	"\n" +
 	"BackupKind\x12\x1b\n" +
 	"\x17BACKUP_KIND_UNSPECIFIED\x10\x00\x12\x14\n" +

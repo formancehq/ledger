@@ -18,7 +18,7 @@ var (
 	ErrMirrorSourceRequiresMirrorMode = &invalidIntegrationConfig{message: "mirrorSource requires mode MIRROR"}
 	ErrMirrorModeRequiresSource       = &invalidIntegrationConfig{message: "mode MIRROR requires mirrorSource"}
 	ErrSinkConfigIncomplete           = &invalidIntegrationConfig{message: "sink name and one sink type are required"}
-	ErrGrpcLogSinkConfigInvalid       = &invalidIntegrationConfig{message: "grpc log sink requires a ledger and client_id, and forbids supplied technical identity, batching, format, or event filters"}
+	ErrGrpcLogSinkConfigInvalid       = &invalidIntegrationConfig{message: "grpc log sink requires a client_id and owner, and forbids supplied technical identity, batching, format, or event filters"}
 
 	// ErrMirrorHTTPURLInvalid rejects unusable HTTP source URLs before the
 	// configuration reaches Raft. Never include the credential-bearing input

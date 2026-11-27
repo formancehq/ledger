@@ -1901,16 +1901,12 @@ func (x *CallerSnapshot) MarshalJSON() ([]byte, error) {
 
 func (x *GrpcLogSinkConfig) MarshalJSON() ([]byte, error) {
 	return jsonv2.Marshal(struct {
-		Ledger      string `json:"ledger"`
 		ClientId    string `json:"clientId"`
 		Incarnation uint64 `json:"incarnation"`
-		LedgerId    uint32 `json:"ledgerId"`
 		Owner       any    `json:"owner,omitempty,omitzero"`
 	}{
-		Ledger:      x.Ledger,
 		ClientId:    x.ClientId,
 		Incarnation: x.Incarnation,
-		LedgerId:    x.LedgerId,
 		Owner:       x.Owner,
 	})
 }

@@ -336,8 +336,8 @@ const (
 	// cluster membership directory.
 	SubGlobMembershipFormat byte = 0x17
 	SubGlobCapabilityState  byte = 0x18
-	// SubGlobGrpcLogSinkCursor stores the last acknowledged ledger-local log ID
-	// by the globally unique sequence of the AddEventsSink creation log.
+	// SubGlobGrpcLogSinkCursor stores the last acknowledged global sequence by
+	// gRPC sink name. It survives removal and recreation under the same name.
 	SubGlobGrpcLogSinkCursor byte = 0x19
 )
 

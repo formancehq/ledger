@@ -145,7 +145,7 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 var ErrGrpcLogSinkStale = errors.New("gRPC log sink incarnation is stale")
 
 func (fsm *Machine) applyGrpcLogSinkAck(scope processing.Scope, batch *dal.WriteSession, ack *raftcmdpb.GrpcLogSinkAck) error {
-	if ack == nil || ack.GetSinkName() == "" || ack.GetIncarnation() == 0 || ack.GetLogId() == 0 {
+	if ack == nil || ack.GetSinkName() == "" || ack.GetIncarnation() == 0 || ack.GetSequence() == 0 {
 		return errors.New("invalid gRPC log sink acknowledgement")
 	}
 	cfg, err := scope.GetSinkConfig(ack.GetSinkName())
@@ -155,15 +155,15 @@ func (fsm *Machine) applyGrpcLogSinkAck(scope processing.Scope, batch *dal.Write
 	if cfg == nil || cfg.GetGrpcLog() == nil || cfg.GetGrpcLog().GetIncarnation() != ack.GetIncarnation() {
 		return ErrGrpcLogSinkStale
 	}
-	if ack.GetLogId() <= fsm.State.GrpcLogSinkCursors[ack.GetIncarnation()] {
+	if ack.GetSequence() <= fsm.State.GrpcLogSinkCursors[ack.GetSinkName()] {
 		return nil
 	}
 	var value [8]byte
-	binary.BigEndian.PutUint64(value[:], ack.GetLogId())
-	if err := batch.SetBytes(query.GrpcLogSinkCursorKey(ack.GetIncarnation()), value[:]); err != nil {
+	binary.BigEndian.PutUint64(value[:], ack.GetSequence())
+	if err := batch.SetBytes(query.GrpcLogSinkCursorKey(ack.GetSinkName()), value[:]); err != nil {
 		return fmt.Errorf("persisting gRPC log sink cursor: %w", err)
 	}
-	fsm.State.GrpcLogSinkCursors[ack.GetIncarnation()] = ack.GetLogId()
+	fsm.State.GrpcLogSinkCursors[ack.GetSinkName()] = ack.GetSequence()
 
 	return nil
 }

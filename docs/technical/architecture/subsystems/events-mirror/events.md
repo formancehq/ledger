@@ -192,43 +192,44 @@ Key formats:
 - Per-sink cursor: `[0x06][0x08][sink_name]` (`ZoneGlobal` + `SubGlobSinkCursor`) → `uint64` (big-endian encoded sequence)
 - Per-sink error status: `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`) → `SinkStatus` protobuf
 
-### Acknowledged gRPC ledger-log sink
+### Acknowledged gRPC global-log sink
 
-`SinkConfig.grpc_log` configures an inbound subscription for one existing ledger
-and one `client_id`, with an explicitly configured authenticated owner
-(`CallerIdentity` issuer and subject or static key ID and subject). It is
-separate from outbound event emitters: the events
-Manager skips this sink type, and neither event formatting nor event-type
-filters apply. The registration order resolves the ledger's numeric ID into
-the audited creation log without changing the submitted order. The stored
-configuration projection also records the creation log's global sequence as
-an incarnation. Removing and recreating a sink name therefore cannot reuse
-its old cursor; deleting and recreating a ledger name cannot make the old
-subscription silently consume the new ledger's logs.
+`SinkConfig.grpc_log` configures an inbound subscription for one `client_id`
+and an authenticated owner (`CallerIdentity` issuer and subject or static key
+ID and subject). The events Manager skips this sink type; event formatting and
+event-type filters do not apply. The stored configuration records the creation
+log's global sequence as an incarnation. Removing and recreating a sink name
+retains its global-sequence cursor, while the new incarnation rejects
+acknowledgements from the old connection.
 
-`BucketService.SubscribeLedgerLogs` is a bidirectional stream under the
-`ledger:ReadLedger` policy. The first client message is `Open {sink_name,
-client_id}`. The token principal must match the configured owner; an anonymous
-or auth-disabled caller cannot open the stream. The server replies with
-`Opened {acknowledged_log_id, cluster_id}`,
-then sends the unchanged `common.Log` values returned by `ListLogs`, in
-increasing ledger-local `payload.apply.log.id` order. A client sends
-`Ack {log_id}` only after processing that log; it may acknowledge cumulatively
-through an ID actually delivered on the connection. The server replies with
-`Acked {log_id}` only after a Raft technical update has applied. Repeating the
-durable cursor is idempotent. The client should retain its processed ID until
-`Acked` arrives and deduplicate by `(cluster_id, ledger, log_id)` after
-reconnection. Delivery is at least once: an unacknowledged log may be sent
-again after a disconnect, leader change, or lost response.
+`BucketService.SubscribeLogs` is a bidirectional stream under the
+`ledger:ReadOps` (`ops:read`) policy because it includes system logs across
+all ledgers. The first client message is `Open {sink_name, client_id}`. The
+token principal must match the configured owner; an anonymous or auth-disabled
+caller cannot open the stream. The server replies with
+`Opened {acknowledged_sequence, cluster_id}`, then sends unchanged
+`common.Log` values in increasing global `common.Log.sequence` order. A client
+sends `Ack {sequence}` only after processing that log; it may acknowledge
+cumulatively through a sequence actually delivered on the connection. The
+server replies with `Acked {sequence}` only after a Raft technical update has
+applied. Repeating the durable cursor is idempotent. The client should retain
+its processed sequence until `Acked` arrives and deduplicate by
+`(cluster_id, sequence)` after reconnection. Delivery is at least once: an
+unacknowledged log may be sent again after a disconnect, leader change, or
+lost response.
 
-The cursor key is `[ZoneGlobal][SubGlobGrpcLogSinkCursor][incarnation BE 8]`
-with a ledger-local ID value. It is unrelated to the global event cursor.
-The FSM reads the sink config through declared coverage, rejects an ack whose
-incarnation no longer matches, and advances the cursor monotonically from
-in-memory state recovered from these rows. The cursor and config ride in
-flushed checkpoint backups. A second checkpoint after an ack must restore
-the acknowledged position with the same sink and ledger history; a different
-cluster identity is exposed in `Opened` so clients do not confuse sources.
+The cursor key is `[ZoneGlobal][SubGlobGrpcLogSinkCursor][sink_name]` with a
+global-sequence value. A gRPC sink recreated under the same name resumes from
+this cursor. The separate key prevents a late outbound sink update from
+advancing the gRPC cursor without an acknowledgement. `GetEventsSinks` reports
+this cursor for gRPC sinks and the outbound cursor for other sink types. The
+FSM reads the sink config through declared
+coverage, rejects an ack whose incarnation no longer matches, and advances
+the cursor monotonically from in-memory state recovered from these rows. The
+cursor and config ride in flushed checkpoint backups. A second checkpoint
+after an ack must restore the acknowledged position with the same sink and
+global log history; a different cluster identity is exposed in `Opened` so
+clients do not confuse sources.
 
 The server bounds each stream to 16 unacknowledged logs, 8 active streams,
 2 streams per caller identity (anonymous and auth-disabled calls share one
@@ -236,9 +237,9 @@ resource bucket),
 an 8 MiB catch-up page budget (or one larger log),
 30 seconds without an ack while logs are outstanding. The stream closes at
 the verified token expiry. A second connection for the same sink is rejected. The
-server rescans the committed read index every 250 ms from the last sent ID;
+server rescans the committed global log every 250 ms from the last sent sequence;
 an empty scan never advances the cursor. Leadership loss, sink removal, or a
-ledger identity change closes the stream so the client reconnects or repairs
+configuration change closes the stream so the client reconnects or repairs
 the configuration. The public transport reserves 32 bytes above the existing
 64 MiB `ListLogs` payload ceiling for the stream wrapper, so every log that
 `ListLogs` could send still fits the subscription message.

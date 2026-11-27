@@ -3135,14 +3135,14 @@ func (m *BarrierResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SubscribeLedgerLogsRequest) CloneVT() *SubscribeLedgerLogsRequest {
+func (m *SubscribeLogsRequest) CloneVT() *SubscribeLogsRequest {
 	if m == nil {
-		return (*SubscribeLedgerLogsRequest)(nil)
+		return (*SubscribeLogsRequest)(nil)
 	}
-	r := new(SubscribeLedgerLogsRequest)
+	r := new(SubscribeLogsRequest)
 	if m.Kind != nil {
 		r.Kind = m.Kind.(interface {
-			CloneVT() isSubscribeLedgerLogsRequest_Kind
+			CloneVT() isSubscribeLogsRequest_Kind
 		}).CloneVT()
 	}
 	if len(m.unknownFields) > 0 {
@@ -3152,33 +3152,33 @@ func (m *SubscribeLedgerLogsRequest) CloneVT() *SubscribeLedgerLogsRequest {
 	return r
 }
 
-func (m *SubscribeLedgerLogsRequest) CloneMessageVT() proto.Message {
+func (m *SubscribeLogsRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SubscribeLedgerLogsRequest_Open) CloneVT() isSubscribeLedgerLogsRequest_Kind {
+func (m *SubscribeLogsRequest_Open) CloneVT() isSubscribeLogsRequest_Kind {
 	if m == nil {
-		return (*SubscribeLedgerLogsRequest_Open)(nil)
+		return (*SubscribeLogsRequest_Open)(nil)
 	}
-	r := new(SubscribeLedgerLogsRequest_Open)
+	r := new(SubscribeLogsRequest_Open)
 	r.Open = m.Open.CloneVT()
 	return r
 }
 
-func (m *SubscribeLedgerLogsRequest_Ack) CloneVT() isSubscribeLedgerLogsRequest_Kind {
+func (m *SubscribeLogsRequest_Ack) CloneVT() isSubscribeLogsRequest_Kind {
 	if m == nil {
-		return (*SubscribeLedgerLogsRequest_Ack)(nil)
+		return (*SubscribeLogsRequest_Ack)(nil)
 	}
-	r := new(SubscribeLedgerLogsRequest_Ack)
+	r := new(SubscribeLogsRequest_Ack)
 	r.Ack = m.Ack.CloneVT()
 	return r
 }
 
-func (m *OpenLedgerLogSink) CloneVT() *OpenLedgerLogSink {
+func (m *OpenLogSink) CloneVT() *OpenLogSink {
 	if m == nil {
-		return (*OpenLedgerLogSink)(nil)
+		return (*OpenLogSink)(nil)
 	}
-	r := new(OpenLedgerLogSink)
+	r := new(OpenLogSink)
 	r.SinkName = m.SinkName
 	r.ClientId = m.ClientId
 	if len(m.unknownFields) > 0 {
@@ -3188,16 +3188,16 @@ func (m *OpenLedgerLogSink) CloneVT() *OpenLedgerLogSink {
 	return r
 }
 
-func (m *OpenLedgerLogSink) CloneMessageVT() proto.Message {
+func (m *OpenLogSink) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *AcknowledgeLedgerLog) CloneVT() *AcknowledgeLedgerLog {
+func (m *AcknowledgeLog) CloneVT() *AcknowledgeLog {
 	if m == nil {
-		return (*AcknowledgeLedgerLog)(nil)
+		return (*AcknowledgeLog)(nil)
 	}
-	r := new(AcknowledgeLedgerLog)
-	r.LogId = m.LogId
+	r := new(AcknowledgeLog)
+	r.Sequence = m.Sequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3205,18 +3205,18 @@ func (m *AcknowledgeLedgerLog) CloneVT() *AcknowledgeLedgerLog {
 	return r
 }
 
-func (m *AcknowledgeLedgerLog) CloneMessageVT() proto.Message {
+func (m *AcknowledgeLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SubscribeLedgerLogsResponse) CloneVT() *SubscribeLedgerLogsResponse {
+func (m *SubscribeLogsResponse) CloneVT() *SubscribeLogsResponse {
 	if m == nil {
-		return (*SubscribeLedgerLogsResponse)(nil)
+		return (*SubscribeLogsResponse)(nil)
 	}
-	r := new(SubscribeLedgerLogsResponse)
+	r := new(SubscribeLogsResponse)
 	if m.Kind != nil {
 		r.Kind = m.Kind.(interface {
-			CloneVT() isSubscribeLedgerLogsResponse_Kind
+			CloneVT() isSubscribeLogsResponse_Kind
 		}).CloneVT()
 	}
 	if len(m.unknownFields) > 0 {
@@ -3226,43 +3226,43 @@ func (m *SubscribeLedgerLogsResponse) CloneVT() *SubscribeLedgerLogsResponse {
 	return r
 }
 
-func (m *SubscribeLedgerLogsResponse) CloneMessageVT() proto.Message {
+func (m *SubscribeLogsResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SubscribeLedgerLogsResponse_Opened) CloneVT() isSubscribeLedgerLogsResponse_Kind {
+func (m *SubscribeLogsResponse_Opened) CloneVT() isSubscribeLogsResponse_Kind {
 	if m == nil {
-		return (*SubscribeLedgerLogsResponse_Opened)(nil)
+		return (*SubscribeLogsResponse_Opened)(nil)
 	}
-	r := new(SubscribeLedgerLogsResponse_Opened)
+	r := new(SubscribeLogsResponse_Opened)
 	r.Opened = m.Opened.CloneVT()
 	return r
 }
 
-func (m *SubscribeLedgerLogsResponse_Log) CloneVT() isSubscribeLedgerLogsResponse_Kind {
+func (m *SubscribeLogsResponse_Log) CloneVT() isSubscribeLogsResponse_Kind {
 	if m == nil {
-		return (*SubscribeLedgerLogsResponse_Log)(nil)
+		return (*SubscribeLogsResponse_Log)(nil)
 	}
-	r := new(SubscribeLedgerLogsResponse_Log)
+	r := new(SubscribeLogsResponse_Log)
 	r.Log = m.Log.CloneVT()
 	return r
 }
 
-func (m *SubscribeLedgerLogsResponse_Acked) CloneVT() isSubscribeLedgerLogsResponse_Kind {
+func (m *SubscribeLogsResponse_Acked) CloneVT() isSubscribeLogsResponse_Kind {
 	if m == nil {
-		return (*SubscribeLedgerLogsResponse_Acked)(nil)
+		return (*SubscribeLogsResponse_Acked)(nil)
 	}
-	r := new(SubscribeLedgerLogsResponse_Acked)
+	r := new(SubscribeLogsResponse_Acked)
 	r.Acked = m.Acked.CloneVT()
 	return r
 }
 
-func (m *OpenedLedgerLogSink) CloneVT() *OpenedLedgerLogSink {
+func (m *OpenedLogSink) CloneVT() *OpenedLogSink {
 	if m == nil {
-		return (*OpenedLedgerLogSink)(nil)
+		return (*OpenedLogSink)(nil)
 	}
-	r := new(OpenedLedgerLogSink)
-	r.AcknowledgedLogId = m.AcknowledgedLogId
+	r := new(OpenedLogSink)
+	r.AcknowledgedSequence = m.AcknowledgedSequence
 	r.ClusterId = m.ClusterId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -3271,16 +3271,16 @@ func (m *OpenedLedgerLogSink) CloneVT() *OpenedLedgerLogSink {
 	return r
 }
 
-func (m *OpenedLedgerLogSink) CloneMessageVT() proto.Message {
+func (m *OpenedLogSink) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *AcknowledgedLedgerLog) CloneVT() *AcknowledgedLedgerLog {
+func (m *AcknowledgedLog) CloneVT() *AcknowledgedLog {
 	if m == nil {
-		return (*AcknowledgedLedgerLog)(nil)
+		return (*AcknowledgedLog)(nil)
 	}
-	r := new(AcknowledgedLedgerLog)
-	r.LogId = m.LogId
+	r := new(AcknowledgedLog)
+	r.Sequence = m.Sequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3288,7 +3288,7 @@ func (m *AcknowledgedLedgerLog) CloneVT() *AcknowledgedLedgerLog {
 	return r
 }
 
-func (m *AcknowledgedLedgerLog) CloneMessageVT() proto.Message {
+func (m *AcknowledgedLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -8256,7 +8256,7 @@ func (this *BarrierResponse) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *SubscribeLedgerLogsRequest) EqualVT(that *SubscribeLedgerLogsRequest) bool {
+func (this *SubscribeLogsRequest) EqualVT(that *SubscribeLogsRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -8269,7 +8269,7 @@ func (this *SubscribeLedgerLogsRequest) EqualVT(that *SubscribeLedgerLogsRequest
 			return false
 		}
 		if !this.Kind.(interface {
-			EqualVT(isSubscribeLedgerLogsRequest_Kind) bool
+			EqualVT(isSubscribeLogsRequest_Kind) bool
 		}).EqualVT(that.Kind) {
 			return false
 		}
@@ -8277,15 +8277,15 @@ func (this *SubscribeLedgerLogsRequest) EqualVT(that *SubscribeLedgerLogsRequest
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SubscribeLedgerLogsRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SubscribeLedgerLogsRequest)
+func (this *SubscribeLogsRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SubscribeLogsRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *SubscribeLedgerLogsRequest_Open) EqualVT(thatIface isSubscribeLedgerLogsRequest_Kind) bool {
-	that, ok := thatIface.(*SubscribeLedgerLogsRequest_Open)
+func (this *SubscribeLogsRequest_Open) EqualVT(thatIface isSubscribeLogsRequest_Kind) bool {
+	that, ok := thatIface.(*SubscribeLogsRequest_Open)
 	if !ok {
 		return false
 	}
@@ -8297,10 +8297,10 @@ func (this *SubscribeLedgerLogsRequest_Open) EqualVT(thatIface isSubscribeLedger
 	}
 	if p, q := this.Open, that.Open; p != q {
 		if p == nil {
-			p = &OpenLedgerLogSink{}
+			p = &OpenLogSink{}
 		}
 		if q == nil {
-			q = &OpenLedgerLogSink{}
+			q = &OpenLogSink{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -8309,8 +8309,8 @@ func (this *SubscribeLedgerLogsRequest_Open) EqualVT(thatIface isSubscribeLedger
 	return true
 }
 
-func (this *SubscribeLedgerLogsRequest_Ack) EqualVT(thatIface isSubscribeLedgerLogsRequest_Kind) bool {
-	that, ok := thatIface.(*SubscribeLedgerLogsRequest_Ack)
+func (this *SubscribeLogsRequest_Ack) EqualVT(thatIface isSubscribeLogsRequest_Kind) bool {
+	that, ok := thatIface.(*SubscribeLogsRequest_Ack)
 	if !ok {
 		return false
 	}
@@ -8322,10 +8322,10 @@ func (this *SubscribeLedgerLogsRequest_Ack) EqualVT(thatIface isSubscribeLedgerL
 	}
 	if p, q := this.Ack, that.Ack; p != q {
 		if p == nil {
-			p = &AcknowledgeLedgerLog{}
+			p = &AcknowledgeLog{}
 		}
 		if q == nil {
-			q = &AcknowledgeLedgerLog{}
+			q = &AcknowledgeLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -8334,7 +8334,7 @@ func (this *SubscribeLedgerLogsRequest_Ack) EqualVT(thatIface isSubscribeLedgerL
 	return true
 }
 
-func (this *OpenLedgerLogSink) EqualVT(that *OpenLedgerLogSink) bool {
+func (this *OpenLogSink) EqualVT(that *OpenLogSink) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -8349,33 +8349,33 @@ func (this *OpenLedgerLogSink) EqualVT(that *OpenLedgerLogSink) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *OpenLedgerLogSink) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*OpenLedgerLogSink)
+func (this *OpenLogSink) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*OpenLogSink)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *AcknowledgeLedgerLog) EqualVT(that *AcknowledgeLedgerLog) bool {
+func (this *AcknowledgeLog) EqualVT(that *AcknowledgeLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.LogId != that.LogId {
+	if this.Sequence != that.Sequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *AcknowledgeLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*AcknowledgeLedgerLog)
+func (this *AcknowledgeLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AcknowledgeLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *SubscribeLedgerLogsResponse) EqualVT(that *SubscribeLedgerLogsResponse) bool {
+func (this *SubscribeLogsResponse) EqualVT(that *SubscribeLogsResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -8388,7 +8388,7 @@ func (this *SubscribeLedgerLogsResponse) EqualVT(that *SubscribeLedgerLogsRespon
 			return false
 		}
 		if !this.Kind.(interface {
-			EqualVT(isSubscribeLedgerLogsResponse_Kind) bool
+			EqualVT(isSubscribeLogsResponse_Kind) bool
 		}).EqualVT(that.Kind) {
 			return false
 		}
@@ -8396,15 +8396,15 @@ func (this *SubscribeLedgerLogsResponse) EqualVT(that *SubscribeLedgerLogsRespon
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SubscribeLedgerLogsResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SubscribeLedgerLogsResponse)
+func (this *SubscribeLogsResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SubscribeLogsResponse)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *SubscribeLedgerLogsResponse_Opened) EqualVT(thatIface isSubscribeLedgerLogsResponse_Kind) bool {
-	that, ok := thatIface.(*SubscribeLedgerLogsResponse_Opened)
+func (this *SubscribeLogsResponse_Opened) EqualVT(thatIface isSubscribeLogsResponse_Kind) bool {
+	that, ok := thatIface.(*SubscribeLogsResponse_Opened)
 	if !ok {
 		return false
 	}
@@ -8416,10 +8416,10 @@ func (this *SubscribeLedgerLogsResponse_Opened) EqualVT(thatIface isSubscribeLed
 	}
 	if p, q := this.Opened, that.Opened; p != q {
 		if p == nil {
-			p = &OpenedLedgerLogSink{}
+			p = &OpenedLogSink{}
 		}
 		if q == nil {
-			q = &OpenedLedgerLogSink{}
+			q = &OpenedLogSink{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -8428,8 +8428,8 @@ func (this *SubscribeLedgerLogsResponse_Opened) EqualVT(thatIface isSubscribeLed
 	return true
 }
 
-func (this *SubscribeLedgerLogsResponse_Log) EqualVT(thatIface isSubscribeLedgerLogsResponse_Kind) bool {
-	that, ok := thatIface.(*SubscribeLedgerLogsResponse_Log)
+func (this *SubscribeLogsResponse_Log) EqualVT(thatIface isSubscribeLogsResponse_Kind) bool {
+	that, ok := thatIface.(*SubscribeLogsResponse_Log)
 	if !ok {
 		return false
 	}
@@ -8453,8 +8453,8 @@ func (this *SubscribeLedgerLogsResponse_Log) EqualVT(thatIface isSubscribeLedger
 	return true
 }
 
-func (this *SubscribeLedgerLogsResponse_Acked) EqualVT(thatIface isSubscribeLedgerLogsResponse_Kind) bool {
-	that, ok := thatIface.(*SubscribeLedgerLogsResponse_Acked)
+func (this *SubscribeLogsResponse_Acked) EqualVT(thatIface isSubscribeLogsResponse_Kind) bool {
+	that, ok := thatIface.(*SubscribeLogsResponse_Acked)
 	if !ok {
 		return false
 	}
@@ -8466,10 +8466,10 @@ func (this *SubscribeLedgerLogsResponse_Acked) EqualVT(thatIface isSubscribeLedg
 	}
 	if p, q := this.Acked, that.Acked; p != q {
 		if p == nil {
-			p = &AcknowledgedLedgerLog{}
+			p = &AcknowledgedLog{}
 		}
 		if q == nil {
-			q = &AcknowledgedLedgerLog{}
+			q = &AcknowledgedLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -8478,13 +8478,13 @@ func (this *SubscribeLedgerLogsResponse_Acked) EqualVT(thatIface isSubscribeLedg
 	return true
 }
 
-func (this *OpenedLedgerLogSink) EqualVT(that *OpenedLedgerLogSink) bool {
+func (this *OpenedLogSink) EqualVT(that *OpenedLogSink) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.AcknowledgedLogId != that.AcknowledgedLogId {
+	if this.AcknowledgedSequence != that.AcknowledgedSequence {
 		return false
 	}
 	if this.ClusterId != that.ClusterId {
@@ -8493,27 +8493,27 @@ func (this *OpenedLedgerLogSink) EqualVT(that *OpenedLedgerLogSink) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *OpenedLedgerLogSink) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*OpenedLedgerLogSink)
+func (this *OpenedLogSink) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*OpenedLogSink)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *AcknowledgedLedgerLog) EqualVT(that *AcknowledgedLedgerLog) bool {
+func (this *AcknowledgedLog) EqualVT(that *AcknowledgedLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.LogId != that.LogId {
+	if this.Sequence != that.Sequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *AcknowledgedLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*AcknowledgedLedgerLog)
+func (this *AcknowledgedLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AcknowledgedLog)
 	if !ok {
 		return false
 	}
@@ -16576,7 +16576,7 @@ func (m *BarrierResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SubscribeLedgerLogsRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *SubscribeLogsRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -16589,12 +16589,12 @@ func (m *SubscribeLedgerLogsRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SubscribeLedgerLogsRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16618,12 +16618,12 @@ func (m *SubscribeLedgerLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 
-func (m *SubscribeLedgerLogsRequest_Open) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsRequest_Open) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsRequest_Open) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsRequest_Open) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Open != nil {
 		size, err := m.Open.MarshalToSizedBufferVT(dAtA[:i])
@@ -16637,12 +16637,12 @@ func (m *SubscribeLedgerLogsRequest_Open) MarshalToSizedBufferVT(dAtA []byte) (i
 	}
 	return len(dAtA) - i, nil
 }
-func (m *SubscribeLedgerLogsRequest_Ack) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsRequest_Ack) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsRequest_Ack) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsRequest_Ack) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Ack != nil {
 		size, err := m.Ack.MarshalToSizedBufferVT(dAtA[:i])
@@ -16656,7 +16656,7 @@ func (m *SubscribeLedgerLogsRequest_Ack) MarshalToSizedBufferVT(dAtA []byte) (in
 	}
 	return len(dAtA) - i, nil
 }
-func (m *OpenLedgerLogSink) MarshalVT() (dAtA []byte, err error) {
+func (m *OpenLogSink) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -16669,12 +16669,12 @@ func (m *OpenLedgerLogSink) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *OpenLedgerLogSink) MarshalToVT(dAtA []byte) (int, error) {
+func (m *OpenLogSink) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *OpenLedgerLogSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *OpenLogSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16703,7 +16703,7 @@ func (m *OpenLedgerLogSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *AcknowledgeLedgerLog) MarshalVT() (dAtA []byte, err error) {
+func (m *AcknowledgeLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -16716,12 +16716,12 @@ func (m *AcknowledgeLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *AcknowledgeLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *AcknowledgeLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *AcknowledgeLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *AcknowledgeLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16733,16 +16733,16 @@ func (m *AcknowledgeLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.LogId != 0 {
+	if m.Sequence != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Sequence))
 		i--
 		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *SubscribeLedgerLogsResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *SubscribeLogsResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -16755,12 +16755,12 @@ func (m *SubscribeLedgerLogsResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SubscribeLedgerLogsResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16784,12 +16784,12 @@ func (m *SubscribeLedgerLogsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	return len(dAtA) - i, nil
 }
 
-func (m *SubscribeLedgerLogsResponse_Opened) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse_Opened) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsResponse_Opened) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse_Opened) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Opened != nil {
 		size, err := m.Opened.MarshalToSizedBufferVT(dAtA[:i])
@@ -16803,12 +16803,12 @@ func (m *SubscribeLedgerLogsResponse_Opened) MarshalToSizedBufferVT(dAtA []byte)
 	}
 	return len(dAtA) - i, nil
 }
-func (m *SubscribeLedgerLogsResponse_Log) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse_Log) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsResponse_Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse_Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Log != nil {
 		size, err := m.Log.MarshalToSizedBufferVT(dAtA[:i])
@@ -16822,12 +16822,12 @@ func (m *SubscribeLedgerLogsResponse_Log) MarshalToSizedBufferVT(dAtA []byte) (i
 	}
 	return len(dAtA) - i, nil
 }
-func (m *SubscribeLedgerLogsResponse_Acked) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse_Acked) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SubscribeLedgerLogsResponse_Acked) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SubscribeLogsResponse_Acked) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Acked != nil {
 		size, err := m.Acked.MarshalToSizedBufferVT(dAtA[:i])
@@ -16841,7 +16841,7 @@ func (m *SubscribeLedgerLogsResponse_Acked) MarshalToSizedBufferVT(dAtA []byte) 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *OpenedLedgerLogSink) MarshalVT() (dAtA []byte, err error) {
+func (m *OpenedLogSink) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -16854,12 +16854,12 @@ func (m *OpenedLedgerLogSink) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *OpenedLedgerLogSink) MarshalToVT(dAtA []byte) (int, error) {
+func (m *OpenedLogSink) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *OpenedLedgerLogSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *OpenedLogSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16878,16 +16878,16 @@ func (m *OpenedLedgerLogSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.AcknowledgedLogId != 0 {
+	if m.AcknowledgedSequence != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AcknowledgedLogId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AcknowledgedSequence))
 		i--
 		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *AcknowledgedLedgerLog) MarshalVT() (dAtA []byte, err error) {
+func (m *AcknowledgedLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -16900,12 +16900,12 @@ func (m *AcknowledgedLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *AcknowledgedLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *AcknowledgedLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *AcknowledgedLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *AcknowledgedLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16917,9 +16917,9 @@ func (m *AcknowledgedLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.LogId != 0 {
+	if m.Sequence != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Sequence))
 		i--
 		dAtA[i] = 0x9
 	}
@@ -20261,7 +20261,7 @@ func (m *BarrierResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *SubscribeLedgerLogsRequest) SizeVT() (n int) {
+func (m *SubscribeLogsRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20274,7 +20274,7 @@ func (m *SubscribeLedgerLogsRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *SubscribeLedgerLogsRequest_Open) SizeVT() (n int) {
+func (m *SubscribeLogsRequest_Open) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20286,7 +20286,7 @@ func (m *SubscribeLedgerLogsRequest_Open) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *SubscribeLedgerLogsRequest_Ack) SizeVT() (n int) {
+func (m *SubscribeLogsRequest_Ack) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20298,7 +20298,7 @@ func (m *SubscribeLedgerLogsRequest_Ack) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *OpenLedgerLogSink) SizeVT() (n int) {
+func (m *OpenLogSink) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20316,20 +20316,20 @@ func (m *OpenLedgerLogSink) SizeVT() (n int) {
 	return n
 }
 
-func (m *AcknowledgeLedgerLog) SizeVT() (n int) {
+func (m *AcknowledgeLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.LogId != 0 {
+	if m.Sequence != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *SubscribeLedgerLogsResponse) SizeVT() (n int) {
+func (m *SubscribeLogsResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20342,7 +20342,7 @@ func (m *SubscribeLedgerLogsResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *SubscribeLedgerLogsResponse_Opened) SizeVT() (n int) {
+func (m *SubscribeLogsResponse_Opened) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20354,7 +20354,7 @@ func (m *SubscribeLedgerLogsResponse_Opened) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *SubscribeLedgerLogsResponse_Log) SizeVT() (n int) {
+func (m *SubscribeLogsResponse_Log) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20366,7 +20366,7 @@ func (m *SubscribeLedgerLogsResponse_Log) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *SubscribeLedgerLogsResponse_Acked) SizeVT() (n int) {
+func (m *SubscribeLogsResponse_Acked) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20378,13 +20378,13 @@ func (m *SubscribeLedgerLogsResponse_Acked) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *OpenedLedgerLogSink) SizeVT() (n int) {
+func (m *OpenedLogSink) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.AcknowledgedLogId != 0 {
+	if m.AcknowledgedSequence != 0 {
 		n += 9
 	}
 	l = len(m.ClusterId)
@@ -20395,13 +20395,13 @@ func (m *OpenedLedgerLogSink) SizeVT() (n int) {
 	return n
 }
 
-func (m *AcknowledgedLedgerLog) SizeVT() (n int) {
+func (m *AcknowledgedLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.LogId != 0 {
+	if m.Sequence != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -39416,7 +39416,7 @@ func (m *BarrierResponse) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SubscribeLedgerLogsRequest) UnmarshalVT(dAtA []byte) error {
+func (m *SubscribeLogsRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -39439,10 +39439,10 @@ func (m *SubscribeLedgerLogsRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SubscribeLedgerLogsRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: SubscribeLogsRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SubscribeLedgerLogsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SubscribeLogsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -39474,16 +39474,16 @@ func (m *SubscribeLedgerLogsRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Kind.(*SubscribeLedgerLogsRequest_Open); ok {
+			if oneof, ok := m.Kind.(*SubscribeLogsRequest_Open); ok {
 				if err := oneof.Open.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &OpenLedgerLogSink{}
+				v := &OpenLogSink{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Kind = &SubscribeLedgerLogsRequest_Open{Open: v}
+				m.Kind = &SubscribeLogsRequest_Open{Open: v}
 			}
 			iNdEx = postIndex
 		case 2:
@@ -39515,16 +39515,16 @@ func (m *SubscribeLedgerLogsRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Kind.(*SubscribeLedgerLogsRequest_Ack); ok {
+			if oneof, ok := m.Kind.(*SubscribeLogsRequest_Ack); ok {
 				if err := oneof.Ack.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &AcknowledgeLedgerLog{}
+				v := &AcknowledgeLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Kind = &SubscribeLedgerLogsRequest_Ack{Ack: v}
+				m.Kind = &SubscribeLogsRequest_Ack{Ack: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -39549,7 +39549,7 @@ func (m *SubscribeLedgerLogsRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *OpenLedgerLogSink) UnmarshalVT(dAtA []byte) error {
+func (m *OpenLogSink) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -39572,10 +39572,10 @@ func (m *OpenLedgerLogSink) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: OpenLedgerLogSink: wiretype end group for non-group")
+			return fmt.Errorf("proto: OpenLogSink: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: OpenLedgerLogSink: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: OpenLogSink: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -39664,7 +39664,7 @@ func (m *OpenLedgerLogSink) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *AcknowledgeLedgerLog) UnmarshalVT(dAtA []byte) error {
+func (m *AcknowledgeLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -39687,21 +39687,21 @@ func (m *AcknowledgeLedgerLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AcknowledgeLedgerLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: AcknowledgeLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AcknowledgeLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AcknowledgeLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Sequence", wireType)
 			}
-			m.LogId = 0
+			m.Sequence = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.Sequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex
@@ -39725,7 +39725,7 @@ func (m *AcknowledgeLedgerLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
+func (m *SubscribeLogsResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -39748,10 +39748,10 @@ func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SubscribeLedgerLogsResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: SubscribeLogsResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SubscribeLedgerLogsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SubscribeLogsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -39783,16 +39783,16 @@ func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Kind.(*SubscribeLedgerLogsResponse_Opened); ok {
+			if oneof, ok := m.Kind.(*SubscribeLogsResponse_Opened); ok {
 				if err := oneof.Opened.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &OpenedLedgerLogSink{}
+				v := &OpenedLogSink{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Kind = &SubscribeLedgerLogsResponse_Opened{Opened: v}
+				m.Kind = &SubscribeLogsResponse_Opened{Opened: v}
 			}
 			iNdEx = postIndex
 		case 2:
@@ -39824,7 +39824,7 @@ func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Kind.(*SubscribeLedgerLogsResponse_Log); ok {
+			if oneof, ok := m.Kind.(*SubscribeLogsResponse_Log); ok {
 				if err := oneof.Log.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -39833,7 +39833,7 @@ func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Kind = &SubscribeLedgerLogsResponse_Log{Log: v}
+				m.Kind = &SubscribeLogsResponse_Log{Log: v}
 			}
 			iNdEx = postIndex
 		case 3:
@@ -39865,16 +39865,16 @@ func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Kind.(*SubscribeLedgerLogsResponse_Acked); ok {
+			if oneof, ok := m.Kind.(*SubscribeLogsResponse_Acked); ok {
 				if err := oneof.Acked.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &AcknowledgedLedgerLog{}
+				v := &AcknowledgedLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Kind = &SubscribeLedgerLogsResponse_Acked{Acked: v}
+				m.Kind = &SubscribeLogsResponse_Acked{Acked: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -39899,7 +39899,7 @@ func (m *SubscribeLedgerLogsResponse) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *OpenedLedgerLogSink) UnmarshalVT(dAtA []byte) error {
+func (m *OpenedLogSink) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -39922,21 +39922,21 @@ func (m *OpenedLedgerLogSink) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: OpenedLedgerLogSink: wiretype end group for non-group")
+			return fmt.Errorf("proto: OpenedLogSink: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: OpenedLedgerLogSink: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: OpenedLogSink: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AcknowledgedLogId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field AcknowledgedSequence", wireType)
 			}
-			m.AcknowledgedLogId = 0
+			m.AcknowledgedSequence = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.AcknowledgedLogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.AcknowledgedSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 2:
 			if wireType != 2 {
@@ -39992,7 +39992,7 @@ func (m *OpenedLedgerLogSink) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *AcknowledgedLedgerLog) UnmarshalVT(dAtA []byte) error {
+func (m *AcknowledgedLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -40015,21 +40015,21 @@ func (m *AcknowledgedLedgerLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AcknowledgedLedgerLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: AcknowledgedLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AcknowledgedLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AcknowledgedLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Sequence", wireType)
 			}
-			m.LogId = 0
+			m.Sequence = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.Sequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

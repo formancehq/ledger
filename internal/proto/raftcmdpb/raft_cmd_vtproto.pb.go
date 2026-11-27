@@ -2305,7 +2305,7 @@ func (m *GrpcLogSinkAck) CloneVT() *GrpcLogSinkAck {
 	r := new(GrpcLogSinkAck)
 	r.SinkName = m.SinkName
 	r.Incarnation = m.Incarnation
-	r.LogId = m.LogId
+	r.Sequence = m.Sequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6262,7 +6262,7 @@ func (this *GrpcLogSinkAck) EqualVT(that *GrpcLogSinkAck) bool {
 	if this.Incarnation != that.Incarnation {
 		return false
 	}
-	if this.LogId != that.LogId {
+	if this.Sequence != that.Sequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11862,9 +11862,9 @@ func (m *GrpcLogSinkAck) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.LogId != 0 {
+	if m.Sequence != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Sequence))
 		i--
 		dAtA[i] = 0x19
 	}
@@ -14525,7 +14525,7 @@ func (m *GrpcLogSinkAck) SizeVT() (n int) {
 	if m.Incarnation != 0 {
 		n += 9
 	}
-	if m.LogId != 0 {
+	if m.Sequence != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -27913,13 +27913,13 @@ func (m *GrpcLogSinkAck) UnmarshalVT(dAtA []byte) error {
 			iNdEx += 8
 		case 3:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Sequence", wireType)
 			}
-			m.LogId = 0
+			m.Sequence = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.Sequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

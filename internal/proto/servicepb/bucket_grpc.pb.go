@@ -35,7 +35,7 @@ const (
 	BucketService_GetAuditEntry_FullMethodName           = "/ledger.BucketService/GetAuditEntry"
 	BucketService_GetEventsSinks_FullMethodName          = "/ledger.BucketService/GetEventsSinks"
 	BucketService_ListLogs_FullMethodName                = "/ledger.BucketService/ListLogs"
-	BucketService_SubscribeLedgerLogs_FullMethodName     = "/ledger.BucketService/SubscribeLedgerLogs"
+	BucketService_SubscribeLogs_FullMethodName           = "/ledger.BucketService/SubscribeLogs"
 	BucketService_GetLog_FullMethodName                  = "/ledger.BucketService/GetLog"
 	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
 	BucketService_GetSigningConfig_FullMethodName        = "/ledger.BucketService/GetSigningConfig"
@@ -94,8 +94,8 @@ type BucketServiceClient interface {
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
 	// ListLogs streams system logs; when ledger is set, streams only logs for that ledger
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
-	// SubscribeLedgerLogs delivers committed logs for one configured ledger sink.
-	SubscribeLedgerLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse], error)
+	// SubscribeLogs delivers committed global logs to a configured sink.
+	SubscribeLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeLogsRequest, SubscribeLogsResponse], error)
 	// GetLog returns a single system log by sequence number
 	GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
 	// ListSigningKeys streams all registered signing keys
@@ -351,18 +351,18 @@ func (c *bucketServiceClient) ListLogs(ctx context.Context, in *ListLogsRequest,
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListLogsClient = grpc.ServerStreamingClient[commonpb.Log]
 
-func (c *bucketServiceClient) SubscribeLedgerLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse], error) {
+func (c *bucketServiceClient) SubscribeLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeLogsRequest, SubscribeLogsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[6], BucketService_SubscribeLedgerLogs_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[6], BucketService_SubscribeLogs_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[SubscribeLogsRequest, SubscribeLogsResponse]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BucketService_SubscribeLedgerLogsClient = grpc.BidiStreamingClient[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse]
+type BucketService_SubscribeLogsClient = grpc.BidiStreamingClient[SubscribeLogsRequest, SubscribeLogsResponse]
 
 func (c *bucketServiceClient) GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -663,8 +663,8 @@ type BucketServiceServer interface {
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
 	// ListLogs streams system logs; when ledger is set, streams only logs for that ledger
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
-	// SubscribeLedgerLogs delivers committed logs for one configured ledger sink.
-	SubscribeLedgerLogs(grpc.BidiStreamingServer[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse]) error
+	// SubscribeLogs delivers committed global logs to a configured sink.
+	SubscribeLogs(grpc.BidiStreamingServer[SubscribeLogsRequest, SubscribeLogsResponse]) error
 	// GetLog returns a single system log by sequence number
 	GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error)
 	// ListSigningKeys streams all registered signing keys
@@ -768,8 +768,8 @@ func (UnimplementedBucketServiceServer) GetEventsSinks(context.Context, *GetEven
 func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error {
 	return status.Error(codes.Unimplemented, "method ListLogs not implemented")
 }
-func (UnimplementedBucketServiceServer) SubscribeLedgerLogs(grpc.BidiStreamingServer[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse]) error {
-	return status.Error(codes.Unimplemented, "method SubscribeLedgerLogs not implemented")
+func (UnimplementedBucketServiceServer) SubscribeLogs(grpc.BidiStreamingServer[SubscribeLogsRequest, SubscribeLogsResponse]) error {
+	return status.Error(codes.Unimplemented, "method SubscribeLogs not implemented")
 }
 func (UnimplementedBucketServiceServer) GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLog not implemented")
@@ -1068,12 +1068,12 @@ func _BucketService_ListLogs_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListLogsServer = grpc.ServerStreamingServer[commonpb.Log]
 
-func _BucketService_SubscribeLedgerLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(BucketServiceServer).SubscribeLedgerLogs(&grpc.GenericServerStream[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse]{ServerStream: stream})
+func _BucketService_SubscribeLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BucketServiceServer).SubscribeLogs(&grpc.GenericServerStream[SubscribeLogsRequest, SubscribeLogsResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BucketService_SubscribeLedgerLogsServer = grpc.BidiStreamingServer[SubscribeLedgerLogsRequest, SubscribeLedgerLogsResponse]
+type BucketService_SubscribeLogsServer = grpc.BidiStreamingServer[SubscribeLogsRequest, SubscribeLogsResponse]
 
 func _BucketService_GetLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLogRequest)
@@ -1576,8 +1576,8 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "SubscribeLedgerLogs",
-			Handler:       _BucketService_SubscribeLedgerLogs_Handler,
+			StreamName:    "SubscribeLogs",
+			Handler:       _BucketService_SubscribeLogs_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

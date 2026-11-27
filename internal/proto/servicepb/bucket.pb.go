@@ -9260,32 +9260,32 @@ func (x *BarrierResponse) GetCommitIndex() uint64 {
 	return 0
 }
 
-// A configured, acknowledged inbound ledger-log stream.
-type SubscribeLedgerLogsRequest struct {
+// A configured, acknowledged inbound global-log stream.
+type SubscribeLogsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Kind:
 	//
-	//	*SubscribeLedgerLogsRequest_Open
-	//	*SubscribeLedgerLogsRequest_Ack
-	Kind          isSubscribeLedgerLogsRequest_Kind `protobuf_oneof:"kind"`
+	//	*SubscribeLogsRequest_Open
+	//	*SubscribeLogsRequest_Ack
+	Kind          isSubscribeLogsRequest_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SubscribeLedgerLogsRequest) Reset() {
-	*x = SubscribeLedgerLogsRequest{}
+func (x *SubscribeLogsRequest) Reset() {
+	*x = SubscribeLogsRequest{}
 	mi := &file_bucket_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SubscribeLedgerLogsRequest) String() string {
+func (x *SubscribeLogsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SubscribeLedgerLogsRequest) ProtoMessage() {}
+func (*SubscribeLogsRequest) ProtoMessage() {}
 
-func (x *SubscribeLedgerLogsRequest) ProtoReflect() protoreflect.Message {
+func (x *SubscribeLogsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9297,53 +9297,53 @@ func (x *SubscribeLedgerLogsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SubscribeLedgerLogsRequest.ProtoReflect.Descriptor instead.
-func (*SubscribeLedgerLogsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use SubscribeLogsRequest.ProtoReflect.Descriptor instead.
+func (*SubscribeLogsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{127}
 }
 
-func (x *SubscribeLedgerLogsRequest) GetKind() isSubscribeLedgerLogsRequest_Kind {
+func (x *SubscribeLogsRequest) GetKind() isSubscribeLogsRequest_Kind {
 	if x != nil {
 		return x.Kind
 	}
 	return nil
 }
 
-func (x *SubscribeLedgerLogsRequest) GetOpen() *OpenLedgerLogSink {
+func (x *SubscribeLogsRequest) GetOpen() *OpenLogSink {
 	if x != nil {
-		if x, ok := x.Kind.(*SubscribeLedgerLogsRequest_Open); ok {
+		if x, ok := x.Kind.(*SubscribeLogsRequest_Open); ok {
 			return x.Open
 		}
 	}
 	return nil
 }
 
-func (x *SubscribeLedgerLogsRequest) GetAck() *AcknowledgeLedgerLog {
+func (x *SubscribeLogsRequest) GetAck() *AcknowledgeLog {
 	if x != nil {
-		if x, ok := x.Kind.(*SubscribeLedgerLogsRequest_Ack); ok {
+		if x, ok := x.Kind.(*SubscribeLogsRequest_Ack); ok {
 			return x.Ack
 		}
 	}
 	return nil
 }
 
-type isSubscribeLedgerLogsRequest_Kind interface {
-	isSubscribeLedgerLogsRequest_Kind()
+type isSubscribeLogsRequest_Kind interface {
+	isSubscribeLogsRequest_Kind()
 }
 
-type SubscribeLedgerLogsRequest_Open struct {
-	Open *OpenLedgerLogSink `protobuf:"bytes,1,opt,name=open,proto3,oneof"`
+type SubscribeLogsRequest_Open struct {
+	Open *OpenLogSink `protobuf:"bytes,1,opt,name=open,proto3,oneof"`
 }
 
-type SubscribeLedgerLogsRequest_Ack struct {
-	Ack *AcknowledgeLedgerLog `protobuf:"bytes,2,opt,name=ack,proto3,oneof"`
+type SubscribeLogsRequest_Ack struct {
+	Ack *AcknowledgeLog `protobuf:"bytes,2,opt,name=ack,proto3,oneof"`
 }
 
-func (*SubscribeLedgerLogsRequest_Open) isSubscribeLedgerLogsRequest_Kind() {}
+func (*SubscribeLogsRequest_Open) isSubscribeLogsRequest_Kind() {}
 
-func (*SubscribeLedgerLogsRequest_Ack) isSubscribeLedgerLogsRequest_Kind() {}
+func (*SubscribeLogsRequest_Ack) isSubscribeLogsRequest_Kind() {}
 
-type OpenLedgerLogSink struct {
+type OpenLogSink struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SinkName      string                 `protobuf:"bytes,1,opt,name=sink_name,json=sinkName,proto3" json:"sink_name,omitempty"`
 	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
@@ -9351,20 +9351,20 @@ type OpenLedgerLogSink struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *OpenLedgerLogSink) Reset() {
-	*x = OpenLedgerLogSink{}
+func (x *OpenLogSink) Reset() {
+	*x = OpenLogSink{}
 	mi := &file_bucket_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *OpenLedgerLogSink) String() string {
+func (x *OpenLogSink) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*OpenLedgerLogSink) ProtoMessage() {}
+func (*OpenLogSink) ProtoMessage() {}
 
-func (x *OpenLedgerLogSink) ProtoReflect() protoreflect.Message {
+func (x *OpenLogSink) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9376,46 +9376,46 @@ func (x *OpenLedgerLogSink) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use OpenLedgerLogSink.ProtoReflect.Descriptor instead.
-func (*OpenLedgerLogSink) Descriptor() ([]byte, []int) {
+// Deprecated: Use OpenLogSink.ProtoReflect.Descriptor instead.
+func (*OpenLogSink) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{128}
 }
 
-func (x *OpenLedgerLogSink) GetSinkName() string {
+func (x *OpenLogSink) GetSinkName() string {
 	if x != nil {
 		return x.SinkName
 	}
 	return ""
 }
 
-func (x *OpenLedgerLogSink) GetClientId() string {
+func (x *OpenLogSink) GetClientId() string {
 	if x != nil {
 		return x.ClientId
 	}
 	return ""
 }
 
-type AcknowledgeLedgerLog struct {
+type AcknowledgeLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LogId         uint64                 `protobuf:"fixed64,1,opt,name=log_id,json=logId,proto3" json:"log_id,omitempty"`
+	Sequence      uint64                 `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AcknowledgeLedgerLog) Reset() {
-	*x = AcknowledgeLedgerLog{}
+func (x *AcknowledgeLog) Reset() {
+	*x = AcknowledgeLog{}
 	mi := &file_bucket_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AcknowledgeLedgerLog) String() string {
+func (x *AcknowledgeLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AcknowledgeLedgerLog) ProtoMessage() {}
+func (*AcknowledgeLog) ProtoMessage() {}
 
-func (x *AcknowledgeLedgerLog) ProtoReflect() protoreflect.Message {
+func (x *AcknowledgeLog) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9427,44 +9427,44 @@ func (x *AcknowledgeLedgerLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AcknowledgeLedgerLog.ProtoReflect.Descriptor instead.
-func (*AcknowledgeLedgerLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use AcknowledgeLog.ProtoReflect.Descriptor instead.
+func (*AcknowledgeLog) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{129}
 }
 
-func (x *AcknowledgeLedgerLog) GetLogId() uint64 {
+func (x *AcknowledgeLog) GetSequence() uint64 {
 	if x != nil {
-		return x.LogId
+		return x.Sequence
 	}
 	return 0
 }
 
-type SubscribeLedgerLogsResponse struct {
+type SubscribeLogsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Kind:
 	//
-	//	*SubscribeLedgerLogsResponse_Opened
-	//	*SubscribeLedgerLogsResponse_Log
-	//	*SubscribeLedgerLogsResponse_Acked
-	Kind          isSubscribeLedgerLogsResponse_Kind `protobuf_oneof:"kind"`
+	//	*SubscribeLogsResponse_Opened
+	//	*SubscribeLogsResponse_Log
+	//	*SubscribeLogsResponse_Acked
+	Kind          isSubscribeLogsResponse_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SubscribeLedgerLogsResponse) Reset() {
-	*x = SubscribeLedgerLogsResponse{}
+func (x *SubscribeLogsResponse) Reset() {
+	*x = SubscribeLogsResponse{}
 	mi := &file_bucket_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SubscribeLedgerLogsResponse) String() string {
+func (x *SubscribeLogsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SubscribeLedgerLogsResponse) ProtoMessage() {}
+func (*SubscribeLogsResponse) ProtoMessage() {}
 
-func (x *SubscribeLedgerLogsResponse) ProtoReflect() protoreflect.Message {
+func (x *SubscribeLogsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9476,89 +9476,89 @@ func (x *SubscribeLedgerLogsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SubscribeLedgerLogsResponse.ProtoReflect.Descriptor instead.
-func (*SubscribeLedgerLogsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use SubscribeLogsResponse.ProtoReflect.Descriptor instead.
+func (*SubscribeLogsResponse) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{130}
 }
 
-func (x *SubscribeLedgerLogsResponse) GetKind() isSubscribeLedgerLogsResponse_Kind {
+func (x *SubscribeLogsResponse) GetKind() isSubscribeLogsResponse_Kind {
 	if x != nil {
 		return x.Kind
 	}
 	return nil
 }
 
-func (x *SubscribeLedgerLogsResponse) GetOpened() *OpenedLedgerLogSink {
+func (x *SubscribeLogsResponse) GetOpened() *OpenedLogSink {
 	if x != nil {
-		if x, ok := x.Kind.(*SubscribeLedgerLogsResponse_Opened); ok {
+		if x, ok := x.Kind.(*SubscribeLogsResponse_Opened); ok {
 			return x.Opened
 		}
 	}
 	return nil
 }
 
-func (x *SubscribeLedgerLogsResponse) GetLog() *commonpb.Log {
+func (x *SubscribeLogsResponse) GetLog() *commonpb.Log {
 	if x != nil {
-		if x, ok := x.Kind.(*SubscribeLedgerLogsResponse_Log); ok {
+		if x, ok := x.Kind.(*SubscribeLogsResponse_Log); ok {
 			return x.Log
 		}
 	}
 	return nil
 }
 
-func (x *SubscribeLedgerLogsResponse) GetAcked() *AcknowledgedLedgerLog {
+func (x *SubscribeLogsResponse) GetAcked() *AcknowledgedLog {
 	if x != nil {
-		if x, ok := x.Kind.(*SubscribeLedgerLogsResponse_Acked); ok {
+		if x, ok := x.Kind.(*SubscribeLogsResponse_Acked); ok {
 			return x.Acked
 		}
 	}
 	return nil
 }
 
-type isSubscribeLedgerLogsResponse_Kind interface {
-	isSubscribeLedgerLogsResponse_Kind()
+type isSubscribeLogsResponse_Kind interface {
+	isSubscribeLogsResponse_Kind()
 }
 
-type SubscribeLedgerLogsResponse_Opened struct {
-	Opened *OpenedLedgerLogSink `protobuf:"bytes,1,opt,name=opened,proto3,oneof"`
+type SubscribeLogsResponse_Opened struct {
+	Opened *OpenedLogSink `protobuf:"bytes,1,opt,name=opened,proto3,oneof"`
 }
 
-type SubscribeLedgerLogsResponse_Log struct {
+type SubscribeLogsResponse_Log struct {
 	Log *commonpb.Log `protobuf:"bytes,2,opt,name=log,proto3,oneof"`
 }
 
-type SubscribeLedgerLogsResponse_Acked struct {
-	Acked *AcknowledgedLedgerLog `protobuf:"bytes,3,opt,name=acked,proto3,oneof"`
+type SubscribeLogsResponse_Acked struct {
+	Acked *AcknowledgedLog `protobuf:"bytes,3,opt,name=acked,proto3,oneof"`
 }
 
-func (*SubscribeLedgerLogsResponse_Opened) isSubscribeLedgerLogsResponse_Kind() {}
+func (*SubscribeLogsResponse_Opened) isSubscribeLogsResponse_Kind() {}
 
-func (*SubscribeLedgerLogsResponse_Log) isSubscribeLedgerLogsResponse_Kind() {}
+func (*SubscribeLogsResponse_Log) isSubscribeLogsResponse_Kind() {}
 
-func (*SubscribeLedgerLogsResponse_Acked) isSubscribeLedgerLogsResponse_Kind() {}
+func (*SubscribeLogsResponse_Acked) isSubscribeLogsResponse_Kind() {}
 
-type OpenedLedgerLogSink struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	AcknowledgedLogId uint64                 `protobuf:"fixed64,1,opt,name=acknowledged_log_id,json=acknowledgedLogId,proto3" json:"acknowledged_log_id,omitempty"`
-	ClusterId         string                 `protobuf:"bytes,2,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+type OpenedLogSink struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	AcknowledgedSequence uint64                 `protobuf:"fixed64,1,opt,name=acknowledged_sequence,json=acknowledgedSequence,proto3" json:"acknowledged_sequence,omitempty"`
+	ClusterId            string                 `protobuf:"bytes,2,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
-func (x *OpenedLedgerLogSink) Reset() {
-	*x = OpenedLedgerLogSink{}
+func (x *OpenedLogSink) Reset() {
+	*x = OpenedLogSink{}
 	mi := &file_bucket_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *OpenedLedgerLogSink) String() string {
+func (x *OpenedLogSink) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*OpenedLedgerLogSink) ProtoMessage() {}
+func (*OpenedLogSink) ProtoMessage() {}
 
-func (x *OpenedLedgerLogSink) ProtoReflect() protoreflect.Message {
+func (x *OpenedLogSink) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9570,46 +9570,46 @@ func (x *OpenedLedgerLogSink) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use OpenedLedgerLogSink.ProtoReflect.Descriptor instead.
-func (*OpenedLedgerLogSink) Descriptor() ([]byte, []int) {
+// Deprecated: Use OpenedLogSink.ProtoReflect.Descriptor instead.
+func (*OpenedLogSink) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{131}
 }
 
-func (x *OpenedLedgerLogSink) GetAcknowledgedLogId() uint64 {
+func (x *OpenedLogSink) GetAcknowledgedSequence() uint64 {
 	if x != nil {
-		return x.AcknowledgedLogId
+		return x.AcknowledgedSequence
 	}
 	return 0
 }
 
-func (x *OpenedLedgerLogSink) GetClusterId() string {
+func (x *OpenedLogSink) GetClusterId() string {
 	if x != nil {
 		return x.ClusterId
 	}
 	return ""
 }
 
-type AcknowledgedLedgerLog struct {
+type AcknowledgedLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LogId         uint64                 `protobuf:"fixed64,1,opt,name=log_id,json=logId,proto3" json:"log_id,omitempty"`
+	Sequence      uint64                 `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AcknowledgedLedgerLog) Reset() {
-	*x = AcknowledgedLedgerLog{}
+func (x *AcknowledgedLog) Reset() {
+	*x = AcknowledgedLog{}
 	mi := &file_bucket_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AcknowledgedLedgerLog) String() string {
+func (x *AcknowledgedLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AcknowledgedLedgerLog) ProtoMessage() {}
+func (*AcknowledgedLog) ProtoMessage() {}
 
-func (x *AcknowledgedLedgerLog) ProtoReflect() protoreflect.Message {
+func (x *AcknowledgedLog) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9621,14 +9621,14 @@ func (x *AcknowledgedLedgerLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AcknowledgedLedgerLog.ProtoReflect.Descriptor instead.
-func (*AcknowledgedLedgerLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use AcknowledgedLog.ProtoReflect.Descriptor instead.
+func (*AcknowledgedLog) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{132}
 }
 
-func (x *AcknowledgedLedgerLog) GetLogId() uint64 {
+func (x *AcknowledgedLog) GetSequence() uint64 {
 	if x != nil {
-		return x.LogId
+		return x.Sequence
 	}
 	return 0
 }
@@ -10297,27 +10297,27 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex\"\x87\x01\n" +
-	"\x1aSubscribeLedgerLogsRequest\x12/\n" +
-	"\x04open\x18\x01 \x01(\v2\x19.ledger.OpenLedgerLogSinkH\x00R\x04open\x120\n" +
-	"\x03ack\x18\x02 \x01(\v2\x1c.ledger.AcknowledgeLedgerLogH\x00R\x03ackB\x06\n" +
-	"\x04kind\"M\n" +
-	"\x11OpenLedgerLogSink\x12\x1b\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex\"u\n" +
+	"\x14SubscribeLogsRequest\x12)\n" +
+	"\x04open\x18\x01 \x01(\v2\x13.ledger.OpenLogSinkH\x00R\x04open\x12*\n" +
+	"\x03ack\x18\x02 \x01(\v2\x16.ledger.AcknowledgeLogH\x00R\x03ackB\x06\n" +
+	"\x04kind\"G\n" +
+	"\vOpenLogSink\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\"-\n" +
-	"\x14AcknowledgeLedgerLog\x12\x15\n" +
-	"\x06log_id\x18\x01 \x01(\x06R\x05logId\"\xb4\x01\n" +
-	"\x1bSubscribeLedgerLogsResponse\x125\n" +
-	"\x06opened\x18\x01 \x01(\v2\x1b.ledger.OpenedLedgerLogSinkH\x00R\x06opened\x12\x1f\n" +
-	"\x03log\x18\x02 \x01(\v2\v.common.LogH\x00R\x03log\x125\n" +
-	"\x05acked\x18\x03 \x01(\v2\x1d.ledger.AcknowledgedLedgerLogH\x00R\x05ackedB\x06\n" +
-	"\x04kind\"d\n" +
-	"\x13OpenedLedgerLogSink\x12.\n" +
-	"\x13acknowledged_log_id\x18\x01 \x01(\x06R\x11acknowledgedLogId\x12\x1d\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\",\n" +
+	"\x0eAcknowledgeLog\x12\x1a\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xa2\x01\n" +
+	"\x15SubscribeLogsResponse\x12/\n" +
+	"\x06opened\x18\x01 \x01(\v2\x15.ledger.OpenedLogSinkH\x00R\x06opened\x12\x1f\n" +
+	"\x03log\x18\x02 \x01(\v2\v.common.LogH\x00R\x03log\x12/\n" +
+	"\x05acked\x18\x03 \x01(\v2\x17.ledger.AcknowledgedLogH\x00R\x05ackedB\x06\n" +
+	"\x04kind\"c\n" +
+	"\rOpenedLogSink\x123\n" +
+	"\x15acknowledged_sequence\x18\x01 \x01(\x06R\x14acknowledgedSequence\x12\x1d\n" +
 	"\n" +
-	"cluster_id\x18\x02 \x01(\tR\tclusterId\".\n" +
-	"\x15AcknowledgedLedgerLog\x12\x15\n" +
-	"\x06log_id\x18\x01 \x01(\x06R\x05logId*\xdf\x01\n" +
+	"cluster_id\x18\x02 \x01(\tR\tclusterId\"-\n" +
+	"\x0fAcknowledgedLog\x12\x1a\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence*\xdf\x01\n" +
 	"\x17NumscriptDiagnosticKind\x12)\n" +
 	"%NUMSCRIPT_DIAGNOSTIC_KIND_UNSPECIFIED\x10\x00\x12%\n" +
 	"!NUMSCRIPT_DIAGNOSTIC_KIND_VERSION\x10\x01\x12$\n" +
@@ -10370,7 +10370,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10InspectIndexMode\x12&\n" +
 	"\"INSPECT_INDEX_MODE_DISTINCT_VALUES\x10\x00\x12\x1d\n" +
 	"\x19INSPECT_INDEX_MODE_FACETS\x10\x01\x12\x1e\n" +
-	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xa6\x18\n" +
+	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\x94\x18\n" +
 	"\rBucketService\x12G\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo\"\x06\xd2\xd5\"\x02\x10\x010\x01\x12A\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\"\x06\xd2\xd5\"\x02\x10\x01\x12@\n" +
@@ -10387,8 +10387,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry\"\x06\xd2\xd5\"\x02\x10\a0\x01\x12H\n" +
 	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\"\x06\xd2\xd5\"\x02\x10\a\x12W\n" +
 	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\"\x06\xd2\xd5\"\x02\x10\t\x12:\n" +
-	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\x010\x01\x12j\n" +
-	"\x13SubscribeLedgerLogs\x12\".ledger.SubscribeLedgerLogsRequest\x1a#.ledger.SubscribeLedgerLogsResponse\"\x06\xd2\xd5\"\x02\x10\x01(\x010\x01\x124\n" +
+	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\x010\x01\x12X\n" +
+	"\rSubscribeLogs\x12\x1c.ledger.SubscribeLogsRequest\x1a\x1d.ledger.SubscribeLogsResponse\"\x06\xd2\xd5\"\x02\x10\t(\x010\x01\x124\n" +
 	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\t\x12O\n" +
 	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey\"\x06\xd2\xd5\"\x02\x10\t0\x01\x12]\n" +
 	"\x10GetSigningConfig\x12\x1f.ledger.GetSigningConfigRequest\x1a .ledger.GetSigningConfigResponse\"\x06\xd2\xd5\"\x02\x10\t\x12H\n" +
@@ -10561,12 +10561,12 @@ var file_bucket_proto_goTypes = []any{
 	(*InspectSummary)(nil),                         // 130: ledger.InspectSummary
 	(*BarrierRequest)(nil),                         // 131: ledger.BarrierRequest
 	(*BarrierResponse)(nil),                        // 132: ledger.BarrierResponse
-	(*SubscribeLedgerLogsRequest)(nil),             // 133: ledger.SubscribeLedgerLogsRequest
-	(*OpenLedgerLogSink)(nil),                      // 134: ledger.OpenLedgerLogSink
-	(*AcknowledgeLedgerLog)(nil),                   // 135: ledger.AcknowledgeLedgerLog
-	(*SubscribeLedgerLogsResponse)(nil),            // 136: ledger.SubscribeLedgerLogsResponse
-	(*OpenedLedgerLogSink)(nil),                    // 137: ledger.OpenedLedgerLogSink
-	(*AcknowledgedLedgerLog)(nil),                  // 138: ledger.AcknowledgedLedgerLog
+	(*SubscribeLogsRequest)(nil),                   // 133: ledger.SubscribeLogsRequest
+	(*OpenLogSink)(nil),                            // 134: ledger.OpenLogSink
+	(*AcknowledgeLog)(nil),                         // 135: ledger.AcknowledgeLog
+	(*SubscribeLogsResponse)(nil),                  // 136: ledger.SubscribeLogsResponse
+	(*OpenedLogSink)(nil),                          // 137: ledger.OpenedLogSink
+	(*AcknowledgedLog)(nil),                        // 138: ledger.AcknowledgedLog
 	nil,                                            // 139: ledger.CreateLedgerRequest.AccountTypesEntry
 	nil,                                            // 140: ledger.CreateLedgerRequest.MetadataEntry
 	nil,                                            // 141: ledger.SaveLedgerMetadataRequest.MetadataEntry
@@ -10776,11 +10776,11 @@ var file_bucket_proto_depIdxs = []int32{
 	128, // 149: ledger.InspectFacets.facets:type_name -> ledger.InspectFacet
 	183, // 150: ledger.InspectSummary.min:type_name -> common.MetadataValue
 	183, // 151: ledger.InspectSummary.max:type_name -> common.MetadataValue
-	134, // 152: ledger.SubscribeLedgerLogsRequest.open:type_name -> ledger.OpenLedgerLogSink
-	135, // 153: ledger.SubscribeLedgerLogsRequest.ack:type_name -> ledger.AcknowledgeLedgerLog
-	137, // 154: ledger.SubscribeLedgerLogsResponse.opened:type_name -> ledger.OpenedLedgerLogSink
-	161, // 155: ledger.SubscribeLedgerLogsResponse.log:type_name -> common.Log
-	138, // 156: ledger.SubscribeLedgerLogsResponse.acked:type_name -> ledger.AcknowledgedLedgerLog
+	134, // 152: ledger.SubscribeLogsRequest.open:type_name -> ledger.OpenLogSink
+	135, // 153: ledger.SubscribeLogsRequest.ack:type_name -> ledger.AcknowledgeLog
+	137, // 154: ledger.SubscribeLogsResponse.opened:type_name -> ledger.OpenedLogSink
+	161, // 155: ledger.SubscribeLogsResponse.log:type_name -> common.Log
+	138, // 156: ledger.SubscribeLogsResponse.acked:type_name -> ledger.AcknowledgedLog
 	174, // 157: ledger.CreateLedgerRequest.AccountTypesEntry.value:type_name -> common.AccountType
 	183, // 158: ledger.CreateLedgerRequest.MetadataEntry.value:type_name -> common.MetadataValue
 	183, // 159: ledger.SaveLedgerMetadataRequest.MetadataEntry.value:type_name -> common.MetadataValue
@@ -10809,7 +10809,7 @@ var file_bucket_proto_depIdxs = []int32{
 	86,  // 182: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
 	89,  // 183: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
 	87,  // 184: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
-	133, // 185: ledger.BucketService.SubscribeLedgerLogs:input_type -> ledger.SubscribeLedgerLogsRequest
+	133, // 185: ledger.BucketService.SubscribeLogs:input_type -> ledger.SubscribeLogsRequest
 	88,  // 186: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
 	30,  // 187: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
 	31,  // 188: ledger.BucketService.GetSigningConfig:input_type -> ledger.GetSigningConfigRequest
@@ -10846,7 +10846,7 @@ var file_bucket_proto_depIdxs = []int32{
 	189, // 219: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
 	90,  // 220: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
 	161, // 221: ledger.BucketService.ListLogs:output_type -> common.Log
-	136, // 222: ledger.BucketService.SubscribeLedgerLogs:output_type -> ledger.SubscribeLedgerLogsResponse
+	136, // 222: ledger.BucketService.SubscribeLogs:output_type -> ledger.SubscribeLogsResponse
 	161, // 223: ledger.BucketService.GetLog:output_type -> common.Log
 	190, // 224: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
 	32,  // 225: ledger.BucketService.GetSigningConfig:output_type -> ledger.GetSigningConfigResponse
@@ -10948,13 +10948,13 @@ func file_bucket_proto_init() {
 		(*InspectIndexResponse_Summary)(nil),
 	}
 	file_bucket_proto_msgTypes[127].OneofWrappers = []any{
-		(*SubscribeLedgerLogsRequest_Open)(nil),
-		(*SubscribeLedgerLogsRequest_Ack)(nil),
+		(*SubscribeLogsRequest_Open)(nil),
+		(*SubscribeLogsRequest_Ack)(nil),
 	}
 	file_bucket_proto_msgTypes[130].OneofWrappers = []any{
-		(*SubscribeLedgerLogsResponse_Opened)(nil),
-		(*SubscribeLedgerLogsResponse_Log)(nil),
-		(*SubscribeLedgerLogsResponse_Acked)(nil),
+		(*SubscribeLogsResponse_Opened)(nil),
+		(*SubscribeLogsResponse_Log)(nil),
+		(*SubscribeLogsResponse_Acked)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

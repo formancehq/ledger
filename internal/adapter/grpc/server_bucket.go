@@ -933,7 +933,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 }
 
 // ListLogs retains its pre-stream 64 MiB message ceiling even though the
-// service transport now reserves a few bytes for SubscribeLedgerLogs' wrapper.
+// service transport now reserves a few bytes for SubscribeLogs' wrapper.
 type limitedListLogsStream struct {
 	servicepb.BucketService_ListLogsServer
 }

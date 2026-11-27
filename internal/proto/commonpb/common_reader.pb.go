@@ -27277,19 +27277,13 @@ func (m accountMetadataUpdated_accountMetadataMapReadonly) Range(yield func(stri
 // GrpcLogSinkConfigReader provides read-only access to GrpcLogSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type GrpcLogSinkConfigReader interface {
-	GetLedger() string
 	GetClientId() string
 	GetIncarnation() uint64
-	GetLedgerId() uint32
 	GetOwner() CallerIdentityReader
 	Mutate() *GrpcLogSinkConfig
 }
 
 type grpcLogSinkConfigReadonly GrpcLogSinkConfig
-
-func (r *grpcLogSinkConfigReadonly) GetLedger() string {
-	return (*GrpcLogSinkConfig)(r).GetLedger()
-}
 
 func (r *grpcLogSinkConfigReadonly) GetClientId() string {
 	return (*GrpcLogSinkConfig)(r).GetClientId()
@@ -27297,10 +27291,6 @@ func (r *grpcLogSinkConfigReadonly) GetClientId() string {
 
 func (r *grpcLogSinkConfigReadonly) GetIncarnation() uint64 {
 	return (*GrpcLogSinkConfig)(r).GetIncarnation()
-}
-
-func (r *grpcLogSinkConfigReadonly) GetLedgerId() uint32 {
-	return (*GrpcLogSinkConfig)(r).GetLedgerId()
 }
 
 func (r *grpcLogSinkConfigReadonly) GetOwner() CallerIdentityReader {
