@@ -57,7 +57,7 @@ func TestUpdatePreparedQueryOmittedFilterDoesNotConsumeKey(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	// Current HTTP contract rejects omitted filters before Apply (#2616).
+	// The HTTP contract rejects omitted filters before Apply (#2425).
 	srv := newTestServer(t, backend)
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
 		strings.NewReader(`{"target":"TRANSACTIONS"}`), map[string]string{"ledgerName": "ledger1", "queryName": "my-query"})
