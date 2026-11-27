@@ -10,6 +10,7 @@ replace github.com/formancehq/ledger/v3 => ../../../
 // replace github.com/formancehq/ledger/v3/tests/antithesis/workload => .
 
 require (
+	github.com/anishathalye/porcupine v1.3.1
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.10.0
 	github.com/formancehq/invariants v0.11.0

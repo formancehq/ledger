@@ -56,6 +56,7 @@ const (
 	PrefixTimestampOrder   OwnedLedgerPrefix = "tsorder"
 	PrefixProjectionAlign  OwnedLedgerPrefix = "projection"
 	PrefixStaleReads       OwnedLedgerPrefix = "stale"
+	PrefixLinearizableReg  OwnedLedgerPrefix = "linreg"        // parallel_driver_linearizable_register
 	PrefixStatsWitness     OwnedLedgerPrefix = "stats-witness" // eventually_stats_consistency
 
 	// PrefixSentinel covers the witness-ledger family used by the
@@ -93,6 +94,7 @@ var ownedLedgerPrefixes = []OwnedLedgerPrefix{
 	PrefixTimestampOrder,
 	PrefixProjectionAlign,
 	PrefixStaleReads,
+	PrefixLinearizableReg,
 	PrefixStatsWitness,
 	PrefixSentinel,
 	PrefixModel,
