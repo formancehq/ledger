@@ -40,10 +40,18 @@ func TestModelAggregateGroups_AssignsToTheFirstMatchingPrefix(t *testing.T) {
 	// grouped totals are strictly less than the flat fold.
 	require.Equal(t, "USD|=in:21,out:21", renderAgg(modelAggregate(ls, nil, aggOptions{})))
 
-	// A repeated prefix is served twice, both times by the same assignment.
+	// A repeated prefix keeps its entry, but the first one claims every account.
 	repeated := modelAggregateGroups(ls, nil, aggOptions{groupByPrefixes: []string{"t-1:", "t-1:"}})
 	require.Len(t, repeated, 2)
-	require.Equal(t, renderAgg(repeated[0].sums), renderAgg(repeated[1].sums))
+	require.Equal(t, "USD|=in:5,out:0", renderAgg(repeated[0].sums))
+	require.Empty(t, repeated[1].sums)
+
+	// An overlapping prefix claims only what earlier entries left.
+	overlap := modelAggregateGroups(ls, nil, aggOptions{groupByPrefixes: []string{"t-1:", "t-", ""}})
+	require.Len(t, overlap, 3)
+	require.Equal(t, "USD|=in:5,out:0", renderAgg(overlap[0].sums))
+	require.Equal(t, "USD|=in:7,out:0", renderAgg(overlap[1].sums))
+	require.Equal(t, "USD|=in:9,out:21", renderAgg(overlap[2].sums), "world and other:1")
 }
 
 func TestAggGroupsEqual_ComparesPrefixOrder(t *testing.T) {

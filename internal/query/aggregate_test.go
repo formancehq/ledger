@@ -212,6 +212,29 @@ func TestGroupedAggregator_FirstPrefixWins(t *testing.T) {
 	require.Empty(t, result.GetGroups()[1].GetVolumes())
 }
 
+func TestGroupedAggregator_RepeatedPrefixClaimsAccountOnce(t *testing.T) {
+	t.Parallel()
+
+	ga := newGroupedAggregator(AggregateOptions{
+		GroupByPrefixes: []string{"users:", "users:"},
+	})
+
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD/2", 100, 50)))
+
+	result, err := ga.result()
+	require.NoError(t, err)
+	require.Len(t, result.GetGroups(), 2)
+	require.Equal(t, "users:", result.GetGroups()[0].GetPrefix())
+	require.Equal(t, "users:", result.GetGroups()[1].GetPrefix())
+
+	var input uint256.Int
+	bigUintInto(t, result.GetGroups()[0].GetVolumes()[0].GetInput(), &input)
+	require.Equal(t, uint256.NewInt(100), &input)
+
+	require.Empty(t, result.GetGroups()[1].GetVolumes(),
+		"the first entry claims every account, so the repeated entry reports none")
+}
+
 func TestNewAccumulator_FlatByDefault(t *testing.T) {
 	t.Parallel()
 

@@ -1270,7 +1270,11 @@ paths:
             default: false
         - name: groupByPrefixes
           in: query
-          description: Comma-separated list of account prefixes to group volumes by
+          description: |
+            Comma-separated list of account prefixes to group volumes by. The
+            response has one group per listed prefix, in request order. Each
+            account is counted in the first matching prefix only, so a repeated
+            prefix yields an empty group. Accounts matching no prefix are excluded.
           schema:
             type: string
         - name: collapseColors

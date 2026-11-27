@@ -125,8 +125,10 @@ func runAggregateQuery(src *generation.Source, ctx context.Context, client servi
 }
 
 // genGroupPrefixes rolls the account prefixes an aggregate groups by, with
-// nominal weight 1/4: one to three drawn from the address pool, with a prefix no account
-// carries mixed in so an empty group is served too.
+// nominal weight 1/4: one to three entries drawn from the address pool, mixed
+// with a prefix no account carries (an empty group), a broad prefix overlapping
+// the pool's ("", "t-", or a pool name without its ":"), and a repeat of an
+// earlier entry, so first-match assignment is exercised across entries.
 func genGroupPrefixes(src *generation.Source) []string {
 	if !oneIn(src, 4) {
 		return nil
@@ -136,13 +138,18 @@ func genGroupPrefixes(src *generation.Source) []string {
 	out := make([]string, 0, n)
 
 	for range n {
-		if oneIn(src, 4) {
+		roll := src.Uint64Range(0, 3)
+
+		switch {
+		case roll == 0 && len(out) > 0:
+			out = append(out, generation.Choice(src, out))
+		case roll == 1:
 			out = append(out, "no-such-prefix:")
-
-			continue
+		case roll == 2:
+			out = append(out, generation.Choice(src, []string{"", "t-", poolName(src)}))
+		default:
+			out = append(out, poolName(src)+":")
 		}
-
-		out = append(out, poolName(src)+":")
 	}
 
 	return out
@@ -157,17 +164,17 @@ type aggOptions struct {
 	groupByPrefixes []string
 }
 
-// prefixOf assigns an account to the first prefix that matches it, mirroring
-// groupedAggregator.matchPrefix. An account matching none is left out of the
-// result entirely.
-func (o aggOptions) prefixOf(addr string) (string, bool) {
-	for _, prefix := range o.groupByPrefixes {
+// entryOf returns the index of the group_by_prefixes entry that claims addr:
+// the first entry addr starts with. A later entry repeating or overlapping it
+// claims nothing of addr. An account matching none is left out of the result.
+func (o aggOptions) entryOf(addr string) (int, bool) {
+	for i, prefix := range o.groupByPrefixes {
 		if strings.HasPrefix(addr, prefix) {
-			return prefix, true
+			return i, true
 		}
 	}
 
-	return "", false
+	return 0, false
 }
 
 // aggPair is one bucket's summed volumes.
@@ -194,17 +201,17 @@ func modelAggregate(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts ag
 	return aggregateFold(ls, filter, opts, nil)
 }
 
-// modelAggregateGroups is the per-prefix prediction: one entry per requested
-// prefix, in request order, each folding the accounts that prefix claims. A
-// prefix no account matches still gets its (empty) entry.
+// modelAggregateGroups is the per-prefix prediction: one group per request
+// entry, in request order, each folding the accounts that entry claims. An
+// entry claiming no account still gets its (empty) group.
 func modelAggregateGroups(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) []aggGroup {
 	groups := make([]aggGroup, 0, len(opts.groupByPrefixes))
 
-	for _, prefix := range opts.groupByPrefixes {
+	for i, prefix := range opts.groupByPrefixes {
 		sums := aggregateFold(ls, filter, opts, func(addr string) bool {
-			claimed, ok := opts.prefixOf(addr)
+			claimed, ok := opts.entryOf(addr)
 
-			return ok && claimed == prefix
+			return ok && claimed == i
 		})
 		groups = append(groups, aggGroup{prefix: prefix, sums: sums})
 	}
