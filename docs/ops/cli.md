@@ -68,7 +68,9 @@ go build -o build/ledgerctl ./cmd/ledgerctl
 `remotecat`, `sstable`, `wal`, and `blob` commands. For example, run
 `ledgerctl pebble db lsm <data-directory>` to inspect an offline database.
 For Ledger's secondary databases, use `<data-directory>/read-indexes/readindex`
-or `<data-directory>/usage/usagedb` as the database path.
+with the default read-index directory, or `<configured-read-index-dir>/readindex`
+when `--read-index-dir` is set. The usage database path is
+`<data-directory>/usage/usagedb`.
 Run `ledgerctl pebble --help` or a nested command's `--help` for its flags.
 
 The tool opens databases read-only by default, but some subcommands explicitly
