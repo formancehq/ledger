@@ -22635,6 +22635,14 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 	},
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         71010,
+		Name:          "common.input_error_message",
+		Tag:           "bytes,71010,opt,name=input_error_message",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: ([]QueryTarget)(nil),
 		Field:         50123,
 		Name:          "common.allowed_query_targets",
@@ -22713,34 +22721,36 @@ var (
 	E_MaxBytesForInput = &file_common_proto_extTypes[6]
 	// optional uint32 exact_bytes_for_input = 71009;
 	E_ExactBytesForInput = &file_common_proto_extTypes[7]
+	// optional string input_error_message = 71010;
+	E_InputErrorMessage = &file_common_proto_extTypes[8]
 	// repeated common.QueryTarget allowed_query_targets = 50123;
-	E_AllowedQueryTargets = &file_common_proto_extTypes[8]
+	E_AllowedQueryTargets = &file_common_proto_extTypes[9]
 	// valid_on_no_query_target declares that an arm is intentionally valid on no
 	// QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
 	// requires instead of inferring "valid nowhere" from a missing annotation.
 	//
 	// optional bool valid_on_no_query_target = 50124;
-	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[9]
+	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[10]
 	// ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
 	// Explicit false classifies CONTROL; true classifies HISTORY. The generator
 	// rejects a missing annotation, so proto's false default cannot classify by
 	// accident.
 	//
 	// optional bool ledger_log_is_history = 50125;
-	E_LedgerLogIsHistory = &file_common_proto_extTypes[10]
+	E_LedgerLogIsHistory = &file_common_proto_extTypes[11]
 	// Sensitive projections reuse the detached public-view contract from EN-1632.
 	// Strings are masked; other field kinds are cleared. Never use for persistence.
 	//
 	// optional bool sensitive = 50126;
-	E_Sensitive = &file_common_proto_extTypes[11]
+	E_Sensitive = &file_common_proto_extTypes[12]
 	// Mask credentials in URL or PostgreSQL keyword/value connection strings.
 	//
 	// optional bool sensitive_url = 50127;
-	E_SensitiveUrl = &file_common_proto_extTypes[12]
+	E_SensitiveUrl = &file_common_proto_extTypes[13]
 	// Allowed coarse reasons for each typed audited failure variant.
 	//
 	// optional common.ErrorReason failure_reason = 50128;
-	E_FailureReason = &file_common_proto_extTypes[13]
+	E_FailureReason = &file_common_proto_extTypes[14]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -22786,12 +22796,12 @@ const file_common_proto_rawDesc = "" +
 	"\x02v0\x18\x01 \x01(\x06R\x02v0\x12\x0e\n" +
 	"\x02v1\x18\x02 \x01(\x06R\x02v1\x12\x0e\n" +
 	"\x02v2\x18\x03 \x01(\x06R\x02v2\x12\x0e\n" +
-	"\x02v3\x18\x04 \x01(\x06R\x02v3\"\xb0\x01\n" +
-	"\aPosting\x12\x1c\n" +
-	"\x06source\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06source\x12&\n" +
-	"\vdestination\x18\x02 \x01(\tB\x04\xf8\xd5\"\x01R\vdestination\x12-\n" +
-	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256B\x04\xf0\xd5\"\x01R\x06amount\x12\x1a\n" +
-	"\x05asset\x18\x04 \x01(\tB\x04\xf8\xd5\"\x01R\x05asset\x12\x14\n" +
+	"\x02v3\x18\x04 \x01(\x06R\x02v3\"\xfc\x02\n" +
+	"\aPosting\x12H\n" +
+	"\x06source\x18\x01 \x01(\tB0\xf8\xd5\"\x01\x92\xd6\"(ledger account address must not be emptyR\x06source\x12R\n" +
+	"\vdestination\x18\x02 \x01(\tB0\xf8\xd5\"\x01\x92\xd6\"(ledger account address must not be emptyR\vdestination\x12K\n" +
+	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256B\"\xf0\xd5\"\x01\x92\xd6\"\x1aposting amount is requiredR\x06amount\x12p\n" +
+	"\x05asset\x18\x04 \x01(\tBZ\xf8\xd5\"\x01\x92\xd6\"Rasset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]R\x05asset\x12\x14\n" +
 	"\x05color\x18\x05 \x01(\tR\x05color\"\x96\x05\n" +
 	"\vTransaction\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12=\n" +
@@ -23048,10 +23058,10 @@ const file_common_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
 	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex:\x04\xd8\xd5\"\x01\"F\n" +
 	"\x19DeletedQueryCheckpointLog\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId:\x04\xd8\xd5\"\x01\"\xf7\x03\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId:\x04\xd8\xd5\"\x01\"\xa3\x04\n" +
 	"\n" +
-	"SinkConfig\x12\x18\n" +
-	"\x04name\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x04name\x12,\n" +
+	"SinkConfig\x12D\n" +
+	"\x04name\x18\x01 \x01(\tB0\xf8\xd5\"\x01\x92\xd6\"(sink name and one sink type are requiredR\x04name\x12,\n" +
 	"\x04nats\x18\x02 \x01(\v2\x16.common.NatsSinkConfigH\x00R\x04nats\x12>\n" +
 	"\n" +
 	"clickhouse\x18\x03 \x01(\v2\x1c.common.ClickHouseSinkConfigH\x00R\n" +
@@ -23975,9 +23985,9 @@ const file_common_proto_rawDesc = "" +
 	"\x1aPostgresMirrorSourceConfig\x12\x16\n" +
 	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12<\n" +
 	"\faws_iam_auth\x18\x02 \x01(\v2\x1a.common.PostgresAwsIamAuthR\n" +
-	"awsIamAuth:\x04\xd8\xd5\"\x01\"`\n" +
-	"\x12PostgresAwsIamAuth\x12\x1c\n" +
-	"\x06region\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06region\x12&\n" +
+	"awsIamAuth:\x04\xd8\xd5\"\x01\"\xae\x01\n" +
+	"\x12PostgresAwsIamAuth\x12j\n" +
+	"\x06region\x18\x01 \x01(\tBR\xf8\xd5\"\x01\x92\xd6\"JmirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is setR\x06region\x12&\n" +
 	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn:\x04\xd8\xd5\"\x01\"e\n" +
 	"\x0fMirrorSyncError\x12\x1e\n" +
 	"\amessage\x18\x01 \x01(\tB\x04\xf0\xbc\x18\x01R\amessage\x122\n" +
@@ -24166,9 +24176,9 @@ const file_common_proto_rawDesc = "" +
 	"\vparam_exact\x18\x04 \x01(\tH\x00R\n" +
 	"paramExact\x12'\n" +
 	"\x04role\x18\x05 \x01(\x0e2\x13.common.AddressRoleR\x04roleB\a\n" +
-	"\x05match\"\x83\x01\n" +
-	"\rPreparedQuery\x12\x18\n" +
-	"\x04name\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x04name\x12+\n" +
+	"\x05match\"\xa6\x01\n" +
+	"\rPreparedQuery\x12;\n" +
+	"\x04name\x18\x01 \x01(\tB'\xf8\xd5\"\x01\x92\xd6\"\x1fprepared query name is requiredR\x04name\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12+\n" +
 	"\x06target\x18\x03 \x01(\x0e2\x13.common.QueryTargetR\x06target\"\x8e\x01\n" +
 	"\x10AggregatedVolume\x12\x14\n" +
@@ -24452,7 +24462,8 @@ const file_common_proto_rawDesc = "" +
 	"\x12required_for_input\x12\x1d.google.protobuf.FieldOptions\x18ު\x04 \x01(\bR\x10requiredForInput:L\n" +
 	"\x12non_zero_for_input\x12\x1d.google.protobuf.FieldOptions\x18ߪ\x04 \x01(\bR\x0fnonZeroForInput:N\n" +
 	"\x13max_bytes_for_input\x12\x1d.google.protobuf.FieldOptions\x18\xe0\xaa\x04 \x01(\rR\x10maxBytesForInput:R\n" +
-	"\x15exact_bytes_for_input\x12\x1d.google.protobuf.FieldOptions\x18\xe1\xaa\x04 \x01(\rR\x12exactBytesForInput:h\n" +
+	"\x15exact_bytes_for_input\x12\x1d.google.protobuf.FieldOptions\x18\xe1\xaa\x04 \x01(\rR\x12exactBytesForInput:O\n" +
+	"\x13input_error_message\x12\x1d.google.protobuf.FieldOptions\x18\xe2\xaa\x04 \x01(\tR\x11inputErrorMessage:h\n" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
@@ -25279,19 +25290,20 @@ var file_common_proto_depIdxs = []int32{
 	360, // 438: common.non_zero_for_input:extendee -> google.protobuf.FieldOptions
 	360, // 439: common.max_bytes_for_input:extendee -> google.protobuf.FieldOptions
 	360, // 440: common.exact_bytes_for_input:extendee -> google.protobuf.FieldOptions
-	360, // 441: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	360, // 442: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	360, // 443: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	360, // 444: common.sensitive:extendee -> google.protobuf.FieldOptions
-	360, // 445: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	360, // 446: common.failure_reason:extendee -> google.protobuf.FieldOptions
-	18,  // 447: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 448: common.allowed_query_targets:type_name -> common.QueryTarget
-	11,  // 449: common.failure_reason:type_name -> common.ErrorReason
-	450, // [450:450] is the sub-list for method output_type
-	450, // [450:450] is the sub-list for method input_type
-	447, // [447:450] is the sub-list for extension type_name
-	433, // [433:447] is the sub-list for extension extendee
+	360, // 441: common.input_error_message:extendee -> google.protobuf.FieldOptions
+	360, // 442: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	360, // 443: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	360, // 444: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	360, // 445: common.sensitive:extendee -> google.protobuf.FieldOptions
+	360, // 446: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	360, // 447: common.failure_reason:extendee -> google.protobuf.FieldOptions
+	18,  // 448: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 449: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 450: common.failure_reason:type_name -> common.ErrorReason
+	451, // [451:451] is the sub-list for method output_type
+	451, // [451:451] is the sub-list for method input_type
+	448, // [448:451] is the sub-list for extension type_name
+	433, // [433:448] is the sub-list for extension extendee
 	0,   // [0:433] is the sub-list for field type_name
 }
 
@@ -25746,7 +25758,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   338,
-			NumExtensions: 14,
+			NumExtensions: 15,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

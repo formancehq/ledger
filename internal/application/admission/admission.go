@@ -2298,7 +2298,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	order := &raftcmdpb.Order{}
 	if update, ok := req.GetType().(*servicepb.Request_UpdatePreparedQuery); ok {
 		if err := update.UpdatePreparedQuery.ValidateInput(); err != nil {
-			return nil, mapInputValidation(err)
+			return nil, domain.InputValidation(err)
 		}
 	}
 

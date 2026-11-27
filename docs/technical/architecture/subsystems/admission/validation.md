@@ -2,10 +2,11 @@
 
 ## Principle
 
-Generated `ValidateInput` errors carry a protobuf message identity, field path
-and rule. Admission translates them through one table of existing public
-sentinels, including the multi-field posting validator. A newly annotated field
-must receive its own mapping, rather than inheriting a caller's previous error.
+Generated `ValidateInput` errors carry a protobuf message identity, field path,
+rule, and public message declared beside the rule in the schema. Admission
+converts them through `domain.InputValidation` without a field lookup table.
+The adapter retains the validation reason, public presentation, and existing
+sentinel comparisons. A new rule must declare its public message explicitly.
 
 Every write request is validated **twice**: once at admission (before consensus), once at the FSM (after consensus). The two layers don't duplicate each other — they catch different things, on purpose.
 

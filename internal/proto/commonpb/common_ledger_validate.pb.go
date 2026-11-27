@@ -8,16 +8,16 @@ import (
 // ValidateInput checks declared direct-field input requirements.
 func (m *Posting) ValidateInput() error {
 	if m == nil || m.Source == "" {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "source", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "source", Rule: "non_zero", PublicMessage: "ledger account address must not be empty"}
 	}
 	if m == nil || m.Destination == "" {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "destination", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "destination", Rule: "non_zero", PublicMessage: "ledger account address must not be empty"}
 	}
 	if m == nil || m.Amount == nil {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "amount", Rule: "required"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "amount", Rule: "required", PublicMessage: "posting amount is required"}
 	}
 	if m == nil || m.Asset == "" {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "asset", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "asset", Rule: "non_zero", PublicMessage: "asset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]"}
 	}
 	return nil
 }
@@ -25,7 +25,7 @@ func (m *Posting) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *SinkConfig) ValidateInput() error {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Message: "common.SinkConfig", Path: "name", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "common.SinkConfig", Path: "name", Rule: "non_zero", PublicMessage: "sink name and one sink type are required"}
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func (m *SinkConfig) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *PostgresAwsIamAuth) ValidateInput() error {
 	if m == nil || m.Region == "" {
-		return &inputvalidation.FieldError{Message: "common.PostgresAwsIamAuth", Path: "region", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "common.PostgresAwsIamAuth", Path: "region", Rule: "non_zero", PublicMessage: "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set"}
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func (m *PostgresAwsIamAuth) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *PreparedQuery) ValidateInput() error {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Message: "common.PreparedQuery", Path: "name", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "common.PreparedQuery", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required"}
 	}
 	return nil
 }

@@ -9,7 +9,7 @@ names, explicit posting amounts, addresses and assets, prepared-query update tar
 sink configuration presence and names, mirror IAM regions, transaction reference
 lengths, account-type removal names, and signing public-key lengths before proposing
 new orders. It maps
-failures to the existing public validation errors. Validators on order messages
+failures through a generic adapter that retains the existing public validation errors. Validators on order messages
 run only in admission; the FSM does not invoke them, so historical orders retain
 their replay semantics. The FSM continues to validate postings produced by
 Numscript and historical orders after resolution.

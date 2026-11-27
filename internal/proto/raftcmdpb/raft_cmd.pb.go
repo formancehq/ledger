@@ -5928,9 +5928,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
 	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
-	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xe0\x06\n" +
-	"\x11LedgerScopedOrder\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12.\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xfb\x06\n" +
+	"\x11LedgerScopedOrder\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
 	"\rcreate_ledger\x18\x03 \x01(\v2\x17.raft.CreateLedgerOrderH\x00R\fcreateLedger\x12>\n" +
 	"\rdelete_ledger\x18\x04 \x01(\v2\x17.raft.DeleteLedgerOrderH\x00R\fdeleteLedger\x12>\n" +
@@ -5957,25 +5957,25 @@ const file_raft_cmd_proto_rawDesc = "" +
 	" delete_query_checkpoint_schedule\x18\n" +
 	" \x01(\v2(.raft.DeleteQueryCheckpointScheduleOrderH\x00R\x1ddeleteQueryCheckpointSchedule\x12O\n" +
 	"\x12set_cluster_policy\x18\v \x01(\v2\x1b.raft.SetClusterPolicyOrderB\x02\x18\x01H\x00R\x10setClusterPolicyB\t\n" +
-	"\apayload\"M\n" +
-	"\x18CreatePreparedQueryOrder\x121\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryB\x04\xf0\xd5\"\x01R\x05query\"\x9e\x01\n" +
-	"\x18UpdatePreparedQueryOrder\x12\x18\n" +
-	"\x04name\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x04name\x12+\n" +
+	"\apayload\"s\n" +
+	"\x18CreatePreparedQueryOrder\x12W\n" +
+	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryB*\xf0\xd5\"\x01\x92\xd6\"\"prepared query payload is requiredR\x05query\"\xc1\x01\n" +
+	"\x18UpdatePreparedQueryOrder\x12;\n" +
+	"\x04name\x18\x01 \x01(\tB'\xf8\xd5\"\x01\x92\xd6\"\x1fprepared query name is requiredR\x04name\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x120\n" +
 	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetH\x00R\x06target\x88\x01\x01B\t\n" +
-	"\a_target\"4\n" +
-	"\x18DeletePreparedQueryOrder\x12\x18\n" +
-	"\x04name\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x04name\"F\n" +
-	"\x12AddEventsSinkOrder\x120\n" +
-	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigB\x04\xf0\xd5\"\x01R\x06config\"P\n" +
+	"\a_target\"W\n" +
+	"\x18DeletePreparedQueryOrder\x12;\n" +
+	"\x04name\x18\x01 \x01(\tB'\xf8\xd5\"\x01\x92\xd6\"\x1fprepared query name is requiredR\x04name\"r\n" +
+	"\x12AddEventsSinkOrder\x12\\\n" +
+	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigB0\xf0\xd5\"\x01\x92\xd6\"(sink name and one sink type are requiredR\x06config\"P\n" +
 	"\x15RemoveEventsSinkOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
-	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"y\n" +
+	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"\xb6\x01\n" +
 	"\x17RegisterSigningKeyOrder\x12\x15\n" +
-	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12#\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12`\n" +
 	"\n" +
-	"public_key\x18\x02 \x01(\fB\x04\x88\xd6\" R\tpublicKey\x12\"\n" +
+	"public_key\x18\x02 \x01(\fBA\x88\xd6\" \x92\xd6\"9signing key public_key must be exactly 32 bytes (Ed25519)R\tpublicKey\x12\"\n" +
 	"\rparent_key_id\x18\x03 \x01(\tR\vparentKeyId\"H\n" +
 	"\x15RevokeSigningKeyOrder\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x18\n" +
@@ -6085,9 +6085,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eDropIndexOrder\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\"M\n" +
 	"\x13AddAccountTypeOrder\x126\n" +
-	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\"3\n" +
-	"\x16RemoveAccountTypeOrder\x12\x19\n" +
-	"\x04name\x18\x01 \x01(\tB\x05\x80\xd6\"\x80\x02R\x04name\"l\n" +
+	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\"l\n" +
+	"\x16RemoveAccountTypeOrder\x12R\n" +
+	"\x04name\x18\x01 \x01(\tB>\x80\xd6\"\x80\x02\x92\xd6\"5account type name exceeds maximum length of 256 bytesR\x04name\"l\n" +
 	"!UpdateDefaultEnforcementModeOrder\x12G\n" +
 	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\x8c\x01\n" +
 	"\x19SetMetadataFieldTypeOrder\x123\n" +
@@ -6098,12 +6098,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1cRemoveMetadataFieldTypeOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xf7\x04\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xb5\x05\n" +
 	"\x16CreateTransactionOrder\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12#\n" +
-	"\treference\x18\x04 \x01(\tB\x05\x80\xd6\"\x80 R\treference\x12F\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12a\n" +
+	"\treference\x18\x04 \x01(\tBC\x80\xd6\"\x80 \x92\xd6\":transaction reference exceeds maximum length of 4096 bytesR\treference\x12F\n" +
 	"\bmetadata\x18\x05 \x03(\v2*.raft.CreateTransactionOrder.MetadataEntryR\bmetadata\x12\\\n" +
 	"\x10account_metadata\x18\x06 \x03(\v21.raft.CreateTransactionOrder.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
 	"\x05force\x18\a \x01(\bR\x05force\x12I\n" +
@@ -6113,14 +6113,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xb1\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xef\x04\n" +
 	"\x15ExecuteNumscriptOrder\x12&\n" +
 	"\x06script\x18\x01 \x01(\v2\x0e.common.ScriptR\x06script\x12I\n" +
 	"\x13numscript_reference\x18\x02 \x01(\v2\x18.raft.NumscriptReferenceR\x12numscriptReference\x12/\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12E\n" +
 	"\bmetadata\x18\x04 \x03(\v2).raft.ExecuteNumscriptOrder.MetadataEntryR\bmetadata\x12[\n" +
-	"\x10account_metadata\x18\x05 \x03(\v20.raft.ExecuteNumscriptOrder.AccountMetadataEntryR\x0faccountMetadata\x12#\n" +
-	"\treference\x18\x06 \x01(\tB\x05\x80\xd6\"\x80 R\treference\x1aR\n" +
+	"\x10account_metadata\x18\x05 \x03(\v20.raft.ExecuteNumscriptOrder.AccountMetadataEntryR\x0faccountMetadata\x12a\n" +
+	"\treference\x18\x06 \x01(\tBC\x80\xd6\"\x80 \x92\xd6\":transaction reference exceeds maximum length of 4096 bytesR\treference\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +

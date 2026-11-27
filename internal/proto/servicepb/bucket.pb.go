@@ -9281,23 +9281,23 @@ var File_bucket_proto protoreflect.FileDescriptor
 
 const file_bucket_proto_rawDesc = "" +
 	"\n" +
-	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"\x99\x01\n" +
-	"\x11GetAccountRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12\x18\n" +
+	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"\xb4\x01\n" +
+	"\x11GetAccountRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12#\n" +
 	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\x12'\n" +
-	"\x0fcollapse_colors\x18\x04 \x01(\bR\x0ecollapseColors\"\x81\x01\n" +
-	"\x15GetTransactionRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12%\n" +
+	"\x0fcollapse_colors\x18\x04 \x01(\bR\x0ecollapseColors\"\x9c\x01\n" +
+	"\x15GetTransactionRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\x06R\rtransactionId\x12#\n" +
 	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"U\n" +
 	"\x16GetTransactionResponse\x125\n" +
-	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction:\x04\xe8\xd5\"\x01\"f\n" +
-	"\x17ListTransactionsRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12-\n" +
-	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"b\n" +
-	"\x13ListAccountsRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12-\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction:\x04\xe8\xd5\"\x01\"\x81\x01\n" +
+	"\x17ListTransactionsRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12-\n" +
+	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"}\n" +
+	"\x13ListAccountsRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12-\n" +
 	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"\xfb\x04\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
@@ -9317,9 +9317,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
 	"\x14DeleteLedgerResponse\"C\n" +
 	"\x12ListLedgersRequest\x12-\n" +
-	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"Y\n" +
-	"\x10GetLedgerRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12'\n" +
+	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"t\n" +
+	"\x10GetLedgerRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12'\n" +
 	"\x04read\x18\x02 \x01(\v2\x13.common.ReadOptionsR\x04read\"\xfb\x01\n" +
 	"\fApplyRequest\x120\n" +
 	"\bunsigned\x18\x01 \x01(\v2\x12.ledger.ApplyBatchH\x00R\bunsigned\x125\n" +
@@ -9682,9 +9682,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x17ListAuditEntriesRequest\x12-\n" +
 	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x06R\bsequence\"^\n" +
-	"\x0fListLogsRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12-\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\"y\n" +
+	"\x0fListLogsRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12-\n" +
 	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"P\n" +
 	"\rGetLogRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12#\n" +
@@ -9709,9 +9709,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
 	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01:\x04\xd8\xd5\"\x01\"V\n" +
 	"\x13MetadataFieldStatus\x129\n" +
-	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType:\x04\xd8\xd5\"\x01\"e\n" +
-	"\x16AnalyzeAccountsRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12-\n" +
+	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType:\x04\xd8\xd5\"\x01\"\x80\x01\n" +
+	"\x16AnalyzeAccountsRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"t\n" +
 	"\x17AnalyzeAccountsResponse\x122\n" +
 	"\bpatterns\x18\x01 \x03(\v2\x16.ledger.AccountPatternR\bpatterns\x12%\n" +
@@ -9742,9 +9742,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\rvariable_name\x18\x04 \x01(\tR\fvariableName\x12)\n" +
 	"\x10inferred_pattern\x18\x05 \x01(\tR\x0finferredPattern\x12#\n" +
 	"\runique_values\x18\x06 \x01(\x06R\funiqueValues\x12\x1a\n" +
-	"\bexamples\x18\a \x03(\tR\bexamples\"i\n" +
-	"\x1aAnalyzeTransactionsRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12-\n" +
+	"\bexamples\x18\a \x03(\tR\bexamples\"\x84\x01\n" +
+	"\x1aAnalyzeTransactionsRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"\xad\x01\n" +
 	"\x1bAnalyzeTransactionsResponse\x128\n" +
 	"\rflow_patterns\x18\x01 \x03(\v2\x13.ledger.FlowPatternR\fflowPatterns\x12-\n" +
@@ -9785,12 +9785,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11transaction_count\x18\x06 \x01(\x06R\x10transactionCount\"a\n" +
 	"\x1aCreatePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
-	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb8\x01\n" +
+	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xdd\x01\n" +
 	"\x1aUpdatePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12+\n" +
-	"\x06filter\x18\x03 \x01(\v2\x13.common.QueryFilterR\x06filter\x126\n" +
-	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetB\x04\xf0\xd5\"\x01H\x00R\x06target\x88\x01\x01B\t\n" +
+	"\x06filter\x18\x03 \x01(\v2\x13.common.QueryFilterR\x06filter\x12[\n" +
+	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetB)\xf0\xd5\"\x01\x92\xd6\"!prepared query target is requiredH\x00R\x06target\x88\x01\x01B\t\n" +
 	"\a_target\"H\n" +
 	"\x1aDeletePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
@@ -9844,12 +9844,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05Scope\x12\r\n" +
 	"\tSCOPE_ALL\x10\x00\x12\x10\n" +
 	"\fSCOPE_BUCKET\x10\x01\x12\x10\n" +
-	"\fSCOPE_LEDGER\x10\x02\"Z\n" +
-	"\x15GetLedgerStatsRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x8a\x02\n" +
-	"\x17AggregateVolumesRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x12+\n" +
+	"\fSCOPE_LEDGER\x10\x02\"u\n" +
+	"\x15GetLedgerStatsRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12#\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\xa5\x02\n" +
+	"\x17AggregateVolumesRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12*\n" +
 	"\x11use_max_precision\x18\x03 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
 	"\x11group_by_prefixes\x18\x04 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
@@ -9886,9 +9886,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x13materialized_ranges\x18\t \x01(\x05R\x12materializedRanges\x12-\n" +
 	"\x12materialized_items\x18\n" +
 	" \x01(\x03R\x11materializedItems\x12#\n" +
-	"\ritems_skipped\x18\v \x01(\x03R\fitemsSkipped\"\x93\x02\n" +
-	"\x13InspectIndexRequest\x12\x1c\n" +
-	"\x06ledger\x18\x01 \x01(\tB\x04\xf8\xd5\"\x01R\x06ledger\x123\n" +
+	"\ritems_skipped\x18\v \x01(\x03R\fitemsSkipped\"\xae\x02\n" +
+	"\x13InspectIndexRequest\x127\n" +
+	"\x06ledger\x18\x01 \x01(\tB\x1f\xf8\xd5\"\x01\x92\xd6\"\x17ledger name is requiredR\x06ledger\x123\n" +
 	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12!\n" +
 	"\fmetadata_key\x18\x03 \x01(\tR\vmetadataKey\x12,\n" +

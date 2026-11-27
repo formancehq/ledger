@@ -8,7 +8,7 @@ import (
 // ValidateInput checks declared direct-field input requirements.
 func (m *GetAccountRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.GetAccountRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.GetAccountRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -16,7 +16,7 @@ func (m *GetAccountRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *GetTransactionRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.GetTransactionRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.GetTransactionRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -24,7 +24,7 @@ func (m *GetTransactionRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *ListTransactionsRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.ListTransactionsRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.ListTransactionsRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -32,7 +32,7 @@ func (m *ListTransactionsRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *ListAccountsRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.ListAccountsRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.ListAccountsRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func (m *ListAccountsRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *GetLedgerRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.GetLedgerRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.GetLedgerRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -48,7 +48,7 @@ func (m *GetLedgerRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *ListLogsRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.ListLogsRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.ListLogsRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -56,7 +56,7 @@ func (m *ListLogsRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *AnalyzeAccountsRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.AnalyzeAccountsRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.AnalyzeAccountsRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (m *AnalyzeAccountsRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *AnalyzeTransactionsRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.AnalyzeTransactionsRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.AnalyzeTransactionsRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func (m *AnalyzeTransactionsRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *UpdatePreparedQueryRequest) ValidateInput() error {
 	if m == nil || m.Target == nil {
-		return &inputvalidation.FieldError{Message: "ledger.UpdatePreparedQueryRequest", Path: "target", Rule: "required"}
+		return &inputvalidation.FieldError{Message: "ledger.UpdatePreparedQueryRequest", Path: "target", Rule: "required", PublicMessage: "prepared query target is required"}
 	}
 	return nil
 }
@@ -80,7 +80,7 @@ func (m *UpdatePreparedQueryRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *GetLedgerStatsRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.GetLedgerStatsRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.GetLedgerStatsRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -88,7 +88,7 @@ func (m *GetLedgerStatsRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *AggregateVolumesRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.AggregateVolumesRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.AggregateVolumesRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func (m *AggregateVolumesRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *InspectIndexRequest) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "ledger.InspectIndexRequest", Path: "ledger", Rule: "non_zero"}
+		return &inputvalidation.FieldError{Message: "ledger.InspectIndexRequest", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
 	}
 	return nil
 }

@@ -200,7 +200,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 // deterministically, so mixed-version clusters fail closed until rollout ends.
 func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		return nil, mapInputValidation(err)
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if len(req.GetEpoch()) > 128 {
 		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
@@ -249,7 +249,7 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 // that it can apply the Raft-ordered release marker.
 func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		return nil, mapInputValidation(err)
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if len(req.GetEpoch()) > 128 {
 		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
@@ -415,7 +415,7 @@ func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceCl
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		return nil, mapInputValidation(err)
+		return nil, err
 	}
 
 	transferee := req.GetTransferee()

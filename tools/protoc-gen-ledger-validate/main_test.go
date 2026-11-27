@@ -20,7 +20,7 @@ func TestGeneratorRejectsInvalidAnnotations(t *testing.T) {
 package common;
 option go_package = "example/commonpb";
 import "google/protobuf/descriptor.proto";
-extend google.protobuf.FieldOptions { bool required_for_input = 71006; bool non_zero_for_input = 71007; uint32 max_bytes_for_input = 71008; uint32 exact_bytes_for_input = 71009; }
+extend google.protobuf.FieldOptions { bool required_for_input = 71006; bool non_zero_for_input = 71007; uint32 max_bytes_for_input = 71008; uint32 exact_bytes_for_input = 71009; string input_error_message = 71010; }
 enum Mode { MODE_UNSPECIFIED = 0; MODE_ACTIVE = 1; }
 message Sample { FIELD }
 `
@@ -29,7 +29,7 @@ message Sample { FIELD }
 		{"repeated", `repeated string value = 1 [(common.required_for_input) = true];`, "singular field"},
 		{"false", `optional string value = 1 [(common.required_for_input) = false];`, "remove the annotation"},
 		{"oneof", `oneof choice { string value = 1 [(common.required_for_input) = true]; }`, "outside a oneof"},
-		{"method collision", `optional string value = 1 [(common.required_for_input) = true]; string validate_input = 2;`, "collides with generated ValidateInput"},
+		{"method collision", `optional string value = 1 [(common.required_for_input) = true, (common.input_error_message) = "value is required"]; string validate_input = 2;`, "collides with generated ValidateInput"},
 		{"nonzero message", `google.protobuf.FieldOptions value = 1 [(common.non_zero_for_input) = true];`, "requires a scalar field"},
 		{"nonzero repeated", `repeated string value = 1 [(common.non_zero_for_input) = true];`, "singular field"},
 		{"nonzero false", `string value = 1 [(common.non_zero_for_input) = false];`, "remove the annotation"},
@@ -41,6 +41,8 @@ message Sample { FIELD }
 		{"conflicting limits", `string value = 1 [(common.max_bytes_for_input) = 8, (common.exact_bytes_for_input) = 8];`, "cannot be combined"},
 		{"conflicting presence and limit", `optional string value = 1 [(common.required_for_input) = true, (common.max_bytes_for_input) = 8];`, "cannot be combined"},
 		{"conflicting nonzero and limit", `string value = 1 [(common.non_zero_for_input) = true, (common.max_bytes_for_input) = 8];`, "cannot be combined"},
+		{"missing public message", `string value = 1 [(common.non_zero_for_input) = true];`, "requires a non-empty input_error_message"},
+		{"orphan public message", `string value = 1 [(common.input_error_message) = "invalid"];`, "requires an input validation rule"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := filepath.Join(dir, strings.ReplaceAll(tc.name, " ", "_")+".proto")
@@ -55,20 +57,20 @@ message Sample { FIELD }
 		})
 	}
 	fixture := filepath.Join(dir, "positive.proto")
-	fields := `string name = 1 [(common.non_zero_for_input) = true];
-bytes key = 2 [(common.non_zero_for_input) = true];
-int32 count = 3 [(common.non_zero_for_input) = true];
-bool enabled = 4 [(common.non_zero_for_input) = true];
-optional int32 limit = 5 [(common.non_zero_for_input) = true];`
+	fields := `string name = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "name is required"];
+bytes key = 2 [(common.non_zero_for_input) = true, (common.input_error_message) = "key is required"];
+int32 count = 3 [(common.non_zero_for_input) = true, (common.input_error_message) = "count is required"];
+bool enabled = 4 [(common.non_zero_for_input) = true, (common.input_error_message) = "enabled is required"];
+optional int32 limit = 5 [(common.non_zero_for_input) = true, (common.input_error_message) = "limit is required"];`
 	fields += `
-Mode mode = 6 [(common.non_zero_for_input) = true];`
+Mode mode = 6 [(common.non_zero_for_input) = true, (common.input_error_message) = "mode is required"];`
 	fields += `
-string reference = 7 [(common.max_bytes_for_input) = 4096];
-bytes public_key = 8 [(common.exact_bytes_for_input) = 32];`
+string reference = 7 [(common.max_bytes_for_input) = 4096, (common.input_error_message) = "reference too long"];
+bytes public_key = 8 [(common.exact_bytes_for_input) = 32, (common.input_error_message) = "invalid key length"];`
 	fields += `
-optional string optional_max = 9 [(common.max_bytes_for_input) = 4];
-optional string optional_exact = 10 [(common.exact_bytes_for_input) = 3];
-optional Mode required_mode = 11 [(common.required_for_input) = true];`
+optional string optional_max = 9 [(common.max_bytes_for_input) = 4, (common.input_error_message) = "optional_max too long"];
+optional string optional_exact = 10 [(common.exact_bytes_for_input) = 3, (common.input_error_message) = "invalid optional_exact length"];
+optional Mode required_mode = 11 [(common.required_for_input) = true, (common.input_error_message) = "required_mode is required"];`
 	if err := os.WriteFile(fixture, []byte(strings.Replace(definitions, "FIELD", fields, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +92,8 @@ optional Mode required_mode = 11 [(common.required_for_input) = true];`
 		`Message: "common.Sample", Path: "reference", Rule: "max_bytes"`,
 		`Message: "common.Sample", Path: "public_key", Rule: "exact_bytes"`,
 		`Message: "common.Sample", Path: "required_mode", Rule: "required"`,
+		`PublicMessage: "name is required"`,
+		`PublicMessage: "reference too long"`,
 	} {
 		if !strings.Contains(string(generated), check) {
 			t.Errorf("generated error missing %q: %s", check, generated)

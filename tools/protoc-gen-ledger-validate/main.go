@@ -14,17 +14,19 @@ import (
 )
 
 const (
-	requiredExtensionName   = "common.required_for_input"
-	nonZeroExtensionName    = "common.non_zero_for_input"
-	maxBytesExtensionName   = "common.max_bytes_for_input"
-	exactBytesExtensionName = "common.exact_bytes_for_input"
+	requiredExtensionName     = "common.required_for_input"
+	nonZeroExtensionName      = "common.non_zero_for_input"
+	maxBytesExtensionName     = "common.max_bytes_for_input"
+	exactBytesExtensionName   = "common.exact_bytes_for_input"
+	errorMessageExtensionName = "common.input_error_message"
 )
 
 type fieldRule struct {
-	field      *protogen.Field
-	nonZero    bool
-	maxBytes   uint64
-	exactBytes uint64
+	field        *protogen.Field
+	nonZero      bool
+	maxBytes     uint64
+	exactBytes   uint64
+	errorMessage string
 }
 
 type messageRules struct {
@@ -36,7 +38,7 @@ func main() { protogen.Options{}.Run(generate) }
 
 func generate(gen *protogen.Plugin) error {
 	gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
-	var requiredExtension, nonZeroExtension, maxBytesExtension, exactBytesExtension protoreflect.ExtensionDescriptor
+	var requiredExtension, nonZeroExtension, maxBytesExtension, exactBytesExtension, errorMessageExtension protoreflect.ExtensionDescriptor
 	for _, file := range gen.Files {
 		for _, candidate := range file.Extensions {
 			switch string(candidate.Desc.FullName()) {
@@ -48,10 +50,12 @@ func generate(gen *protogen.Plugin) error {
 				maxBytesExtension = candidate.Desc
 			case exactBytesExtensionName:
 				exactBytesExtension = candidate.Desc
+			case errorMessageExtensionName:
+				errorMessageExtension = candidate.Desc
 			}
 		}
 	}
-	if requiredExtension == nil || nonZeroExtension == nil || maxBytesExtension == nil || exactBytesExtension == nil {
+	if requiredExtension == nil || nonZeroExtension == nil || maxBytesExtension == nil || exactBytesExtension == nil || errorMessageExtension == nil {
 		return fmt.Errorf("input validation extensions not found")
 	}
 	resolver := &protoregistry.Types{}
@@ -61,7 +65,7 @@ func generate(gen *protogen.Plugin) error {
 	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(nonZeroExtension)); err != nil {
 		return fmt.Errorf("register extension: %w", err)
 	}
-	for _, extension := range []protoreflect.ExtensionDescriptor{maxBytesExtension, exactBytesExtension} {
+	for _, extension := range []protoreflect.ExtensionDescriptor{maxBytesExtension, exactBytesExtension, errorMessageExtension} {
 		if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(extension)); err != nil {
 			return fmt.Errorf("register extension: %w", err)
 		}
@@ -94,6 +98,10 @@ func generate(gen *protogen.Plugin) error {
 				if err != nil {
 					return err
 				}
+				messagePresent, errorMessage, err := readStringRule(field, errorMessageExtension, resolver)
+				if err != nil {
+					return err
+				}
 				if present && !required {
 					return fmt.Errorf("%s: required_for_input=false is invalid; remove the annotation", field.Desc.FullName())
 				}
@@ -104,6 +112,9 @@ func generate(gen *protogen.Plugin) error {
 					return fmt.Errorf("%s: required_for_input and non_zero_for_input cannot be combined", field.Desc.FullName())
 				}
 				if !present && !nonZeroPresent && !maxPresent && !exactPresent {
+					if messagePresent {
+						return fmt.Errorf("%s: input_error_message requires an input validation rule", field.Desc.FullName())
+					}
 					continue
 				}
 				if maxPresent && maxBytes == 0 || exactPresent && exactBytes == 0 {
@@ -127,7 +138,10 @@ func generate(gen *protogen.Plugin) error {
 				if nonZeroPresent && (field.Desc.Kind() == protoreflect.MessageKind || field.Desc.Kind() == protoreflect.GroupKind) {
 					return fmt.Errorf("%s: non_zero_for_input requires a scalar field", field.Desc.FullName())
 				}
-				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent, maxBytes: maxBytes, exactBytes: exactBytes})
+				if !messagePresent || errorMessage == "" {
+					return fmt.Errorf("%s: input validation requires a non-empty input_error_message", field.Desc.FullName())
+				}
+				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent, maxBytes: maxBytes, exactBytes: exactBytes, errorMessage: errorMessage})
 			}
 			if len(fields) > 0 {
 				for _, field := range message.Fields {
@@ -180,7 +194,7 @@ func generate(gen *protogen.Plugin) error {
 					condition = "m." + rule.field.GoName + " == nil"
 				}
 				g.P("if m == nil || ", condition, " {")
-				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Message: ", fmt.Sprintf("%q", item.message.Desc.FullName()), ", Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), ", Rule: ", fmt.Sprintf("%q", errorRule), "}")
+				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Message: ", fmt.Sprintf("%q", item.message.Desc.FullName()), ", Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), ", Rule: ", fmt.Sprintf("%q", errorRule), ", PublicMessage: ", fmt.Sprintf("%q", rule.errorMessage), "}")
 				g.P("}")
 			}
 			g.P("return nil")
@@ -234,6 +248,14 @@ func readUintRule(field *protogen.Field, extension protoreflect.ExtensionDescrip
 		return present, 0, err
 	}
 	return present, value.Uint(), err
+}
+
+func readStringRule(field *protogen.Field, extension protoreflect.ExtensionDescriptor, resolver *protoregistry.Types) (bool, string, error) {
+	present, value, err := readExtension(field, extension, resolver)
+	if err != nil || !present {
+		return present, "", err
+	}
+	return present, value.String(), nil
 }
 
 func readExtension(field *protogen.Field, extension protoreflect.ExtensionDescriptor, resolver *protoregistry.Types) (bool, protoreflect.Value, error) {

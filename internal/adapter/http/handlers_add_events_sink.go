@@ -28,7 +28,7 @@ func (s *Server) handleAddEventsSink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := config.ValidateInput(); err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", mapInputValidation(err))
+		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return
 	}
