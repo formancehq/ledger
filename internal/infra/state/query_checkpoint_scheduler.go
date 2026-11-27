@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -14,12 +15,21 @@ import (
 // It watches the Machine's query checkpoint schedule cron expression and proposes
 // CreateQueryCheckpoint orders when the cron fires.
 type QueryCheckpointScheduler struct {
-	logger          logging.Logger
-	isLeader        func() bool
-	getSchedule     func() string
-	proposeFn       func() error
-	scheduleChanged signal.Signal
-	w               worker.Worker
+	logger             logging.Logger
+	isLeader           func() bool
+	leaseContext       func() context.Context
+	proposeWithContext func(context.Context) error
+	getSchedule        func() string
+	proposeFn          func() error
+	scheduleChanged    signal.Signal
+	w                  worker.Worker
+}
+
+// SetLeaseProposal captures an exact leader tenure when a cron tick fires.
+// A nil context skips the tick. Configure before Start.
+func (s *QueryCheckpointScheduler) SetLeaseProposal(leaseContext func() context.Context, propose func(context.Context) error) {
+	s.leaseContext = leaseContext
+	s.proposeWithContext = propose
 }
 
 // NewQueryCheckpointScheduler creates a new QueryCheckpointScheduler.
@@ -108,10 +118,20 @@ func (s *QueryCheckpointScheduler) loop(stop <-chan struct{}) {
 		case <-s.scheduleChanged.C():
 			timerCh = resetTimer()
 		case <-timerCh:
-			if s.isLeader() {
+			proposalCtx := context.Context(nil)
+			if s.leaseContext != nil {
+				proposalCtx = s.leaseContext()
+			}
+			if proposalCtx != nil || (s.leaseContext == nil && s.isLeader()) {
 				s.logger.Infof("Query checkpoint scheduler firing: proposing CreateQueryCheckpoint")
 
-				if err := s.proposeFn(); err != nil {
+				var err error
+				if s.proposeWithContext != nil {
+					err = s.proposeWithContext(proposalCtx)
+				} else {
+					err = s.proposeFn()
+				}
+				if err != nil {
 					s.logger.Errorf("Failed to propose CreateQueryCheckpoint: %v (will retry on next tick)", err)
 				}
 			}

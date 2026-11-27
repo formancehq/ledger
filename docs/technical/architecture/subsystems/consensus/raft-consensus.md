@@ -207,6 +207,45 @@ leave membership without `CLUSTER_JOINED`; restart still follows the existing
 [cluster operations](../../../../ops/cluster-operations.md#phase-3-learner-registration-preflight)
 and [server termination](../../../../ops/cli.md#server-termination).
 
+#### Process-local leadership leases
+
+`Node` issues one `LeadershipLease` for each local Raft leadership tenure.
+Gain and loss events have monotonically increasing local transition epochs;
+`LeaderReadyEvent` identifies the gain lease after FSM catch-up. These epochs
+are process-local identities, not Raft terms, persisted state, wire fields, or
+downstream fencing tokens. A consumer captures the exact lease before slow
+preparation. `Authorize` holds the lease gate only for short local registration
+and nonblocking startup; revocation uses the same gate, marks the lease inactive,
+and cancels its context synchronously before Node publishes loss. If
+authorization wins, the registered work observes cancellation. If revocation
+wins, registration fails. Node releases the gate before invoking application
+observers. A point-in-time `IsLeader` or lease snapshot does not authorize a
+later side effect.
+
+Proposal producers carry their captured lease in process-local context. Node
+reserves the predicted index and enqueues under that lease gate, retrying a
+full queue outside the gate. At dequeue, Node checks the captured tenure and
+Raft term under the same gate before calling `RawNode.Propose`. A stale queued
+proposal is rejected through the ordinary dropped-proposal path, which rolls
+back the index tracker and resolves its FSM and Raft futures. Entries already
+accepted by Raft retain their normal consensus and apply outcome. A rejected
+entry can shift successors' predicted indexes; the existing stale-plan check
+before preload rejects those successors for retry rather than rewriting their
+coverage after construction.
+
+This mechanism keeps the lease out of the FSM apply path, Raft bytes, audit,
+snapshots, and backups. It changes no persisted format or service protocol.
+Authorization is constant local bookkeeping per proposal or registration;
+revocation cancellation scales with the live context descendants. A full
+proposal queue waits for a dequeue notification before retrying under the lease
+gate. The dequeue term and role check uses Raft's allocation-free BasicStatus.
+Slow reads, I/O, readiness waits, teardown, and goroutine joins occur outside
+the gate. Component Stop retains
+its own gate and drain because Fx can stop a component while Node still owns
+leadership. Lease cancellation cannot undo an operation already accepted by an
+external system; stronger cross-process guarantees require destination-aware
+fencing or idempotency.
+
 #### Leader readiness generations
 
 Raft leadership, FSM leader readiness, and readiness to perform a particular
@@ -219,11 +258,11 @@ write gate. Consumers must use the barrier required by the state they read.
 
 | Capability | Minimum activation condition | Loss, cancellation, and stale-signal protection |
 | --- | --- | --- |
-| Admission and consensus-based membership changes | `WaitLeaderReady` before admission pre-reads or membership proposals; admission also requires a current-epoch disk/clock write-gate verdict before waiting. | The readiness generation wakes pending waiters with `ErrNotLeader` on loss. Admission's later Raft proposal remains subject to normal leadership checks. Emergency `ForceRemoveNode` checks raw Raft leadership and bypasses this readiness wait to work without quorum. |
-| Event emitters and mirror workers | Bootstrap records a gain only on `LeaderReadyEvent`; their managers then reconcile persisted configuration on their own loops. Each sink/source must also initialize successfully before its worker runs. | Bootstrap records loss inline. Manager generations fence obsolete scans and startup; generation contexts cancel initialization, and manager shutdown prevents late worker creation. See [events and mirror](../events-mirror/). |
+| Admission and consensus-based membership changes | `WaitLeaderReady` before admission pre-reads or membership proposals; admission also requires a current-epoch disk/clock write-gate verdict before waiting. | The readiness generation wakes pending waiters with `ErrNotLeader` on loss. Emergency `ForceRemoveNode` checks raw Raft leadership and bypasses readiness to work without quorum. |
+| Event emitters and mirror workers | Bootstrap records the `LeaderReadyEvent` lease; managers reconcile persisted configuration on their loops. Each sink/source initializes before its worker runs. | Node revokes the lease before loss notification. Managers authorize registration and nonblocking start together; generation contexts cancel initialization, and Stop drains workers. See [events and mirror](../events-mirror/). |
 | Cluster configuration reconciliation | `LeaderReadyEvent` before reading persisted cluster state and proposing the desired technical update. | The proposal timeout derives from the readiness generation context; loss or shutdown cancels the blocking proposal wait. |
-| Backup execution | Raw Raft leadership installs the orchestrator's leader context. The backup request still needs its Raft `Start` order and a live executor registration; `LeaderReadyEvent` is not its activation signal. | Loss cancels the leader context and in-flight upload context. The new leader's cleanup loop handles inherited jobs without a local executor. See [backup](../backup/). |
-| Backup orphan cleanup | A periodic tick checks `IsLeader`, then compares FSM `RUNNING` jobs with the leader-local executor registry. There is no `WaitLeaderReady` gate on this loop. | Follower ticks do nothing. The tick's proposal is still checked by Raft; the loop stops with its lifecycle context. Do not infer FSM readiness from its `IsLeader` check. |
+| Backup execution | Raw Raft leadership supplies a Node lease. The backup request still needs its Raft `Start` order and a live executor registration; `LeaderReadyEvent` is not its activation signal. | Loss revokes the lease, cancels the upload, and prevents new registration and proposal acceptance under that tenure. The new leader's cleanup loop handles inherited jobs without a local executor. See [backup](../backup/). |
+| Backup orphan cleanup | A periodic tick captures the current Node lease, then compares FSM `RUNNING` jobs with the leader-local executor registry. There is no `WaitLeaderReady` gate on this loop. | Follower ticks do nothing. The tick's proposals retain the captured lease through Node acceptance; the loop stops with its lifecycle context. Do not infer FSM readiness from the lease alone. |
 | Disk/clock write gate | Raw leadership starts a new evidence epoch; `LeaderReadyEvent` requests the first prompt poll. A write requires a verdict from fresh local evidence in the current epoch. | Every leadership transition invalidates the old verdict synchronously. A late poll from an older epoch cannot authorize writes in the new epoch. |
 
 The HTTP probes report different, narrower conditions: `/readyz` means the

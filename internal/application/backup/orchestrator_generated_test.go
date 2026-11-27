@@ -76,3 +76,203 @@ func (c *MockProposerProposeCall) DoAndReturn(f func(context.Context, *raftcmdpb
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// MockLeadershipLease is a mock of LeadershipLease interface.
+type MockLeadershipLease struct {
+	ctrl     *gomock.Controller
+	recorder *MockLeadershipLeaseMockRecorder
+	isgomock struct{}
+}
+
+// MockLeadershipLeaseMockRecorder is the mock recorder for MockLeadershipLease.
+type MockLeadershipLeaseMockRecorder struct {
+	mock *MockLeadershipLease
+}
+
+// NewMockLeadershipLease creates a new mock instance.
+func NewMockLeadershipLease(ctrl *gomock.Controller) *MockLeadershipLease {
+	mock := &MockLeadershipLease{ctrl: ctrl}
+	mock.recorder = &MockLeadershipLeaseMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLeadershipLease) EXPECT() *MockLeadershipLeaseMockRecorder {
+	return m.recorder
+}
+
+// Authorize mocks base method.
+func (m *MockLeadershipLease) Authorize(arg0 func()) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Authorize", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Authorize indicates an expected call of Authorize.
+func (mr *MockLeadershipLeaseMockRecorder) Authorize(arg0 any) *MockLeadershipLeaseAuthorizeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Authorize", reflect.TypeOf((*MockLeadershipLease)(nil).Authorize), arg0)
+	return &MockLeadershipLeaseAuthorizeCall{Call: call}
+}
+
+// MockLeadershipLeaseAuthorizeCall wrap *gomock.Call
+type MockLeadershipLeaseAuthorizeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockLeadershipLeaseAuthorizeCall) Return(arg0 bool) *MockLeadershipLeaseAuthorizeCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockLeadershipLeaseAuthorizeCall) Do(f func(func()) bool) *MockLeadershipLeaseAuthorizeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockLeadershipLeaseAuthorizeCall) DoAndReturn(f func(func()) bool) *MockLeadershipLeaseAuthorizeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Context mocks base method.
+func (m *MockLeadershipLease) Context() context.Context {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Context")
+	ret0, _ := ret[0].(context.Context)
+	return ret0
+}
+
+// Context indicates an expected call of Context.
+func (mr *MockLeadershipLeaseMockRecorder) Context() *MockLeadershipLeaseContextCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Context", reflect.TypeOf((*MockLeadershipLease)(nil).Context))
+	return &MockLeadershipLeaseContextCall{Call: call}
+}
+
+// MockLeadershipLeaseContextCall wrap *gomock.Call
+type MockLeadershipLeaseContextCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockLeadershipLeaseContextCall) Return(arg0 context.Context) *MockLeadershipLeaseContextCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockLeadershipLeaseContextCall) Do(f func() context.Context) *MockLeadershipLeaseContextCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockLeadershipLeaseContextCall) DoAndReturn(f func() context.Context) *MockLeadershipLeaseContextCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// ProposalContext mocks base method.
+func (m *MockLeadershipLease) ProposalContext(arg0 context.Context) context.Context {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProposalContext", arg0)
+	ret0, _ := ret[0].(context.Context)
+	return ret0
+}
+
+// ProposalContext indicates an expected call of ProposalContext.
+func (mr *MockLeadershipLeaseMockRecorder) ProposalContext(arg0 any) *MockLeadershipLeaseProposalContextCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProposalContext", reflect.TypeOf((*MockLeadershipLease)(nil).ProposalContext), arg0)
+	return &MockLeadershipLeaseProposalContextCall{Call: call}
+}
+
+// MockLeadershipLeaseProposalContextCall wrap *gomock.Call
+type MockLeadershipLeaseProposalContextCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockLeadershipLeaseProposalContextCall) Return(arg0 context.Context) *MockLeadershipLeaseProposalContextCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockLeadershipLeaseProposalContextCall) Do(f func(context.Context) context.Context) *MockLeadershipLeaseProposalContextCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockLeadershipLeaseProposalContextCall) DoAndReturn(f func(context.Context) context.Context) *MockLeadershipLeaseProposalContextCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// MockLeaseProvider is a mock of LeaseProvider interface.
+type MockLeaseProvider struct {
+	ctrl     *gomock.Controller
+	recorder *MockLeaseProviderMockRecorder
+	isgomock struct{}
+}
+
+// MockLeaseProviderMockRecorder is the mock recorder for MockLeaseProvider.
+type MockLeaseProviderMockRecorder struct {
+	mock *MockLeaseProvider
+}
+
+// NewMockLeaseProvider creates a new mock instance.
+func NewMockLeaseProvider(ctrl *gomock.Controller) *MockLeaseProvider {
+	mock := &MockLeaseProvider{ctrl: ctrl}
+	mock.recorder = &MockLeaseProviderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLeaseProvider) EXPECT() *MockLeaseProviderMockRecorder {
+	return m.recorder
+}
+
+// CurrentLeadershipLease mocks base method.
+func (m *MockLeaseProvider) CurrentLeadershipLease() LeadershipLease {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentLeadershipLease")
+	ret0, _ := ret[0].(LeadershipLease)
+	return ret0
+}
+
+// CurrentLeadershipLease indicates an expected call of CurrentLeadershipLease.
+func (mr *MockLeaseProviderMockRecorder) CurrentLeadershipLease() *MockLeaseProviderCurrentLeadershipLeaseCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentLeadershipLease", reflect.TypeOf((*MockLeaseProvider)(nil).CurrentLeadershipLease))
+	return &MockLeaseProviderCurrentLeadershipLeaseCall{Call: call}
+}
+
+// MockLeaseProviderCurrentLeadershipLeaseCall wrap *gomock.Call
+type MockLeaseProviderCurrentLeadershipLeaseCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockLeaseProviderCurrentLeadershipLeaseCall) Return(arg0 LeadershipLease) *MockLeaseProviderCurrentLeadershipLeaseCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockLeaseProviderCurrentLeadershipLeaseCall) Do(f func() LeadershipLease) *MockLeaseProviderCurrentLeadershipLeaseCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockLeaseProviderCurrentLeadershipLeaseCall) DoAndReturn(f func() LeadershipLease) *MockLeaseProviderCurrentLeadershipLeaseCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}

@@ -26,14 +26,6 @@ type StaleProvider interface {
 	ForEachActive(func(*raftcmdpb.BackupJob))
 }
 
-// LeaderProbe gates cleanup on the leader-only operation guarantee.
-// On followers the FSM applies every Fail proposal we'd push, so a
-// follower running cleanup would multiply the network cost without
-// changing the outcome.
-type LeaderProbe interface {
-	IsLeader() bool
-}
-
 // LiveJobsProbe answers "is there a driver goroutine inside this leader
 // process working on this job_id?". Implemented by the Orchestrator's
 // ExecutorRegistry. The cleanup loop reads from it to tell live RUNNING
@@ -74,7 +66,7 @@ type LiveJobsProbe interface {
 type Cleanup struct {
 	state    StaleProvider
 	proposer Proposer
-	probe    LeaderProbe
+	leases   LeaseProvider
 	live     LiveJobsProbe
 	logger   logging.Logger
 
@@ -84,11 +76,11 @@ type Cleanup struct {
 // NewCleanup wires the dependencies. Defaults for Interval are filled
 // in if the caller leaves them at zero so the service is usable with
 // NewCleanup(...).Run(ctx) in fx.
-func NewCleanup(s StaleProvider, proposer Proposer, probe LeaderProbe, live LiveJobsProbe, logger logging.Logger) *Cleanup {
+func NewCleanup(s StaleProvider, proposer Proposer, leases LeaseProvider, live LiveJobsProbe, logger logging.Logger) *Cleanup {
 	return &Cleanup{
 		state:    s,
 		proposer: proposer,
-		probe:    probe,
+		leases:   leases,
 		live:     live,
 		logger:   logger.WithField("cmp", "backup-cleanup"),
 		Interval: DefaultCleanupInterval,
@@ -118,7 +110,14 @@ func (c *Cleanup) Run(ctx context.Context) {
 }
 
 func (c *Cleanup) tick(ctx context.Context) {
-	if !c.probe.IsLeader() {
+	lease := c.leases.CurrentLeadershipLease()
+	if lease == nil {
+		return
+	}
+	tickCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(lease.Context(), cancel)
+	defer func() { stop(); cancel() }()
+	if !lease.Authorize(func() {}) {
 		return
 	}
 
@@ -152,7 +151,12 @@ func (c *Cleanup) tick(ctx context.Context) {
 	})
 
 	for _, o := range orphans {
-		if err := c.failOrphan(ctx, o.jobID, o.kind); err != nil {
+		// Authorization is a short local gate. Proposal construction and Raft
+		// I/O happen after the gate is released, under the captured tenure.
+		if !lease.Authorize(func() {}) {
+			return
+		}
+		if err := c.failOrphan(lease.ProposalContext(tickCtx), o.jobID, o.kind); err != nil {
 			c.logger.WithFields(map[string]any{
 				"jobID": o.jobID,
 				"error": err,

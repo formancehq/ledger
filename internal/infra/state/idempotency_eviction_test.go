@@ -454,6 +454,41 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	})
 }
 
+func TestIdempotencyEvictionScheduler_LeaseCancellationCancelsProposeFn(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		store := newTestStore(t)
+		idemp := NewIdempotencyStore()
+		batch := store.OpenWriteSession()
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: 1}
+		require.NoError(t, SaveIdempotencyKey(batch, "lease-test", value))
+		idemp.Put("lease-test", value)
+		require.NoError(t, batch.Commit())
+
+		leaseCtx, revoke := context.WithCancel(context.Background())
+		started := make(chan struct{})
+		done := make(chan struct{})
+		var cleaned atomic.Bool
+		scheduler := NewIdempotencyEvictionScheduler(logging.Testing(), func() bool { return false },
+			func(ctx context.Context, _ uint64, _ []byte, _ [][]byte) {
+				close(started)
+				<-ctx.Done()
+			}, store, idemp, time.Hour)
+		scheduler.SetLeaseContext(func(parent context.Context) (context.Context, context.CancelFunc) {
+			workCtx, cancel := context.WithCancel(parent)
+			stop := context.AfterFunc(leaseCtx, cancel)
+
+			return workCtx, func() { stop(); cancel(); cleaned.Store(true) }
+		})
+		go func() { scheduler.runTick(context.Background()); close(done) }()
+		<-started
+		revoke()
+		<-done
+		require.True(t, cleaned.Load())
+	})
+}
+
 // countIdemTimeIndexRows counts eviction time-index rows
 // ([0x05][0x02][expires_at 8B][hash 16B]) whose hash suffix matches keyHash.
 func countIdemTimeIndexRows(t *testing.T, reader dal.PebbleReader, keyHash []byte) int {
