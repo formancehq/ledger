@@ -135,6 +135,18 @@ are unchanged. See [HTTP request signing](../../ops/signing.md#http-request-sign
 
 ## Transaction metadata address validation
 
+V3 transaction proposals prepared after the producer observes committed
+capability 1 activation carry its marker and enforce the ledger's STRICT
+account types for account metadata, including Numscript `set_account_meta`.
+An unmarked proposal prepared earlier retains legacy validation even if
+submitted or committed after activation; its persisted marker controls apply
+and replay.
+Unmatched addresses fail with the existing `ACCOUNT_NOT_MATCHING_TYPE` error.
+AUDIT mode and previously committed transactions keep their prior outcome.
+The v3 wire shape and service protocol revision 40 do not change; clients
+whose STRICT transaction metadata names untyped accounts must update those
+requests before preparing marked proposals.
+
 Transaction creation (including bulk) rejects malformed `accountMetadata`
 addresses at admission using the existing `VALIDATION` error contract. When
 several addresses are invalid, the lexicographically smallest invalid address

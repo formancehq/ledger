@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -91,12 +92,14 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 			_, err = leader.ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId: targetID, RaftAddress: deadRaftAddress,
 				ServiceAddress: deadServiceAddress, InstanceId: newIdentity,
+				Capabilities: capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 		} else {
 			By("rejecting boot JoinAsLearner with the same stale replication progress")
 			_, err = bootstrapClient.JoinAsLearner(bootstrapCtx, &clusterbootstrappb.JoinAsLearnerRequest{
 				NodeId: targetID, RaftAddress: deadRaftAddress,
 				ServiceAddress: deadServiceAddress, InstanceId: newIdentity,
+				Capabilities: capabilities.IDsAsUint32(capabilities.SupportedIDs()),
 			})
 		}
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))

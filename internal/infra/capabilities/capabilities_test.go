@@ -102,6 +102,66 @@ func TestPrepareProposalClearsFutureDeclarations(t *testing.T) {
 	require.Empty(t, proposal.GetRequiredCapabilities())
 }
 
+func TestPrepareProposalMarksTransactionSemantics(t *testing.T) {
+	t.Parallel()
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+		}},
+	}}}
+	proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{order}}}}
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{uint32(StrictAccountTypes)}, proposal.GetRequiredCapabilities())
+	data, err := proposal.MarshalVT()
+	require.NoError(t, err)
+	require.NoError(t, ValidateFinalProposal(data, prepared.RequiredCapabilities()))
+
+	proposal.RequiredCapabilities = nil
+	data, err = proposal.MarshalVT()
+	require.NoError(t, err)
+	require.ErrorIs(t, ValidateFinalProposal(data, prepared.RequiredCapabilities()), ErrMissingCapability)
+
+	order.GetLedgerScoped().GetApply().Data = &raftcmdpb.LedgerApplyOrder_ExecuteNumscript{ExecuteNumscript: &raftcmdpb.ExecuteNumscriptOrder{}}
+	prepared, err = PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
+}
+
+func TestPrepareProposalMarksOnlyTransactionInMixedBatch(t *testing.T) {
+	t.Parallel()
+	create := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+	}}}
+	transaction := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+		}},
+	}}}
+	proposal := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{Orders: []*raftcmdpb.Order{create, transaction}}}}
+	prepared, err := PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []CapabilityID{StrictAccountTypes}, prepared.RequiredCapabilities())
+	require.Equal(t, []uint32{1}, proposal.GetRequiredCapabilities())
+	proposal.GetBatch().Orders = []*raftcmdpb.Order{create}
+	prepared, err = PrepareProposal(proposal)
+	require.NoError(t, err)
+	require.Empty(t, prepared.RequiredCapabilities())
+	require.Empty(t, proposal.GetRequiredCapabilities())
+}
+
+func TestStrictAccountTypesActivation(t *testing.T) {
+	t.Parallel()
+	member := Member{NodeID: 1, Role: Voter, Reachable: true, Capabilities: SupportedIDs()}
+	state := capabilityState()
+	require.False(t, Evaluate(state, []CapabilityID{StrictAccountTypes}, true, []Member{member}).Allowed)
+	state.Activations[StrictAccountTypes] = true
+	require.True(t, Evaluate(state, []CapabilityID{StrictAccountTypes}, true, []Member{member}).Allowed)
+	member.Capabilities = nil
+	require.False(t, Evaluate(state, []CapabilityID{StrictAccountTypes}, true, []Member{member}).Allowed)
+}
+
 func TestFromPolicyRoundTrip(t *testing.T) {
 	state := FromPolicy(&commonpb.ClusterPolicy{
 		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 99, Active: true}},

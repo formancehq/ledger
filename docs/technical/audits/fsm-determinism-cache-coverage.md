@@ -12,6 +12,13 @@ The manifest adds scope and evidence requirements to the native deep-audit
 workflow. It does not change product behavior, add a runner, or authorize an
 audit before this contract has been reviewed and merged.
 
+For capability 1, compare marked and unmarked CreateTransaction proposals with
+the same untyped account metadata. The marked proposal must reject the smallest
+unmatched address in STRICT mode before metadata writes, including when
+Numscript produced the metadata. The unmarked historical proposal must keep
+its accepted result during checker replay after activation. AUDIT mode keeps
+accepting the same metadata.
+
 ## Equivalence oracle
 
 Evaluate one transition as a tuple:

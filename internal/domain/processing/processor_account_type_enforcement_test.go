@@ -7,6 +7,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -69,6 +70,89 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	var notMatching *domain.ErrAccountNotMatchingType
 	require.ErrorAs(t, processErr, &notMatching)
 	require.Equal(t, "merchants:shop", notMatching.Address)
+}
+
+func TestProcessOrdersStrictAccountTypesCapability(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name         string
+		script       string
+		addresses    []string
+		mode         commonpb.ChartEnforcementMode
+		wantAddress  string
+		legacy       bool
+		execute      bool
+		metadataOnly bool
+	}{
+		{name: "historical transaction", addresses: []string{"rogue:1"}, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, legacy: true},
+		{name: "historical ExecuteNumscript", script: `set_account_meta(@rogue:1, "k", "v")`, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, legacy: true, execute: true, metadataOnly: true},
+		{name: "caller metadata", addresses: []string{"rogue:9", "rogue:1"}, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, wantAddress: "rogue:1"},
+		{name: "first address wins across error types", addresses: []string{"zzz invalid", "rogue:1"}, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, wantAddress: "rogue:1"},
+		{name: "Numscript metadata", script: `set_account_meta(@rogue:1, "k", "v")`, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, wantAddress: "rogue:1"},
+		{name: "ExecuteNumscript metadata only", script: `set_account_meta(@rogue:1, "k", "v")`, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, wantAddress: "rogue:1", execute: true, metadataOnly: true},
+		{name: "typed metadata", addresses: []string{"users:2", "world"}, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT},
+		{name: "audit mode", addresses: []string{"rogue:1"}, mode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			controller := gomock.NewController(t)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+			info := strictLedgerInfoWithCompiledAccountType(t, processor, "test-ledger")
+			info.DefaultEnforcementMode = test.mode
+			scope := NewMockScope(controller)
+			scope.EXPECT().GetClusterPolicy().Return(tightMetadataPolicy(1024)).AnyTimes()
+			scope.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+			scope.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
+			scope.EXPECT().IncrementNextSequenceID().Return(uint64(1), nil).AnyTimes()
+			setupLedgersStub(scope).expectGet(domain.LedgerKey{Name: "test-ledger"}, info.AsReader(), nil)
+			setupBoundariesStub(scope).expectGet(domain.LedgerKey{Name: "test-ledger"}, (&raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}).AsReader(), nil)
+			setupNumscriptVolumeMocks(scope)
+			_, _ = stubsFor(scope).transactionStatesStubFor(scope)
+			metadata, _ := stubsFor(scope).accountMetadataStubFor(scope)
+			var written []string
+			metadata.onPut(func(key domain.MetadataKey, _ *commonpb.MetadataValue) { written = append(written, key.Account) })
+			payload := &servicepb.CreateTransactionPayload{Postings: []*commonpb.Posting{{Source: "world", Destination: "users:1", Amount: commonpb.NewUint256FromUint64(100), Asset: "USD/2"}}, AccountMetadata: map[string]*commonpb.MetadataMap{}}
+			for _, address := range test.addresses {
+				payload.AccountMetadata[address] = &commonpb.MetadataMap{Values: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}}
+			}
+			if test.script != "" {
+				payload.Postings = nil
+				script := test.script
+				if !test.metadataOnly {
+					script += `
+send [USD/2 100] (source = @world destination = @users:1)`
+				}
+				payload.Script = &commonpb.Script{Plain: script}
+			}
+			action := &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: payload}}
+			if test.execute {
+				action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_ExecuteNumscript{ExecuteNumscript: &servicepb.ExecuteNumscriptPayload{Script: payload.GetScript(), AccountMetadata: payload.GetAccountMetadata()}}}
+			}
+			request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "test-ledger", Action: action}}}
+			orders := []*raftcmdpb.Order{requestToOrder(t, request)}
+			var result *OrdersResult
+			var processErr domain.Describable
+			if test.legacy {
+				result, processErr = processor.ProcessOrders(orders, mockFactory(scope), noopSink{})
+			} else {
+				result, processErr = processor.ProcessOrdersWithCapabilities(orders, mockFactory(scope), noopSink{}, []uint32{uint32(capabilities.StrictAccountTypes)})
+			}
+			if test.wantAddress == "" {
+				require.Nil(t, processErr)
+				require.NotNil(t, result)
+				if test.legacy {
+					require.Contains(t, written, "rogue:1")
+				}
+
+				return
+			}
+			var mismatch *domain.ErrAccountNotMatchingType
+			require.ErrorAs(t, processErr, &mismatch)
+			require.Equal(t, test.wantAddress, mismatch.Address)
+			require.Empty(t, written)
+		})
+	}
 }
 
 func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing.T) {

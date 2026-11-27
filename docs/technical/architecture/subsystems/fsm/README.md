@@ -15,12 +15,20 @@ authoritative audit failure (including its reason, code, and facts), so selectio
 must not depend on Go map iteration. A failed order discards its posting and
 metadata writes while preserving the failure audit entry.
 
+Capability 1 adds STRICT account-type validation for transaction account
+metadata. The committed proposal marker selects this rule; older proposals
+retain their original behavior during replay. Validation visits accounts in
+ascending address order before staging metadata writes.
+
 Transaction account metadata addresses are checked after the merged metadata
 shape, entity limits and command budget, before staging account metadata writes.
 When multiple addresses are invalid, the lexicographically smallest invalid
 address determines the typed failure; the empty address sorts first. Admission
 checks caller addresses too, but apply retains this check for committed input
-and script output. The scan uses linear time and constant auxiliary space.
+and script output. The historical address-only scan takes linear time and
+constant auxiliary space. Capability 1 sorts the request's metadata addresses
+before checking address syntax and account types, taking O(n log n) time and
+O(n) auxiliary space for n addresses.
 Posting and transaction mutations staged earlier are discarded on rejection;
 the failure audit entry and a keyed definitive failure still commit.
 

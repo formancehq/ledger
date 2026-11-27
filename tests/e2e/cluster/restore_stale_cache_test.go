@@ -306,6 +306,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
+			waitForRestoredCapabilityEvidence(ctx, staleClusterID, clusterClient)
 		})
 
 		AfterAll(func() {

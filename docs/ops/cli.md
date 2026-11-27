@@ -1651,6 +1651,7 @@ ledgerctl transactions create [flags]
 | `--ledger` | *(required)* | Name of the ledger |
 | `--posting` | | Posting in format: `source,destination,amount,asset[,color]` (can be repeated) |
 | `--reference` | | Transaction reference |
+| `--idempotency-key` | | Optional batch key for retries and audit lookup |
 | `--metadata` | | Metadata key=value pairs |
 | `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
 | `--json` | `false` | Output as JSON |

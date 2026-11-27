@@ -1,9 +1,10 @@
 # Coordinated-upgrade capabilities
 
-Ledger's capability metadata is the protocol foundation for future incompatible
-features deployed with a coordinated stop-and-restart. It is separate from the
-client-facing gRPC protocol revision. This release does not implement a
-mixed-version rolling activation path.
+Ledger's capability metadata is the protocol foundation for changing FSM
+semantics after every member supports the new rule. It is separate from the
+client-facing gRPC protocol revision. Before activation commits, producers
+submit unmarked orders with the previous semantics while old and new voters
+coexist.
 
 ## Wire contract
 
@@ -13,12 +14,12 @@ IDs. The fields are optional and therefore backward-readable by binaries that
 predate this foundation. IDs are never reused; semantic dependencies must be
 declared even when they do not add bytes to a proposal.
 
-The producer must rebuild its plan first, derive the capabilities from that
-final plan, stamp `required_capabilities`, and pass the typed result alongside
-the serialized proposal. Admission reuses that result without decoding the
-proposal a second time. A payload that depends on a capability but omits its
-declaration is invalid; the shared builder and stamping helper are the
-enforcement boundary for producers.
+The producer must rebuild its plan first and derive candidate capabilities from
+that final plan. The producer reads committed activation state, chooses the
+declaration, and serializes the final command once before the proposal guard.
+It passes the typed declaration alongside the bytes. A producer that observes
+active policy must declare the semantic dependency; the shared builder and
+proposal factory are the enforcement boundary for producers.
 
 ## Admission and membership
 
@@ -81,10 +82,38 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+Capability ID 1 (`StrictAccountTypes`) marks CreateTransaction and
+ExecuteNumscript proposals when preparation observes committed activation. For
+marked transactions and Numscript executions, the FSM checks the account type
+of every merged account-metadata address after syntax and metadata-budget
+validation and before metadata writes. Addresses are checked in lexical order so replicas select the
+same failure. STRICT rejects unmatched addresses; AUDIT and matching addresses
+keep their existing behavior. Unmarked transaction and Numscript proposals
+retain the historical behavior. The audit
+entry stores the declaration, and checker replay passes it to the processor;
+changing the currently active policy never changes replay of an old proposal.
+The marker is proposal-wide: each marked transaction or Numscript order uses
+the account-metadata validation rule. A batch with either order declares ID 1
+once. Proposals prepared after activation is observed carry ID 1 even without
+account metadata, because Numscript can produce metadata during
+apply. The shared plan runner chooses the declaration from committed policy
+observed during preparation and serializes the command once before acquiring
+the proposal guard. The proposal gate checks the selected declaration and
+member evidence before reserving the Raft index. A proposal prepared before
+activation may remain unmarked if activation commits before it is submitted;
+its own marker still determines apply and audit replay semantics. If stale
+preloads require a rebuilt execution
+plan, `Runner.Run` serializes the rebuilt command after a fresh policy read.
+
+For capability-dependent writes, preparation adds one committed-policy read
+before one marshal and final payload validation. Work is linear in proposal
+size and adds no WAL bytes or second serialized buffer. Commands without
+candidate capabilities skip that policy read. The read is outside the shared
+proposal lock; the admission gate still reads current policy for its final
+membership and activation check.
+`BenchmarkPrepareCapabilityProposal` measures the policy read, marshal, and
+validation at 1, 100, and 1,000 transaction orders: approximately 6, 36, and
+225 microseconds per proposal on Apple M5 Pro with Go 1.27.3 (100 iterations).
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
@@ -140,17 +169,14 @@ Do not add a capability for a bug fix that restores the intended behavior when
 the old behavior was invalid. Add one when valid historical orders need to keep
 their old behavior while new orders use a different rule.
 
-EN-2915 strengthens initial account-type validation in `CreateLedger` without
-registering a capability. RC.4 accepted invalid constraints and conflicting
-patterns; those successful creations remain committed business history. The
-operator-required RC.4-to-RC.5 stopped upgrade drains every member and waits
-for its durable FSM cursor to pass the admission cutoff, so RC.4 business
-entries finish applying under RC.4 before RC.5 starts. RC.5 applies the
-strengthened rule to new orders. Audit replay explicitly uses the historical
-creation rule to reproduce successful old orders; successful new creations
-satisfy both rules and yield the same logs. The proposal payload and capability
-registry remain unchanged. A mixed-version rollout across this boundary is
-unsupported.
+Live `CreateLedger` apply validates segment constraints and conflicting initial
+patterns for both marked and unmarked proposals, matching the rule shipped in
+RC.5. An RC.5 leader can still commit an unmarked proposal during a rolling
+upgrade, so a new voter must apply that proposal identically. Historical audit
+replay retains the earlier creation rule for unmarked entries. RC.4 accepted
+invalid constraints and conflicting patterns; the RC.4-to-RC.5 stopped upgrade
+drained every RC.4 entry before RC.5 started. ID 1 is required for the new
+transaction and Numscript metadata rule, not for CreateLedger.
 
 Forwarded preload gaps also change apply at the same boundary without a
 capability. RC.4 rejects a keyed batch carrying an order marked

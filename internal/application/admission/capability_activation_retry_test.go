@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -29,17 +30,17 @@ func TestCapabilityActivationRetryRepreparesBeforeSubmission(t *testing.T) {
 		proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 			attempts++
 			if attempts == 1 {
-				require.Empty(t, proposal.RequiredCapabilities())
+				require.Empty(t, proposal.RequiredCapabilities(), "the first attempt was prepared before activation")
 				policy, err := query.ReadClusterPolicy(store)
 				require.NoError(t, err)
-				policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: 1, Active: true}}
+				policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes), Active: true}}
 				batch := store.OpenWriteSession()
 				require.NoError(t, state.SaveClusterPolicy(batch, policy))
 				require.NoError(t, batch.Commit())
 
 				return nil, capabilities.ErrActivationPending
 			}
-			require.Empty(t, proposal.RequiredCapabilities())
+			require.Equal(t, []capabilities.CapabilityID{capabilities.StrictAccountTypes}, proposal.RequiredCapabilities())
 			proposal.Resolve(nil, nil)
 			future := futures.New[state.ApplyResult]()
 			future.Resolve(state.ApplyResult{AppliedIndex: 1}, nil)
@@ -47,13 +48,19 @@ func TestCapabilityActivationRetryRepreparesBeforeSubmission(t *testing.T) {
 			return future, nil
 		}).Times(2)
 		admission, reader := createTestAdmissionWithReader(t, store, proposer)
-		request := businessWrite("activation-retry")
+		request := servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{Ledger: testLedgerName, Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+					Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+				}},
+			}},
+		}})
 		original := request.CloneVT()
 		_, err := admission.Admit(attributedTestContext(t.Context()), request)
 		require.NoError(t, err)
 		require.Equal(t, 2, attempts)
 		require.True(t, original.EqualVT(request))
-		require.Equal(t, int64(1), recordedActionCounts(t, reader)[mActionTotal]["create_ledger"])
+		require.Equal(t, int64(1), recordedActionCounts(t, reader)[mActionTotal]["create_transaction"])
 	})
 }
 

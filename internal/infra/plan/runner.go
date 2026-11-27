@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // Sentinel errors returned by Run to let callers distinguish which
@@ -86,6 +88,25 @@ type RunResult struct {
 	// metric (the time from queue insertion through Raft commit) record
 	// time.Since(result.ProposeStartTime) after Proposal.Wait() returns.
 	ProposeStartTime time.Time
+}
+
+// prepareProposal chooses semantic capabilities from committed policy before
+// serialization. Activation may commit after this read; the frozen proposal
+// marker, rather than policy at apply time, remains authoritative.
+func (p *Builder) prepareProposal(cmd *raftcmdpb.Proposal) (*node.Proposal, error) {
+	required, err := capabilities.RequiredCapabilities(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if len(required) == 0 {
+		return node.NewProposal(cmd.GetId(), cmd)
+	}
+	policy, err := query.ReadClusterPolicy(p.store)
+	if err != nil {
+		return nil, fmt.Errorf("reading committed capability policy: %w", err)
+	}
+
+	return node.NewProposalWithPolicy(cmd.GetId(), cmd, policy)
 }
 
 // Run is the single canonical "attach preload + assign bits + propose"
@@ -190,11 +211,14 @@ func (p *Builder) Run(
 	// predicted index is zero at this point and is patched below once the
 	// tracker guard is held.
 	cmd.PredictedIndex = 0
-	proposal, err := node.NewProposal(cmd.GetId(), cmd)
+	proposal, err := p.prepareProposal(cmd)
 	if err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+	if p.afterPrepare != nil {
+		p.afterPrepare()
 	}
 
 	guardStart := time.Now()
@@ -235,7 +259,7 @@ func (p *Builder) Run(
 			return nil, fmt.Errorf("%w (under guard): %w", ErrMarshalProposal, err)
 		}
 
-		proposal, err = node.NewProposal(cmd.GetId(), cmd)
+		proposal, err = p.prepareProposal(cmd)
 		if err != nil {
 			guard.ReleaseAll()
 
@@ -361,11 +385,14 @@ func (p *Builder) runWithoutPreload(
 	// Marshal before taking the tracker lock; only the bounded predicted-index
 	// append below belongs in the critical section.
 	cmd.PredictedIndex = 0
-	proposal, err := node.NewProposal(cmd.GetId(), cmd)
+	proposal, err := p.prepareProposal(cmd)
 	if err != nil {
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+	if p.afterPrepare != nil {
+		p.afterPrepare()
 	}
 
 	guard := &ProposalGuard{p: p, token: build.token}

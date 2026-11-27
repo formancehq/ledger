@@ -77,6 +77,7 @@ func TestTransactionsCreatePostingAmounts(t *testing.T) {
 				root.SetArgs([]string{
 					"transactions", "create", "--ledger", "fresh",
 					"--posting", "world,bob,1,USD", "--posting", posting,
+					"--idempotency-key", "create-transaction-42",
 					"--server", listener.Addr().String(), "--insecure", "--json",
 					"--tls-ca-cert=", "--tls-server-name=", "--result-file=",
 					"--signing-key=", "--response-verify-key=", "--auth-token=test-token",
@@ -91,6 +92,7 @@ func TestTransactionsCreatePostingAmounts(t *testing.T) {
 				require.NoError(t, err)
 				require.EqualValues(t, 1, fixture.calls.Load())
 				request := <-fixture.requests
+				require.Equal(t, "create-transaction-42", request.GetUnsigned().GetIdempotencyKey())
 				require.Len(t, request.GetUnsigned().GetRequests(), 1)
 				apply := request.GetUnsigned().GetRequests()[0].GetApply()
 				require.Equal(t, "fresh", apply.GetLedger())

@@ -1,12 +1,15 @@
 package node
 
 import (
+	"fmt"
+
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -53,25 +56,43 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	}
 }
 
-// NewProposal is the only public proposal factory. It derives the capability
-// declaration and serializes the same final command, making it impossible for
-// the typed admission metadata to diverge from the wire payload.
+// NewProposal constructs a proposal without semantic dependencies. Producers
+// of capability-dependent orders must choose from committed policy explicitly.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
-	prepared, err := capabilities.PrepareProposal(command)
+	required, err := capabilities.RequiredCapabilities(command)
 	if err != nil {
 		return nil, err
 	}
+	if len(required) != 0 {
+		return nil, fmt.Errorf("%w: capability-dependent order requires an activation snapshot", capabilities.ErrInvalidDeclaration)
+	}
 
+	return NewProposalWithPolicy(commandID, command, nil)
+}
+
+// NewProposalWithPolicy serializes the final command once, with a marker
+// selected from committed policy observed by the producer before this call.
+func NewProposalWithPolicy(commandID uint64, command *raftcmdpb.Proposal, policy *commonpb.ClusterPolicy) (*Proposal, error) {
+	candidate, err := capabilities.RequiredCapabilities(command)
+	if err != nil {
+		return nil, err
+	}
+	active := capabilities.FromPolicy(policy).Activations[capabilities.StrictAccountTypes]
+	var selected []capabilities.CapabilityID
+	command.RequiredCapabilities = nil
+	if active {
+		selected = candidate
+		command.RequiredCapabilities = make([]uint32, len(selected))
+		for i, id := range selected {
+			command.RequiredCapabilities[i] = uint32(id)
+		}
+	}
 	data, err := command.MarshalVT()
 	if err != nil {
 		return nil, err
 	}
-
-	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
-	// Validate the complete serialized command before it enters the Raft queue.
-	// SetPredictedIndex only appends a fixed-width index field afterward; it
-	// cannot change the payload or its capability declaration.
-	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
+	proposal := newProposal(commandID, data, selected)
+	if err := capabilities.ValidateFinalProposalForActivation(data, selected, active); err != nil {
 		return nil, err
 	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0
@@ -121,9 +142,9 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 	p.data = protowireutil.AppendFixed64(p.data, predictedIndexField, index)
 }
 
-// RequiredCapabilities returns the capabilities derived by the producer from
-// the final command before it was serialized. Admission reuses this typed
-// value instead of decoding the serialized proposal a second time.
+// RequiredCapabilities returns the capabilities selected during preparation
+// for the serialized proposal. Admission reuses this typed value instead
+// of decoding the serialized proposal a second time.
 func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
 }

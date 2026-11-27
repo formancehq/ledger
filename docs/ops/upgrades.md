@@ -2,6 +2,21 @@
 
 ## Release requirement from v3.0.0-rc.1
 
+The new transaction and Numscript account-metadata validation activates with
+capability 1 after all members advertise support. Before activation commits,
+CreateTransaction and ExecuteNumscript proposals remain unmarked and retain
+their original metadata validation. A proposal whose preparation observes
+committed activation carries ID 1 in the Raft proposal and audit entry.
+An in-flight proposal prepared just before activation commits can still be
+submitted unmarked afterward; its marker determines apply and replay behavior.
+Historical unmarked proposals retain their original validation.
+Live CreateLedger apply keeps the initial account-type validation shipped in
+RC.5, including for unmarked proposals from an RC.5 leader. Historical audit
+replay retains the earlier creation rule only for unmarked entries; marked
+entries use the strengthened validation. The RC.5 to RC.6 boundary requires
+the published-RC rolling validation below before RC.6 can be released. Do not
+activate the capability on a partially upgraded cluster.
+
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
 forward upgrade from the preceding released version. Preserve committed
@@ -53,8 +68,8 @@ during `CreateLedger` apply, and applies a keyed batch carrying a
 stopped-upgrade drain waits for a durable FSM cursor beyond the admission
 cutoff on every member, so RC.4 business entries are applied by RC.4 before
 RC.5 starts. Keep the retained data and WAL volumes; audit replay preserves the
-historical creation rule for previously successful orders. Existing ledgers are
-not rewritten.
+historical creation rule for previously successful unmarked orders. Marked
+orders use the strengthened validation. Existing ledgers are not rewritten.
 RC.4 also drops the Numscript library version `description` when it applies a
 save, so old and new voters would store different library entries and audit
 bytes for a described save. The stopped boundary prevents that coexistence.
@@ -118,7 +133,16 @@ stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+This release registers capability ID 1 for STRICT account-metadata validation
+in CreateTransaction and ExecuteNumscript. Proposals whose preparation observes
+committed activation carry ID 1. Pre-activation proposals, including those
+submitted after activation, remain unmarked and retain their original metadata
+validation. The persisted marker selects apply and replay behavior.
+CreateLedger retains the RC.5 live validation rule without requiring ID 1;
+historical audit replay keeps the pre-RC.5 creation rule only for unmarked
+entries. Marked entries use the strengthened validation, including when
+CreateLedger and a transaction share a batch. The ID activates only after all
+current members advertise support.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
@@ -639,6 +663,23 @@ validation report. `just test-rolling-upgrade v3.0.0-rc.1 <target-sha>`
 rehearses a specific local commit without fetching the release branch. The
 release-branch example refuses to run while `release/v3.0` lacks the integrated
 harness.
+
+For the RC.5 to RC.6 capability boundary, run the separate live rolling mode
+against the published RC.5 tag and the exact candidate commit:
+
+```bash
+UPGRADE_ROLLING_CAPABILITY=1 just test-rolling-upgrade v3.0.0-rc.5 <candidate-sha>
+```
+
+This mode replaces voters one at a time without maintenance. It commits
+transactions while an RC.5 leader and a candidate voter coexist, transfers
+leadership to the candidate voter, commits another transaction through the RC.5
+node, then upgrades the remaining voters. It verifies a post-activation write,
+unmarked mixed-version audit entries, a marked post-activation audit entry,
+equal account state and the audit/store checker on all three nodes. The source
+must be a published release and the candidate must contain this harness. Record
+the command and retained evidence in the RC.6 release validation report before
+claiming rolling compatibility; adding the test alone is not that evidence.
 
 The test creates a dedicated kind cluster and Chainsaw namespace. Three Pods
 mount separate persistent WAL and data claims and boot from an image containing

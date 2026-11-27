@@ -172,7 +172,7 @@ func (r *AuditReplayer) LedgerBoundaries() (map[string]*raftcmdpb.LedgerBoundari
 
 // Replay applies one successful audited proposal and returns the exact logs
 // produced by the canonical request processor. Call proposals in audit order.
-func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order) ([]*commonpb.Log, error) {
+func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order, requiredCapabilities ...uint32) ([]*commonpb.Log, error) {
 	buffer := r.machine.writeSet
 	buffer.Reset(at)
 
@@ -204,11 +204,9 @@ func (r *AuditReplayer) Replay(at *commonpb.Timestamp, orders []*raftcmdpb.Order
 	}
 
 	scope := &auditReplayScope{WriteSet: buffer}
-	result, processErr := r.machine.processor.ProcessAuditedOrders(
-		orders,
-		auditReplayScopeFactory{scope: scope},
-		buffer,
-	)
+	var result *processing.OrdersResult
+	var processErr domain.Describable
+	result, processErr = r.machine.processor.ProcessAuditedOrdersWithCapabilities(orders, auditReplayScopeFactory{scope: scope}, buffer, requiredCapabilities)
 	if processErr != nil {
 		return nil, fmt.Errorf("processing audited orders: %w", processErr)
 	}

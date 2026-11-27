@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -34,6 +35,9 @@ func TestCreateLedgerRejectsInvalidInitialAccountTypesAtApply(t *testing.T) {
 			machine, store, _ := newTestMachine(t)
 			order := createLedgerOrderWithAccountTypes("l", tc.types)
 			proposal := makeProposal(1, order)
+			prepared, err := capabilities.PrepareProposal(proposal)
+			require.NoError(t, err)
+			require.Empty(t, prepared.RequiredCapabilities(), "RC.5 CreateLedger validation predates capability 1")
 			results, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, proposal))
 			require.NoError(t, err)
 			require.Len(t, results.Results, 1)

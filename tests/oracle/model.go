@@ -1622,14 +1622,18 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 
-	// Account metadata attached to the transaction — the caller's, over the
-	// script's — is applied verbatim, last-writer-wins, without chart
-	// enforcement (unlike a standalone AddMetadata — processor_transaction.go).
-	for account, mm := range accountMetadata {
+	// Match the processor's stable address-then-chart validation order.
+	compiled := s.compiled()
+	for _, account := range slices.Sorted(maps.Keys(accountMetadata)) {
 		if err := domain.ValidateAccountAddress(account); err != nil {
 			return OrderResult{Reason: err.Reason()}
 		}
-
+		if s.defaultEnforcementMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT &&
+			len(compiled) > 0 && account != "world" && s.match(account, compiled) == nil {
+			return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
+		}
+	}
+	for account, mm := range accountMetadata {
 		for key, val := range mm.GetValues() {
 			s.metadata = s.metadata.Set(MetaKey{Address: account, Key: key}, val)
 		}

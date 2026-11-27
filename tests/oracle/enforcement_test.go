@@ -42,6 +42,23 @@ func TestGlobalState_Apply_EnforcementOrdering(t *testing.T) {
 	}
 }
 
+func TestGlobalState_Apply_TransactionAccountMetadataEnforcement(t *testing.T) {
+	t.Parallel()
+	base := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReq("users")))
+	require.True(t, base.OK)
+	request := oracletest.TxReq("world", "users:1", "USD", 5)
+	request.GetApply().GetAction().GetCreateTransaction().AccountMetadata = map[string]*commonpb.MetadataMap{
+		"rogue:1": {Values: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}},
+	}
+	rejected := base.State.Apply(bulkOf(request))
+	require.Equal(t, domain.ErrReasonAccountNotMatchingType, rejected.Reason)
+	require.Equal(t, base.State.Fingerprint(), rejected.State.Fingerprint())
+	audit := base.State.Apply(bulkOf(enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, false)))
+	require.True(t, audit.OK)
+	accepted := audit.State.Apply(bulkOf(request))
+	require.True(t, accepted.OK)
+}
+
 func TestGlobalState_Apply_EnforcementAffectedOrders(t *testing.T) {
 	t.Parallel()
 	base := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "unknown:1", "USD", 5), oracletest.AddTypeReq("known")))

@@ -17,6 +17,14 @@ cli() {
 	k exec "$(pod_name "$i")" -c ledger -- /app/ledgerctl "$@" \
 		--insecure --server 127.0.0.1:8888
 }
+# Run the candidate CLI through another voter's gRPC endpoint. The RC.5 CLI
+# predates --idempotency-key, but the old voter's forwarding path still needs
+# to be exercised after leadership transfers to the candidate.
+cli_via() {
+	local executor="$1" target="$2"; shift 2
+	k exec "$(pod_name "$executor")" -c ledger -- /app/ledgerctl "$@" \
+		--insecure --server "$(pod_name "$target").ledger-upgrade.$namespace.svc.cluster.local:8888"
+}
 status() {
 	local id="$1" i output
 	for i in 0 1 2; do
@@ -210,6 +218,10 @@ check_maintenance() {
 
 on_exit() {
 	local result="$?" i
+	if [ -n "${activation_forward_pid:-}" ]; then
+		kill "$activation_forward_pid" 2>/dev/null || true
+		wait "$activation_forward_pid" 2>/dev/null || true
+	fi
 	if [ -n "${probe_pid:-}" ]; then
 		kill "$probe_pid" 2>/dev/null || true
 		wait "$probe_pid" 2>/dev/null || true
@@ -221,6 +233,33 @@ on_exit() {
 	fi
 }
 trap on_exit EXIT
+
+wait_capability_activation() {
+	local i="$1" deadline port output log
+	log="$(mktemp "${UPGRADE_EVIDENCE_DIR:-/tmp}/activation-forward.XXXXXX")"
+	kubectl --kubeconfig "$UPGRADE_KUBECONFIG" --context "$UPGRADE_KUBE_CONTEXT" \
+		-n "$namespace" port-forward --address 127.0.0.1 "pod/$(pod_name "$i")" :8888 >"$log" 2>&1 &
+	activation_forward_pid=$!
+	deadline=$(( $(date +%s) + 120 ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		kill -0 "$activation_forward_pid" 2>/dev/null || {
+			echo "activation port forward exited: $(cat "$log")" >&2; return 1;
+		}
+		port="$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9][0-9]*\) -> 8888$/\1/p' "$log" | head -1)"
+		if [ -n "$port" ]; then
+			output="$(grpcurl -plaintext -max-time 3 -d '{}' "127.0.0.1:$port" ledger.BucketService/Discovery 2>/dev/null)" || output=
+			if jq -e 'any(.clusterPolicy.capabilityActivations[]?; .id == 1 and .active == true)' <<<"$output" >/dev/null 2>&1; then
+				kill "$activation_forward_pid" 2>/dev/null || true
+				wait "$activation_forward_pid" 2>/dev/null || true
+				activation_forward_pid=
+				return 0
+			fi
+		fi
+		sleep 2
+	done
+	echo 'capability 1 activation did not commit within 120 seconds' >&2
+	return 1
+}
 
 k apply -f - <<'EOF'
 apiVersion: v1
@@ -279,6 +318,82 @@ wait_consistent false
 before="$(account 0)"
 jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .volumes.balance == "100")' <<<"$before" >/dev/null
 check_data "$before"
+
+if [ "${UPGRADE_ROLLING_CAPABILITY:-}" = 1 ]; then
+	# Keep the published RC.5 leader in place while a target voter joins.
+	# Replacing Pods one at a time makes the mixed-version write window stable.
+	followers=()
+	for i in 0 1 2; do
+		[ "$((i+1))" -eq "$original_leader" ] || followers+=("$i")
+	done
+	replace_rolling_pod() {
+		local i="$1" name old_uid
+		name="$(pod_name "$i")"
+		old_uid="$(k get pod "$name" -o jsonpath='{.metadata.uid}')"
+		k delete pod "$name" --wait=true
+		create_pod "$i" "$UPGRADE_TARGET_IMAGE" rejoin
+		[ "$(k get pod "$name" -o jsonpath='{.metadata.uid}')" != "$old_uid" ] || {
+			echo "Pod $name was not replaced" >&2; return 1;
+		}
+		wait_consistent false
+	}
+	replace_rolling_pod "${followers[0]}"
+	mixed_old_key="$ledger-mixed-old-leader"
+	mixed_new_key="$ledger-mixed-new-leader"
+	after_activation_key="$ledger-after-activation"
+	assert_capability_audit() {
+		local key="$1" expected="$2"
+		cli "${followers[0]}" audit list --filter "idempotency_key == \"$key\"" \
+			--page-size 2 --json --timeout 120s |
+			jq -e --arg key "$key" --argjson expected "$expected" \
+				'length == 1 and .[0].idempotency.key == $key and
+				 (.[0].success != null) and .[0].orderCount == 1 and
+				 ((.[0].requiredCapabilities // []) == $expected)' >/dev/null
+	}
+	[ "$(cluster_health | cut -d' ' -f1)" = "$original_leader" ] || {
+		echo 'source leader changed before mixed-version write' >&2; exit 1;
+	}
+	cli "${followers[0]}" transactions create --ledger "$ledger" --posting world,bank,1,USD \
+		--reference mixed-old-leader --idempotency-key "$mixed_old_key"
+	wait_consistent false
+	cli "$((original_leader-1))" cluster transfer-leader "$((followers[0]+1))"
+	wait_consistent false
+	[ "$(cluster_health | cut -d' ' -f1)" = "$((followers[0]+1))" ] || {
+		echo 'target voter did not become leader' >&2; exit 1;
+	}
+	# The old voter can retain the replaced Pod's DNS address briefly. Probe
+	# forwarding with an idempotent read before issuing a non-idempotent write.
+	deadline=$(( $(date +%s) + 120 ))
+	until cli "$((original_leader-1))" cluster status --json --timeout 3s 2>/dev/null |
+		jq -e --argjson leader "$((followers[0]+1))" '(.leader | tonumber) == $leader' >/dev/null 2>&1; do
+		[ "$(date +%s)" -lt "$deadline" ] || { echo 'old voter did not regain forwarding connectivity' >&2; exit 1; }
+		sleep 2
+	done
+	cli_via "${followers[0]}" "$((original_leader-1))" transactions create --ledger "$ledger" \
+		--posting world,bank,1,USD --reference mixed-new-leader --idempotency-key "$mixed_new_key"
+	wait_consistent false
+	mixed="$(account 0)"
+	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "102")' <<<"$mixed" >/dev/null
+	check_data "$mixed"
+	assert_capability_audit "$mixed_old_key" '[]'
+	assert_capability_audit "$mixed_new_key" '[]'
+	replace_rolling_pod "${followers[1]}"
+	replace_rolling_pod "$((original_leader-1))"
+	# Raft convergence does not imply that capability activation has committed.
+	# Probe the committed policy before issuing this non-idempotent write once.
+	wait_capability_activation "${followers[0]}"
+	cli "${followers[0]}" transactions create --ledger "$ledger" \
+		--posting world,bank,1,USD --reference after-activation \
+		--idempotency-key "$after_activation_key" --timeout 120s
+	wait_consistent false
+	after="$(account 0)"
+	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "103")' <<<"$after" >/dev/null
+	check_data "$after"
+	assert_capability_audit "$after_activation_key" '[1]'
+	for i in 0 1 2; do cli "$i" store check; done
+	echo 'PASS: published RC.5 and candidate mixed-version writes, leadership transfer, activation, audit and retained data'
+	exit 0
+fi
 
 cli "$((original_leader-1))" cluster maintenance enable
 wait_consistent true
