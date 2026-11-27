@@ -145,6 +145,7 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 		} else {
 			p.data = p.markedData
 		}
+
 		return
 	}
 	p.data = protowireutil.AppendFixed64(p.data, predictedIndexField, index)
