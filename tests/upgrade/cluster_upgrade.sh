@@ -210,6 +210,10 @@ check_maintenance() {
 
 on_exit() {
 	local result="$?" i
+	if [ -n "${activation_forward_pid:-}" ]; then
+		kill "$activation_forward_pid" 2>/dev/null || true
+		wait "$activation_forward_pid" 2>/dev/null || true
+	fi
 	if [ -n "${probe_pid:-}" ]; then
 		kill "$probe_pid" 2>/dev/null || true
 		wait "$probe_pid" 2>/dev/null || true
@@ -221,6 +225,33 @@ on_exit() {
 	fi
 }
 trap on_exit EXIT
+
+wait_capability_activation() {
+	local i="$1" deadline port output log
+	log="$(mktemp "${UPGRADE_EVIDENCE_DIR:-/tmp}/activation-forward.XXXXXX")"
+	kubectl --kubeconfig "$UPGRADE_KUBECONFIG" --context "$UPGRADE_KUBE_CONTEXT" \
+		-n "$namespace" port-forward --address 127.0.0.1 "pod/$(pod_name "$i")" :8888 >"$log" 2>&1 &
+	activation_forward_pid=$!
+	deadline=$(( $(date +%s) + 120 ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		kill -0 "$activation_forward_pid" 2>/dev/null || {
+			echo "activation port forward exited: $(cat "$log")" >&2; return 1;
+		}
+		port="$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9][0-9]*\) -> 8888$/\1/p' "$log" | head -1)"
+		if [ -n "$port" ]; then
+			output="$(grpcurl -plaintext -max-time 3 -d '{}' "127.0.0.1:$port" ledger.BucketService/Discovery 2>/dev/null)" || output=
+			if jq -e 'any(.clusterPolicy.capabilityActivations[]?; .id == 1 and .active == true)' <<<"$output" >/dev/null 2>&1; then
+				kill "$activation_forward_pid" 2>/dev/null || true
+				wait "$activation_forward_pid" 2>/dev/null || true
+				activation_forward_pid=
+				return 0
+			fi
+		fi
+		sleep 2
+	done
+	echo 'capability 1 activation did not commit within 120 seconds' >&2
+	return 1
+}
 
 k apply -f - <<'EOF'
 apiVersion: v1
@@ -326,18 +357,11 @@ if [ "${UPGRADE_ROLLING_CAPABILITY:-}" = 1 ]; then
 		jq -e '.[0].requiredCapabilities == null or .[0].requiredCapabilities == []' >/dev/null
 	replace_rolling_pod "${followers[1]}"
 	replace_rolling_pod "$((original_leader-1))"
-	# All members now advertise capability 1. Admission may briefly wait for
-	# the activation entry to commit. Retry only that explicit rejection;
-	# transactions create has no idempotency key for ambiguous outcomes.
-	deadline=$(( $(date +%s) + 120 ))
-	while ! output="$(cli "${followers[0]}" transactions create --ledger "$ledger" \
-		--posting world,bank,1,USD --reference after-activation 2>&1)"; do
-		grep -iq 'capability activation is pending' <<<"$output" || {
-			echo "post-activation write failed: $output" >&2; exit 1;
-		}
-		[ "$(date +%s)" -lt "$deadline" ] || { echo 'post-activation write did not commit' >&2; exit 1; }
-		sleep 2
-	done
+	# Raft convergence does not imply that capability activation has committed.
+	# Probe the committed policy before issuing this non-idempotent write once.
+	wait_capability_activation "${followers[0]}"
+	cli "${followers[0]}" transactions create --ledger "$ledger" \
+		--posting world,bank,1,USD --reference after-activation --timeout 120s
 	wait_consistent false
 	after="$(account 0)"
 	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "103")' <<<"$after" >/dev/null

@@ -172,7 +172,7 @@
 
           # Three-voter rc.1 binary upgrade in an isolated kind cluster.
           upgrade = pkgs.mkShell {
-            packages = ciPackages ++ (with pkgs; [ kyverno-chainsaw kind kubectl docker-client gh ]);
+            packages = ciPackages ++ (with pkgs; [ kyverno-chainsaw kind kubectl docker-client gh grpcurl ]);
             GOTOOLCHAIN = "local";
             LEDGER_UPGRADE_SHELL = "1";
             LEDGER_CHAINSAW_BIN = "${pkgs.kyverno-chainsaw}/bin/chainsaw";
