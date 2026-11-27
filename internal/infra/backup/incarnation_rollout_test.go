@@ -108,12 +108,14 @@ func TestAccountIncarnationRolloutAcrossOfflineMigration(t *testing.T) {
 	metadataOnly := readAccount(store, "metadata-only")
 	require.NotNil(t, metadataOnly.GetInsertionDate())
 	require.Equal(t, metadataOnly.GetInsertionDate().GetData(), metadataOnly.GetUpdatedAt().GetData())
+	storage := newInMemoryBackupStorage()
+	_, err = RunBackup(ctx, logging.Testing(), store, storage, "incarnations", "before-update")
+	require.NoError(t, err)
 	restarted.apply(actions.CreateTransactionAction(ledger, []*commonpb.Posting{posting("world", "alice")}, nil, nil))
 	updated := readAccount(store, "alice")
 	require.Equal(t, account.GetInsertionDate().GetData(), updated.GetInsertionDate().GetData())
 	require.Greater(t, updated.GetUpdatedAt().GetData(), account.GetUpdatedAt().GetData())
-	storage := newInMemoryBackupStorage()
-	_, err = RunBackup(ctx, logging.Testing(), store, storage, "incarnations", "after-migration")
+	_, err = RunBackup(ctx, logging.Testing(), store, storage, "incarnations", "after-update")
 	require.NoError(t, err)
 	manifest, err := ReadManifest(ctx, storage, ManifestKey("incarnations"))
 	require.NoError(t, err)
@@ -130,10 +132,7 @@ func TestAccountIncarnationRolloutAcrossOfflineMigration(t *testing.T) {
 	restoredAccount := readAccount(restored, "alice")
 	require.Equal(t, updated.GetInsertionDate().GetData(), restoredAccount.GetInsertionDate().GetData())
 	require.Equal(t, updated.GetUpdatedAt().GetData(), restoredAccount.GetUpdatedAt().GetData())
-	reader, err := store.NewReadHandle()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, reader.Close()) }()
-	require.NoError(t, incarnationmigration.Verify(ctx, reader, logging.Testing()))
+	auditKeyCheckerClean(t, restored)
 }
 
 func mustAdvertisedIDs(t *testing.T, store *dal.Store) []uint32 {
