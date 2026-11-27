@@ -128,6 +128,42 @@ func TestTranslateBatch_NewTransaction(t *testing.T) {
 	require.Equal(t, uint64(1700000000123456), ingest.GetEntry().GetDate().GetData())
 }
 
+func TestTranslateBatch_RejectsPreEpochBusinessTimestamp(t *testing.T) {
+	t.Parallel()
+
+	const beforeEpoch = "1969-12-31T23:59:59.999999Z"
+	const sourceDate = "2023-11-14T22:13:20Z"
+	tests := []struct {
+		name string
+		log  V2Log
+	}{
+		{
+			name: "created transaction",
+			log: V2Log{ID: 1, Type: "NEW_TRANSACTION", Date: sourceDate, Data: mustMarshal(t, V2NewTransactionData{
+				Transaction: V2Transaction{ID: 0, Timestamp: beforeEpoch},
+			})},
+		},
+		{
+			name: "reverted transaction",
+			log: V2Log{ID: 1, Type: "REVERTED_TRANSACTION", Date: sourceDate, Data: mustMarshal(t, V2RevertedTransactionData{
+				RevertedTransaction: V2TransactionIdentity{ID: new(uint64(0))},
+				RevertTransaction:   V2Transaction{ID: 1, Timestamp: beforeEpoch},
+			})},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{tt.log}, 1, 0, TranslateOptions{})
+			require.ErrorContains(t, err, "business timestamp is before the Unix epoch")
+			require.Nil(t, orders)
+			require.Zero(t, nextLog)
+			require.Zero(t, nextTx)
+		})
+	}
+}
+
 func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 	t.Parallel()
 

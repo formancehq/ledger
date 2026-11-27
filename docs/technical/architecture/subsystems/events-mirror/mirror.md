@@ -68,6 +68,14 @@ On startup the worker reads `LedgerBoundaries` from Pebble once, before its firs
 
 ## Metadata limits
 
+The translator rejects created and reverted transactions whose parsed business
+timestamp is before the Unix epoch. The v3 unsigned timestamp representation
+cannot preserve their chronological order. Translation fails before proposing
+the batch, so the applied mirror boundary does not advance; the source must be
+corrected before ingestion can resume. This is a leader-side admission change:
+already committed orders retain their interpretation during a rolling upgrade.
+Upgrade all possible mirror leaders to enforce the rejection consistently.
+
 After translation and CEL rewriting, the worker validates each order's metadata
 shape and size and the whole batch's metadata bytes against the destination's
 committed cluster policy before proposing it. FSM apply rechecks those limits
