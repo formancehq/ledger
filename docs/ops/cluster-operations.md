@@ -580,22 +580,26 @@ off-cluster backup instead. See
 
 **How it works:**
 
-1. `ForceRemoveNode` validates the required member identity, then directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
+1. `ForceRemoveNode` validates the required member identity and durably records it and the removal timestamp in a force-removal marker beside the WAL, then directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
 2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
 3. `Membership.UnregisterAndBlacklist` atomically deletes the peer row from Pebble and writes its removed-member tombstone, then drops the peer from the in-memory cache + transport + service pool in lockstep
-4. After the command succeeds, Raft processing resumes with the reduced quorum.
+4. Pebble's WAL is synced to make the tombstone durable, then the marker is durably removed. After the command succeeds, Raft processing resumes with the reduced quorum.
 
 The live etcd/raft tracker mutation in step 1 cannot be rolled back safely. If
-the WAL persistence in step 2 fails, the command returns an error and the node
+the WAL persistence in step 2, the Pebble batch in step 3, or the sync or marker cleanup in step 4 fails, the command returns an error and the node
 immediately enters a terminal state: it rejects new Raft commands and proposals,
-stops its Raft tasks, and terminates. The peer cleanup in step 3 is not attempted.
+stops its Raft tasks, and terminates. A WAL failure skips peer cleanup; a
+Pebble batch failure leaves the peer row for startup repair.
 Restart uses the membership in the latest durable snapshot. A failure before
 the atomic snapshot-file replacement restores the previous voter set; a later
 WAL-record failure can restart with the new voter set because the replacement
 file matches the snapshot's existing term/index. Both outcomes are safe because
 the failed process stops before executing more work. After restart, inspect the
 cluster state and retry only if the target is still present and the storage
-fault has been resolved.
+fault has been resolved. When durable ConfState excludes the peer, startup
+atomically deletes the marked peer row and writes its removed-member tombstone before
+serving joins. If this repair fails, startup fails. A retry is neither needed
+nor possible when the member is already absent.
 
 **When to use:**
 

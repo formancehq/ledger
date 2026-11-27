@@ -693,6 +693,12 @@ func NewNode(
 		}
 	}
 
+	// Force removal bypasses the Raft log. Its marker names the identity to
+	// repair if ConfState was persisted but the Pebble batch was not.
+	if err := recoverForceRemoveMarker(cfg.WalDir, initialConfState, membership); err != nil {
+		return nil, err
+	}
+
 	// EN-1413: drop any Pebble peer row whose NodeID is no longer in the
 	// durable ConfState. Covers two crash windows: an interrupted
 	// ForceRemoveNode (ConfState updated, Unregister not yet committed)
@@ -3839,6 +3845,10 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		if err := membership.ValidateInstanceID(instanceID); err != nil {
 			return fmt.Errorf("invariant: raft member %d has invalid identity: %w", nodeID, err)
 		}
+		removedAt := uint64(time.Now().UnixMicro())
+		if err := writeForceRemoveMarker(node.config.WalDir, nodeID, instanceID, removedAt); err != nil {
+			return fmt.Errorf("persisting force-remove marker: %w", err)
+		}
 
 		// Apply the ConfChange directly (bypasses consensus).
 		cc := &raftpb.ConfChangeV2{
@@ -3875,8 +3885,16 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		// row delete in a single Pebble batch.
 		node.proposalAdmissionMu.Lock()
 		defer node.proposalAdmissionMu.Unlock()
-		if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, uint64(time.Now().UnixMicro())); err != nil {
-			return fmt.Errorf("force-remove atomic batch: %w", err)
+		if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt); err != nil {
+			// ConfState is already durable and the removed identity has no
+			// tombstone. Stop admission until startup can repair the stale row.
+			return &terminalNodeError{cause: fmt.Errorf("force-remove atomic batch: %w", err)}
+		}
+		if err := node.membership.PeerStore().SyncWAL(); err != nil {
+			return &terminalNodeError{cause: fmt.Errorf("syncing force-remove tombstone: %w", err)}
+		}
+		if err := clearForceRemoveMarker(node.config.WalDir); err != nil {
+			return &terminalNodeError{cause: fmt.Errorf("clearing force-remove marker: %w", err)}
 		}
 
 		node.logger.WithFields(map[string]any{

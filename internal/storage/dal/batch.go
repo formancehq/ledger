@@ -137,6 +137,11 @@ func (b *WriteSession) Commit() error {
 	if err := b.checkActive(); err != nil {
 		return err
 	}
+	if b.store != nil && b.store.beforeBatchCommit != nil {
+		if err := b.store.beforeBatchCommit(); err != nil {
+			return fmt.Errorf("committing write session: %w", err)
+		}
+	}
 
 	if err := b.batch.Commit(pebble.NoSync); err != nil {
 		return fmt.Errorf("committing write session: %w", err)

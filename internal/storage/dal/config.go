@@ -43,6 +43,11 @@ type ValueSeparationConfig struct {
 type Config struct {
 	pebblecfg.Config `yaml:",inline"`
 
+	// BeforeBatchCommit is a test-only fault injection point at the batch boundary.
+	BeforeBatchCommit func() error `json:"-" yaml:"-"`
+	// BeforeWALSync is a test-only fault injection point at the durability barrier.
+	BeforeWALSync func() error `json:"-" yaml:"-"`
+
 	// WALBytesPerSync is the number of bytes written to the WAL before syncing.
 	// Default: 1MB (1 << 20)
 	WALBytesPerSync int `yaml:"walBytesPerSync"`

@@ -31,6 +31,20 @@ func (noopMemPool) RemovePeer(uint64) error      { return nil }
 // by Node-level tests that need a *membership.Membership to plug into
 // a Node struct (recovery / maintenance / confstate suites).
 func newTestMembership(t *testing.T, transports ...membership.Transport) *membership.Membership {
+	m, _, _ := newTestMembershipWithStore(t, transports...)
+
+	return m
+}
+
+func newTestMembershipWithStore(t *testing.T, transports ...membership.Transport) (*membership.Membership, *dal.Store, string) {
+	return newTestMembershipWithCommitFailure(t, nil, transports...)
+}
+
+func newTestMembershipWithCommitFailure(t *testing.T, beforeCommit func() error, transports ...membership.Transport) (*membership.Membership, *dal.Store, string) {
+	return newTestMembershipWithStoreFailures(t, beforeCommit, nil, transports...)
+}
+
+func newTestMembershipWithStoreFailures(t *testing.T, beforeCommit, beforeSync func() error, transports ...membership.Transport) (*membership.Membership, *dal.Store, string) {
 	t.Helper()
 	var peerTransport membership.Transport = noopMemTransport{}
 	if len(transports) > 0 {
@@ -41,7 +55,11 @@ func newTestMembership(t *testing.T, transports ...membership.Transport) *member
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	path := t.TempDir()
+	cfg := dal.DefaultConfig()
+	cfg.BeforeBatchCommit = beforeCommit
+	cfg.BeforeWALSync = beforeSync
+	store, err := dal.NewStore(path, logger, meter, cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -56,7 +74,7 @@ func newTestMembership(t *testing.T, transports ...membership.Transport) *member
 	require.NoError(t, err)
 	m.Start()
 
-	return m
+	return m, store, path
 }
 
 func TestRegisterInitialPeersPersistsInstanceIDs(t *testing.T) {
