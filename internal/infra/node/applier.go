@@ -1371,103 +1371,61 @@ func (a *Applier) runDecoder(ctx context.Context) {
 	}
 }
 
-// runCommitter is the dedicated goroutine that processes commits sequentially.
-// It reads from commitCh and commits each batch, resolving futures on success
-// or failure. Exits when commitCh is closed.
-//
-// stop is the Applier task's shutdown channel — closed by taskSet.stop() at
-// the same instant as orchestrate's stop. It's a second escape hatch on the
-// response-sink send: node.Stop closes the task stop channels but does NOT
-// cancel ctx (bootstrap keeps it live until Node.Run exits). A committer that
-// races into the sink send AFTER orchestrate stopped draining would sit
-// forever on ctx.Done alone (finding 70740916). Selecting on stop too
-// unblocks the send synchronously with orchestrate's exit.
+// runCommitter serializes prepared batches until commitCh closes. For each
+// batch it signals done after all completion effects, including during shutdown.
 func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 	for work := range a.commitCh {
-		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
-
-		// Fire MsgStorageApplyResp responses BEFORE resolving futures /
-		// failing older-term stragglers, and only on success. This is what
-		// bumps raft.Applied in lockstep with FSM-applied under
-		// AsyncStorageWrites. On commit failure we intentionally don't fire:
-		// raft.Applied stays behind, the committed entries will be re-emitted
-		// on the next boot (raft.Config.Applied re-reads from Pebble), and
-		// re-apply is idempotent via the applied-index guard.
-		//
-		// The fireResponses outcome is intentionally ignored: on ctx.Done or
-		// stop we drop the response and fall through — we MUST NOT return
-		// here, otherwise the trailing `work.done <- err` never fires and
-		// Applier.Run's deferred `waitPendingCommit` deadlocks on
-		// `<-a.pending.done` during shutdown (findings 34540caa / 9047f08a /
-		// 70740916).
-		if err == nil {
-			_ = a.fireResponses(ctx, stop, work.responses)
-		}
-
-		if err == nil {
-			// 1. Resolve futures owned by THIS batch. Ownership was taken
-			//    via extractBatchFutures in applyEntriesPipelined (which
-			//    uses LoadAndDelete), so the futures are no longer in the
-			//    map — no per-future Delete needed here.
-			//
-			// oldTermResolved counts futures tagged below this batch's max
-			// term that nevertheless resolve with their real apply result:
-			// the entry committed (possibly indirectly, under a newer
-			// leader) and per-commandID resolution won over the sweep — the
-			// resolve-before-sweep ordering this loop exists to preserve.
-			// The tag is the propose-time observed term (a lower bound), so
-			// the count can also include the benign lastObservedTerm-lag
-			// window; both variants exercise the same ordering.
-			oldTermResolved := 0
-
-			for _, pf := range work.futures {
-				if work.maxTerm > 0 && pf.term < work.maxTerm {
-					oldTermResolved++
-				}
-
-				pf.future.Resolve(pf.result, pf.result.Error)
-			}
-
-			// 2. Sweep stragglers from older terms (issue #172).
-			if work.maxTerm > 0 {
-				a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
-			}
-
-			// Runs on every committed batch: the condition is the signal —
-			// true only when a below-maxTerm future got its real result in
-			// the same batch that triggers a sweep.
-			if assert.Enabled {
-				assert.Sometimes(oldTermResolved > 0,
-					"old-term entry committed and resolved in same batch as a sweep",
-					map[string]any{
-						"maxTerm":         work.maxTerm,
-						"oldTermResolved": oldTermResolved,
-						"batchFutures":    len(work.futures),
-					})
-			}
-		} else {
-			// Fail fast: ownership was already taken via LoadAndDelete, so no
-			// other path (term sweep, dropped-proposal resolution) can ever
-			// reach these futures — leaving them unresolved would hang every
-			// client in the batch until its own deadline while the commit
-			// error sits unobserved in work.done until the next work item.
-			// The storage error maps to gRPC Unknown (ambiguous by contract):
-			// the entry is Raft-committed and will reapply on restart, so a
-			// client retry resolves through the idempotency/reference checks.
-			for _, pf := range work.futures {
-				pf.future.Resolve(state.ApplyResult{}, err)
-			}
-
-			// Sweep older-term stragglers here too: term-truncated entries
-			// never apply regardless of this batch's commit outcome, and the
-			// deferred fatal error may sit unobserved on a quiet node.
-			if work.maxTerm > 0 {
-				a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
-			}
-		}
-
-		work.done <- err
+		work.done <- a.commitAndCompleteBatch(ctx, stop, &work)
 	}
+}
+
+// commitAndCompleteBatch owns the transition from a prepared batch to its
+// completion result. A successful commit permits the Raft response handoff;
+// whether shutdown interrupts that handoff does not change the apply result.
+func (a *Applier) commitAndCompleteBatch(ctx context.Context, stop chan struct{}, work *commitWork) error {
+	commitErr := a.fsm.CommitPreparedBatch(ctx, work.prepared)
+
+	oldTermResolved := 0
+	if commitErr == nil {
+		// Attempt the handoff before resolving client futures. The task stop
+		// channel releases a blocked send even while runCtx is still live.
+		// Neither a stop nor a canceled context ends completion of this batch.
+		_ = a.fireResponses(ctx, stop, work.responses)
+
+		for _, pf := range work.futures {
+			// The propose-time term is a lower bound. A batch at a newer
+			// term can still commit this entry and deliver its actual result.
+			if work.maxTerm > 0 && pf.term < work.maxTerm {
+				oldTermResolved++
+			}
+			pf.future.Resolve(pf.result, pf.result.Error)
+		}
+	} else {
+		// An FSM commit error suppresses the Raft response and is ambiguous
+		// to the client: the entry was already committed in Raft, and the
+		// failure can occur after the Pebble write. Recovery uses the
+		// persisted applied index to decide which entries still need apply.
+		for _, pf := range work.futures {
+			pf.future.Resolve(state.ApplyResult{}, commitErr)
+		}
+	}
+
+	// The batch took ownership of its futures with LoadAndDelete. Resolve
+	// those first, then reject older-term proposals still in the shared map.
+	if work.maxTerm > 0 {
+		a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
+	}
+
+	if commitErr == nil && assert.Enabled {
+		assert.Sometimes(oldTermResolved > 0, "old-term entry committed and resolved in same batch as a sweep",
+			map[string]any{
+				"oldTermResolved": oldTermResolved,
+				"maxTerm":         work.maxTerm,
+				"batchFutures":    len(work.futures),
+			})
+	}
+
+	return commitErr
 }
 
 // applyEntriesPipelined prepares entries (CPU-bound) and starts the commit

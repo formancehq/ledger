@@ -17,5 +17,6 @@ The replication and ordering layer (`internal/infra/node`, `internal/infra/trans
 
 ## Related
 
+- [Apply batch completion](raft-consensus.md#apply-batch-completion) — commit, Raft acknowledgment handoff, client results, and draining pending work.
 - [FSM](../fsm/) — what every committed log entry feeds into.
 - [Storage](../storage/) — WAL, snapshots, and spool that back the Raft layer.

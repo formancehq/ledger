@@ -1,6 +1,8 @@
 package node
 
 import (
+	"context"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
@@ -315,6 +318,8 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 		// Unbuffered sink + zero consumer: any send blocks immediately.
 		sink := make(LocalResponses)
 		setup := newTestApplierSetupWithSink(t, sink)
+		stop := sync.OnceFunc(func() { close(setup.stop) })
+		defer stop()
 
 		// Deliberately non-cancellable ctx: mimics the real shutdown flow where
 		// node.Stop closes the stop channels without touching the runCtx.
@@ -323,7 +328,9 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 		runDone := make(chan error, 1)
 		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-		entry, _ := makeCreateLedgerEntry(t, 1, "async-full-sink")
+		entry, proposalID := makeCreateLedgerEntry(t, 1, "async-full-sink")
+		future := futures.New[state.ApplyResult]()
+		setup.applier.StoreFuture(proposalID, entry.GetTerm(), future)
 		resp := makeApplyResp(1, entry.GetIndex())
 		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
@@ -334,6 +341,14 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 		synctest.Wait()
 		require.True(t, listLedgerContains(setup.store, "async-full-sink"),
 			"entry should commit before the response send blocks")
+		require.Equal(t, entry.GetIndex(), setup.fsm.LastPersistedIndex())
+
+		// An already-canceled wait still returns a real result if the future
+		// has resolved. While the handoff blocks, the future must be pending.
+		probeCtx, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, err := future.Wait(probeCtx)
+		require.ErrorIs(t, err, context.Canceled)
 		select {
 		case err := <-runDone:
 			t.Fatalf("Run returned before shutdown while response sink is blocked: %v", err)
@@ -343,7 +358,7 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 		// Signal shutdown to Applier.Run without cancelling ctx. runCommitter
 		// must observe <-stop on the response-sink select, fall through to
 		// work.done, and let waitPendingCommit unblock.
-		close(setup.stop)
+		stop()
 		synctest.Wait()
 
 		select {
@@ -352,6 +367,13 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 		default:
 			t.Fatal("Applier.Run did not return after stop close (ctx still live) — deadlock regression on finding 70740916")
 		}
+
+		// Stop abandons the handoff, not the completion of the committed work.
+		result, err := future.Wait(probeCtx)
+		require.NoError(t, err)
+		require.Equal(t, proposalID, result.ProposalID)
+		require.Equal(t, entry.GetIndex(), result.AppliedIndex)
+		require.NotEmpty(t, result.Logs)
 	})
 }
 

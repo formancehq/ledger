@@ -274,7 +274,7 @@ cancelled. Leadership loss separately wakes existing waiters with
 
 1. **WAL ↔ FSM overlap**: WAL write of Ready N+1 overlaps with FSM application of Ready N, reducing each Raft cycle from `WAL_time + FSM_time` to `max(WAL_time, FSM_time)`.
 
-2. **Prepare ↔ Commit pipeline**: Within the FSM, batch processing is split into `PrepareEntries()` (CPU-bound: unmarshal, execute business logic, merge WriteSet, build Pebble batch) and `CommitPreparedBatch()` (I/O-bound: `batch.Commit()` to Pebble). A dedicated committer goroutine (`runCommitter`) reads from a buffered(1) `commitCh` channel, so batch N's commit runs concurrently with batch N+1's prepare. Futures are resolved by the committer immediately after commit completes.
+2. **Prepare ↔ Commit pipeline**: Within the FSM, batch processing is split into `PrepareEntries()` (CPU-bound: unmarshal, execute business logic, merge WriteSet, build Pebble batch) and `CommitPreparedBatch()` (I/O-bound: `batch.Commit()` to Pebble). A dedicated committer goroutine (`runCommitter`) reads from a buffered(1) `commitCh` channel, so batch N's commit runs concurrently with batch N+1's prepare. The committer also owns the ordered completion of each batch.
 
 ```go
 type Applier struct {
@@ -299,6 +299,23 @@ The Applier provides three key methods:
 - **`Run(ctx, stop)`**: The goroutine loop that processes work items, orchestrates the prepare/commit pipeline, and handles gating termination
 
 Drain points ensure the pending commit completes before barriers, checkpoints, status transitions, and shutdown. Replay paths (WAL replay, spool replay) use the synchronous `applyEntriesAndResolveCommands()` which does not pipeline, since they are off the hot path.
+
+##### Apply batch completion
+
+The normal pipeline distinguishes a prepared batch, an FSM commit result,
+and completion of the batch's notifications. These are local transitions;
+they add no state to the Raft log or Pebble schema.
+
+| Transition | What the committer does |
+|---|---|
+| FSM commit succeeds | The FSM commits the Pebble batch, runs post-commit checks, and publishes the persisted index before returning success. The committer then tries to hand any `MsgStorageApplyResp` messages to the response sink. Raft advances its own applied cursor when the orchestrator steps those messages. |
+| Handoff finishes or is interrupted by shutdown | Resolve futures owned by this batch with their individual apply results, even if shutdown prevented the handoff. A committed business rejection keeps its own error. |
+| FSM commit returns an error | Skip the response handoff and resolve this batch's futures with that error. An error can also come from a check after the Pebble write, so the absence of an acknowledgment does not establish that nothing was written. On restart, recovery uses the persisted applied index to determine the suffix to replay. |
+| Futures owned by this batch are resolved | Fail any remaining futures from older terms, then signal batch completion so waits at drain and checkpoint boundaries can finish. |
+
+Checkpoint-triggering results that wait for a physical checkpoint stay
+outside the committer's batch-owned futures. Spooling and synchronous replay
+retain their own completion paths.
 
 #### Storage
 

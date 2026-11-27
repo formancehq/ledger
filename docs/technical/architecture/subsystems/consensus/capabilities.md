@@ -201,6 +201,12 @@ mandatory stopped `rc.4` to `rc.5` upgrade, which stops every RC.4 voter first.
 An order without a description, including every historical order, applies and
 replays exactly as before. No capability ID is needed.
 
+The [apply batch completion refactor](raft-consensus.md#apply-batch-completion)
+only names and groups the committer's existing local effects. It preserves
+the FSM call, acknowledgment and client-result order, and the persisted index
+used for replay. Mixed-version voters still apply the same entries identically.
+No capability ID, migration, wire revision, or stopped upgrade is needed.
+
 ## Rollout and recovery
 
 Deploy the barrier-aware binary to every member, stop the cluster, and restart
