@@ -32,6 +32,19 @@ func validateOrderSinkConfig(order *raftcmdpb.Order) domain.Describable {
 			return ErrSinkClickHouseURLInvalid
 		}
 	}
+	if grpcLog := cfg.GetGrpcLog(); grpcLog != nil {
+		if err := domain.ValidateLedgerName(grpcLog.GetLedger()); err != nil {
+			return err
+		}
+		owner := grpcLog.GetOwner()
+		if owner == nil || owner.GetSource() == nil ||
+			(owner.GetIssuer() == "" && owner.GetKeyId() == "") ||
+			(owner.GetIssuer() != "" && owner.GetSubject() == "") ||
+			grpcLog.GetClientId() == "" || len(grpcLog.GetClientId()) > 128 || grpcLog.GetIncarnation() != 0 || grpcLog.GetLedgerId() != 0 ||
+			cfg.GetFormat() != "" || cfg.GetBatchSize() != 0 || cfg.GetBatchDelayMs() != 0 || len(cfg.GetEventTypes()) != 0 {
+			return ErrGrpcLogSinkConfigInvalid
+		}
+	}
 
 	return nil
 }

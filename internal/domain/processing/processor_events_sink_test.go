@@ -57,6 +57,34 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	require.Equal(t, "cr-uid-1", addedLog.GetConfig().GetControllerId())
 }
 
+func TestProcessAddGrpcLogSinkBindsLedgerWithoutMutatingOrder(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	store := NewMockScope(ctrl)
+	store.EXPECT().GetSinkConfig("log-sink").Return(nil, nil)
+	ledgers := setupLedgersStub(store)
+	ledgers.onGet(func(key domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
+		require.Equal(t, "ledger", key.Name)
+
+		return (&commonpb.LedgerInfo{Id: 77, Name: "ledger"}).AsReader(), nil
+	})
+	config := &commonpb.SinkConfig{Name: "log-sink", Type: &commonpb.SinkConfig_GrpcLog{GrpcLog: &commonpb.GrpcLogSinkConfig{
+		Ledger: "ledger", ClientId: "client", Owner: &commonpb.CallerIdentity{
+			Subject: "sink-owner", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+		},
+	}}}
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &raftcmdpb.AddEventsSinkOrder{Config: config}},
+	}}}
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+	payload, failure := processor.ProcessOrder(order, store)
+	require.Nil(t, failure)
+	require.Equal(t, uint32(77), payload.GetAddedEventsSink().GetConfig().GetGrpcLog().GetLedgerId())
+	require.Equal(t, config.GetGrpcLog().GetOwner(), payload.GetAddedEventsSink().GetConfig().GetGrpcLog().GetOwner())
+	require.Zero(t, config.GetGrpcLog().GetLedgerId(), "the signed order must remain immutable")
+}
+
 func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
 	t.Parallel()
 

@@ -2346,3 +2346,85 @@ func (x *BarrierResponse) MarshalJSON() ([]byte, error) {
 		CommitIndex: x.CommitIndex,
 	})
 }
+
+func (x *SubscribeLedgerLogsRequest) MarshalJSON() ([]byte, error) {
+	switch oneofValueKind := x.Kind.(type) {
+	case *SubscribeLedgerLogsRequest_Open:
+		return jsonv2.Marshal(struct {
+			Open any `json:"open"`
+		}{
+			Open: oneofValueKind.Open,
+		})
+	case *SubscribeLedgerLogsRequest_Ack:
+		return jsonv2.Marshal(struct {
+			Ack any `json:"ack"`
+		}{
+			Ack: oneofValueKind.Ack,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *OpenLedgerLogSink) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		SinkName string `json:"sinkName"`
+		ClientId string `json:"clientId"`
+	}{
+		SinkName: x.SinkName,
+		ClientId: x.ClientId,
+	})
+}
+
+func (x *AcknowledgeLedgerLog) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		LogId uint64 `json:"logId"`
+	}{
+		LogId: x.LogId,
+	})
+}
+
+func (x *SubscribeLedgerLogsResponse) MarshalJSON() ([]byte, error) {
+	switch oneofValueKind := x.Kind.(type) {
+	case *SubscribeLedgerLogsResponse_Opened:
+		return jsonv2.Marshal(struct {
+			Opened any `json:"opened"`
+		}{
+			Opened: oneofValueKind.Opened,
+		})
+	case *SubscribeLedgerLogsResponse_Log:
+		return jsonv2.Marshal(struct {
+			Log any `json:"log"`
+		}{
+			Log: oneofValueKind.Log,
+		})
+	case *SubscribeLedgerLogsResponse_Acked:
+		return jsonv2.Marshal(struct {
+			Acked any `json:"acked"`
+		}{
+			Acked: oneofValueKind.Acked,
+		})
+	default:
+		return jsonv2.Marshal(struct {
+		}{})
+	}
+}
+
+func (x *OpenedLedgerLogSink) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		AcknowledgedLogId uint64 `json:"acknowledgedLogId"`
+		ClusterId         string `json:"clusterId"`
+	}{
+		AcknowledgedLogId: x.AcknowledgedLogId,
+		ClusterId:         x.ClusterId,
+	})
+}
+
+func (x *AcknowledgedLedgerLog) MarshalJSON() ([]byte, error) {
+	return jsonv2.Marshal(struct {
+		LogId uint64 `json:"logId"`
+	}{
+		LogId: x.LogId,
+	})
+}

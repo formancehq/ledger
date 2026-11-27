@@ -695,6 +695,7 @@ message SinkConfig {
     KafkaSinkConfig kafka = 4;
     HttpSinkConfig http = 5;
     DatabricksSinkConfig databricks = 6;
+    GrpcLogSinkConfig grpc_log = 12;
   }
   string format = 7;          // "json" or "protobuf" (default: "json")
   int32 batch_size = 8;       // Max events per batch (default: 64)
@@ -2910,4 +2911,18 @@ message CapabilityActivation {
 // no transaction ID, postings, or TransactionState are created.
 message AccountMetadataUpdated {
   map<string, MetadataMap> account_metadata = 1;
+}
+
+// GrpcLogSinkConfig binds an acknowledged inbound stream to one ledger and
+// client identity. owner is the authenticated principal allowed to connect.
+// incarnation is assigned from the AddEventsSink log sequence
+// in the stored projection. ledger_id is resolved at creation. Clients must
+// leave both technical fields zero when registering.
+message GrpcLogSinkConfig {
+  option (ledger_json) = true;
+  string ledger = 1;
+  string client_id = 2;
+  fixed64 incarnation = 3;
+  fixed32 ledger_id = 4;
+  CallerIdentity owner = 5;
 }

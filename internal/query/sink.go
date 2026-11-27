@@ -1,12 +1,62 @@
 package query
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
+
+	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// GrpcLogSinkCursorKey is a versioned, incarnation-scoped operational cursor.
+// The incarnation is the globally unique sequence of the creation log.
+func GrpcLogSinkCursorKey(incarnation uint64) []byte {
+	key := make([]byte, 10)
+	key[0], key[1] = dal.ZoneGlobal, dal.SubGlobGrpcLogSinkCursor
+	binary.BigEndian.PutUint64(key[2:], incarnation)
+
+	return key
+}
+
+func ReadGrpcLogSinkCursor(reader dal.PebbleGetter, incarnation uint64) (uint64, error) {
+	if incarnation == 0 {
+		return 0, errors.New("reading gRPC log sink cursor: zero incarnation")
+	}
+
+	return dal.ReadUint64(reader, GrpcLogSinkCursorKey(incarnation), 0)
+}
+
+// ReadAllGrpcLogSinkCursors restores the apply-time monotonic cursor map.
+func ReadAllGrpcLogSinkCursors(reader dal.PebbleReader) (map[uint64]uint64, error) {
+	lo := []byte{dal.ZoneGlobal, dal.SubGlobGrpcLogSinkCursor}
+	hi := []byte{dal.ZoneGlobal, dal.SubGlobGrpcLogSinkCursor + 1}
+	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lo, UpperBound: hi})
+	if err != nil {
+		return nil, fmt.Errorf("scanning gRPC log sink cursors: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+	cursors := make(map[uint64]uint64)
+	for iter.First(); iter.Valid(); iter.Next() {
+		key, value := iter.Key(), iter.Value()
+		if len(key) != 10 || len(value) != 8 {
+			return nil, errors.New("invalid gRPC log sink cursor row")
+		}
+		incarnation := binary.BigEndian.Uint64(key[2:])
+		if incarnation == 0 {
+			return nil, errors.New("zero gRPC log sink incarnation")
+		}
+		cursors[incarnation] = binary.BigEndian.Uint64(value)
+	}
+	if err := iter.Error(); err != nil {
+		return nil, fmt.Errorf("scanning gRPC log sink cursors: %w", err)
+	}
+
+	return cursors, nil
+}
 
 // ReadSinkCursor returns the last successfully emitted log sequence for a named sink from the given reader.
 // Returns 0 if no cursor has been persisted yet.

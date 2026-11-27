@@ -1625,3 +1625,47 @@ func (c *MockBucketServiceClientListTransactionsCall) DoAndReturn(f func(context
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// SubscribeLedgerLogs mocks base method.
+func (m *MockBucketServiceClient) SubscribeLedgerLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[servicepb.SubscribeLedgerLogsRequest, servicepb.SubscribeLedgerLogsResponse], error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "SubscribeLedgerLogs", varargs...)
+	ret0, _ := ret[0].(grpc.BidiStreamingClient[servicepb.SubscribeLedgerLogsRequest, servicepb.SubscribeLedgerLogsResponse])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SubscribeLedgerLogs indicates an expected call of SubscribeLedgerLogs.
+func (mr *MockBucketServiceClientMockRecorder) SubscribeLedgerLogs(ctx any, opts ...any) *MockBucketServiceClientSubscribeLedgerLogsCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeLedgerLogs", reflect.TypeOf((*MockBucketServiceClient)(nil).SubscribeLedgerLogs), varargs...)
+	return &MockBucketServiceClientSubscribeLedgerLogsCall{Call: call}
+}
+
+// MockBucketServiceClientSubscribeLedgerLogsCall wrap *gomock.Call
+type MockBucketServiceClientSubscribeLedgerLogsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientSubscribeLedgerLogsCall) Return(arg0 grpc.BidiStreamingClient[servicepb.SubscribeLedgerLogsRequest, servicepb.SubscribeLedgerLogsResponse], arg1 error) *MockBucketServiceClientSubscribeLedgerLogsCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientSubscribeLedgerLogsCall) Do(f func(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[servicepb.SubscribeLedgerLogsRequest, servicepb.SubscribeLedgerLogsResponse], error)) *MockBucketServiceClientSubscribeLedgerLogsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientSubscribeLedgerLogsCall) DoAndReturn(f func(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[servicepb.SubscribeLedgerLogsRequest, servicepb.SubscribeLedgerLogsResponse], error)) *MockBucketServiceClientSubscribeLedgerLogsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}

@@ -112,6 +112,16 @@ separate from the backup artifact exception above.
 
 ### Configuration and capability state
 
+The acknowledged gRPC ledger-log sink introduces capability ID 1. Before
+registering this sink type or accepting its acknowledgements, use the operator
+stopped-restart procedure for the adjacent RC carrying the feature: drain and
+stop every voter and learner, retain the main-store and Raft volumes, upgrade
+all members, restart, and wait for committed support evidence from every
+member. A cluster with an older learner must not activate the capability.
+Preserve a non-empty source history through the restart and verify replay and
+cursor resume before admitting client traffic. No mixed-version rolling
+activation is supported for this feature.
+
 RC.4 to RC.5 preserves ClusterPolicy at its original key and extracts only
 capability state into a separate record. Use the operator-required stopped restart:
 stop all RC.4 voters and learners before starting RC.5 on the retained volumes.

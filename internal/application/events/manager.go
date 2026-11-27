@@ -229,6 +229,11 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 	// Build desired state as a map keyed by sink name
 	desired := make(map[string]*commonpb.SinkConfig, len(sinkCfgs))
 	for _, sc := range sinkCfgs {
+		if sc.GetGrpcLog() != nil {
+			// Inbound subscriptions own their streams; the outbound manager
+			// must not create an emitter or advance its global-sequence cursor.
+			continue
+		}
 		if sc.GetName() == "" {
 			m.logger.Errorf("Sink config has empty name, skipping")
 

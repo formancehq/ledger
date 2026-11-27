@@ -7,6 +7,18 @@ useful because optional sinks have different completion and representation
 contracts that the existing lifecycle and retry domains do not inventory.
 It adds scope to the native workflow, not a runner, schema or product guarantee.
 
+The acknowledged gRPC log sink is an inbound exception to the outbound
+`Sink.Publish` pipeline. Trace its committed `ListLogs` source, stream send,
+client ack, Raft technical update and applied incarnation-scoped cursor
+separately. `common.Log.sequence` is global while
+`payload.apply.log.id` is ledger-local; only the latter drives this sink's
+cursor. An `Acked` response proves the cursor update applied, but a lost
+response permits redelivery. A send without ack proves no cursor progress.
+Same-name sink recreation and same-name ledger recreation are distinct fences:
+the former uses the creation-log sequence, the latter the ledger ID recorded
+when the sink was created. A periodic rescan is a wakeup mechanism, not a
+promise of exactly-once delivery or a total cross-ledger order.
+
 ## Evidence contract
 
 A committed `AccountMetadataUpdated` ledger log maps to

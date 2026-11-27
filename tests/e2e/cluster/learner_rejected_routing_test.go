@@ -74,6 +74,7 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 				_, err := bootstrapClient.JoinAsLearner(bootstrapCtx, &clusterbootstrappb.JoinAsLearnerRequest{
 					NodeId: targetID, RaftAddress: originalPeer.GetRaftAddress(),
 					ServiceAddress: originalPeer.GetServiceAddress(), InstanceId: make([]byte, length),
+					Capabilities: currentLearnerCapabilities(),
 				})
 				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 				Expect(err.Error()).To(ContainSubstring("instance_id must be 16 bytes"))
@@ -91,12 +92,14 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 			_, err = leader.ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId: targetID, RaftAddress: deadRaftAddress,
 				ServiceAddress: deadServiceAddress, InstanceId: newIdentity,
+				Capabilities: currentLearnerCapabilities(),
 			})
 		} else {
 			By("rejecting boot JoinAsLearner with the same stale replication progress")
 			_, err = bootstrapClient.JoinAsLearner(bootstrapCtx, &clusterbootstrappb.JoinAsLearnerRequest{
 				NodeId: targetID, RaftAddress: deadRaftAddress,
 				ServiceAddress: deadServiceAddress, InstanceId: newIdentity,
+				Capabilities: currentLearnerCapabilities(),
 			})
 		}
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))

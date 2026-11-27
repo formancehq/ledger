@@ -81,10 +81,16 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+Capability ID 1 (`GrpcAcknowledgedLogSink`) gates the persisted
+`SinkConfig.grpc_log` arm and `TechnicalUpdate.grpc_log_sink_ack`. The final
+proposal shape derives this requirement for either a subscription creation
+order or an acknowledgement update. Old orders without that arm retain their
+historical semantics; new-binary replay derives the same ledger ID and sink
+incarnation from the creation log. The acknowledgement update is a new
+deterministic apply kind and carries its own incarnation fence. No old binary
+may be asked to apply it. Activation waits for committed evidence from all
+current voters and learners after a coordinated stopped upgrade with retained
+state. This feature does not add a mixed-version rolling activation path.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.

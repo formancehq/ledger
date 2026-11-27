@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -24,11 +25,13 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -61,23 +64,28 @@ const (
 type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
 
-	logger                logging.Logger
-	ctrl                  ctrl.Controller
-	localCtrl             *ctrl.DefaultController
-	store                 *dal.Store
-	readStore             *readstore.Store
-	attrs                 *attributes.Attributes
-	sharedState           *state.SharedState
-	responseSigner        *signing.ResponseSigner
-	queryProfileThreshold time.Duration
-	clusterID             string
-	info                  version.Info
-	applyDuration         metric.Float64Histogram
-	forwarder             nodeForwarder
-	checkpointStores      checkpointStoreCache
+	logger                  logging.Logger
+	ctrl                    ctrl.Controller
+	localCtrl               *ctrl.DefaultController
+	store                   *dal.Store
+	readStore               *readstore.Store
+	attrs                   *attributes.Attributes
+	sharedState             *state.SharedState
+	responseSigner          *signing.ResponseSigner
+	queryProfileThreshold   time.Duration
+	clusterID               string
+	info                    version.Info
+	applyDuration           metric.Float64Histogram
+	forwarder               nodeForwarder
+	checkpointStores        checkpointStoreCache
+	logSinkAcker            *events.GrpcLogSinkAcker
+	logSinkMu               sync.Mutex
+	activeLogSinks          map[string]string
+	activeLogSinkPrincipals map[string]int
+	pendingLogSinkOpens     int
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info, logSinkBuilder ...*plan.Builder) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Float64Histogram("grpc.apply.duration",
 		metric.WithUnit("s"),
@@ -87,21 +95,28 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		),
 	)
 
-	return &BucketServiceServerImpl{
-		logger:                logger,
-		ctrl:                  c,
-		localCtrl:             localCtrl,
-		store:                 s,
-		readStore:             rs,
-		attrs:                 attrs,
-		sharedState:           sharedState,
-		responseSigner:        responseSigner,
-		queryProfileThreshold: queryProfileThreshold,
-		clusterID:             clusterID,
-		info:                  info,
-		applyDuration:         applyDuration,
-		forwarder:             nodeForwarder{node: n, servicePool: servicePool},
+	impl := &BucketServiceServerImpl{
+		logger:                  logger,
+		ctrl:                    c,
+		localCtrl:               localCtrl,
+		store:                   s,
+		readStore:               rs,
+		attrs:                   attrs,
+		sharedState:             sharedState,
+		responseSigner:          responseSigner,
+		queryProfileThreshold:   queryProfileThreshold,
+		clusterID:               clusterID,
+		info:                    info,
+		applyDuration:           applyDuration,
+		forwarder:               nodeForwarder{node: n, servicePool: servicePool},
+		activeLogSinks:          make(map[string]string),
+		activeLogSinkPrincipals: make(map[string]int),
 	}
+	if len(logSinkBuilder) > 0 {
+		impl.logSinkAcker = events.NewGrpcLogSinkAcker(logSinkBuilder[0], n)
+	}
+
+	return impl
 }
 
 func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (resp *servicepb.ApplyResponse, err error) {
@@ -907,7 +922,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	// which would publish a bogus key "0" and trap the client in an infinite
 	// resume loop. Return an empty key in that case so no link is published
 	// through that log.
-	return sendPagedToStream(ctx, cur, stream, "log", pageSize, page, func(l *commonpb.Log) string {
+	return sendPagedToStream(ctx, cur, limitedListLogsStream{stream}, "log", pageSize, page, func(l *commonpb.Log) string {
 		apply := l.GetPayload().GetApply()
 		if apply == nil {
 			return ""
@@ -915,6 +930,20 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 
 		return strconv.FormatUint(apply.GetLog().GetId(), 10)
 	})
+}
+
+// ListLogs retains its pre-stream 64 MiB message ceiling even though the
+// service transport now reserves a few bytes for SubscribeLedgerLogs' wrapper.
+type limitedListLogsStream struct {
+	servicepb.BucketService_ListLogsServer
+}
+
+func (s limitedListLogsStream) Send(log *commonpb.Log) error {
+	if log.SizeVT() > 64<<20 {
+		return status.Error(codes.ResourceExhausted, "log exceeds ListLogs message limit")
+	}
+
+	return s.BucketService_ListLogsServer.Send(log)
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {

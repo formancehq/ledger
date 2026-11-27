@@ -4934,6 +4934,37 @@ components:
         secret:
           type: string
       type: object
+    AtomicApplyGrpcLogSinkConfig:
+      additionalProperties: false
+      properties:
+        ledger:
+          type: string
+        clientId:
+          type: string
+        incarnation:
+          anyOf:
+            - pattern: '^[0-9]+$'
+              type: string
+            - format: uint64
+              type: integer
+          description: Server-assigned; omit when registering.
+        ledgerId:
+          format: uint32
+          type: integer
+          description: Server-assigned; omit when registering.
+        owner:
+          $ref: '#/components/schemas/AtomicApplyCallerIdentity'
+      type: object
+    AtomicApplyCallerIdentity:
+      additionalProperties: false
+      properties:
+        subject:
+          type: string
+        issuer:
+          type: string
+        keyId:
+          type: string
+      type: object
     AtomicApplyIndexID:
       additionalProperties: false
       allOf:
@@ -6018,6 +6049,8 @@ components:
                 - http
             - required:
                 - databricks
+            - required:
+                - grpcLog
             - additionalProperties: false
               properties:
                 batchDelayMs:
@@ -6090,6 +6123,8 @@ components:
           type: array
         format:
           type: string
+        grpcLog:
+          $ref: '#/components/schemas/AtomicApplyGrpcLogSinkConfig'
         http:
           $ref: '#/components/schemas/AtomicApplyHttpSinkConfig'
         kafka:
@@ -6298,6 +6333,7 @@ components:
         - required: [kafka]
         - required: [http]
         - required: [databricks]
+        - required: [grpcLog]
       properties:
         name:
           type: string
@@ -6313,6 +6349,8 @@ components:
           $ref: '#/components/schemas/HttpSinkConfig'
         databricks:
           $ref: '#/components/schemas/DatabricksSinkConfig'
+        grpcLog:
+          $ref: '#/components/schemas/GrpcLogSinkConfig'
         format:
           type: string
           description: Event encoding, json or protobuf; defaults to json. Not validated at admission.
@@ -6419,6 +6457,46 @@ components:
         secret:
           type: string
           description: Optional HMAC-SHA256 secret for the X-Webhook-Signature header
+
+    GrpcLogSinkConfig:
+      type: object
+      additionalProperties: false
+      description: Inbound acknowledged log stream for one ledger and authenticated owner.
+      required: [ledger, clientId, owner]
+      properties:
+        ledger:
+          type: string
+        clientId:
+          type: string
+        incarnation:
+          description: Server-assigned; omit when registering.
+          oneOf:
+            - type: string
+              pattern: '^[0-9]+$'
+            - type: integer
+              format: uint64
+        ledgerId:
+          type: integer
+          format: uint32
+          description: Server-assigned; omit when registering.
+        owner:
+          $ref: '#/components/schemas/GrpcLogSinkOwner'
+
+    GrpcLogSinkOwner:
+      type: object
+      additionalProperties: false
+      description: Exactly one of issuer or keyId identifies the credential source.
+      required: [subject]
+      oneOf:
+        - required: [issuer]
+        - required: [keyId]
+      properties:
+        subject:
+          type: string
+        issuer:
+          type: string
+        keyId:
+          type: string
 
     DatabricksSinkConfig:
       type: object

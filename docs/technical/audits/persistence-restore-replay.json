@@ -8,6 +8,8 @@
     "internal/application/backup/**",
     "internal/infra/attributes/**",
     "internal/infra/state/**",
+    "internal/query/sink.go",
+    "internal/application/events/grpc_log_sink_ack.go",
     "internal/domain/processing/**",
     "internal/domain/replay/**",
     "internal/infra/preload/**",
@@ -41,6 +43,7 @@
     "docs/technical/architecture/subsystems/storage/README.md",
     "docs/technical/architecture/subsystems/backup/README.md",
     "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
+    "docs/technical/architecture/subsystems/events-mirror/events.md",
     "docs/technical/architecture/subsystems/checker/README.md",
     "docs/ops/backup-restore.md",
     "docs/technical/contributing/testing.md",
@@ -50,6 +53,7 @@
     "docs/technical/architecture/subsystems/consensus/proposal-payloads.md"
   ],
   "invariants": [
+    "A confirmed GrpcLogSinkAck is operational progress stored by creation incarnation alongside the audited sink configuration and ledger history. Restart and flushed checkpoint restore must recover that cursor without regressing or attaching it to a same-name replacement sink or ledger; an ack after the first checkpoint must be present in the second checkpoint. Source cluster identity changes on cross-cluster restore and must remain visible to the client.",
     "A prepared-query update that changes target must persist both target and filter before the next checkpoint; historical filter-only updates, deletion, and recreation must survive the latest checkpoint without resurrecting an old definition.",
     "Post-checkpoint audited projections and durable admission dependencies must retain parity, including balances and volumes, transactions and references, ledger info/account types/default enforcement, the monotonic ledger-ID allocator, boundaries and mirror progress, signing keys/config and cascaded revocation, cluster policy, maintenance mode, sink configuration, query-checkpoint state/counters/schedule, index registry, numscripts, reversion state, and frozen idempotency outcomes where present at this SHA. The audit must inventory current producers rather than treating this list as exhaustive or promising retention beyond documented lifecycle rules.",
     "Restore preparation must preserve the captured applied-index genesis boundary while removing or marking source-cluster-local state according to contract: persisted node/cluster identity, peers, transient backup jobs, cache and bloom state, and query-checkpoint provenance must not leak stale authority into the restored cluster. Restored business records may retain source provenance, but destination progress certificates must bind to the restored cluster's captured boundary.",
@@ -64,6 +68,7 @@
     "Restore rejects legacy manifests containing exports or a separate cluster-policy override before activating staging. Offline bootstrap and gRPC restore use the same checkpoint-only contract. This is the maintainer-approved PR #2600 RC artifact exception; rejection is not evidence that the old artifact remains recoverable after source loss."
   ],
   "adversarial_questions": [
+    "After a first checkpoint, can a committed gRPC log-sink ack be absent from the second restored checkpoint, or can the restored sink bind its old cursor to a recreated ledger or sink name? Does recovering the in-memory monotonic map from cursor rows agree with the durable value before the next ack?",
     "Can a successful audited order write no ledger log, share old logs through idempotency, or emit multiple logs, and does the next checkpoint include the resulting durable state and audit evidence coherently?",
     "Can source-cluster applied indexes in restored query-checkpoint or business rows be mistaken for destination progress, especially when the new Raft domain numerically overtakes them? Are restored markers, genesis boundary, publication and later deletion handled atomically enough to avoid an intermediate certificate?",
     "Does a newly added durable cluster-local key inherit the whole-zone delete, or can it leak source identity or authority into the destination? Does a captured failed or successful business proposal leave the destination HLC behind the restored audit head?",
@@ -74,6 +79,7 @@
     "Can either restore entry point accept a legacy export manifest or activate a partial second checkpoint?"
   ],
   "dynamic_checks_to_consider": [
+    "Create a configured gRPC sink with nonempty ledger history, take a checkpoint, ack a later delivered log, take a second checkpoint at the same destination, and restore only that second checkpoint through a production entry point. Verify Opened returns the acked ledger-local ID, later logs are delivered, the source cluster ID is distinct, and CheckStore succeeds. A same-process Recovery test is only a narrow control.",
     "Exercise DeleteLedger after the checkpoint against a ledger with balances, metadata, transactions/references, indexes and registry rows, numscripts, reversions, mirror/boundary state and other current ledger-scoped projections. Compare complete logical keysets with uninterrupted execution and verify no checkpoint-era child survives; include a matched live ledger to detect over-broad range deletion.",
     "Exercise post-checkpoint signing registration and cascaded revocation, policy and maintenance transitions, prepared-query target/filter updates followed by deletion or recreation, query-checkpoint create/delete/counter progress and schedule set/delete/recreate ordering, index create/drop/retype, ledger promote, account-type changes, idempotent success/failure reuse and reversion. Assert values and future gate decisions rather than row counts alone.",
     "Run applicable existing focused suites, such as go test ./internal/infra/backup/... and the repository-managed restore E2E/model targets only when their documented infrastructure is available. Race or Antithesis runs provide evidence only for reached assertions; use deterministic barriers and never time.Sleep. If a new reproducer would require tracked edits, leave a precise plan for a separately authorized engineering task.",

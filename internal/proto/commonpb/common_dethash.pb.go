@@ -5086,3 +5086,14 @@ func (m *AccountMetadataUpdated) MarshalToSizedBufferDeterministicVT(dAtA []byte
 	}
 	return len(dAtA) - i, nil
 }
+
+func (m *GrpcLogSinkConfig) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}

@@ -93,6 +93,10 @@ service BucketService {
   rpc ListLogs(ListLogsRequest) returns (stream common.Log) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
   }
+  // SubscribeLedgerLogs delivers committed logs for one configured ledger sink.
+  rpc SubscribeLedgerLogs(stream SubscribeLedgerLogsRequest) returns (stream SubscribeLedgerLogsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // GetLog returns a single system log by sequence number
   rpc GetLog(GetLogRequest) returns (common.Log) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
@@ -1637,4 +1641,38 @@ message BarrierResponse {
   // if two barriers return the same commit_index, no proposals were committed
   // between them.
   fixed64 commit_index = 1;
+}
+
+// A configured, acknowledged inbound ledger-log stream.
+message SubscribeLedgerLogsRequest {
+  oneof kind {
+    OpenLedgerLogSink open = 1;
+    AcknowledgeLedgerLog ack = 2;
+  }
+}
+
+message OpenLedgerLogSink {
+  string sink_name = 1;
+  string client_id = 2;
+}
+
+message AcknowledgeLedgerLog {
+  fixed64 log_id = 1;
+}
+
+message SubscribeLedgerLogsResponse {
+  oneof kind {
+    OpenedLedgerLogSink opened = 1;
+    common.Log log = 2;
+    AcknowledgedLedgerLog acked = 3;
+  }
+}
+
+message OpenedLedgerLogSink {
+  fixed64 acknowledged_log_id = 1;
+  string cluster_id = 2;
+}
+
+message AcknowledgedLedgerLog {
+  fixed64 log_id = 1;
 }

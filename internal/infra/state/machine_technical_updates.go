@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -105,6 +107,10 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 			if err := fsm.applyEventsSinkUpdate(batch, kind.EventsSink); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] events sink update: %w", i, err)
 			}
+		case *raftcmdpb.TechnicalUpdate_GrpcLogSinkAck:
+			if err := fsm.applyGrpcLogSinkAck(scope, batch, kind.GrpcLogSinkAck); err != nil {
+				return fmt.Errorf("applying technical_updates[%d] gRPC log sink ack: %w", i, err)
+			}
 		case *raftcmdpb.TechnicalUpdate_MirrorSync:
 			if err := fsm.applyMirrorSyncUpdate(scope, fsm.writeSet, kind.MirrorSync); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] mirror sync update: %w", i, err)
@@ -130,6 +136,34 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 			return fmt.Errorf("technical_updates[%d]: unsupported kind %T", i, kind)
 		}
 	}
+
+	return nil
+}
+
+// ErrGrpcLogSinkStale is a proposal-level rejection when a sink was removed
+// or recreated before its previous stream's ack reached apply.
+var ErrGrpcLogSinkStale = errors.New("gRPC log sink incarnation is stale")
+
+func (fsm *Machine) applyGrpcLogSinkAck(scope processing.Scope, batch *dal.WriteSession, ack *raftcmdpb.GrpcLogSinkAck) error {
+	if ack == nil || ack.GetSinkName() == "" || ack.GetIncarnation() == 0 || ack.GetLogId() == 0 {
+		return errors.New("invalid gRPC log sink acknowledgement")
+	}
+	cfg, err := scope.GetSinkConfig(ack.GetSinkName())
+	if err != nil {
+		return err
+	}
+	if cfg == nil || cfg.GetGrpcLog() == nil || cfg.GetGrpcLog().GetIncarnation() != ack.GetIncarnation() {
+		return ErrGrpcLogSinkStale
+	}
+	if ack.GetLogId() <= fsm.State.GrpcLogSinkCursors[ack.GetIncarnation()] {
+		return nil
+	}
+	var value [8]byte
+	binary.BigEndian.PutUint64(value[:], ack.GetLogId())
+	if err := batch.SetBytes(query.GrpcLogSinkCursorKey(ack.GetIncarnation()), value[:]); err != nil {
+		return fmt.Errorf("persisting gRPC log sink cursor: %w", err)
+	}
+	fsm.State.GrpcLogSinkCursors[ack.GetIncarnation()] = ack.GetLogId()
 
 	return nil
 }

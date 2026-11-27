@@ -136,6 +136,7 @@ service BucketService {
   rpc GetAccount(GetAccountRequest) returns (Account);
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc ListTransactions(ListTransactionsRequest) returns (stream Transaction);
+  rpc SubscribeLedgerLogs(stream SubscribeLedgerLogsRequest) returns (stream SubscribeLedgerLogsResponse);
 
   // Write operations (unified Apply method)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
@@ -151,6 +152,17 @@ service BucketService {
   // ... and 20+ more RPCs (see bucket.proto for the full list)
 }
 ```
+
+`SubscribeLedgerLogs` is an acknowledged, client-initiated stream for a
+configured gRPC log sink. `Open` names the sink and client, and its token
+principal must match the registered owner; `Opened` reports
+the durable ledger-local cursor and cluster ID; `Log` carries the unchanged
+`common.Log`; `Ack` asks to advance the cursor; and `Acked` confirms that the
+Raft update applied. The first connection starts at the beginning of the
+configured ledger's history. The stream requires `ledger:ReadLedger`, closes
+on leadership loss and token expiry, and can redeliver unacknowledged logs.
+See [the delivery contract](../events-mirror/events.md#acknowledged-grpc-ledger-log-sink)
+for identity fencing, resource limits and RC activation.
 
 `ClusterService.GetDiskUsage` is a node-local diagnostic RPC: it is not
 forwarded to the leader. Its WAL and data `VolumeUsage` messages contain the

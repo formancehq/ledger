@@ -7,6 +7,15 @@ internals; configuration and operator domains cover value wiring and rollout,
 not the resulting per-request authorization decision. This domain fills that
 gap using the existing native runner and schema.
 
+`SubscribeLedgerLogs` is a bidirectional public stream. The generated fixed
+scope and installed stream interceptor must authorize it before the first
+`Open` reaches the handler. A configured `client_id` is an identity label, not
+credential evidence; evaluate any owner-binding claim only against the policy
+actually selected for the feature. A client ack causes the server's named
+system producer to submit a technical update, but the client cannot mint that
+system attribution. The stream must close by token expiry or its bounded
+reauthentication lifetime.
+
 ## Preparation and execution gate
 
 This change prepares the domain only. **Do not run the product audit as part of
@@ -101,6 +110,7 @@ are not an inventory of the current executable surface.
 | E — Client/internal boundary | `grpc/auth_interceptor.go` peer transport credential and public cluster-secret rejection; `grpc/server_bucket.go:adoptForwardedSnapshotIfTrusted`; `grpc/raft_auth.go` and `bootstrap/module.go`; `bootstrap/module_restore.go` and `api/grpc-api.md` restore lifetime. | A supplied snapshot is rejected unless the context is cluster-internal, including when auth is disabled. The peer transport credential is separate from the user `authorization` token; user credentials are evaluated at the terminal node. HTTP has no peer transport path. Raft TLS connections are separately secret-protected with a documented empty-secret mode; optional-mode plaintext peers are admitted without the secret during migration and do not gain forwarding trust. With a configured secret, TLS Raft health RPCs are protected too (`raft_auth_test.go`). Service health/protocol exemptions do not bypass TLS Raft authentication. Restore has a separate service set, is intentionally not JWT-authenticated, and defaults to loopback; do not assert it can never be configured otherwise. |
 | F — Caller capture | `api/auth.md` Caller identity; `grpc/client_bucket.go:Apply` captures the follower snapshot, `server_bucket.go` adopts it, `auth/caller_snapshot.go:ResolveCallerSnapshot` selects system actor, forwarded snapshot, then local auth state, and `application/admission/admission.go` attaches it to the proposal. `commands/system_caller.go` names system principals. | Resolution produces exactly one authenticated, anonymous, system, or auth-disabled principal for every valid request context. Authenticated and anonymous variants freeze effective authorization. EN-2035 separately owns rejecting missing or malformed principals at admission and restore validation boundaries. Attribute according to verified current source rules; documentation prose alone does not prove which variant code selects. |
 | G — Frozen attribution | `auth/caller_snapshot.go:buildCallerSnapshot` forbids re-deriving permissions from the snapshot; `api/auth.md` says it is not re-evaluated downstream; `checker/audit-chain.md` binds caller data; `fsm/deterministic-fsm.md` section 3.4 forbids node-local auth decisions in committed apply. | Trace the proposal and hash-binding seam only. Generic hash/checker completeness, persisted encoding and cross-cluster restore parity have other owners. Token expiry after admission is not a requirement to invalidate committed work. |
+| H — gRPC log sink owner | `server_bucket_log_sink.go:logSinkOwnerMatches` compares the authenticated token principal to the configured `GrpcLogSinkConfig.owner`; `bucket.proto` requires ledger read scope; `validate_order_sink_config.go` rejects an absent owner. | An `ops:write` registrar chooses the owner. A `client_id` is only a label. Anonymous and auth-disabled contexts cannot open this stream. Check the actual registered stream with different issuer, subject, and key ID values. |
 
 Paths in the manifest exist at preparation time. New policy/attribution packages
 or changed response types introduced by the pending PRs must be discovered and

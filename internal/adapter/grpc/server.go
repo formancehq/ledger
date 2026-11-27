@@ -916,10 +916,13 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 // mirror admission — a transport cap cannot express per-entry or per-entity
 // bounds, and a caller under this cap can still be rejected by those ceilings.
 //
-// The value stays at 64 MiB because RestoreService streams restore payloads on
-// this same server (see server_restore.go): lowering it to the HTTP body cap
-// would break restore.
-const serviceMaxMsgSize = 64 << 20
+// The base payload ceiling stays at 64 MiB because RestoreService streams
+// restore payloads on this same server (see server_restore.go): lowering it to
+// the HTTP body cap would break restore.
+// The acknowledged log stream wraps the same Log accepted by ListLogs in a
+// oneof response. Reserve enough bytes for that wrapper without increasing
+// ListLogs' existing 64 MiB payload contract.
+const serviceMaxMsgSize = (64 << 20) + 32
 
 // ServiceAuthPolicy selects the startup authentication-policy validation for
 // the services registered by the caller.

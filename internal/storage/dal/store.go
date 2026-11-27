@@ -336,6 +336,9 @@ const (
 	// cluster membership directory.
 	SubGlobMembershipFormat byte = 0x17
 	SubGlobCapabilityState  byte = 0x18
+	// SubGlobGrpcLogSinkCursor stores the last acknowledged ledger-local log ID
+	// by the globally unique sequence of the AddEventsSink creation log.
+	SubGlobGrpcLogSinkCursor byte = 0x19
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
