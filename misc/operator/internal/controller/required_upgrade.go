@@ -22,15 +22,16 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// rc.3 voters cannot apply proposal payloads, and voters before rc.4 encode
-// mirror asset mappings differently in the audited CreateLedger order. Stop
-// every rc.3 node before starting rc.4. The dedicated peer service port and
-// membership address migration first ship after the published rc.4, which
-// cannot read schema 3 or apply native configuration/capability controls.
-// rc.5 also retypes AggregatedVolume totals at the unchanged protocol revision,
-// and fails a forwarded preload_unavailable order at its position in the batch,
-// where rc.4 rejects the whole batch before executing any order. Stop every
-// rc.4 node before starting rc.5. validateRCUpgrade checks adjacency, and
+// RC.3 voters cannot apply native proposal payloads or Ledger KV orders, and
+// encode mirror asset mappings differently in the audited CreateLedger order.
+// Stop every RC.3 node before starting RC.4. The dedicated peer service port
+// and Membership address migration first ship after the published RC.4,
+// which cannot read schema 3 or apply native configuration/capability controls.
+// RC.5 also retypes AggregatedVolume totals at the unchanged protocol revision,
+// so an RC.4 peer misdecodes forwarded aggregate reads from RC.5, and fails a
+// forwarded preload_unavailable order at its position in a batch, where RC.4
+// rejects the whole batch before executing any order. Stop every RC.4 node
+// before starting RC.5. validateRCUpgrade checks adjacency, and
 // scripts/checkprotocolversion parses this literal.
 var mandatoryStopVersions = []string{"v3.0.0-rc.4", "v3.0.0-rc.5"}
 

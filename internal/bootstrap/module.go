@@ -2013,6 +2013,8 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
 		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
 		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
+		KvMaxKeyBytes:               cfg.KVMaxKeyBytes,
+		KvMaxValueBytes:             cfg.KVMaxValueBytes,
 	}
 	if applied != nil {
 		desired.CapabilityActivations = make([]*commonpb.CapabilityActivation, 0, len(applied.GetCapabilityActivations()))

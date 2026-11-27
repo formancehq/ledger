@@ -985,8 +985,10 @@ Ledger versions or test maintenance-mode rejection.
 The workflow saves the evidence under `build/upgrade-operator/` and uploads it
 even on failure. A Docker daemon and access to the published GHCR image are
 required. The separate `rc3-to-rc4` and `rc4-to-rc5` transitions exercise the
-mandatory stopped boundaries after each source RC is published. They check
-drain, absence of all old Pods before target Pod creation, retained PVCs, target-voter
+mandatory stopped boundaries after each source RC is published. The
+`rc3-to-rc4` target must contain Ledger KV and the rc.4 boundary. Both
+transitions check drain, absence of all old Pods before target Pod creation,
+retained PVCs, target-voter
 replay and post-upgrade audit. See [Server Binary Upgrades](../../ops/upgrades.md#operator-managed-rc2-to-rc3-rolling-validation)
 for the detailed coverage and limits.
 

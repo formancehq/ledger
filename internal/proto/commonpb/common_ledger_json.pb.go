@@ -324,6 +324,8 @@ func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
 		MetadataMaxEntityBytes      uint64 `json:"metadataMaxEntityBytes"`
 		MetadataMaxCommandBytes     uint64 `json:"metadataMaxCommandBytes"`
 		CapabilityActivations       any    `json:"capabilityActivations"`
+		KvMaxKeyBytes               uint64 `json:"kvMaxKeyBytes"`
+		KvMaxValueBytes             uint64 `json:"kvMaxValueBytes"`
 	}{
 		Revision:                    x.Revision,
 		IdempotencyTtlMicros:        x.IdempotencyTtlMicros,
@@ -339,6 +341,8 @@ func (x *ClusterPolicy) MarshalJSON() ([]byte, error) {
 			}
 			return x.CapabilityActivations
 		}(),
+		KvMaxKeyBytes:   x.KvMaxKeyBytes,
+		KvMaxValueBytes: x.KvMaxValueBytes,
 	})
 }
 

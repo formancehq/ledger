@@ -20,6 +20,13 @@ const maxNumscriptNameLength = 256
 // numscript version, in bytes.
 const MaxNumscriptDescriptionLength = 1024
 
+const (
+	MaxKVKeyBytes       = 256
+	MaxKVValueBytes     = 1 << 20 // absolute request bound
+	DefaultKVKeyBytes   = 256
+	DefaultKVValueBytes = 4 << 10
+)
+
 // maxPreparedQueryNameLength caps prepared-query identifiers. Prepared queries
 // are a ledger-internal feature (CQRS read-side); the bound stays local for
 // the same reason as the numscript-name bound above.

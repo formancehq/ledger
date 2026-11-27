@@ -3558,6 +3558,28 @@ ledgerctl signing get-config --json
 
 ---
 
+### kv
+
+Manage opaque values scoped to a ledger. Keys are UTF-8 text with a default limit of 256 bytes; values are arbitrary bytes with a default limit of 4 KiB. The committed `ClusterPolicy` controls both limits through `kv_max_key_bytes` and `kv_max_value_bytes`, visible in the Discovery RPC. `put` replaces the current value, including with an empty value. `delete` succeeds when the key is absent. Access requires `ledger:ReadKV` for `get` and `ledger:WriteKV` for `put` and `delete`; grant these scopes explicitly in custom auth mappings and restricted signing-key allowlists.
+
+```bash
+ledgerctl kv put <key> --ledger <ledger-name> [--file <path>] [--idempotency-key <key>]
+ledgerctl kv get <key> --ledger <ledger-name> [--file <path>] [--checkpoint-id <id>]
+ledgerctl kv delete <key> --ledger <ledger-name> [--idempotency-key <key>]
+```
+
+`put` reads bytes from stdin unless `--file` is set. `get` writes only raw value bytes to stdout unless `--file` is set; it does not append a newline. A missing key returns an error. `--file` on `get` writes a file with owner-only permissions when creating it. Each command also accepts `--timeout` (default `10s`). Standard connection and authentication flags apply to all three commands. Read consistency flags apply to `get`; request signing and response signature verification apply to `put` and `delete` only. `get` does not verify the returned bytes with `--response-verify-key`.
+
+```bash
+ledgerctl kv put logo --ledger my-ledger --file logo.png
+ledgerctl kv get logo --ledger my-ledger --file restored.png
+printf 'hello' | ledgerctl kv put greeting --ledger my-ledger
+ledgerctl kv get greeting --ledger my-ledger > greeting.txt
+ledgerctl kv delete greeting --ledger my-ledger
+```
+
+---
+
 ### numscripts
 
 Execute Numscript files or manage the per-ledger library of reusable scripts.
@@ -4083,6 +4105,8 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 |------|------|---------|-------------|
 | `--cluster-policy-revision` | uint64 | `1` | Desired revision of the replicated cluster policy. The leader proposes the policy only when this exceeds the applied revision. Must be greater than zero. |
 | `--query-checkpoint-limit` | uint64 | `10` | Maximum number of live query checkpoints, carried in the cluster policy. Must be greater than zero. |
+| `--kv-max-key-bytes` | uint64 | `256` | Maximum size of a KV key written by Put, in bytes. Must be greater than zero and at most `256`. Deletes retain the absolute key bound after a policy decrease. |
+| `--kv-max-value-bytes` | uint64 | `4096` | Maximum size of a KV value written by Put, in bytes. Must be greater than zero and at most `1048576`. |
 | `--metadata-max-entries` | uint64 | `128` | Maximum metadata entries one command may carry for a single entity (transaction, account or ledger). Must be greater than zero. |
 | `--metadata-max-key-bytes` | uint64 | `256` | Maximum metadata key size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
 | `--metadata-max-value-bytes` | uint64 | `16384` | Maximum metadata value size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
@@ -4099,17 +4123,25 @@ To change a policy value, raise `--cluster-policy-revision` so the new policy su
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
 
-The metadata ceilings and `--idempotency-ttl` follow the same rule: changing one
-without bumping `--cluster-policy-revision` logs a payload-divergence error and
-changes nothing. With the operator, the `Cluster` CRD rejects such an update,
-and a decrease of `spec.clusterPolicyRevision`, at admission time.
-They are enforced for HTTP, public gRPC and bulk admission, mirror batches before
-proposal and during apply, and metadata a Numscript program merges in. Public
-API violations return HTTP 400 / gRPC
+The KV and metadata ceilings and `--idempotency-ttl` follow the same revision
+rule: changing one without bumping `--cluster-policy-revision` logs a
+payload-divergence error and changes nothing. With the operator, the `Cluster`
+CRD rejects such an update, and a decrease of `spec.clusterPolicyRevision`, at
+admission time.
+
+KV Put checks the applied cluster policy in the FSM after idempotency replay
+lookup. A limit violation returns HTTP 400 / gRPC `InvalidArgument` with reason
+`VALIDATION` and failure detail `KV_LIMIT_EXCEEDED`. Delete can remove a key
+retained after the key ceiling decreases, subject to the absolute 256-byte key
+bound. Zero-valued KV ceilings are rejected at boot.
+
+Metadata ceilings are enforced for HTTP, public gRPC and bulk admission,
+mirror batches before proposal and during apply, and metadata a Numscript
+program merges in. Public API violations return HTTP 400 / gRPC
 `InvalidArgument` with reason `METADATA_LIMIT_EXCEEDED`. Zero is rejected at
 boot rather than treated as unlimited, and a node refuses to start against a
-committed policy carrying no ceilings when `--cluster-policy-revision` cannot
-supersede it. See the [metadata size limits
+committed policy carrying no metadata ceilings when `--cluster-policy-revision`
+cannot supersede it. See the [metadata size limits
 contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 ---

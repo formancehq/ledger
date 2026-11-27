@@ -385,6 +385,10 @@ func authScope(scope commonpb.AuthScope) (internalauth.Scope, error) {
 		return internalauth.ScopeClusterWrite, nil
 	case commonpb.AuthScope_AUTH_SCOPE_EXECUTE_NUMSCRIPT:
 		return internalauth.ScopeExecuteNumscript, nil
+	case commonpb.AuthScope_AUTH_SCOPE_KV_READ:
+		return internalauth.ScopeKVRead, nil
+	case commonpb.AuthScope_AUTH_SCOPE_KV_WRITE:
+		return internalauth.ScopeKVWrite, nil
 	default:
 		return "", status.Errorf(codes.Internal, "unknown RPC authentication scope %s", scope)
 	}

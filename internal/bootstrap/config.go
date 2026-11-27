@@ -226,6 +226,8 @@ type Config struct {
 	MetadataMaxValueBytes       uint64
 	MetadataMaxEntityBytes      uint64
 	MetadataMaxCommandBytes     uint64
+	KVMaxKeyBytes               uint64
+	KVMaxValueBytes             uint64
 	SnapshotSyncConfig          SnapshotSyncConfig
 }
 
@@ -347,6 +349,12 @@ func (c Config) Validate() error {
 
 	if err := c.validateMetadataLimits(); err != nil {
 		return err
+	}
+	if c.KVMaxKeyBytes == 0 || c.KVMaxValueBytes == 0 {
+		return errors.New("--kv-max-key-bytes and --kv-max-value-bytes must be greater than zero")
+	}
+	if c.KVMaxKeyBytes > domain.MaxKVKeyBytes || c.KVMaxValueBytes > domain.MaxKVValueBytes {
+		return errors.New("KV limits exceed the transport safety bounds")
 	}
 
 	// A negative TTL wraps to a huge value once converted to the policy's

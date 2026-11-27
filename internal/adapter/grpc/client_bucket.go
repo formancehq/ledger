@@ -196,6 +196,15 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
+func (g *BucketGrpcClient) GetKV(ctx context.Context, ledger, key string) ([]byte, error) {
+	response, err := g.client.GetKV(ctx, &servicepb.GetKVRequest{Ledger: ledger, Key: key})
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetValue(), nil
+}
+
 func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	stream, err := g.client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{

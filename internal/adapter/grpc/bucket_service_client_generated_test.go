@@ -702,6 +702,50 @@ func (c *MockBucketServiceClientGetIndexStatusCall) DoAndReturn(f func(context.C
 	return c
 }
 
+// GetKV mocks base method.
+func (m *MockBucketServiceClient) GetKV(ctx context.Context, in *servicepb.GetKVRequest, opts ...grpc.CallOption) (*servicepb.GetKVResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetKV", varargs...)
+	ret0, _ := ret[0].(*servicepb.GetKVResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKV indicates an expected call of GetKV.
+func (mr *MockBucketServiceClientMockRecorder) GetKV(ctx, in any, opts ...any) *MockBucketServiceClientGetKVCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKV", reflect.TypeOf((*MockBucketServiceClient)(nil).GetKV), varargs...)
+	return &MockBucketServiceClientGetKVCall{Call: call}
+}
+
+// MockBucketServiceClientGetKVCall wrap *gomock.Call
+type MockBucketServiceClientGetKVCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetKVCall) Return(arg0 *servicepb.GetKVResponse, arg1 error) *MockBucketServiceClientGetKVCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetKVCall) Do(f func(context.Context, *servicepb.GetKVRequest, ...grpc.CallOption) (*servicepb.GetKVResponse, error)) *MockBucketServiceClientGetKVCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetKVCall) DoAndReturn(f func(context.Context, *servicepb.GetKVRequest, ...grpc.CallOption) (*servicepb.GetKVResponse, error)) *MockBucketServiceClientGetKVCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetLedger mocks base method.
 func (m *MockBucketServiceClient) GetLedger(ctx context.Context, in *servicepb.GetLedgerRequest, opts ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()

@@ -2786,6 +2786,8 @@ type LogPayloadReader interface {
 	GetSavedLedgerMetadata() SavedLedgerMetadataLogReader
 	GetDeletedLedgerMetadata() DeletedLedgerMetadataLogReader
 	GetSetClusterPolicy() SetClusterPolicyLogReader
+	GetPutKv() PutKVLogReader
+	GetDeleteKv() DeleteKVLogReader
 	WhichType() LogPayload_TypeReaderCase
 	Mutate() *LogPayload
 }
@@ -2960,6 +2962,22 @@ func (r *logPayloadReadonly) GetSetClusterPolicy() SetClusterPolicyLogReader {
 	return v.SetClusterPolicy.AsReader()
 }
 
+func (r *logPayloadReadonly) GetPutKv() PutKVLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_PutKv)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.PutKv.AsReader()
+}
+
+func (r *logPayloadReadonly) GetDeleteKv() DeleteKVLogReader {
+	v, ok := (*LogPayload)(r).GetType().(*LogPayload_DeleteKv)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.DeleteKv.AsReader()
+}
+
 // LogPayload_TypeReaderCase identifies a selected oneof arm by its protobuf field number.
 type LogPayload_TypeReaderCase int32
 
@@ -2986,6 +3004,8 @@ const (
 	LogPayload_TypeReaderCase_SavedLedgerMetadata           LogPayload_TypeReaderCase = 19
 	LogPayload_TypeReaderCase_DeletedLedgerMetadata         LogPayload_TypeReaderCase = 20
 	LogPayload_TypeReaderCase_SetClusterPolicy              LogPayload_TypeReaderCase = 21
+	LogPayload_TypeReaderCase_PutKv                         LogPayload_TypeReaderCase = 22
+	LogPayload_TypeReaderCase_DeleteKv                      LogPayload_TypeReaderCase = 23
 )
 
 func (r *logPayloadReadonly) WhichType() LogPayload_TypeReaderCase {
@@ -3032,6 +3052,10 @@ func (r *logPayloadReadonly) WhichType() LogPayload_TypeReaderCase {
 		return LogPayload_TypeReaderCase_DeletedLedgerMetadata
 	case *LogPayload_SetClusterPolicy:
 		return LogPayload_TypeReaderCase_SetClusterPolicy
+	case *LogPayload_PutKv:
+		return LogPayload_TypeReaderCase_PutKv
+	case *LogPayload_DeleteKv:
+		return LogPayload_TypeReaderCase_DeleteKv
 	default:
 		return LogPayload_TypeReaderCase_Unset
 	}
@@ -4063,6 +4087,8 @@ type ClusterPolicyReader interface {
 	GetMetadataMaxEntityBytes() uint64
 	GetMetadataMaxCommandBytes() uint64
 	GetCapabilityActivations() CapabilityActivationListReader
+	GetKvMaxKeyBytes() uint64
+	GetKvMaxValueBytes() uint64
 	Mutate() *ClusterPolicy
 }
 
@@ -4102,6 +4128,14 @@ func (r *clusterPolicyReadonly) GetMetadataMaxCommandBytes() uint64 {
 
 func (r *clusterPolicyReadonly) GetCapabilityActivations() CapabilityActivationListReader {
 	return NewCapabilityActivationListReader((*ClusterPolicy)(r).GetCapabilityActivations())
+}
+
+func (r *clusterPolicyReadonly) GetKvMaxKeyBytes() uint64 {
+	return (*ClusterPolicy)(r).GetKvMaxKeyBytes()
+}
+
+func (r *clusterPolicyReadonly) GetKvMaxValueBytes() uint64 {
+	return (*ClusterPolicy)(r).GetKvMaxValueBytes()
 }
 
 func (r *clusterPolicyReadonly) Mutate() *ClusterPolicy {
@@ -6925,6 +6959,7 @@ type FailureDetailsReader interface {
 	GetMetadataOnlyReference() MetadataOnlyReferenceDetailsReader
 	GetNumscriptDescriptionTooLong() NumscriptDescriptionTooLongDetailsReader
 	GetNumscriptDescriptionInvalidChar() NumscriptDescriptionInvalidCharDetailsReader
+	GetKvLimitExceeded() KvLimitExceededDetailsReader
 	WhichKind() FailureDetails_KindReaderCase
 	Mutate() *FailureDetails
 }
@@ -8155,6 +8190,14 @@ func (r *failureDetailsReadonly) GetNumscriptDescriptionInvalidChar() NumscriptD
 	return v.NumscriptDescriptionInvalidChar.AsReader()
 }
 
+func (r *failureDetailsReadonly) GetKvLimitExceeded() KvLimitExceededDetailsReader {
+	v, ok := (*FailureDetails)(r).GetKind().(*FailureDetails_KvLimitExceeded)
+	if !ok || v == nil {
+		return nil
+	}
+	return v.KvLimitExceeded.AsReader()
+}
+
 // FailureDetails_KindReaderCase identifies a selected oneof arm by its protobuf field number.
 type FailureDetails_KindReaderCase int32
 
@@ -8313,6 +8356,7 @@ const (
 	FailureDetails_KindReaderCase_MetadataOnlyReference                    FailureDetails_KindReaderCase = 151
 	FailureDetails_KindReaderCase_NumscriptDescriptionTooLong              FailureDetails_KindReaderCase = 152
 	FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar          FailureDetails_KindReaderCase = 153
+	FailureDetails_KindReaderCase_KvLimitExceeded                          FailureDetails_KindReaderCase = 154
 )
 
 func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
@@ -8623,6 +8667,8 @@ func (r *failureDetailsReadonly) WhichKind() FailureDetails_KindReaderCase {
 		return FailureDetails_KindReaderCase_NumscriptDescriptionTooLong
 	case *FailureDetails_NumscriptDescriptionInvalidChar:
 		return FailureDetails_KindReaderCase_NumscriptDescriptionInvalidChar
+	case *FailureDetails_KvLimitExceeded:
+		return FailureDetails_KindReaderCase_KvLimitExceeded
 	default:
 		return FailureDetails_KindReaderCase_Unset
 	}
@@ -27260,4 +27306,213 @@ func (m accountMetadataUpdated_accountMetadataMapReadonly) Range(yield func(stri
 			return
 		}
 	}
+}
+
+// PutKVLogReader provides read-only access to PutKVLog.
+// Call Mutate() to obtain a mutable clone.
+type PutKVLogReader interface {
+	GetLedger() string
+	GetKey() string
+	GetValue() []byte
+	Mutate() *PutKVLog
+}
+
+type putKVLogReadonly PutKVLog
+
+func (r *putKVLogReadonly) GetLedger() string {
+	return (*PutKVLog)(r).GetLedger()
+}
+
+func (r *putKVLogReadonly) GetKey() string {
+	return (*PutKVLog)(r).GetKey()
+}
+
+func (r *putKVLogReadonly) GetValue() []byte {
+	return bytes.Clone((*PutKVLog)(r).GetValue())
+}
+
+func (r *putKVLogReadonly) Mutate() *PutKVLog {
+	return (*PutKVLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PutKVLog.
+func (m *PutKVLog) AsReader() PutKVLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*putKVLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PutKVLog.
+func (m *PutKVLog) Mutate() *PutKVLog {
+	return m.CloneVT()
+}
+
+// PutKVLogListReader provides read-only iteration over []*PutKVLog.
+type PutKVLogListReader interface {
+	Len() int
+	Get(i int) PutKVLogReader
+	Range(yield func(int, PutKVLogReader) bool)
+}
+
+type putKVLogListReadonly []*PutKVLog
+
+func (l putKVLogListReadonly) Len() int { return len(l) }
+
+func (l putKVLogListReadonly) Get(i int) PutKVLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l putKVLogListReadonly) Range(yield func(int, PutKVLogReader) bool) {
+	for i, v := range l {
+		var r PutKVLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPutKVLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPutKVLogListReader(s []*PutKVLog) PutKVLogListReader { return putKVLogListReadonly(s) }
+
+// DeleteKVLogReader provides read-only access to DeleteKVLog.
+// Call Mutate() to obtain a mutable clone.
+type DeleteKVLogReader interface {
+	GetLedger() string
+	GetKey() string
+	Mutate() *DeleteKVLog
+}
+
+type deleteKVLogReadonly DeleteKVLog
+
+func (r *deleteKVLogReadonly) GetLedger() string {
+	return (*DeleteKVLog)(r).GetLedger()
+}
+
+func (r *deleteKVLogReadonly) GetKey() string {
+	return (*DeleteKVLog)(r).GetKey()
+}
+
+func (r *deleteKVLogReadonly) Mutate() *DeleteKVLog {
+	return (*DeleteKVLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeleteKVLog.
+func (m *DeleteKVLog) AsReader() DeleteKVLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*deleteKVLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeleteKVLog.
+func (m *DeleteKVLog) Mutate() *DeleteKVLog {
+	return m.CloneVT()
+}
+
+// DeleteKVLogListReader provides read-only iteration over []*DeleteKVLog.
+type DeleteKVLogListReader interface {
+	Len() int
+	Get(i int) DeleteKVLogReader
+	Range(yield func(int, DeleteKVLogReader) bool)
+}
+
+type deleteKVLogListReadonly []*DeleteKVLog
+
+func (l deleteKVLogListReadonly) Len() int { return len(l) }
+
+func (l deleteKVLogListReadonly) Get(i int) DeleteKVLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteKVLogListReadonly) Range(yield func(int, DeleteKVLogReader) bool) {
+	for i, v := range l {
+		var r DeleteKVLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteKVLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteKVLogListReader(s []*DeleteKVLog) DeleteKVLogListReader {
+	return deleteKVLogListReadonly(s)
+}
+
+// KvLimitExceededDetailsReader provides read-only access to KvLimitExceededDetails.
+// Call Mutate() to obtain a mutable clone.
+type KvLimitExceededDetailsReader interface {
+	Mutate() *KvLimitExceededDetails
+}
+
+type kvLimitExceededDetailsReadonly KvLimitExceededDetails
+
+func (r *kvLimitExceededDetailsReadonly) Mutate() *KvLimitExceededDetails {
+	return (*KvLimitExceededDetails)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this KvLimitExceededDetails.
+func (m *KvLimitExceededDetails) AsReader() KvLimitExceededDetailsReader {
+	if m == nil {
+		return nil
+	}
+	return (*kvLimitExceededDetailsReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this KvLimitExceededDetails.
+func (m *KvLimitExceededDetails) Mutate() *KvLimitExceededDetails {
+	return m.CloneVT()
+}
+
+// KvLimitExceededDetailsListReader provides read-only iteration over []*KvLimitExceededDetails.
+type KvLimitExceededDetailsListReader interface {
+	Len() int
+	Get(i int) KvLimitExceededDetailsReader
+	Range(yield func(int, KvLimitExceededDetailsReader) bool)
+}
+
+type kvLimitExceededDetailsListReadonly []*KvLimitExceededDetails
+
+func (l kvLimitExceededDetailsListReadonly) Len() int { return len(l) }
+
+func (l kvLimitExceededDetailsListReadonly) Get(i int) KvLimitExceededDetailsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l kvLimitExceededDetailsListReadonly) Range(yield func(int, KvLimitExceededDetailsReader) bool) {
+	for i, v := range l {
+		var r KvLimitExceededDetailsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewKvLimitExceededDetailsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewKvLimitExceededDetailsListReader(s []*KvLimitExceededDetails) KvLimitExceededDetailsListReader {
+	return kvLimitExceededDetailsListReadonly(s)
 }

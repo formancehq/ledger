@@ -44,6 +44,8 @@ type OrderTagger interface {
 // signing keys, maintenance mode, dates) stay as discrete methods because
 // their value/key shapes do not match the generic Accessor trio.
 type Scope interface {
+	PutKV(ledger, key string, value []byte)
+	DeleteKV(ledger, key string)
 	// Per-kind accessors — Get returns a Reader, Put records a write,
 	// Delete records a tombstone. All four operate against the in-batch
 	// overlay (attributes.DerivedKeyStore); reads fall through to the

@@ -203,6 +203,22 @@ replays exactly as before. No capability ID is needed.
 
 ## Rollout and recovery
 
+Ledger KV in `v3.0.0-rc.4` uses the mandatory full-cluster stop rather than
+capability activation. `PutKV` and `DeleteKV` are new order variants; they do
+not change the interpretation of historical orders. No KV request is admitted
+until every voter runs rc.4 and the drain is released, so an older binary never
+has to apply a KV order during a supported rollout. KV proposals therefore do
+not declare a capability ID. After the first KV order commits, an older binary
+cannot replay that WAL or snapshot and rollback must use forward recovery, as
+specified in the [KV rollout](../../../../ops/upgrades.md#ledger-kv-rollout).
+The KV size policy is applied by the FSM after idempotency replay lookup, and
+its new `kv_limit_exceeded` audited failure detail is part of the same
+unreleased KV order contract. It needs no separate capability because there
+are no previously released KV orders or KV failures to reinterpret. The
+stopped rollout remains required before any KV order can commit.
+Any future rolling activation or change to the meaning of an existing order
+needs its own capability ID, persisted declaration, and replay tests.
+
 Deploy the barrier-aware binary to every member, stop the cluster, and restart
 the complete cluster before enabling an incompatible feature. An old leader
 cannot be made safe by upgrading only the other nodes. Restart, snapshot

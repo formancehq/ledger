@@ -28,6 +28,8 @@ enum AuthScope {
   AUTH_SCOPE_CLUSTER_READ = 13;
   AUTH_SCOPE_CLUSTER_WRITE = 14;
   AUTH_SCOPE_EXECUTE_NUMSCRIPT = 15;
+  AUTH_SCOPE_KV_READ = 16;
+  AUTH_SCOPE_KV_WRITE = 17;
 }
 
 // DynamicAuthResolver names request-dependent policies that cannot be reduced
@@ -424,6 +426,8 @@ message LogPayload {
     SavedLedgerMetadataLog saved_ledger_metadata = 19;
     DeletedLedgerMetadataLog deleted_ledger_metadata = 20;
     SetClusterPolicyLog set_cluster_policy = 21;
+    PutKVLog put_kv = 22;
+    DeleteKVLog delete_kv = 23;
   }
 }
 
@@ -555,6 +559,9 @@ message ClusterPolicy {
   fixed64 metadata_max_command_bytes = 8;
   // Capability activation is replicated policy, never a node-local flag.
   repeated CapabilityActivation capability_activations = 13;
+  // Maximum UTF-8 key bytes and opaque value bytes for ledger KV writes.
+  fixed64 kv_max_key_bytes = 14;
+  fixed64 kv_max_value_bytes = 15;
 }
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
@@ -1021,6 +1028,7 @@ message FailureDetails {
     MetadataOnlyReferenceDetails metadata_only_reference = 151 [(failure_reason) = ERROR_REASON_VALIDATION];
     NumscriptDescriptionTooLongDetails numscript_description_too_long = 152 [(failure_reason) = ERROR_REASON_VALIDATION];
     NumscriptDescriptionInvalidCharDetails numscript_description_invalid_char = 153 [(failure_reason) = ERROR_REASON_VALIDATION];
+    KvLimitExceededDetails kv_limit_exceeded = 154 [(failure_reason) = ERROR_REASON_VALIDATION];
   }
 }
 
@@ -2910,4 +2918,18 @@ message CapabilityActivation {
 // no transaction ID, postings, or TransactionState are created.
 message AccountMetadataUpdated {
   map<string, MetadataMap> account_metadata = 1;
+}
+
+message PutKVLog {
+  string ledger = 1;
+  string key = 2;
+  bytes value = 3;
+}
+
+message DeleteKVLog {
+  string ledger = 1;
+  string key = 2;
+}
+
+message KvLimitExceededDetails {
 }
