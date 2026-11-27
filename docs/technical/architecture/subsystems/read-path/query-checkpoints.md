@@ -207,6 +207,23 @@ ledgerctl query-checkpoint get-schedule
 
 The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
 
+#### Time zone prefix
+
+The cron parser accepts a `TZ=<zone>` or `CRON_TZ=<zone>` prefix and resolves
+the zone with `time.LoadLocation`. That lookup reads node-local tzdata and the
+`ZONEINFO` environment variable. FSM apply parses the expression, so a zone
+known on one node and unknown on another would store the schedule on one
+replica and record an audited `INVALID_CRON_EXPRESSION` failure on the other.
+Admission therefore accepts only `TZ=UTC ` and `CRON_TZ=UTC `, which Go
+resolves without tzdata. It rejects every other prefix, including `Local`, an
+empty zone, and a prefix without a following space, which makes the parser
+panic. Apply still parses committed entries unchanged, so schedules committed
+before this check, or by an older leader during a rolling upgrade, keep the
+node-local dependency; see the [upgrade note](../../../../ops/upgrades.md#query-checkpoint-schedule-time-zones).
+
+Without a prefix the parser uses `time.Local`. That only affects when the
+leader's scheduler fires, not FSM apply.
+
 ### How It Works
 
 The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint creation on the **Raft leader**. When the cron fires, the leader proposes a `CreateQueryCheckpoint` order through the admission layer directly, as a leader-internal system actor. That is not a gRPC handler, so it is outside the Apply-only rule; `ledgerctl query-checkpoint create` reaches the same order through `Apply`.

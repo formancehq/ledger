@@ -863,6 +863,31 @@ A worker that finds assets v3 cannot represent among a mirror's stored volumes
 stops ingesting that mirror after the upgrade. Delete the mirror ledger and
 recreate it with the needed mappings.
 
+### Query checkpoint schedule time zones
+
+No persisted-state migration or stopped upgrade is needed. Admission rejects a
+`SetQueryCheckpointSchedule` cron that starts with a `TZ=` or `CRON_TZ=` prefix
+other than `UTC` followed by a space. The client receives
+`INVALID_CRON_EXPRESSION` before proposal, and no audit entry is written.
+Unprefixed expressions and the `UTC` prefix are unaffected. Apply is unchanged,
+and committed schedules stay stored and readable.
+
+Apply still resolves the zone of a committed entry from each node's tzdata and
+`ZONEINFO`. These residual cases are accepted because the prefix was never
+documented:
+
+1. During the rolling upgrade, a leader still running the previous release
+   admits any prefix.
+2. A node that replays a committed entry with another zone after restarting on
+   an image with different tzdata can reach a different outcome than its peers.
+3. A prefix with no following space, such as `TZ=UTC`, makes the cron parser
+   panic during apply. Each node that applies or replays the entry stops.
+
+Before upgrading, run `ledgerctl query-checkpoint get-schedule`. If the schedule
+has a time zone prefix other than `UTC`, replace it with an unprefixed or `UTC`
+expression. Do not submit prefixed schedules until every node runs the new
+release. See [query checkpoints](../technical/architecture/subsystems/read-path/query-checkpoints.md#time-zone-prefix).
+
 ## Repairing historical transaction address indexes
 
 A builder fix can preserve transaction-address history for purged EPHEMERAL

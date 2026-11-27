@@ -5523,6 +5523,10 @@ ledgerctl query-checkpoint set-schedule <cron-expression>
 
 The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
 
+The expression may start with `TZ=UTC ` or `CRON_TZ=UTC `. Admission rejects
+any other time zone prefix with `INVALID_CRON_EXPRESSION`. Without a prefix,
+the leader evaluates the schedule in its local time zone.
+
 **Examples:**
 
 ```bash

@@ -193,6 +193,15 @@ no capability ID or stopped-upgrade boundary is needed. During a rolling
 upgrade, the leader's admission version determines whether a fresh request
 without an amount is accepted.
 
+The query checkpoint schedule time zone check (EN-3428) is admission-only. A
+new server rejects a cron whose `TZ=` or `CRON_TZ=` prefix names any zone other
+than `UTC` before proposing it. Apply still parses every committed schedule
+exactly as an older voter does, so the proposal format, FSM behavior, and
+capability registry are unchanged and no capability ID or stopped-upgrade
+boundary is needed. Entries an older leader admits keep their node-local tzdata
+dependency; the [upgrade guide](../../../../ops/upgrades.md#query-checkpoint-schedule-time-zones)
+documents that accepted residual.
+
 The Numscript library version description (EN-3381) adds an optional
 `SaveNumscriptOrder.description` that the FSM stores in `NumscriptInfo` and
 echoes in `SavedNumscriptLog`. An RC.4 voter would apply the same order without

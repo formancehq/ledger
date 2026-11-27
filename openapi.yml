@@ -5996,6 +5996,7 @@ components:
       additionalProperties: false
       properties:
         cron:
+          description: Cron expression. The only accepted time zone prefix is `TZ=UTC` or `CRON_TZ=UTC` followed by a space; admission rejects any other prefix with `INVALID_CRON_EXPRESSION`.
           type: string
       type: object
     AtomicApplySetSigningConfigRequest:
