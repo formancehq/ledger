@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -17,6 +18,59 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
+
+type blockedLogSinkStream struct {
+	servicepb.BucketService_SubscribeLedgerLogsServer
+	started chan struct{}
+	release chan struct{}
+}
+
+func (stream *blockedLogSinkStream) Send(*servicepb.SubscribeLedgerLogsResponse) error {
+	close(stream.started)
+	<-stream.release
+	return nil
+}
+
+func TestLogSinkTokenExpiryInterruptsBlockedDelivery(t *testing.T) {
+	t.Parallel()
+	claims := &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{
+		Expiration: oidc.Time(time.Now().Add(2 * time.Second).Unix()),
+	}}
+	ctx, cancel, expiry, err := logSinkAuthorizationContext(internalAuth.WithClaims(t.Context(), claims))
+	require.NoError(t, err)
+	defer cancel()
+	require.Equal(t, claims.GetExpiration().Time, expiry)
+	stream := &blockedLogSinkStream{started: make(chan struct{}), release: make(chan struct{})}
+	defer close(stream.release)
+	result := make(chan error, 1)
+	go func() {
+		result <- sendLogSinkResponse(ctx, stream, &servicepb.SubscribeLedgerLogsResponse{})
+	}()
+	select {
+	case <-stream.started:
+	case <-t.Context().Done():
+		t.Fatal("send did not start")
+	}
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(3 * time.Second):
+		t.Fatal("send continued after token expiry")
+	}
+}
+
+func TestLogSinkAuthorizationDeadlineFollowsTokenExpiry(t *testing.T) {
+	t.Parallel()
+	expiry := oidc.Time(time.Now().Add(24 * time.Hour).Unix())
+	claims := &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{Expiration: expiry}}
+	ctx, cancel, actualExpiry, err := logSinkAuthorizationContext(internalAuth.WithClaims(t.Context(), claims))
+	require.NoError(t, err)
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok)
+	require.True(t, time.Unix(int64(expiry), 0).Equal(actualExpiry))
+	require.True(t, actualExpiry.Equal(deadline))
+}
 
 func TestReadLogSinkPageContinuesAfterLargeHistoricalLog(t *testing.T) {
 	t.Parallel()

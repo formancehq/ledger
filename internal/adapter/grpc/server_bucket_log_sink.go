@@ -26,7 +26,6 @@ const (
 	logSinkRescanInterval   = 250 * time.Millisecond
 	logSinkAckTimeout       = 30 * time.Second
 	logSinkSendTimeout      = 10 * time.Second
-	logSinkMaxLifetime      = 15 * time.Minute
 	logSinkOpenTimeout      = 10 * time.Second
 )
 
@@ -63,9 +62,34 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 		return status.Error(codes.InvalidArgument, "first message must open a configured log sink")
 	}
 
-	ctx := stream.Context()
+	ctx, cancel, expiry, err := logSinkAuthorizationContext(stream.Context())
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	authorizationError := func() error {
+		if !time.Now().Before(expiry) {
+			return status.Error(codes.Unauthenticated, "log sink token expired")
+		}
+
+		return ctx.Err()
+	}
+	send := func(response *servicepb.SubscribeLedgerLogsResponse) error {
+		if err := authorizationError(); err != nil {
+			return err
+		}
+		err := sendLogSinkResponse(ctx, stream, response)
+		if authErr := authorizationError(); authErr != nil {
+			return authErr
+		}
+
+		return err
+	}
 	cfg, acknowledged, err := impl.readLogSinkState(open.GetSinkName())
 	if err != nil {
+		return err
+	}
+	if err := authorizationError(); err != nil {
 		return err
 	}
 	if cfg.GetGrpcLog() == nil || cfg.GetGrpcLog().GetClientId() != open.GetClientId() {
@@ -86,7 +110,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 	}
 	defer impl.releaseLogSink(open.GetSinkName())
 
-	if err := sendLogSinkResponse(stream, &servicepb.SubscribeLedgerLogsResponse{
+	if err := send(&servicepb.SubscribeLedgerLogsResponse{
 		Kind: &servicepb.SubscribeLedgerLogsResponse_Opened{Opened: &servicepb.OpenedLedgerLogSink{
 			AcknowledgedLogId: acknowledged, ClusterId: impl.clusterID,
 		}},
@@ -98,21 +122,13 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 	go receiveLogSinkInput(stream, input)
 	ticker := time.NewTicker(logSinkRescanInterval)
 	defer ticker.Stop()
-	maxLifetime := logSinkMaxLifetime
-	if claims := internalauth.ClaimsFromContext(ctx); claims != nil {
-		if untilExpiry := time.Until(claims.GetExpiration().Time); untilExpiry <= 0 {
-			return status.Error(codes.Unauthenticated, "log sink token expired")
-		} else if untilExpiry < maxLifetime {
-			maxLifetime = untilExpiry
-		}
-	}
-	lifetime := time.NewTimer(maxLifetime)
-	defer lifetime.Stop()
-
 	sent := acknowledged
 	inflight := make([]uint64, 0, maxUnacknowledgedLogs)
 	lastAck := time.Now()
 	for {
+		if err := authorizationError(); err != nil {
+			return err
+		}
 		if !impl.forwarder.node.IsLeader() {
 			return status.Error(codes.Unavailable, "log sink leader changed")
 		}
@@ -122,9 +138,18 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 		if len(inflight) < maxUnacknowledgedLogs {
 			logs, err := impl.readLogSinkPage(ctx, ledger, sent, maxUnacknowledgedLogs-len(inflight))
 			if err != nil {
+				if authErr := authorizationError(); authErr != nil {
+					return authErr
+				}
+				return err
+			}
+			if err := authorizationError(); err != nil {
 				return err
 			}
 			for _, log := range logs {
+				if err := authorizationError(); err != nil {
+					return err
+				}
 				if len(inflight) == 0 {
 					lastAck = time.Now()
 				}
@@ -133,7 +158,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 					return status.Error(codes.Internal, "log sink read returned an unordered or non-ledger log")
 				}
 				id := apply.GetLog().GetId()
-				if err := sendLogSinkResponse(stream, &servicepb.SubscribeLedgerLogsResponse{
+				if err := send(&servicepb.SubscribeLedgerLogsResponse{
 					Kind: &servicepb.SubscribeLedgerLogsResponse_Log{Log: log},
 				}); err != nil {
 					return err
@@ -150,10 +175,11 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-lifetime.C:
-			return status.Error(codes.Unavailable, "reconnect to renew log sink authorization")
+			return authorizationError()
 		case message := <-input:
+			if err := authorizationError(); err != nil {
+				return err
+			}
 			if message.err != nil {
 				if errors.Is(message.err, io.EOF) {
 					return nil
@@ -167,6 +193,12 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 			}
 			if id != acknowledged {
 				if err := impl.proposeLogSinkAck(ctx, open.GetSinkName(), incarnation, id); err != nil {
+					if authErr := authorizationError(); authErr != nil {
+						return authErr
+					}
+					return err
+				}
+				if err := authorizationError(); err != nil {
 					return err
 				}
 				acknowledged = id
@@ -175,7 +207,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 				}
 			}
 			lastAck = time.Now()
-			if err := sendLogSinkResponse(stream, &servicepb.SubscribeLedgerLogsResponse{
+			if err := send(&servicepb.SubscribeLedgerLogsResponse{
 				Kind: &servicepb.SubscribeLedgerLogsResponse_Acked{Acked: &servicepb.AcknowledgedLedgerLog{LogId: id}},
 			}); err != nil {
 				return err
@@ -186,6 +218,20 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 			// an empty page and this wakeup.
 		}
 	}
+}
+
+func logSinkAuthorizationContext(ctx context.Context) (context.Context, context.CancelFunc, time.Time, error) {
+	claims := internalauth.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, nil, time.Time{}, status.Error(codes.Unauthenticated, "log sink requires an authenticated token")
+	}
+	expiry := claims.GetExpiration().Time
+	if !time.Now().Before(expiry) {
+		return nil, nil, time.Time{}, status.Error(codes.Unauthenticated, "log sink token expired")
+	}
+	authorized, cancel := context.WithDeadline(ctx, expiry)
+
+	return authorized, cancel, expiry, nil
 }
 
 func receiveLogSinkOpen(stream servicepb.BucketService_SubscribeLedgerLogsServer) (*servicepb.SubscribeLedgerLogsRequest, error) {
@@ -391,7 +437,11 @@ func receiveLogSinkInput(stream servicepb.BucketService_SubscribeLedgerLogsServe
 	}
 }
 
-func sendLogSinkResponse(stream servicepb.BucketService_SubscribeLedgerLogsServer, response *servicepb.SubscribeLedgerLogsResponse) error {
+func sendLogSinkResponse(ctx context.Context, stream servicepb.BucketService_SubscribeLedgerLogsServer, response *servicepb.SubscribeLedgerLogsResponse) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	done := make(chan error, 1)
 	go func() { done <- stream.Send(response) }()
 	timer := time.NewTimer(logSinkSendTimeout)
@@ -401,8 +451,8 @@ func sendLogSinkResponse(stream servicepb.BucketService_SubscribeLedgerLogsServe
 		return err
 	case <-timer.C:
 		return status.Error(codes.DeadlineExceeded, "log sink receiver is too slow")
-	case <-stream.Context().Done():
-		return stream.Context().Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

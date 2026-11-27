@@ -13,8 +13,8 @@ scope and installed stream interceptor must authorize it before the first
 credential evidence; evaluate any owner-binding claim only against the policy
 actually selected for the feature. A client ack causes the server's named
 system producer to submit a technical update, but the client cannot mint that
-system attribution. The stream must close by token expiry or its bounded
-reauthentication lifetime.
+system attribution. The stream must close by the verified token expiry,
+including during delivery and acknowledgement waits.
 
 ## Preparation and execution gate
 

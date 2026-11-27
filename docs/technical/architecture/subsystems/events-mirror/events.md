@@ -234,8 +234,8 @@ The server bounds each stream to 16 unacknowledged logs, 8 active streams,
 2 streams per caller identity (anonymous and auth-disabled calls share one
 resource bucket),
 an 8 MiB catch-up page budget (or one larger log),
-30 seconds without an ack while logs are outstanding, and 15 minutes of
-connection lifetime. A second connection for the same sink is rejected. The
+30 seconds without an ack while logs are outstanding. The stream closes at
+the verified token expiry. A second connection for the same sink is rejected. The
 server rescans the committed read index every 250 ms from the last sent ID;
 an empty scan never advances the cursor. Leadership loss, sink removal, or a
 ledger identity change closes the stream so the client reconnects or repairs
