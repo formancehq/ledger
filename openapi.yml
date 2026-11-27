@@ -4936,9 +4936,12 @@ components:
       type: object
     AtomicApplyGrpcLogSinkConfig:
       additionalProperties: false
+      required: [clientId, owner]
       properties:
         clientId:
           type: string
+          minLength: 1
+          maxLength: 128
         incarnation:
           anyOf:
             - pattern: '^[0-9]+$'
@@ -4951,13 +4954,25 @@ components:
       type: object
     AtomicApplyCallerIdentity:
       additionalProperties: false
+      oneOf:
+        - required: [issuer, subject]
+          not:
+            required: [keyId]
+          properties:
+            subject:
+              minLength: 1
+        - required: [keyId]
+          not:
+            required: [issuer]
       properties:
         subject:
           type: string
         issuer:
           type: string
+          minLength: 1
         keyId:
           type: string
+          minLength: 1
       type: object
     AtomicApplyIndexID:
       additionalProperties: false
