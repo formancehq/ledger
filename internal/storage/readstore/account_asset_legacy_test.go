@@ -142,7 +142,7 @@ func TestAccountAssetMalformedLegacyRowFailsWithoutConversion(t *testing.T) {
 	require.ErrorContains(t, rev.Err(), "malformed")
 	rev.Close()
 	changed, _, err := GCEventZone(s.DB(), PrefixAccountByAsset, nil, 11, 100)
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "malformed")
 	require.Zero(t, changed)
 	_, closer, err := s.DB().Get(key)
 	require.NoError(t, err)

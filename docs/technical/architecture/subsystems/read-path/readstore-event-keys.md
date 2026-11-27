@@ -53,7 +53,9 @@ The forward and reverse readers share one row decoder for these three event
 zones. It reads the value only for an RC.5 account-by-asset row; current event
 keys carry their sequence and operation in the key. Traversal, seek bounds,
 and exhaustion proofs remain direction-specific. The GC reuses the decoder's
-legacy sequence but keeps its conservative handling of malformed groups.
+legacy sequence. A malformed event makes the current GC slice fail without
+committing its queued deletes; the builder retries that zone and reports the
+error until the corrupt row is repaired.
 
 A transition away from a value therefore writes into *two* ranges: an `ADD` in
 the new value's range and a `DEL` in the old value's own range. Without the
@@ -76,6 +78,16 @@ the watermark is droppable **except** the latest, and that one survives only
 if it is an `ADD` (a `DEL` decides the same verdict as absence, so the whole
 dead group goes). Verdicts at every admissible pin are unchanged by a pass —
 that is a test, not a claim.
+
+The budget applies inside a group. Each slice compares adjacent events below
+the watermark and commits deletion of superseded predecessors. If a slice
+shortens a group, the next slice starts at that group's prefix and reads its
+surviving anchor again. This also catches a historical event written behind
+the cursor between slices. A group with no deletions after at least two rows
+can be skipped: any remaining rows are at or above the watermark. A malformed
+row aborts the slice before its pending batch is committed; it does not become
+evidence for deleting neighboring rows. A one-row requested budget is raised
+to two rows, the minimum needed to compare adjacent events.
 
 The watermark is the part that needs care. A pin is read from a main-store
 handle *before* it can be registered, so it can be arbitrarily older than the

@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -17,6 +18,18 @@ type failingEventGCIterator struct {
 	nextCalls  int
 	failed     bool
 	err        error
+}
+
+type countingEventGCIterator struct {
+	eventGCIterator
+
+	nextCalls int
+}
+
+func (i *countingEventGCIterator) Next() bool {
+	i.nextCalls++
+
+	return i.eventGCIterator.Next()
 }
 
 func (i *failingEventGCIterator) Valid() bool {
@@ -162,4 +175,131 @@ func TestGCEventZone_BudgetedResume(t *testing.T) {
 	require.Greater(t, rounds, 1, "budget of 2 keys must split the walk")
 	require.Equal(t, 4, totalChanged, "a's pair + b's pair reclaimed, c's ADD kept")
 	require.Equal(t, []string{"c"}, collect(t, s, prefix, 35))
+}
+
+// A single hot group must make durable progress without making one builder
+// wake proportional to its entire history. A backfill between slices must
+// also be seen when the shortened group is revisited.
+func TestGCEventZone_HotGroupAndLateBackfill(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		zone byte
+		key  func(*dal.KeyBuilder, uint64) []byte
+	}{
+		{"metadata", PrefixMetadataIndex, func(kb *dal.KeyBuilder, seq uint64) []byte {
+			return MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), seq, IndexEventAdd)
+		}},
+		{"exists", PrefixEntityExists, func(kb *dal.KeyBuilder, seq uint64) []byte {
+			return EntityExistsEventKeyV(kb, "l", NamespaceAccount, "k", 1, false, []byte("a"), seq, IndexEventAdd)
+		}},
+		{"asset", PrefixAccountByAsset, func(kb *dal.KeyBuilder, seq uint64) []byte {
+			return AccountByAssetEventKey(kb, "l", "USD", 2, "accounts:a", seq)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newTestStore(t)
+			kb := dal.NewKeyBuilder()
+			for seq := uint64(1); seq <= 128; seq++ {
+				require.NoError(t, s.DB().Set(tc.key(kb, seq), nil, pebble.NoSync))
+			}
+			const budget = 17
+			iter, err := s.DB().NewIter(&pebble.IterOptions{LowerBound: []byte{tc.zone}, UpperBound: IncrementBytes([]byte{tc.zone})})
+			require.NoError(t, err)
+			counted := &countingEventGCIterator{eventGCIterator: iter}
+			changed, resume, err := gcEventZoneWithIterator(s.DB(), counted, 129, budget)
+			require.NoError(t, iter.Close())
+			require.NoError(t, err)
+			require.Equal(t, budget-1, changed)
+			require.LessOrEqual(t, counted.nextCalls, budget, "one slice must stop within the group")
+			require.NotNil(t, resume)
+			// The backfill arrives behind the cursor after the first commit.
+			require.NoError(t, s.DB().Set(tc.key(kb, 0), nil, pebble.NoSync))
+			total := changed
+			for round := 0; resume != nil; round++ {
+				require.Less(t, round, 20, "hot group must converge")
+				changed, resume, err = GCEventZone(s.DB(), tc.zone, resume, 129, budget)
+				require.NoError(t, err)
+				require.LessOrEqual(t, changed, budget-1, "one slice must be bounded")
+				total += changed
+			}
+			require.Equal(t, 128, total)
+			iter, err = s.DB().NewIter(&pebble.IterOptions{LowerBound: []byte{tc.zone}, UpperBound: IncrementBytes([]byte{tc.zone})})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, iter.Close()) }()
+			require.True(t, iter.First())
+			require.True(t, bytes.Equal(tc.key(kb, 128), iter.Key()))
+			require.False(t, iter.Next())
+		})
+	}
+}
+
+func TestGCEventZone_SkipsLongAboveWatermarkTail(t *testing.T) {
+	t.Parallel()
+	s, _ := eventFixture(t, "v", ev{"a", 1, IndexEventAdd}, ev{"b", 1, IndexEventAdd}, ev{"b", 2, IndexEventDel})
+	kb := dal.NewKeyBuilder()
+	for seq := uint64(100); seq < 200; seq++ {
+		require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), seq, IndexEventAdd), nil, pebble.NoSync))
+	}
+	var resume []byte
+	total := 0
+	for round := range 10 {
+		changed, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, resume, 50, 3)
+		require.NoError(t, err)
+		total += changed
+		if next == nil {
+			break
+		}
+		resume = next
+		require.Less(t, round, 9, "above-watermark tail must be skipped")
+	}
+	require.Equal(t, 2, total, "dead group b is still reached")
+}
+
+func TestGCEventZone_ReclaimsDelBeforeAboveWatermarkTail(t *testing.T) {
+	t.Parallel()
+	s, prefix := eventFixture(t, "v", ev{"a", 1, IndexEventDel}, ev{"a", 100, IndexEventAdd})
+	before50 := collect(t, s, prefix, 50)
+	before100 := collect(t, s, prefix, 100)
+	changed, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, 50, 2)
+	require.NoError(t, err)
+	require.Equal(t, 1, changed)
+	require.NotNil(t, next)
+	require.Equal(t, before50, collect(t, s, prefix, 50))
+	require.Equal(t, before100, collect(t, s, prefix, 100))
+}
+
+// Benchmark the amount of work on one builder wake with a hot account/asset
+// group. Run with -benchtime=1x to measure a fresh 100k-event group.
+func BenchmarkGCEventZone_HotAssetSlice(b *testing.B) {
+	for b.Loop() {
+		b.StopTimer()
+		db, err := pebble.Open(b.TempDir(), &pebble.Options{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		kb := dal.NewKeyBuilder()
+		batch := db.NewBatch()
+		for seq := uint64(1); seq <= 100_000; seq++ {
+			if err := batch.Set(AccountByAssetEventKey(kb, "l", "USD", 2, "accounts:hot", seq), nil, nil); err != nil {
+				b.Fatal(err)
+			}
+		}
+		if err := batch.Commit(pebble.NoSync); err != nil {
+			b.Fatal(err)
+		}
+		if err := batch.Close(); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		changed, next, err := GCEventZone(db, PrefixAccountByAsset, nil, 100_001, 4096)
+		b.StopTimer()
+		if err != nil || changed != 4095 || next == nil {
+			b.Fatalf("GC slice: changed=%d next=%x err=%v", changed, next, err)
+		}
+		if err := db.Close(); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+	}
 }

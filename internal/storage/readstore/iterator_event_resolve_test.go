@@ -202,7 +202,7 @@ var errFaultProbe = errors.New("probe: simulated storage fault")
 // An op byte this package never writes is unreadable, not a DEL. Folding it
 // into the `op == ADD` test would silently drop matching entities, so the
 // query path refuses it the way it refuses any malformed key, and the GC
-// leaves the group whole rather than reclaiming around bytes it cannot read.
+// fails the slice without committing its pending deletes.
 func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 	t.Parallel()
 
@@ -225,7 +225,7 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 
 	require.Error(t, it.Err(), "an unknown op must be reported, not read as a delete")
 
-	// The GC must preserve the whole group, not just the unreadable event:
+	// A failed GC slice must preserve its pending batch, not just the unreadable event:
 	// a:3's ADD is superseded by its DEL and would ordinarily be reclaimed,
 	// but the unreadable event between them may be what re-added it.
 	// The key builder reuses its buffer, so each key is copied before the next.
@@ -242,7 +242,7 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 	}
 
 	_, _, err = GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	for i, key := range append(survivors, corrupt) {
 		_, closer, getErr := s.DB().Get(key)
@@ -252,7 +252,7 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 	}
 }
 
-// The deferred reclamation must not cost the GC its actual job: a group with
+// A failed slice must not cost the GC its actual job: a group with
 // no unreadable event still collapses to its latest below-watermark ADD.
 func TestGCEventZone_ReclaimsReadableGroups(t *testing.T) {
 	t.Parallel()
@@ -394,11 +394,9 @@ func TestInspectIndex_ResolvesMembershipAtMainHorizon(t *testing.T) {
 	require.Zero(t, summary.EntitiesWithNull)
 }
 
-// The unreadable event can arrive after the group has already been judged:
-// an event at or above the watermark settles the pending one mid-group, and
-// only a later key reveals the group cannot be read. Reclamation must still
-// be withheld, so judging and reclaiming have to be separate steps.
-func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T) {
+// An unreadable event can arrive after valid, reclaimable events. The slice
+// must fail before committing any of its queued deletions.
+func TestGCEventZone_AbortsSliceOnLateCorruption(t *testing.T) {
 	t.Parallel()
 
 	const watermark = 100
@@ -423,8 +421,8 @@ func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T
 	}
 
 	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
-	require.NoError(t, err)
-	require.Zero(t, pruned, "an unreadable group is preserved whole, whenever the unreadable event appears")
+	require.Error(t, err)
+	require.Zero(t, pruned, "a failed slice commits no deletions")
 
 	for i, key := range keys {
 		_, closer, getErr := s.DB().Get(key)
@@ -433,11 +431,9 @@ func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T
 	}
 }
 
-// A truncated key sorts BEFORE the events it shares an identity with, since
-// it is their prefix. Its own identity cannot be parsed, so it lands between
-// two groups with no way to tell which one it came from: both must be
-// preserved, or the group it actually belongs to is reclaimed around it.
-func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
+// A truncated key sorts before the events it shares an identity with.
+// The slice fails before committing any deletion around it.
+func TestGCEventZone_AbortsSliceOnMalformedKey(t *testing.T) {
 	t.Parallel()
 
 	const watermark = 100
@@ -463,8 +459,8 @@ func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
 	}
 
 	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
-	require.NoError(t, err)
-	require.Zero(t, pruned, "the group behind an unattributable key must be preserved")
+	require.Error(t, err)
+	require.Zero(t, pruned, "a malformed key aborts the pending delete batch")
 
 	for i, key := range keys {
 		_, closer, getErr := s.DB().Get(key)
@@ -473,11 +469,8 @@ func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
 	}
 }
 
-// The mark an unattributable key raises lives in memory, so a budgeted pass
-// that ends at the very boundary it was carried across must not resume past
-// that key: the next pass would have no reason left to preserve the group and
-// would reclaim it, which is the same loss the mark exists to prevent.
-func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
+// A malformed key encountered after valid rows also aborts a budgeted slice.
+func TestGCEventZone_BudgetedSliceAbortsOnMalformedKey(t *testing.T) {
 	t.Parallel()
 
 	const watermark = 100
@@ -499,16 +492,15 @@ func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
 		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
 	}
 
-	// Budget 3 ends the pass exactly at the a:0 -> a:1 boundary, which is
-	// where the mark is handed to a:1.
+	// Budget 3 reaches the malformed key after a:0's reclaimable pair.
 	pruned, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 3)
-	require.NoError(t, err)
-	require.Zero(t, pruned, "a:0 borders the unattributable key too, so it is preserved as well")
-	require.NotNil(t, next, "the pass stopped on budget")
+	require.Error(t, err)
+	require.Zero(t, pruned, "a malformed key aborts the pending delete batch")
+	require.Nil(t, next)
 
-	// Whatever the resume point is, the second pass must still preserve a:1.
+	// Repeating the failed slice must leave a:1 untouched too.
 	_, _, err = GCEventZone(s.DB(), PrefixMetadataIndex, next, watermark, 1<<20)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	for i, key := range second {
 		_, closer, getErr := s.DB().Get(key)

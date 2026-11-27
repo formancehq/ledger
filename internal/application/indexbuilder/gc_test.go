@@ -195,8 +195,9 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			break
 		}
 	}
-	assertReadStoreValue(t, b, behindAdd, nil)
-	assertReadStoreValue(t, b, behindDel, nil)
+	// The bounded GC may revisit this group within the active cycle and
+	// reclaim the late pair already. The write epoch still requires a follow-up
+	// full pass if it arrived behind a cursor that has moved beyond the group.
 
 	for range 20 {
 		b.runEventGC(10)

@@ -3,6 +3,7 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
 )
@@ -18,16 +19,20 @@ type eventGCIterator interface {
 
 // GCEventZone reclaims superseded events below the read-lease watermark
 // across one event zone (metadata 0x01, exists 0x02, or account asset 0x0C),
-// walking at most budget keys from resume (nil = zone start) and stopping
-// only at group boundaries. It returns the number of changed index rows
+// processing at most max(budget, 2) keys from resume (nil = zone start), with
+// at most one lookahead key to detect a group boundary. A slice that
+// prunes part of a group resumes from that group's start: the surviving
+// below-watermark event is its durable progress marker. It returns the number
+// of changed index rows
 // (reclaimed events plus converted RC.5 rows) and the cursor for the next
 // call. A nil cursor means the zone walk completed. In 0x0C it also replaces
 // RC.5 first-touch rows with equivalent ADD events in an atomic batch. A
 // group being converted is not pruned in the same pass because its old key
 // sorts before all its events regardless of seq.
 //
-// The pruning rule per event group: every event with seq < watermark is
-// droppable EXCEPT the latest one, and that one survives only as an ADD.
+// The pruning rule per event group: a below-watermark event is droppable as
+// soon as a later below-watermark event in that group is observed. The latest
+// one survives as an ADD; a final DEL is removed at the group boundary.
 // Justification: any live or future reader resolves at some pin P >=
 // watermark (live pins are lease-registered and bound the watermark; future
 // pins are at least the fold cursor, which also bounds it), and the latest
@@ -59,127 +64,87 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 }
 
 func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint64, budget int) (changed int, next []byte, err error) {
+	if budget < 1 {
+		return 0, nil, fmt.Errorf("event GC budget must be positive: %d", budget)
+	}
+	// Comparing a candidate with its successor requires two rows. The
+	// production budget is larger; one-row callers get the minimum useful slice.
+	if budget == 1 {
+		budget = 2
+	}
+
 	batch := db.NewBatch()
 	defer func() { _ = batch.Close() }()
 
-	suffix := indexEventSuffixLen + 1 // terminator + seq + op
-
 	var (
-		group        []byte // current group identity (key bytes before the terminator)
-		pendingBelow []byte // latest below-watermark key seen, not yet judged
-		pendingIsAdd bool
-		reclaimable  [][]byte // the current group's condemned events, applied at its boundary
-		groupUnsafe  bool     // the current group holds an event this package cannot read
-		carryUnsafe  bool     // ...and so does the next one, for a key that could belong to either
-		unsafeFrom   []byte   // the unattributable key a carried mark came from
+		group        []byte // full key identity, excluding the event terminator
+		pendingBelow []byte // latest below-watermark event retained as the anchor
+		pendingOp    byte
+		groupChanged bool
+		groupScanned int
 		scanned      int
 	)
 
-	// settle judges the pending latest-below-watermark event, which survives
-	// only as a live ADD. It condemns; it does not reclaim.
-	settle := func() {
-		if pendingBelow != nil && !pendingIsAdd {
-			reclaimable = append(reclaimable, append([]byte(nil), pendingBelow...))
-		}
-
-		pendingBelow = nil
-	}
-
-	// closeGroup applies what the group condemned. Reclamation is decided per
-	// event but applied only here, because whether it is safe at all is not
-	// known until the whole group has been read: an event superseded early is
-	// condemned long before a later unreadable one proves the group must be
-	// preserved whole.
-	closeGroup := func() {
-		settle()
-
-		if !groupUnsafe {
-			for _, key := range reclaimable {
-				_ = batch.Delete(key, nil)
-				changed++
+	// A final DEL may be removed only after all preceding events were visited
+	// and queued for deletion in this pass (or removed by earlier slices).
+	closeGroup := func() error {
+		if pendingBelow != nil && pendingOp == IndexEventDel {
+			if err := batch.Delete(pendingBelow, nil); err != nil {
+				return err
 			}
+			changed++
 		}
+		pendingBelow = nil
+		groupChanged = false
 
-		reclaimable = reclaimable[:0]
-		groupUnsafe = carryUnsafe
-		carryUnsafe = false
+		return nil
 	}
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		tpos := len(key) - suffix
-		var identity []byte
-		var legacy bool
-		var legacySeq uint64
+		prefixLen := 1
 		// TODO: Remove legacy detection, Value() from eventGCIterator, and
 		// the conversion branch below when no supported live read store or
 		// restore path can contain RC.5 plain account-by-asset rows.
 		if len(key) > 0 && key[0] == PrefixAccountByAsset {
-			prefixLen, prefixOK := accountAssetPrefixLen(key)
-			if prefixOK {
-				row, ok := parseIndexEventRow(iter, prefixLen)
-				prefixOK = ok
-				legacy = row.legacy
-				legacySeq = row.seq
-			}
-			if !prefixOK {
-				tpos = -1
-			} else if legacy {
-				identity = key
+			var ok bool
+			prefixLen, ok = accountAssetPrefixLen(key)
+			if !ok {
+				return 0, nil, fmt.Errorf("malformed account-asset event GC key %x", key)
 			}
 		}
-		if tpos < 1 || (!legacy && key[tpos] != indexEventTerminator) {
-			// The identity cannot be parsed, so which group the key belongs to
-			// is unknowable: a truncated key sorts before the very events it
-			// shares an identity with, so it lands between two groups and
-			// could have come from either. Both are preserved — the one being
-			// accumulated and the one that follows. Removing the key itself is
-			// the checker's business, not GC's.
-			scanned++
-			groupUnsafe = true
-			carryUnsafe = true
-			unsafeFrom = append(unsafeFrom[:0], key...)
-
-			continue
+		row, ok := parseIndexEventRow(iter, prefixLen)
+		if !ok {
+			return 0, nil, fmt.Errorf("malformed event GC key %x", key)
 		}
 
-		if !legacy {
-			identity = key[:tpos]
+		identity := key
+		if !row.legacy {
+			identity = key[:len(key)-indexEventSuffixLen-1]
 		}
-
 		if !bytes.Equal(identity, group) {
-			closeGroup()
-
-			// Budget is only enforced at group boundaries so a group is
-			// never judged from a partial view of its events.
+			if err := closeGroup(); err != nil {
+				return 0, nil, err
+			}
 			if scanned >= budget {
-				resume := key
-
-				// A mark carried into the group starting here lives only in
-				// memory. Resuming past the key that raised it would leave the
-				// next pass with no reason to preserve this group, so the scan
-				// rewinds to that key and re-derives the mark from storage.
-				if groupUnsafe && len(unsafeFrom) > 0 {
-					resume = unsafeFrom
-				}
-
-				next = append([]byte(nil), resume...)
+				next = append([]byte(nil), key...)
 
 				break
 			}
-
 			group = append(group[:0], identity...)
+			groupScanned = 0
 		}
 
 		scanned++
-		if legacy {
+		groupScanned++
+		if row.legacy {
 			// A legacy stamp is a synthetic ADD. Rewrite it atomically and
-			// skip pruning this group: its physical position precedes newer
-			// event keys regardless of the stamp's sequence.
+			// revisit the group before pruning: its plain key sorts before
+			// events regardless of the stamp's sequence.
 			converted := make([]byte, 0, len(key)+10)
 			converted = append(converted, key...)
 			converted = append(converted, indexEventTerminator)
-			converted = binary.BigEndian.AppendUint64(converted, legacySeq)
+			converted = binary.BigEndian.AppendUint64(converted, row.seq)
 			converted = append(converted, IndexEventAdd)
 			if err := batch.Set(converted, nil, nil); err != nil {
 				return 0, nil, err
@@ -188,43 +153,48 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 				return 0, nil, err
 			}
 			changed++ // one legacy row replaced
-			groupUnsafe = true
+			next = append([]byte(nil), group...)
 
-			continue
+			break
 		}
 
-		op := key[tpos+9]
-		if !validEventOp(op) {
-			// Unreadable: the events around it are the only evidence of what
-			// this group holds, and one of them may be the live ADD the
-			// unreadable event was meant to supersede. Preserve the group and
-			// let the query path reject it loudly.
-			groupUnsafe = true
-
-			continue
+		if row.seq < watermark {
+			// The later event decides every admissible pin in place of the
+			// previous one. Keep only the latest seen below the watermark.
+			if pendingBelow != nil {
+				if err := batch.Delete(pendingBelow, nil); err != nil {
+					return 0, nil, err
+				}
+				changed++
+				groupChanged = true
+			}
+			pendingBelow = append(pendingBelow[:0], key...)
+			pendingOp = row.op
 		}
 
-		seq := binary.BigEndian.Uint64(key[tpos+1 : tpos+9])
+		if scanned >= budget {
+			switch {
+			case groupChanged:
+				// Re-read the group after committing its shortened prefix. An
+				// older event inserted by backfill between slices is then seen.
+				next = append([]byte(nil), group...)
+			case groupScanned > 1 || pendingBelow == nil:
+				// No earlier event can be reclaimed from this group: after
+				// the first event at/above the watermark all later ones are
+				// above it too. Reclaim a pending DEL, then skip the rest.
+				if err := closeGroup(); err != nil {
+					return 0, nil, err
+				}
+				groupPrefix := append(append([]byte(nil), group...), indexEventTerminator)
+				next = IncrementBytes(groupPrefix)
+			default:
+				// The budget landed on the first below-watermark event
+				// in this group. Revisit it to compare with its successor.
+				next = append([]byte(nil), group...)
+			}
 
-		if seq >= watermark {
-			// Above the watermark nothing is reclaimable, and the group's
-			// pending below-watermark event gets judged now: a pending ADD
-			// still decides pins in [watermark, seq) and survives; a pending
-			// DEL decides "dead", the same verdict as absence, and is
-			// condemned. Judging is not reclaiming — the group may still turn
-			// out to hold an event this package cannot read.
-			settle()
-
-			continue
+			break
 		}
-
-		// A newer below-watermark event supersedes the previous pending one.
-		if pendingBelow != nil {
-			reclaimable = append(reclaimable, append([]byte(nil), pendingBelow...))
-		}
-
-		pendingBelow = append(pendingBelow[:0], key...)
-		pendingIsAdd = op == IndexEventAdd
 	}
 
 	// !Valid means either clean exhaustion or an iterator failure. Settling the
@@ -235,7 +205,9 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 	}
 
 	if next == nil {
-		closeGroup()
+		if err := closeGroup(); err != nil {
+			return 0, nil, err
+		}
 	}
 
 	if changed > 0 {
