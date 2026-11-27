@@ -5,8 +5,16 @@ import "errors"
 
 // FieldError identifies a direct input field that violates a declared rule.
 type FieldError struct {
-	Path string
-	Rule string
+	Message string
+	Path    string
+	Rule    string
+}
+
+// Key identifies one protobuf input rule independently of its caller.
+type Key struct {
+	Message string
+	Path    string
+	Rule    string
 }
 
 func (e *FieldError) Error() string {
@@ -20,10 +28,10 @@ func (e *FieldError) Error() string {
 	}
 }
 
-// MustMatch rejects a stale caller mapping when a generated validator gains
-// another field or rule. Call it before translating an input error to a
-// field-specific public error.
-func MustMatch(err error, path, rule string) {
+// Resolve translates a generated error through one boundary's public-error
+// table. An unmapped rule is an implementation failure, never an old field's
+// public error.
+func Resolve[T any](err error, mappings map[Key]T) T {
 	if err == nil {
 		panic("unexpected nil generated input validation error")
 	}
@@ -31,7 +39,9 @@ func MustMatch(err error, path, rule string) {
 	if !errors.As(err, &fieldErr) {
 		panic("unexpected generated input validation error type")
 	}
-	if fieldErr.Path != path || fieldErr.Rule != rule {
-		panic("unexpected generated input validation field or rule")
+	value, ok := mappings[Key{Message: fieldErr.Message, Path: fieldErr.Path, Rule: fieldErr.Rule}]
+	if !ok {
+		panic("unmapped generated input validation rule")
 	}
+	return value
 }

@@ -25,7 +25,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -201,9 +200,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 // deterministically, so mixed-version clusters fail closed until rollout ends.
 func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "epoch", "")
-
-		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+		return nil, mapInputValidation(err)
 	}
 	if len(req.GetEpoch()) > 128 {
 		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
@@ -252,9 +249,7 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 // that it can apply the Raft-ordered release marker.
 func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "epoch", "")
-
-		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+		return nil, mapInputValidation(err)
 	}
 	if len(req.GetEpoch()) > 128 {
 		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
@@ -420,9 +415,7 @@ func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceCl
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "transferee", "")
-
-		return nil, errors.New("transferee node ID must be non-zero")
+		return nil, mapInputValidation(err)
 	}
 
 	transferee := req.GetTransferee()

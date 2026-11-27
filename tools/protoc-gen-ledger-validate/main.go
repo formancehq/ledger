@@ -161,7 +161,7 @@ func generate(gen *protogen.Plugin) error {
 			g.P("func (m *", item.message.GoIdent.GoName, ") ValidateInput() error {")
 			for _, rule := range item.fields {
 				condition := ""
-				errorRule := ""
+				errorRule := "required"
 				lengthValue := "m." + rule.field.GoName
 				if rule.field.Desc.Kind() == protoreflect.StringKind && rule.field.Desc.HasPresence() {
 					lengthValue = "m.Get" + rule.field.GoName + "()"
@@ -169,17 +169,18 @@ func generate(gen *protogen.Plugin) error {
 				switch {
 				case rule.nonZero:
 					condition = nonZeroCondition(rule.field)
+					errorRule = "non_zero"
 				case rule.maxBytes > 0:
 					condition = fmt.Sprintf("len(%s) > %d", lengthValue, rule.maxBytes)
-					errorRule = `, Rule: "max_bytes"`
+					errorRule = "max_bytes"
 				case rule.exactBytes > 0:
 					condition = fmt.Sprintf("len(%s) != %d", lengthValue, rule.exactBytes)
-					errorRule = `, Rule: "exact_bytes"`
+					errorRule = "exact_bytes"
 				default:
 					condition = "m." + rule.field.GoName + " == nil"
 				}
 				g.P("if m == nil || ", condition, " {")
-				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), errorRule, "}")
+				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Message: ", fmt.Sprintf("%q", item.message.Desc.FullName()), ", Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), ", Rule: ", fmt.Sprintf("%q", errorRule), "}")
 				g.P("}")
 			}
 			g.P("return nil")

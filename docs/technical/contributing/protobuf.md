@@ -61,12 +61,13 @@ This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-
 - **`common.non_zero_for_input`** — generates the same method for annotated scalar fields whose zero value is invalid at the input boundary. It supports strings, bytes, booleans, numbers, and enums, including optional scalars. It rejects messages, collections, oneofs, explicit `false`, and combinations with `required_for_input`. It does not infer rules for unannotated fields. Admission uses it for ledger-scoped order names, prepared-query names (including update and delete orders), sink names, mirror IAM regions, and explicit posting source, destination and asset; the gRPC adapter uses it for read requests that already reject an empty ledger, drain epochs that already reject an empty value, and a nonzero leadership transferee. Posting address and asset shape is also checked at admission, while the FSM retains validation of resolved postings and historical orders. A zero-valued enum that is valid, such as `QUERY_TARGET_ACCOUNTS`, must use explicit presence rather than this rule.
 - **`common.max_bytes_for_input` and `common.exact_bytes_for_input`** — generate byte-length checks for singular strings and bytes. Limits must be positive and cannot be combined with each other or with the presence and non-zero rules. Strings are measured in UTF-8 bytes, matching the existing `len` checks; admission checks UTF-8 validity before validating orders. The generated `FieldError` identifies the field and constraint, and callers map it to the existing public error. Admission uses these rules for transaction references, removal of an account type, and Ed25519 public keys. The protobuf limits match the existing domain and crypto constants; changing a limit requires updating both the schema and the corresponding FSM rule where one exists. These annotations do not change wire encoding and do not run for committed orders, replay, or snapshots.
 
-Callers that map a generated error to a field-specific public error must inspect
-its `Path` and `Rule`. `inputvalidation.MustMatch` asserts the mapping for
-single-field callers; a multi-field caller switches on the field path. Adding
-an annotation to an already validated message therefore requires updating its
-caller mapping. An unmatched generated error is an implementation failure, not
-a reason to return the prior field's public error.
+Each generated error identifies its protobuf message, field path and rule.
+Callers pass it to `inputvalidation.Resolve` through a mapping table at the
+admission, gRPC or HTTP boundary. The tables preserve existing public errors
+without making each caller infer the failed field. Adding an annotation to an
+already validated message requires a new entry at every applicable boundary.
+An unmapped rule fails loudly as an implementation error instead of borrowing
+the public error for an older field.
 
 ### Prerequisites
 

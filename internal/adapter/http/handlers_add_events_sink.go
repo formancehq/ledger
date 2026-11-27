@@ -8,7 +8,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -29,8 +28,7 @@ func (s *Server) handleAddEventsSink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := config.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "name", "")
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("sink name and one sink type are required"))
+		writeBadRequest(w, "INVALID_REQUEST", mapInputValidation(err))
 
 		return
 	}

@@ -1,7 +1,6 @@
 package admission
 
 import (
-	"errors"
 	"maps"
 	"net/url"
 	"slices"
@@ -16,7 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -181,9 +179,7 @@ func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 		if d.RemoveAccountType != nil {
 			if err := d.RemoveAccountType.ValidateInput(); err != nil {
-				inputvalidation.MustMatch(err, "name", "max_bytes")
-
-				return domain.ErrAccountTypeNameTooLong
+				return mapInputValidation(err)
 			}
 		}
 	}
@@ -233,9 +229,7 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 	if err := ls.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return domain.ErrLedgerNameRequired
+		return mapInputValidation(err)
 	}
 
 	if err := domain.ValidateLedgerName(ls.GetLedger()); err != nil {
@@ -314,18 +308,14 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		o = data.CreateTransaction
 		if o != nil {
 			if err := o.ValidateInput(); err != nil {
-				inputvalidation.MustMatch(err, "reference", "max_bytes")
-
-				return domain.ErrTransactionReferenceTooLong
+				return mapInputValidation(err)
 			}
 		}
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
 		execute = true
 		if data.ExecuteNumscript != nil {
 			if err := data.ExecuteNumscript.ValidateInput(); err != nil {
-				inputvalidation.MustMatch(err, "reference", "max_bytes")
-
-				return domain.ErrTransactionReferenceTooLong
+				return mapInputValidation(err)
 			}
 		}
 		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
@@ -356,24 +346,7 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 
 	for _, posting := range o.GetPostings() {
 		if err := posting.ValidateInput(); err != nil {
-			fieldErr := &inputvalidation.FieldError{}
-			ok := errors.As(err, &fieldErr)
-			if !ok {
-				panic("unexpected generated Posting validation error")
-			}
-			if fieldErr.Rule != "" {
-				panic("unexpected generated Posting validation rule")
-			}
-			switch fieldErr.Path {
-			case "source", "destination":
-				return domain.ErrAccountAddressEmpty
-			case "amount":
-				return ErrPostingAmountRequired
-			case "asset":
-				return domain.ErrAssetInvalid
-			default:
-				panic("unexpected generated Posting validation field")
-			}
+			return mapInputValidation(err)
 		}
 		if err := domain.ValidateAccountAddress(posting.GetSource()); err != nil {
 			return err
@@ -438,15 +411,11 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	switch p := order.GetLedgerScoped().GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
 		if err := p.CreatePreparedQuery.ValidateInput(); err != nil {
-			inputvalidation.MustMatch(err, "query", "")
-
-			return domain.ErrPreparedQueryRequired
+			return mapInputValidation(err)
 		}
 		q := p.CreatePreparedQuery.GetQuery()
 		if err := q.ValidateInput(); err != nil {
-			inputvalidation.MustMatch(err, "name", "")
-
-			return domain.ErrPreparedQueryNameRequired
+			return mapInputValidation(err)
 		}
 
 		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
@@ -470,9 +439,7 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		return domain.ValidateFilterAdmissionShape(q.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
 		if err := p.UpdatePreparedQuery.ValidateInput(); err != nil {
-			inputvalidation.MustMatch(err, "name", "")
-
-			return domain.ErrPreparedQueryNameRequired
+			return mapInputValidation(err)
 		}
 		if err := domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName()); err != nil {
 			return err
@@ -492,9 +459,7 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		if err := p.DeletePreparedQuery.ValidateInput(); err != nil {
-			inputvalidation.MustMatch(err, "name", "")
-
-			return domain.ErrPreparedQueryNameRequired
+			return mapInputValidation(err)
 		}
 
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
@@ -572,9 +537,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	if err := iam.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "region", "")
-
-		return ErrMirrorIAMRegionRequired
+		return mapInputValidation(err)
 	}
 
 	// Driver option and IAM TLS validation belong to source construction. The
@@ -594,9 +557,7 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	if err := reg.RegisterSigningKey.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "public_key", "exact_bytes")
-
-		return ErrSigningKeyInvalidLength
+		return mapInputValidation(err)
 	}
 
 	return nil

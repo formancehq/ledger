@@ -8,7 +8,7 @@ import (
 // ValidateInput checks declared direct-field input requirements.
 func (m *BeginDrainRequest) ValidateInput() error {
 	if m == nil || m.Epoch == "" {
-		return &inputvalidation.FieldError{Path: "epoch"}
+		return &inputvalidation.FieldError{Message: "cluster.BeginDrainRequest", Path: "epoch", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -16,7 +16,7 @@ func (m *BeginDrainRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *EndDrainRequest) ValidateInput() error {
 	if m == nil || m.Epoch == "" {
-		return &inputvalidation.FieldError{Path: "epoch"}
+		return &inputvalidation.FieldError{Message: "cluster.EndDrainRequest", Path: "epoch", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -24,7 +24,7 @@ func (m *EndDrainRequest) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *TransferLeadershipRequest) ValidateInput() error {
 	if m == nil || m.Transferee == 0 {
-		return &inputvalidation.FieldError{Path: "transferee"}
+		return &inputvalidation.FieldError{Message: "cluster.TransferLeadershipRequest", Path: "transferee", Rule: "non_zero"}
 	}
 	return nil
 }

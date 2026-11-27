@@ -7,24 +7,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMustMatch(t *testing.T) {
+func TestResolve(t *testing.T) {
 	t.Parallel()
-	fieldErr := &FieldError{Path: "reference", Rule: "max_bytes"}
-	require.NotPanics(t, func() { MustMatch(fieldErr, "reference", "max_bytes") })
+	fieldErr := &FieldError{Message: "raft.CreateTransactionOrder", Path: "reference", Rule: "max_bytes"}
+	mappings := map[Key]string{{Message: "raft.CreateTransactionOrder", Path: "reference", Rule: "max_bytes"}: "TRANSACTION_REFERENCE_TOO_LONG"}
+	require.Equal(t, "TRANSACTION_REFERENCE_TOO_LONG", Resolve(fieldErr, mappings))
 	for _, tc := range []struct {
 		name string
 		err  error
-		path string
-		rule string
 	}{
-		{"different field", fieldErr, "name", "max_bytes"},
-		{"different rule", fieldErr, "reference", "exact_bytes"},
-		{"different error", errors.New("invalid"), "reference", "max_bytes"},
-		{"missing error", nil, "reference", "max_bytes"},
+		{"different message", &FieldError{Message: "raft.ExecuteNumscriptOrder", Path: "reference", Rule: "max_bytes"}},
+		{"different field", &FieldError{Message: fieldErr.Message, Path: "name", Rule: "max_bytes"}},
+		{"different rule", &FieldError{Message: fieldErr.Message, Path: "reference", Rule: "exact_bytes"}},
+		{"different error", errors.New("invalid")},
+		{"missing error", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Panics(t, func() { MustMatch(tc.err, tc.path, tc.rule) })
+			require.Panics(t, func() { Resolve(tc.err, mappings) })
 		})
 	}
 }

@@ -8,7 +8,7 @@ import (
 // ValidateInput checks declared direct-field input requirements.
 func (m *LedgerScopedOrder) ValidateInput() error {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Path: "ledger"}
+		return &inputvalidation.FieldError{Message: "raft.LedgerScopedOrder", Path: "ledger", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -16,7 +16,7 @@ func (m *LedgerScopedOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *CreatePreparedQueryOrder) ValidateInput() error {
 	if m == nil || m.Query == nil {
-		return &inputvalidation.FieldError{Path: "query"}
+		return &inputvalidation.FieldError{Message: "raft.CreatePreparedQueryOrder", Path: "query", Rule: "required"}
 	}
 	return nil
 }
@@ -24,7 +24,7 @@ func (m *CreatePreparedQueryOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *UpdatePreparedQueryOrder) ValidateInput() error {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Path: "name"}
+		return &inputvalidation.FieldError{Message: "raft.UpdatePreparedQueryOrder", Path: "name", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -32,7 +32,7 @@ func (m *UpdatePreparedQueryOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *DeletePreparedQueryOrder) ValidateInput() error {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Path: "name"}
+		return &inputvalidation.FieldError{Message: "raft.DeletePreparedQueryOrder", Path: "name", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func (m *DeletePreparedQueryOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *AddEventsSinkOrder) ValidateInput() error {
 	if m == nil || m.Config == nil {
-		return &inputvalidation.FieldError{Path: "config"}
+		return &inputvalidation.FieldError{Message: "raft.AddEventsSinkOrder", Path: "config", Rule: "required"}
 	}
 	return nil
 }
@@ -48,7 +48,7 @@ func (m *AddEventsSinkOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *RegisterSigningKeyOrder) ValidateInput() error {
 	if m == nil || len(m.PublicKey) != 32 {
-		return &inputvalidation.FieldError{Path: "public_key", Rule: "exact_bytes"}
+		return &inputvalidation.FieldError{Message: "raft.RegisterSigningKeyOrder", Path: "public_key", Rule: "exact_bytes"}
 	}
 	return nil
 }
@@ -56,7 +56,7 @@ func (m *RegisterSigningKeyOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *RemoveAccountTypeOrder) ValidateInput() error {
 	if m == nil || len(m.Name) > 256 {
-		return &inputvalidation.FieldError{Path: "name", Rule: "max_bytes"}
+		return &inputvalidation.FieldError{Message: "raft.RemoveAccountTypeOrder", Path: "name", Rule: "max_bytes"}
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (m *RemoveAccountTypeOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *CreateTransactionOrder) ValidateInput() error {
 	if m == nil || len(m.Reference) > 4096 {
-		return &inputvalidation.FieldError{Path: "reference", Rule: "max_bytes"}
+		return &inputvalidation.FieldError{Message: "raft.CreateTransactionOrder", Path: "reference", Rule: "max_bytes"}
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func (m *CreateTransactionOrder) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *ExecuteNumscriptOrder) ValidateInput() error {
 	if m == nil || len(m.Reference) > 4096 {
-		return &inputvalidation.FieldError{Path: "reference", Rule: "max_bytes"}
+		return &inputvalidation.FieldError{Message: "raft.ExecuteNumscriptOrder", Path: "reference", Rule: "max_bytes"}
 	}
 	return nil
 }

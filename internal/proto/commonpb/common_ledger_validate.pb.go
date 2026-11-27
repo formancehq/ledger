@@ -8,16 +8,16 @@ import (
 // ValidateInput checks declared direct-field input requirements.
 func (m *Posting) ValidateInput() error {
 	if m == nil || m.Source == "" {
-		return &inputvalidation.FieldError{Path: "source"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "source", Rule: "non_zero"}
 	}
 	if m == nil || m.Destination == "" {
-		return &inputvalidation.FieldError{Path: "destination"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "destination", Rule: "non_zero"}
 	}
 	if m == nil || m.Amount == nil {
-		return &inputvalidation.FieldError{Path: "amount"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "amount", Rule: "required"}
 	}
 	if m == nil || m.Asset == "" {
-		return &inputvalidation.FieldError{Path: "asset"}
+		return &inputvalidation.FieldError{Message: "common.Posting", Path: "asset", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -25,7 +25,7 @@ func (m *Posting) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *SinkConfig) ValidateInput() error {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Path: "name"}
+		return &inputvalidation.FieldError{Message: "common.SinkConfig", Path: "name", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func (m *SinkConfig) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *PostgresAwsIamAuth) ValidateInput() error {
 	if m == nil || m.Region == "" {
-		return &inputvalidation.FieldError{Path: "region"}
+		return &inputvalidation.FieldError{Message: "common.PostgresAwsIamAuth", Path: "region", Rule: "non_zero"}
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func (m *PostgresAwsIamAuth) ValidateInput() error {
 // ValidateInput checks declared direct-field input requirements.
 func (m *PreparedQuery) ValidateInput() error {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Path: "name"}
+		return &inputvalidation.FieldError{Message: "common.PreparedQuery", Path: "name", Rule: "non_zero"}
 	}
 	return nil
 }

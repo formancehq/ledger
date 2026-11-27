@@ -36,7 +36,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -293,9 +292,7 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return nil, domain.ErrLedgerNameRequired
+		return nil, mapInputValidation(err)
 	}
 
 	var (
@@ -497,9 +494,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	defer impl.emitProfile(ctx, profile)
 
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return domain.ErrLedgerNameRequired
+		return mapInputValidation(err)
 	}
 
 	opts := req.GetOptions()
@@ -607,9 +602,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	defer span.End()
 
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return nil, domain.ErrLedgerNameRequired
+		return nil, mapInputValidation(err)
 	}
 
 	read := req.GetRead()
@@ -630,9 +623,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return nil, domain.ErrLedgerNameRequired
+		return nil, mapInputValidation(err)
 	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
@@ -657,9 +648,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	defer impl.emitProfile(ctx, profile)
 
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return domain.ErrLedgerNameRequired
+		return mapInputValidation(err)
 	}
 
 	opts := req.GetOptions()
@@ -886,9 +875,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	defer cleanup()
 
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return domain.ErrLedgerNameRequired
+		return mapInputValidation(err)
 	}
 
 	page, err := query.DecodeCursor(opts.GetCursor())
@@ -1005,9 +992,7 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 
 func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccountsRequest, stream servicepb.BucketService_AnalyzeAccountsServer) error {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return domain.ErrLedgerNameRequired
+		return mapInputValidation(err)
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -1034,9 +1019,7 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 
 func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeTransactionsRequest, stream servicepb.BucketService_AnalyzeTransactionsServer) error {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return domain.ErrLedgerNameRequired
+		return mapInputValidation(err)
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -1089,9 +1072,7 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 
 func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return nil, domain.ErrLedgerNameRequired
+		return nil, mapInputValidation(err)
 	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
@@ -1108,9 +1089,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	defer impl.emitProfile(ctx, profile)
 
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return nil, domain.ErrLedgerNameRequired
+		return nil, mapInputValidation(err)
 	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
@@ -1220,9 +1199,7 @@ func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, 
 
 func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
 	if err := req.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "ledger", "")
-
-		return nil, domain.ErrLedgerNameRequired
+		return nil, mapInputValidation(err)
 	}
 
 	if req.GetMetadataKey() == "" {

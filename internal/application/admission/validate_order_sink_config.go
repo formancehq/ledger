@@ -5,7 +5,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/connectionurl"
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -17,15 +16,11 @@ func validateOrderSinkConfig(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 	if err := add.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "config", "")
-
-		return ErrSinkConfigIncomplete
+		return mapInputValidation(err)
 	}
 	cfg := add.GetConfig()
 	if err := cfg.ValidateInput(); err != nil {
-		inputvalidation.MustMatch(err, "name", "")
-
-		return ErrSinkConfigIncomplete
+		return mapInputValidation(err)
 	}
 	if cfg.GetType() == nil {
 		return ErrSinkConfigIncomplete

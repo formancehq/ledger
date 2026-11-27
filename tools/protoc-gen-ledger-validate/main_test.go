@@ -67,7 +67,8 @@ string reference = 7 [(common.max_bytes_for_input) = 4096];
 bytes public_key = 8 [(common.exact_bytes_for_input) = 32];`
 	fields += `
 optional string optional_max = 9 [(common.max_bytes_for_input) = 4];
-optional string optional_exact = 10 [(common.exact_bytes_for_input) = 3];`
+optional string optional_exact = 10 [(common.exact_bytes_for_input) = 3];
+optional Mode required_mode = 11 [(common.required_for_input) = true];`
 	if err := os.WriteFile(fixture, []byte(strings.Replace(definitions, "FIELD", fields, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +83,16 @@ optional string optional_exact = 10 [(common.exact_bytes_for_input) = 3];`
 	for _, check := range []string{`m.Name == ""`, `len(m.Key) == 0`, `m.Count == 0`, `!m.Enabled`, `m.Limit == nil || *m.Limit == 0`, `m.Mode == 0`, `len(m.Reference) > 4096`, `len(m.PublicKey) != 32`, `len(m.GetOptionalMax()) > 4`, `len(m.GetOptionalExact()) != 3`} {
 		if !strings.Contains(string(generated), check) {
 			t.Errorf("generated validator missing %q: %s", check, generated)
+		}
+	}
+	for _, check := range []string{
+		`Message: "common.Sample", Path: "name", Rule: "non_zero"`,
+		`Message: "common.Sample", Path: "reference", Rule: "max_bytes"`,
+		`Message: "common.Sample", Path: "public_key", Rule: "exact_bytes"`,
+		`Message: "common.Sample", Path: "required_mode", Rule: "required"`,
+	} {
+		if !strings.Contains(string(generated), check) {
+			t.Errorf("generated error missing %q: %s", check, generated)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/formancehq/ledger/v3\n\ngo 1.26.0\n\nrequire google.golang.org/protobuf v1.36.11\n"), 0o600); err != nil {
