@@ -479,6 +479,37 @@ func TestBackfillEphemeralIncarnationClosesOnlyAfterLastVolume(t *testing.T) {
 	require.Equal(t, uint64(25800), row.GetUpdatedAt().GetData())
 }
 
+func TestBackfillRetainsReclassifiedTransientIncarnation(t *testing.T) {
+	store := migrationStore(t)
+	appendFixture(t, store, 1, 100, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger"}}})
+	volumeLog := func(kept, purged []*commonpb.TouchedVolume) *commonpb.LogPayload {
+		return &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			LedgerName: "ledger", Log: &commonpb.LedgerLog{
+				Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+					Transaction: &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "alice", Destination: "world"}}},
+				}}},
+				NewKeptVolumes: kept, PurgedVolumes: purged,
+			},
+		}}}
+	}
+	usd := &commonpb.TouchedVolume{Account: "alice", Asset: "USD"}
+	appendFixture(t, store, 2, 200, volumeLog([]*commonpb.TouchedVolume{usd}, nil))
+	appendFixture(t, store, 3, 300, &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "ledger", Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &commonpb.AddedAccountTypeLog{AccountType: &commonpb.AccountType{Name: "transient", Pattern: "alice", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}},
+		}}},
+	}}})
+	appendFixture(t, store, 4, 400, volumeLog(nil, []*commonpb.TouchedVolume{usd}))
+	activateWrites(t, store)
+	require.NoError(t, Run(t.Context(), store))
+	row, err := attributes.New().AccountIncarnation.Get(store, (domain.AccountKey{LedgerName: "ledger", Account: "alice"}).Bytes())
+	require.NoError(t, err)
+	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, row.GetPersistence())
+	require.Equal(t, uint64(200), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(400), row.GetUpdatedAt().GetData())
+	require.Zero(t, row.GetVolumeCount())
+}
+
 func TestRequireReadyRejectsUnmigratedActiveStore(t *testing.T) {
 	store := migrationStore(t)
 	require.NoError(t, RequireReady(store))

@@ -75,7 +75,7 @@ func TestExistingIncarnationIsIncludedInMigrationFilter(t *testing.T) {
 	require.Equal(t, uint64(800), row.GetUpdatedAt().GetData())
 }
 
-func TestTransientDrainClosesStoredEphemeralIncarnation(t *testing.T) {
+func TestTransientTouchRetainsStoredIncarnation(t *testing.T) {
 	store := migrationStore(t)
 	attrs := attributes.New()
 	fold := &folder{current: store, attrs: attrs, rows: make(map[domain.AccountKey]*commonpb.AccountIncarnation), deletes: make(map[string]struct{}), seen: newAccountSeen()}
@@ -85,22 +85,36 @@ func TestTransientDrainClosesStoredEphemeralIncarnation(t *testing.T) {
 	require.NoError(t, fold.touchWithVolumeDelta(normal, &commonpb.Timestamp{Data: 100}, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, 1, true))
 	require.NoError(t, fold.commit(store, Marker{}))
 
-	// After reclassification as transient, the old incarnation is not touched,
-	// but a purged retained volume must still close an ephemeral row.
-	require.NoError(t, fold.adjustExistingVolumeCount(ephemeral, -1))
-	require.NoError(t, fold.adjustExistingVolumeCount(normal, -1))
+	// Reclassification retains both existing incarnations, even when the last
+	// volume is purged. Their dates and persistence follow the accepted write.
+	require.NoError(t, fold.touchExistingWithVolumeDelta(ephemeral, &commonpb.Timestamp{Data: 200}, -1))
+	require.NoError(t, fold.touchExistingWithVolumeDelta(normal, &commonpb.Timestamp{Data: 200}, -1))
 	require.NoError(t, fold.commit(store, Marker{}))
-	closed, err := attrs.AccountIncarnation.Get(store, ephemeral.Bytes())
+	retainedEphemeral, err := attrs.AccountIncarnation.Get(store, ephemeral.Bytes())
 	require.NoError(t, err)
-	require.Nil(t, closed)
+	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, retainedEphemeral.GetPersistence())
+	require.Equal(t, uint64(0), retainedEphemeral.GetVolumeCount())
+	require.Equal(t, uint64(100), retainedEphemeral.GetInsertedAt().GetData())
+	require.Equal(t, uint64(200), retainedEphemeral.GetUpdatedAt().GetData())
 	retained, err := attrs.AccountIncarnation.Get(store, normal.Bytes())
 	require.NoError(t, err)
+	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, retained.GetPersistence())
 	require.Equal(t, uint64(0), retained.GetVolumeCount())
+	require.Equal(t, uint64(100), retained.GetInsertedAt().GetData())
+	require.Equal(t, uint64(200), retained.GetUpdatedAt().GetData())
+
+	native := domain.AccountKey{LedgerName: "ledger", Account: "native-transient"}
+	require.NoError(t, fold.touchExistingWithVolumeDelta(native, &commonpb.Timestamp{Data: 200}, 1))
+	require.NoError(t, fold.commit(store, Marker{}))
+	missing, err := attrs.AccountIncarnation.Get(store, native.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, missing)
 
 	require.NoError(t, fold.touchWithVolumeDelta(ephemeral, &commonpb.Timestamp{Data: 300}, commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, 1, true))
 	require.NoError(t, fold.commit(store, Marker{}))
 	reopened, err := attrs.AccountIncarnation.Get(store, ephemeral.Bytes())
 	require.NoError(t, err)
-	require.Equal(t, uint64(300), reopened.GetInsertedAt().GetData())
+	require.Equal(t, uint64(100), reopened.GetInsertedAt().GetData())
+	require.Equal(t, uint64(300), reopened.GetUpdatedAt().GetData())
 	require.Equal(t, uint64(1), reopened.GetVolumeCount())
 }

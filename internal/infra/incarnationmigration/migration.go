@@ -357,7 +357,7 @@ func run(ctx context.Context, store *dal.Store, pause time.Duration, allowDorman
 	return nil
 }
 
-// Verify reconstructs the normal-account incarnation projection from the
+// Verify reconstructs the account incarnation projection from the
 // chain-checked audit history into a disposable bounded store, then compares
 // both directions of the durable attribute range. Callers must first verify
 // the audit chain itself.
@@ -599,10 +599,8 @@ func (f *folder) process(ctx context.Context, entry *auditpb.AuditEntry, write b
 			persistence = matched.GetPersistence()
 		}
 		if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
-			if delta := volumeDeltas[key]; delta != 0 {
-				if err := f.adjustExistingVolumeCount(key, delta); err != nil {
-					return err
-				}
+			if err := f.touchExistingWithVolumeDelta(key, entry.GetTimestamp(), volumeDeltas[key]); err != nil {
+				return err
 			}
 
 			continue
@@ -698,44 +696,17 @@ func (f *folder) touch(key domain.AccountKey, date *commonpb.Timestamp) error {
 	return f.touchWithVolumeDelta(key, date, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, 0, false)
 }
 
-// An account may become transient while it still owns persisted cells.
-// The FSM continues to count those cells without touching timestamps, and
-// closes an existing ephemeral incarnation when its last cell is purged.
-func (f *folder) adjustExistingVolumeCount(key domain.AccountKey, delta int64) error {
-	row := f.rows[key]
-	if row == nil {
-		canonicalKey := key.Bytes()
-		_, closed := f.closed[key]
-		if closed || !f.seen.mayContain(canonicalKey) {
-			return nil
-		}
-		var err error
-		row, err = f.attrs.AccountIncarnation.Get(f.current, canonicalKey)
-		if err != nil || row == nil {
-			return err
-		}
-		f.rows[key] = row
-	}
-	if delta < 0 && uint64(-delta) > row.GetVolumeCount() {
-		return errors.New("historical account incarnation volume count underflow")
-	}
-	if delta < 0 {
-		row.VolumeCount -= uint64(-delta)
-	} else {
-		row.VolumeCount += uint64(delta)
-	}
-	if row.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL && row.GetVolumeCount() == 0 {
-		delete(f.rows, key)
-		if f.closed == nil {
-			f.closed = make(map[domain.AccountKey]struct{})
-		}
-		f.closed[key] = struct{}{}
-	}
-
-	return nil
+// Reclassified transient accounts retain and update an existing incarnation.
+// Accounts that were always transient do not open one.
+func (f *folder) touchExistingWithVolumeDelta(key domain.AccountKey, date *commonpb.Timestamp, delta int64) error {
+	return f.touchWithVolumeDeltaMode(key, date, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, delta, true, false)
 }
 
 func (f *folder) touchWithVolumeDelta(key domain.AccountKey, date *commonpb.Timestamp, persistence commonpb.AccountTypePersistence, delta int64, volumeWrite bool) error {
+	return f.touchWithVolumeDeltaMode(key, date, persistence, delta, volumeWrite, true)
+}
+
+func (f *folder) touchWithVolumeDeltaMode(key domain.AccountKey, date *commonpb.Timestamp, persistence commonpb.AccountTypePersistence, delta int64, volumeWrite, createIfMissing bool) error {
 	if date == nil {
 		return errors.New("accepted audit entry has no timestamp")
 	}
@@ -754,6 +725,9 @@ func (f *folder) touchWithVolumeDelta(key domain.AccountKey, date *commonpb.Time
 			}
 		}
 		if row == nil {
+			if !createIfMissing {
+				return nil
+			}
 			row = &commonpb.AccountIncarnation{Persistence: persistence}
 			f.newKeys = append(f.newKeys, canonicalKey)
 		}
