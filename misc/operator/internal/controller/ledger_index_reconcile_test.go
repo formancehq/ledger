@@ -48,10 +48,10 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			require.False(t, synced)
 			if firstCreated {
 				require.Equal(t, []string{"reference"}, ledger.Status.AppliedIndexes)
-				require.Len(t, commands, 4)
+				require.Len(t, commands, 5)
 			} else {
 				require.Empty(t, ledger.Status.AppliedIndexes)
-				require.Len(t, commands, 3)
+				require.Len(t, commands, 4)
 			}
 
 			// The next reconciliation observes the externally created index and
@@ -59,6 +59,11 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			commands = nil
 			synced, err = reconcileIndexesWithExec(t.Context(), ledger, func(args ...string) (string, error) {
 				commands = append(commands, args)
+				if args[0] == "audit" {
+					require.Equal(t, []string{"audit", "list", "--filter", "outcome == success and idempotency_key ^= \"operator-ledger-create:resource-uid:\"", "--all", "--expand", "--decode-orders", "--json"}, args)
+
+					return "[]", nil
+				}
 				require.Equal(t, []string{"indexes", "list", "--ledger", "L", "--json"}, args[:5])
 				if slices.Contains(args, "--creation-key-prefix") {
 					require.Equal(t, "ledger-operator/index/resource-uid/", args[6])
@@ -73,7 +78,7 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.True(t, synced)
-			require.Len(t, commands, 2)
+			require.Len(t, commands, 3)
 			require.NotContains(t, ledger.Status.AppliedIndexes, "timestamp")
 		})
 	}

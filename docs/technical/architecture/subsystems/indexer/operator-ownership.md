@@ -36,6 +36,18 @@ timestamp must equal the index's existing `createdAt`. Failed requests, replay
 outcomes without a fresh creation, unrelated orders and multi-order batches
 cannot establish attribution.
 
+Indexes included in the original ledger-create proposal use a different key:
+`operator-ledger-create:<Ledger CR UID>:<generation>`. The operator also queries
+`audit list --filter 'outcome == success and idempotency_key ^= "operator-ledger-create:<UID>:"' --all --expand --decode-orders --json` for that UID. The audit command returns generic decoded orders; the operator applies the ownership rule. It accepts
+only a successful, fresh batch whose first order creates the named ledger and
+whose remaining orders create supported indexes for that same ledger. The
+orders and log sequences must cover the whole successful batch in order. Each
+current index must retain the batch timestamp as its creation date. The UID
+prevents a recreated CR from claiming a previous CR's indexes; date matching
+excludes known replacements. A failed audit read prevents drops. Initial
+ownership is reconstructed even when Kubernetes status was lost and the spec
+is explicitly empty. An absent spec remains unmanaged.
+
 The FSM's effective timestamp advances strictly between proposals. The dedicated
 creation batch matters because multiple orders in one proposal share a date.
 A later deletion and recreation changes the observed date; schema retyping

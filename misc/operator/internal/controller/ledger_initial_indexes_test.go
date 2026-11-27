@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,10 +72,18 @@ func TestCreateLedgerOwnershipAfterLostResponse(t *testing.T) {
 
 	// A later managed-empty spec must still remove those owned indexes.
 	ledger.Spec.Indexes = &ledgerv1alpha1.LedgerIndexesSpec{}
+	ledger.Status.AppliedIndexes = nil // Simulate restart or a failed status write.
 	var dropped []string
 	_, err = reconcileIndexesWithExec(t.Context(), ledger, func(args ...string) (string, error) {
+		if args[0] == "audit" {
+			return initialAuditFixture, nil
+		}
 		if args[1] == "list" {
-			return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}},{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"}}]`, nil
+			if slices.Contains(args, "--creation-key-prefix") {
+				return "[]", nil // The initial multi-order batch is not a singleton create.
+			}
+
+			return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"},"ledger":"L","createdAt":"1970-01-01T00:00:00.001234Z"},{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"},"ledger":"L","createdAt":"1970-01-01T00:00:00.001234Z"}]`, nil
 		}
 		dropped = append(dropped, args[len(args)-1])
 
@@ -83,6 +92,36 @@ func TestCreateLedgerOwnershipAfterLostResponse(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"reference", "timestamp"}, dropped)
 	require.Empty(t, ledger.Status.AppliedIndexes)
+}
+
+const initialAuditFixture = `[{"entry":{"timestamp":{"data":"1234"},"idempotency":{"key":"operator-ledger-create:creation-uid:1"},"success":{"minLogSequence":"8","maxLogSequence":"10"},"orderCount":3,"items":[{"logSequence":"8"},{"orderIndex":1,"logSequence":"9"},{"orderIndex":2,"logSequence":"10"}]},"orders":[{"ledgerScoped":{"ledger":"L","createLedger":{}}},{"ledgerScoped":{"ledger":"L","apply":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}},{"ledgerScoped":{"ledger":"L","apply":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_TIMESTAMP"}}}}}]}]`
+
+func TestInitialIndexesFromAuditRejectsUnownedBatches(t *testing.T) {
+	t.Parallel()
+	current := map[string]string{"reference": "1234", "timestamp": "1234"}
+	prefix := "operator-ledger-create:creation-uid:"
+	owned, err := initialIndexesFromAudit(initialAuditFixture, "L", prefix, current)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"reference": true, "timestamp": true}, owned)
+	for name, changed := range map[string]string{
+		"wrong uid":      strings.Replace(initialAuditFixture, "creation-uid:1", "other-uid:1", 1),
+		"failed":         strings.Replace(initialAuditFixture, `"success":{"minLogSequence":"8","maxLogSequence":"10"}`, `"failure":{}`, 1),
+		"replay":         strings.Replace(initialAuditFixture, `"logSequence":"9"`, `"logSequence":"0"`, 1),
+		"wrong ledger":   strings.Replace(initialAuditFixture, `"ledger":"L"`, `"ledger":"other"`, 1),
+		"missing create": strings.Replace(initialAuditFixture, `"createLedger":{}`, `"deleteLedger":{}`, 1),
+		"other order":    strings.Replace(initialAuditFixture, `"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}`, `"deleteIndex":{}`, 1),
+		"duplicate":      strings.Replace(initialAuditFixture, `"TX_BUILTIN_INDEX_TIMESTAMP"`, `"TX_BUILTIN_INDEX_REFERENCE"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := initialIndexesFromAudit(changed, "L", prefix, current)
+			require.NoError(t, err)
+			require.Empty(t, got)
+		})
+	}
+	owned, err = initialIndexesFromAudit(initialAuditFixture, "L", prefix, map[string]string{"reference": "1235", "timestamp": "1235"})
+	require.NoError(t, err)
+	require.Empty(t, owned)
 }
 
 func TestCreateLedgerDoesNotClaimExternalIndexes(t *testing.T) {

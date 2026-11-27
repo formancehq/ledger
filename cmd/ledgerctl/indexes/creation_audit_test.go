@@ -3,6 +3,7 @@ package indexes
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,8 +88,9 @@ func TestAttributedIndex(t *testing.T) {
 type creationAuditServer struct {
 	servicepb.UnimplementedBucketServiceServer
 
-	entry *auditpb.AuditEntry
-	mode  string
+	entry    *auditpb.AuditEntry
+	mode     string
+	prefixes chan string
 }
 
 // ListAuditEntries expects the idempotency-key prefix filter that
@@ -98,6 +100,9 @@ func (s *creationAuditServer) ListAuditEntries(req *servicepb.ListAuditEntriesRe
 	if filter == nil || filter.GetField() != commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY || filter.GetStringPrefix() == "" {
 		return status.Error(codes.InvalidArgument, "expected idempotency-key prefix filter")
 	}
+	if s.prefixes != nil {
+		s.prefixes <- filter.GetStringPrefix()
+	}
 	if req.GetOptions().GetCursor() == "" {
 		stream.SetTrailer(metadata.Pairs(cmdutil.NextCursorTrailerKey, "page2"))
 
@@ -105,6 +110,9 @@ func (s *creationAuditServer) ListAuditEntries(req *servicepb.ListAuditEntriesRe
 	}
 	if s.mode == "stream error" {
 		return status.Error(codes.Unavailable, "audit unavailable")
+	}
+	if !strings.HasPrefix(s.entry.GetIdempotency().GetKey(), filter.GetStringPrefix()) {
+		return nil
 	}
 	header := proto.Clone(s.entry).(*auditpb.AuditEntry)
 	header.Items = nil

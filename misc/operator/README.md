@@ -253,7 +253,8 @@ does not perform this read.
 For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
 separate batches tagged with the Ledger CR UID through the existing idempotency
 key. It reconstructs `status.appliedIndexes` from successful audit creation
-records matching the current index creation dates. A crash, lost CLI response,
+records matching the current index creation dates, including indexes in the
+original ledger-create batch identified by the CR UID. A crash, lost CLI response,
 or failed status update therefore does not permanently lose attribution.
 Strict creation conflicts are surfaced and retried without adopting the index.
 
