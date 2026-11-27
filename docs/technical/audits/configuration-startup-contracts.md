@@ -135,8 +135,11 @@ process exit or listener/readiness proof. Per-request signature-to-policy
 binding remains owned by `authentication-authorization-boundaries`.
 
 For OIDC issuers, follow `--auth-issuer` and `--auth-issuers` (env
-`AUTH_ISSUERS`) through `LoadConfig` into `AuthFlagConfig.TrustedIssuers`. Both
-`validateAuthConfig` and `buildAuthConfig` consume that merged set, and startup
+`AUTH_ISSUERS`) through `LoadConfig` into `AuthFlagConfig.TrustedIssuers`.
+`TestSliceFlagPrecedenceThroughServiceExecute` checks the actual binding order:
+an explicit issuer or Raft queue slice replaces its environment slice, repeated
+CLI issuer values append, and a scalar flag retains CLI precedence.
+Both `validateAuthConfig` and `buildAuthConfig` consume that merged set, and startup
 fails if discovery fails for any trusted issuer. `--auth-issuers` is ignored
 while authentication is disabled; only the singular flag is rejected in that
 state. Use `TestLoadConfig_AuthIssuersEnvironment` for binder evidence and

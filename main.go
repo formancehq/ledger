@@ -7,6 +7,6 @@ import (
 )
 
 func main() {
-	rootCmd := server.NewRootCommand()
+	rootCmd := server.NewServiceRootCommand()
 	service.Execute(rootCmd)
 }
