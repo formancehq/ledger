@@ -122,8 +122,8 @@ Preserve a non-empty source history through the restart and verify replay and
 cursor resume before admitting client traffic. No mixed-version rolling
 activation is supported for this feature.
 
-The optional sink-secret mode appends `secret_sha256` to the gated gRPC sink
-configuration. Existing owner-token configurations remain valid. The committed
+The gRPC sink configuration requires `secret_sha256`. Since the sink is gated
+and not yet released, no owner-token configuration requires migration. The committed
 configuration, audit history, checkpoint and restored state contain only the
 SHA-256 verifier, never the usable client-generated secret. A restored
 secret-backed sink accepts that same secret until the sink is removed and

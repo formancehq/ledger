@@ -2915,15 +2915,14 @@ message AccountMetadataUpdated {
 }
 
 // GrpcLogSinkConfig binds an acknowledged inbound global log stream to one
-// client identity. owner is the authenticated principal allowed to connect.
+// client identity. secret_sha256 verifies the per-sink connection credential.
 // incarnation is assigned from the AddEventsSink log sequence
 // in the stored projection. Clients must leave it zero when registering.
 message GrpcLogSinkConfig {
   option (ledger_json) = true;
   string client_id = 1;
   fixed64 incarnation = 2;
-  CallerIdentity owner = 3;
   // SHA-256 of a client-generated, high-entropy secret. The secret itself is
   // never committed or returned by the server.
-  bytes secret_sha256 = 4;
+  bytes secret_sha256 = 3;
 }

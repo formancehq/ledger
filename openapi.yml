@@ -4936,14 +4936,7 @@ components:
       type: object
     AtomicApplyGrpcLogSinkConfig:
       additionalProperties: false
-      required: [clientId]
-      oneOf:
-        - required: [owner]
-          not:
-            required: [secretSha256]
-        - required: [secretSha256]
-          not:
-            required: [owner]
+      required: [clientId, secretSha256]
       properties:
         clientId:
           type: string
@@ -4956,8 +4949,6 @@ components:
             - format: uint64
               type: integer
           description: Server-assigned; omit when registering.
-        owner:
-          $ref: '#/components/schemas/AtomicApplyCallerIdentity'
         secretSha256:
           type: string
           format: byte
@@ -6481,15 +6472,8 @@ components:
     GrpcLogSinkConfig:
       type: object
       additionalProperties: false
-      description: Inbound acknowledged global log stream. Configure exactly one of an owner token requiring ops:read or a client-generated sink-secret SHA-256 verifier.
-      required: [clientId]
-      oneOf:
-        - required: [owner]
-          not:
-            required: [secretSha256]
-        - required: [secretSha256]
-          not:
-            required: [owner]
+      description: Inbound acknowledged global log stream authenticated by a client-generated per-sink secret.
+      required: [clientId, secretSha256]
       properties:
         clientId:
           type: string
@@ -6502,36 +6486,10 @@ components:
               pattern: '^[0-9]+$'
             - type: integer
               format: uint64
-        owner:
-          $ref: '#/components/schemas/GrpcLogSinkOwner'
         secretSha256:
           type: string
           format: byte
           description: Base64-encoded SHA-256 of a client-generated secret; the secret is sent only as gRPC metadata.
-
-    GrpcLogSinkOwner:
-      type: object
-      additionalProperties: false
-      description: Exactly one of issuer or keyId identifies the credential source.
-      oneOf:
-        - required: [issuer, subject]
-          not:
-            required: [keyId]
-          properties:
-            subject:
-              minLength: 1
-        - required: [keyId]
-          not:
-            required: [issuer]
-      properties:
-        subject:
-          type: string
-        issuer:
-          type: string
-          minLength: 1
-        keyId:
-          type: string
-          minLength: 1
 
     DatabricksSinkConfig:
       type: object

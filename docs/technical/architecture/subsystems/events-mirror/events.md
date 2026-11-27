@@ -195,8 +195,7 @@ Key formats:
 ### Acknowledged gRPC global-log sink
 
 `SinkConfig.grpc_log` configures an inbound subscription for one `client_id`
-and either an authenticated owner (`CallerIdentity` issuer and subject or static key
-ID and subject) or a 32-byte SHA-256 verifier for a client-generated secret.
+and a 32-byte SHA-256 verifier for a client-generated secret.
 The events Manager skips this sink type; event formatting and
 event-type filters do not apply. The stored configuration records the creation
 log's global sequence as an incarnation. Removing and recreating a sink name
@@ -205,14 +204,12 @@ acknowledgements from the old connection.
 
 `BucketService.SubscribeLogs` is a bidirectional stream over system logs across
 all ledgers. The first client message is `Open {sink_name, client_id}`. The
-owner-token mode requires `ledger:ReadOps` (`ops:read`) and a matching principal.
-The alternative sink-secret mode sends the exact client-generated secret in
+client sends the exact client-generated secret in
 `x-ledger-sink-secret` gRPC metadata; the server compares its SHA-256 digest
 with the persisted verifier. A secret must be 43–128 non-whitespace characters,
 generated from at least 32 cryptographically random bytes. Never persist or
-log the usable secret. A sink has exactly one credential mode. Anonymous and
-auth-disabled callers without the configured secret cannot open the stream.
-The secret mode has no JWT expiry; remove and recreate the sink to revoke it,
+log the usable secret. Bearer tokens are not accepted on this RPC. The secret
+has no JWT expiry; remove and recreate the sink to revoke it,
 which also fences the active stream by incarnation. Until redaction is designed,
 the stream exposes raw logs, including credential-bearing configuration logs.
 The server replies with
@@ -240,13 +237,12 @@ after an ack must restore the acknowledged position with the same sink and
 global log history; a different cluster identity is exposed in `Opened` so
 clients do not confuse sources.
 
-The server bounds each stream to 16 unacknowledged logs, 8 active streams,
-2 streams per caller identity (anonymous and auth-disabled calls share one
-resource bucket),
-an 8 MiB catch-up page budget (or one larger log),
-30 seconds without an ack while logs are outstanding. The stream closes at
-the verified token expiry. A second connection for the same sink is rejected. The
-server rescans the committed global log every 250 ms from the last sent sequence;
+The server bounds each stream to 16 unacknowledged logs, an 8 MiB catch-up
+page budget (or one larger log), and 30 seconds without an ack while logs are
+outstanding. Eight stream slots are shared across active and pending
+connections. Each secret-backed connection is counted under its sink name;
+duplicate connections for the same sink are rejected. The server rescans the
+committed global log every 250 ms from the last sent sequence;
 an empty scan never advances the cursor. Leadership loss, sink removal, or a
 configuration change closes the stream so the client reconnects or repairs
 the configuration. The public transport reserves 32 bytes above the existing

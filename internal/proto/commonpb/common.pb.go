@@ -22588,17 +22588,16 @@ func (x *AccountMetadataUpdated) GetAccountMetadata() map[string]*MetadataMap {
 }
 
 // GrpcLogSinkConfig binds an acknowledged inbound global log stream to one
-// client identity. owner is the authenticated principal allowed to connect.
+// client identity. secret_sha256 verifies the per-sink connection credential.
 // incarnation is assigned from the AddEventsSink log sequence
 // in the stored projection. Clients must leave it zero when registering.
 type GrpcLogSinkConfig struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	ClientId    string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	Incarnation uint64                 `protobuf:"fixed64,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	Owner       *CallerIdentity        `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
 	// SHA-256 of a client-generated, high-entropy secret. The secret itself is
 	// never committed or returned by the server.
-	SecretSha256  []byte `protobuf:"bytes,4,opt,name=secret_sha256,json=secretSha256,proto3" json:"secret_sha256,omitempty"`
+	SecretSha256  []byte `protobuf:"bytes,3,opt,name=secret_sha256,json=secretSha256,proto3" json:"secret_sha256,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -22645,13 +22644,6 @@ func (x *GrpcLogSinkConfig) GetIncarnation() uint64 {
 		return x.Incarnation
 	}
 	return 0
-}
-
-func (x *GrpcLogSinkConfig) GetOwner() *CallerIdentity {
-	if x != nil {
-		return x.Owner
-	}
-	return nil
 }
 
 func (x *GrpcLogSinkConfig) GetSecretSha256() []byte {
@@ -24313,12 +24305,11 @@ const file_common_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x01 \x03(\v23.common.AccountMetadataUpdated.AccountMetadataEntryR\x0faccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xab\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"}\n" +
 	"\x11GrpcLogSinkConfig\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12 \n" +
-	"\vincarnation\x18\x02 \x01(\x06R\vincarnation\x12,\n" +
-	"\x05owner\x18\x03 \x01(\v2\x16.common.CallerIdentityR\x05owner\x12#\n" +
-	"\rsecret_sha256\x18\x04 \x01(\fR\fsecretSha256:\x04\xd8\xd5\"\x01*\xdd\x03\n" +
+	"\vincarnation\x18\x02 \x01(\x06R\vincarnation\x12#\n" +
+	"\rsecret_sha256\x18\x03 \x01(\fR\fsecretSha256:\x04\xd8\xd5\"\x01*\xdd\x03\n" +
 	"\tAuthScope\x12\x1a\n" +
 	"\x16AUTH_SCOPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AUTH_SCOPE_LEDGER_READ\x10\x01\x12\x1b\n" +
@@ -25311,43 +25302,42 @@ var file_common_proto_depIdxs = []int32{
 	296, // 413: common.ListOptions.filter:type_name -> common.QueryFilter
 	335, // 414: common.CapabilityState.activations:type_name -> common.CapabilityActivation
 	356, // 415: common.AccountMetadataUpdated.account_metadata:type_name -> common.AccountMetadataUpdated.AccountMetadataEntry
-	323, // 416: common.GrpcLogSinkConfig.owner:type_name -> common.CallerIdentity
-	21,  // 417: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	21,  // 418: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	32,  // 419: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	21,  // 420: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	39,  // 421: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	39,  // 422: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	39,  // 423: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	21,  // 424: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	292, // 425: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 426: common.CreatedLedgerLog.MetadataEntry.value:type_name -> common.MetadataValue
-	22,  // 427: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	21,  // 428: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	292, // 429: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 430: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	21,  // 431: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	21,  // 432: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	288, // 433: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	22,  // 434: common.AccountMetadataUpdated.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	358, // 435: common.auth_policy:extendee -> google.protobuf.MethodOptions
-	359, // 436: common.ledger_json:extendee -> google.protobuf.MessageOptions
-	360, // 437: common.ledger_json_default:extendee -> google.protobuf.FileOptions
-	359, // 438: common.ledger_json_manual:extendee -> google.protobuf.MessageOptions
-	361, // 439: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	361, // 440: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	361, // 441: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	361, // 442: common.sensitive:extendee -> google.protobuf.FieldOptions
-	361, // 443: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	361, // 444: common.failure_reason:extendee -> google.protobuf.FieldOptions
-	18,  // 445: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 446: common.allowed_query_targets:type_name -> common.QueryTarget
-	11,  // 447: common.failure_reason:type_name -> common.ErrorReason
-	448, // [448:448] is the sub-list for method output_type
-	448, // [448:448] is the sub-list for method input_type
-	445, // [445:448] is the sub-list for extension type_name
-	435, // [435:445] is the sub-list for extension extendee
-	0,   // [0:435] is the sub-list for field type_name
+	21,  // 416: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	21,  // 417: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	32,  // 418: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	21,  // 419: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	39,  // 420: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	39,  // 421: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	39,  // 422: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	21,  // 423: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	292, // 424: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 425: common.CreatedLedgerLog.MetadataEntry.value:type_name -> common.MetadataValue
+	22,  // 426: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	21,  // 427: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	292, // 428: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 429: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	21,  // 430: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	21,  // 431: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	288, // 432: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	22,  // 433: common.AccountMetadataUpdated.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	358, // 434: common.auth_policy:extendee -> google.protobuf.MethodOptions
+	359, // 435: common.ledger_json:extendee -> google.protobuf.MessageOptions
+	360, // 436: common.ledger_json_default:extendee -> google.protobuf.FileOptions
+	359, // 437: common.ledger_json_manual:extendee -> google.protobuf.MessageOptions
+	361, // 438: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	361, // 439: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	361, // 440: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	361, // 441: common.sensitive:extendee -> google.protobuf.FieldOptions
+	361, // 442: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	361, // 443: common.failure_reason:extendee -> google.protobuf.FieldOptions
+	18,  // 444: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 445: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 446: common.failure_reason:type_name -> common.ErrorReason
+	447, // [447:447] is the sub-list for method output_type
+	447, // [447:447] is the sub-list for method input_type
+	444, // [444:447] is the sub-list for extension type_name
+	434, // [434:444] is the sub-list for extension extendee
+	0,   // [0:434] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

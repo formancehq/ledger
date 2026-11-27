@@ -8,14 +8,12 @@ not the resulting per-request authorization decision. This domain fills that
 gap using the existing native runner and schema.
 
 `SubscribeLogs` is a bidirectional public stream over all global logs. Its
-generated dynamic policy requires either a JWT with `ledger:ReadOps` and a
-matching configured owner, or a per-sink secret whose SHA-256 digest matches
-the configured verifier before any response. A configured `client_id` is an
+generated dynamic policy requires a per-sink secret whose SHA-256 digest
+matches the configured verifier before any response. A JWT cannot replace it.
+A configured `client_id` is an
 identity label, not credential evidence. A client ack causes the server's named
 system producer to submit a technical update, but the client cannot mint that
-system attribution. Owner-token streams close by verified token expiry,
-including during delivery and acknowledgement waits; secret-backed streams
-close on sink removal or recreation.
+system attribution. Secret-backed streams close on sink removal or recreation.
 
 ## Preparation and execution gate
 
@@ -111,7 +109,7 @@ are not an inventory of the current executable surface.
 | E — Client/internal boundary | `grpc/auth_interceptor.go` peer transport credential and public cluster-secret rejection; `grpc/server_bucket.go:adoptForwardedSnapshotIfTrusted`; `grpc/raft_auth.go` and `bootstrap/module.go`; `bootstrap/module_restore.go` and `api/grpc-api.md` restore lifetime. | A supplied snapshot is rejected unless the context is cluster-internal, including when auth is disabled. The peer transport credential is separate from the user `authorization` token; user credentials are evaluated at the terminal node. HTTP has no peer transport path. Raft TLS connections are separately secret-protected with a documented empty-secret mode; optional-mode plaintext peers are admitted without the secret during migration and do not gain forwarding trust. With a configured secret, TLS Raft health RPCs are protected too (`raft_auth_test.go`). Service health/protocol exemptions do not bypass TLS Raft authentication. Restore has a separate service set, is intentionally not JWT-authenticated, and defaults to loopback; do not assert it can never be configured otherwise. |
 | F — Caller capture | `api/auth.md` Caller identity; `grpc/client_bucket.go:Apply` captures the follower snapshot, `server_bucket.go` adopts it, `auth/caller_snapshot.go:ResolveCallerSnapshot` selects system actor, forwarded snapshot, then local auth state, and `application/admission/admission.go` attaches it to the proposal. `commands/system_caller.go` names system principals. | Resolution produces exactly one authenticated, anonymous, system, or auth-disabled principal for every valid request context. Authenticated and anonymous variants freeze effective authorization. EN-2035 separately owns rejecting missing or malformed principals at admission and restore validation boundaries. Attribute according to verified current source rules; documentation prose alone does not prove which variant code selects. |
 | G — Frozen attribution | `auth/caller_snapshot.go:buildCallerSnapshot` forbids re-deriving permissions from the snapshot; `api/auth.md` says it is not re-evaluated downstream; `checker/audit-chain.md` binds caller data; `fsm/deterministic-fsm.md` section 3.4 forbids node-local auth decisions in committed apply. | Trace the proposal and hash-binding seam only. Generic hash/checker completeness, persisted encoding and cross-cluster restore parity have other owners. Token expiry after admission is not a requirement to invalidate committed work. |
-| H — gRPC log sink credential | `server_bucket_log_sink.go` compares the authenticated token principal to `GrpcLogSinkConfig.owner` or the presented secret's digest to `secret_sha256`; `bucket.proto` uses the `SubscribeLogs` dynamic resolver; `validate_order_sink_config.go` requires exactly one mode. | An `ops:write` registrar selects the owner or verifier. A `client_id` is only a label. No secret may be committed in plaintext. Check both modes through the registered stream, including token expiry and wrong-sink secrets. |
+| H — gRPC log sink credential | `server_bucket_log_sink.go` compares the presented secret's digest to `secret_sha256`; `bucket.proto` uses the `SubscribeLogs` dynamic resolver; `validate_order_sink_config.go` requires a 32-byte verifier. | An `ops:write` registrar selects the verifier. A `client_id` is only a label. No secret may be committed in plaintext. Check the registered stream with absent, wrong-sink, and matching secrets. |
 
 Paths in the manifest exist at preparation time. New policy/attribution packages
 or changed response types introduced by the pending PRs must be discovered and

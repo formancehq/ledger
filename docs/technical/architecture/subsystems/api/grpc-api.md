@@ -154,20 +154,18 @@ service BucketService {
 ```
 
 `SubscribeLogs` is an acknowledged, client-initiated stream for a
-configured gRPC log sink. `Open` names the sink and client, and its token
-principal must match the registered owner. Alternatively, a sink configured
-with `secret_sha256` accepts the client-generated secret in the
-`x-ledger-sink-secret` gRPC metadata field, without a JWT. The field contains
-the SHA-256 digest of the exact secret string, encoded as protobuf bytes; the
-secret itself must never be placed in sink configuration. Use at least 32 bytes
+configured gRPC log sink. `Open` names the sink and client. The client sends
+the exact secret string in `x-ledger-sink-secret` gRPC metadata, without a JWT.
+Only `GrpcLogSinkConfig.secret_sha256` contains the SHA-256 digest of that
+string as protobuf bytes; the secret itself must never be placed in sink
+configuration. Use at least 32 bytes
 of cryptographic randomness encoded without whitespace (43–128 characters).
 Use TLS for the public gRPC connection outside a trusted local test environment.
-The two credential modes are exclusive. `Opened` reports
+`Opened` reports
 the durable global-sequence cursor and cluster ID; `Log` carries the unchanged
 `common.Log`; `Ack` asks to advance the cursor; and `Acked` confirms that the
 Raft update applied. The first connection starts at the beginning of the
-global log history. The owner-token mode requires `ledger:ReadOps` (`ops:read`)
-and closes at token expiry. The sink-secret mode has no token expiry; removal
+global log history. The secret has no JWT expiry; removal
 and recreation revoke the secret and close the old stream. Both modes close
 on leadership loss and can redeliver unacknowledged logs. The stream currently
 sends raw logs, including configuration logs that can contain credentials.

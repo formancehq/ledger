@@ -63,9 +63,7 @@ func TestProcessAddGrpcLogSinkPreservesGlobalConfiguration(t *testing.T) {
 	store := NewMockScope(ctrl)
 	store.EXPECT().GetSinkConfig("log-sink").Return(nil, nil)
 	config := &commonpb.SinkConfig{Name: "log-sink", Type: &commonpb.SinkConfig_GrpcLog{GrpcLog: &commonpb.GrpcLogSinkConfig{
-		ClientId: "client", Owner: &commonpb.CallerIdentity{
-			Subject: "sink-owner", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
-		},
+		ClientId: "client", SecretSha256: []byte("01234567890123456789012345678901"),
 	}}}
 	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
 		Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &raftcmdpb.AddEventsSinkOrder{Config: config}},

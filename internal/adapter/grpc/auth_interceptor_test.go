@@ -266,6 +266,8 @@ func TestSubscribeLogsSecretCredentialIsLimitedToStream(t *testing.T) {
 		allowed bool
 	}{
 		{name: "secret", md: metadata.Pairs(logSinkSecretMetadataKey, secret), allowed: true},
+		{name: "bearer alone", md: metadata.Pairs("authorization", "Bearer token")},
+		{name: "no credential", md: metadata.MD{}},
 		{name: "short secret", md: metadata.Pairs(logSinkSecretMetadataKey, "short")},
 		{name: "duplicate secret", md: metadata.Pairs(logSinkSecretMetadataKey, secret, logSinkSecretMetadataKey, secret)},
 		{name: "secret and bearer", md: metadata.Pairs(logSinkSecretMetadataKey, secret, "authorization", "Bearer token")},

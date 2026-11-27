@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -64,16 +63,8 @@ func (impl *BucketServiceServerImpl) SubscribeLogs(stream servicepb.BucketServic
 		return status.Error(codes.InvalidArgument, "first message must open a configured log sink")
 	}
 
-	ctx, cancel, expiry, err := logSinkAuthorizationContext(stream.Context())
-	if err != nil {
-		return err
-	}
-	defer cancel()
+	ctx := stream.Context()
 	authorizationError := func() error {
-		if !expiry.IsZero() && !time.Now().Before(expiry) {
-			return status.Error(codes.Unauthenticated, "log sink token expired")
-		}
-
 		return ctx.Err()
 	}
 	send := func(response *servicepb.SubscribeLogsResponse) error {
@@ -98,22 +89,14 @@ func (impl *BucketServiceServerImpl) SubscribeLogs(stream servicepb.BucketServic
 		return status.Error(codes.PermissionDenied, "log sink client does not match configuration")
 	}
 	secret := logSinkSecretFromContext(ctx)
-	if secret != "" {
-		if !logSinkSecretMatches(secret, cfg.GetGrpcLog().GetSecretSha256()) {
-			return status.Error(codes.PermissionDenied, "log sink credential does not match configuration")
-		}
-	} else if !logSinkOwnerMatches(ctx, cfg.GetGrpcLog().GetOwner()) {
-		return status.Error(codes.PermissionDenied, "log sink principal does not match configuration")
+	if !logSinkSecretMatches(secret, cfg.GetGrpcLog().GetSecretSha256()) {
+		return status.Error(codes.PermissionDenied, "log sink credential does not match configuration")
 	}
 	incarnation := cfg.GetGrpcLog().GetIncarnation()
 	if incarnation == 0 {
 		return status.Error(codes.Internal, "log sink has no creation incarnation")
 	}
-	principal := logSinkPrincipal(ctx)
-	if secret != "" {
-		principal = "sink:" + open.GetSinkName()
-	}
-	err = impl.promoteLogSinkOpen(open.GetSinkName(), principal)
+	err = impl.promoteLogSinkOpen(open.GetSinkName(), "sink:"+open.GetSinkName())
 	reserved = false
 	if err != nil {
 		return err
@@ -239,23 +222,6 @@ func logSinkSecretMatches(secret string, stored []byte) bool {
 	return subtle.ConstantTimeCompare(hash[:], stored) == 1
 }
 
-func logSinkAuthorizationContext(ctx context.Context) (context.Context, context.CancelFunc, time.Time, error) {
-	if logSinkSecretFromContext(ctx) != "" {
-		return ctx, func() {}, time.Time{}, nil
-	}
-	claims := internalauth.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, nil, time.Time{}, status.Error(codes.Unauthenticated, "log sink requires an authenticated token")
-	}
-	expiry := claims.GetExpiration().Time
-	if !time.Now().Before(expiry) {
-		return nil, nil, time.Time{}, status.Error(codes.Unauthenticated, "log sink token expired")
-	}
-	authorized, cancel := context.WithDeadline(ctx, expiry)
-
-	return authorized, cancel, expiry, nil
-}
-
 func receiveLogSinkOpen(stream servicepb.BucketService_SubscribeLogsServer) (*servicepb.SubscribeLogsRequest, error) {
 	type result struct {
 		request *servicepb.SubscribeLogsRequest
@@ -301,30 +267,6 @@ func (impl *BucketServiceServerImpl) promoteLogSinkOpen(name, principal string) 
 	impl.pendingLogSinkOpens--
 
 	return impl.claimLogSinkLocked(name, principal)
-}
-
-func logSinkPrincipal(ctx context.Context) string {
-	claims := internalauth.ClaimsFromContext(ctx)
-	if claims == nil {
-		return "anonymous-or-auth-disabled"
-	}
-	if keyID := internalauth.KeyIDFromContext(ctx); keyID != "" {
-		return "static:" + keyID + "\x00" + claims.Subject
-	}
-
-	return "oidc:" + claims.Issuer + "\x00" + claims.Subject
-}
-
-func logSinkOwnerMatches(ctx context.Context, owner *commonpb.CallerIdentity) bool {
-	claims := internalauth.ClaimsFromContext(ctx)
-	if claims == nil || owner == nil {
-		return false
-	}
-	if keyID := internalauth.KeyIDFromContext(ctx); keyID != "" {
-		return owner.GetKeyId() == keyID && owner.GetSubject() == claims.Subject
-	}
-
-	return owner.GetIssuer() != "" && owner.GetIssuer() == claims.Issuer && owner.GetSubject() == claims.Subject
 }
 
 func (impl *BucketServiceServerImpl) claimLogSink(name, principal string) error {

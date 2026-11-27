@@ -9166,7 +9166,6 @@ func (m *GrpcLogSinkConfig) CloneVT() *GrpcLogSinkConfig {
 	r := new(GrpcLogSinkConfig)
 	r.ClientId = m.ClientId
 	r.Incarnation = m.Incarnation
-	r.Owner = m.Owner.CloneVT()
 	if rhs := m.SecretSha256; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -23853,9 +23852,6 @@ func (this *GrpcLogSinkConfig) EqualVT(that *GrpcLogSinkConfig) bool {
 		return false
 	}
 	if this.Incarnation != that.Incarnation {
-		return false
-	}
-	if !this.Owner.EqualVT(that.Owner) {
 		return false
 	}
 	if string(this.SecretSha256) != string(that.SecretSha256) {
@@ -44621,16 +44617,6 @@ func (m *GrpcLogSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.SecretSha256)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SecretSha256)))
 		i--
-		dAtA[i] = 0x22
-	}
-	if m.Owner != nil {
-		size, err := m.Owner.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
 		dAtA[i] = 0x1a
 	}
 	if m.Incarnation != 0 {
@@ -53560,10 +53546,6 @@ func (m *GrpcLogSinkConfig) SizeVT() (n int) {
 	}
 	if m.Incarnation != 0 {
 		n += 9
-	}
-	if m.Owner != nil {
-		l = m.Owner.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.SecretSha256)
 	if l > 0 {
@@ -98853,42 +98835,6 @@ func (m *GrpcLogSinkConfig) UnmarshalVT(dAtA []byte) error {
 			m.Incarnation = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Owner", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Owner == nil {
-				m.Owner = &CallerIdentity{}
-			}
-			if err := m.Owner.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SecretSha256", wireType)
 			}

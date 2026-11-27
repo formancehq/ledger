@@ -1,79 +1,19 @@
 package grpc
 
 import (
-	"context"
 	"crypto/sha256"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
-
-	internalAuth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
-
-type blockedLogSinkStream struct {
-	servicepb.BucketService_SubscribeLogsServer
-
-	started chan struct{}
-	release chan struct{}
-}
-
-func (stream *blockedLogSinkStream) Send(*servicepb.SubscribeLogsResponse) error {
-	close(stream.started)
-	<-stream.release
-
-	return nil
-}
-
-func TestLogSinkTokenExpiryInterruptsBlockedDelivery(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		claims := &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{
-			Expiration: oidc.Time(time.Now().Add(2 * time.Second).Unix()),
-		}}
-		ctx, cancel, expiry, err := logSinkAuthorizationContext(internalAuth.WithClaims(context.Background(), claims))
-		require.NoError(t, err)
-		defer cancel()
-		require.Equal(t, claims.GetExpiration().Time, expiry)
-		stream := &blockedLogSinkStream{started: make(chan struct{}), release: make(chan struct{})}
-		defer func() {
-			close(stream.release)
-			synctest.Wait()
-		}()
-		result := make(chan error, 1)
-		go func() {
-			result <- sendLogSinkResponse(ctx, stream, &servicepb.SubscribeLogsResponse{})
-		}()
-		<-stream.started
-		synctest.Wait()
-		require.NoError(t, ctx.Err(), "delivery must be blocked before token expiry")
-		<-time.After(time.Until(expiry))
-		require.ErrorIs(t, <-result, context.DeadlineExceeded)
-	})
-}
-
-func TestLogSinkAuthorizationDeadlineFollowsTokenExpiry(t *testing.T) {
-	t.Parallel()
-	expiry := oidc.Time(time.Now().Add(24 * time.Hour).Unix())
-	claims := &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{Expiration: expiry}}
-	ctx, cancel, actualExpiry, err := logSinkAuthorizationContext(internalAuth.WithClaims(t.Context(), claims))
-	require.NoError(t, err)
-	defer cancel()
-	deadline, ok := ctx.Deadline()
-	require.True(t, ok)
-	require.True(t, time.Unix(int64(expiry), 0).Equal(actualExpiry))
-	require.True(t, actualExpiry.Equal(deadline))
-}
 
 func TestReadLogSinkPageContinuesAfterLargeHistoricalLog(t *testing.T) {
 	t.Parallel()
@@ -151,12 +91,6 @@ func TestLogSinkSecretVerifier(t *testing.T) {
 	require.True(t, logSinkSecretMatches(secret, digest[:]))
 	require.False(t, logSinkSecretMatches(secret+"x", digest[:]))
 	require.False(t, logSinkSecretMatches(secret, digest[:31]))
-	ctx := context.WithValue(t.Context(), logSinkSecretKey{}, secret)
-	authorized, cancel, expiry, err := logSinkAuthorizationContext(ctx)
-	require.NoError(t, err)
-	defer cancel()
-	require.True(t, expiry.IsZero())
-	require.False(t, authorized == nil)
 }
 
 func TestLogSinkConnectionLimitsAndRelease(t *testing.T) {
@@ -181,21 +115,6 @@ func TestLogSinkPendingOpenCountsAgainstGlobalLimit(t *testing.T) {
 	require.Equal(t, codes.ResourceExhausted, status.Code(impl.reserveLogSinkOpen()))
 	impl.releaseLogSink("first")
 	require.NoError(t, impl.reserveLogSinkOpen())
-}
-
-func TestLogSinkOwnerMatchesAuthenticatedPrincipal(t *testing.T) {
-	t.Parallel()
-	ctx := internalAuth.WithClaims(context.Background(), &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{
-		Issuer: "https://idp.example.com", Subject: "sink-owner",
-	}})
-	owner := &commonpb.CallerIdentity{Subject: "sink-owner", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}}
-	require.True(t, logSinkOwnerMatches(ctx, owner))
-	require.False(t, logSinkOwnerMatches(ctx, &commonpb.CallerIdentity{Subject: "other", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}}))
-	require.False(t, logSinkOwnerMatches(ctx, &commonpb.CallerIdentity{Subject: "sink-owner", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://other.example.com"}}))
-	require.False(t, logSinkOwnerMatches(context.Background(), owner))
-	static := internalAuth.WithKeyID(ctx, "key-1")
-	require.True(t, logSinkOwnerMatches(static, &commonpb.CallerIdentity{Subject: "sink-owner", Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-1"}}))
-	require.False(t, logSinkOwnerMatches(static, owner), "a static credential must not borrow an OIDC issuer")
 }
 
 func testLedgerLog(id uint64) *commonpb.Log {

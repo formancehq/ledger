@@ -150,15 +150,8 @@ func authStreamInterceptor(cfg internalauth.AuthConfig, peerOnly bool) ggrpc.Str
 
 				return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
 			}
-			ctx, err = evaluatePeerOrUserCredentials(ctx, cfg, false)
-			if err != nil {
-				return err
-			}
-			if err := internalauth.AuthorizeGRPC(ctx, internalauth.ScopeOpsRead); err != nil {
-				return err
-			}
 
-			return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
+			return status.Error(codes.Unauthenticated, "log sink secret required")
 		}
 
 		ctx, err = evaluatePeerOrUserCredentials(ctx, cfg, peerOnly)

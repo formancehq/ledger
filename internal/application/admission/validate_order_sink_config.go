@@ -33,13 +33,7 @@ func validateOrderSinkConfig(order *raftcmdpb.Order) domain.Describable {
 		}
 	}
 	if grpcLog := cfg.GetGrpcLog(); grpcLog != nil {
-		owner := grpcLog.GetOwner()
-		hasSecret := len(grpcLog.GetSecretSha256()) != 0
-		if hasSecret == (owner != nil) ||
-			(hasSecret && len(grpcLog.GetSecretSha256()) != 32) ||
-			(owner != nil && (owner.GetSource() == nil ||
-				(owner.GetIssuer() == "" && owner.GetKeyId() == "") ||
-				(owner.GetIssuer() != "" && owner.GetSubject() == ""))) ||
+		if len(grpcLog.GetSecretSha256()) != 32 ||
 			grpcLog.GetClientId() == "" || len(grpcLog.GetClientId()) > 128 || grpcLog.GetIncarnation() != 0 ||
 			cfg.GetFormat() != "" || cfg.GetBatchSize() != 0 || cfg.GetBatchDelayMs() != 0 || len(cfg.GetEventTypes()) != 0 {
 			return ErrGrpcLogSinkConfigInvalid

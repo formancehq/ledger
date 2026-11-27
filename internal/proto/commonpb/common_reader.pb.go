@@ -27279,7 +27279,6 @@ func (m accountMetadataUpdated_accountMetadataMapReadonly) Range(yield func(stri
 type GrpcLogSinkConfigReader interface {
 	GetClientId() string
 	GetIncarnation() uint64
-	GetOwner() CallerIdentityReader
 	GetSecretSha256() []byte
 	Mutate() *GrpcLogSinkConfig
 }
@@ -27292,14 +27291,6 @@ func (r *grpcLogSinkConfigReadonly) GetClientId() string {
 
 func (r *grpcLogSinkConfigReadonly) GetIncarnation() uint64 {
 	return (*GrpcLogSinkConfig)(r).GetIncarnation()
-}
-
-func (r *grpcLogSinkConfigReadonly) GetOwner() CallerIdentityReader {
-	v := (*GrpcLogSinkConfig)(r).GetOwner()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
 }
 
 func (r *grpcLogSinkConfigReadonly) GetSecretSha256() []byte {
