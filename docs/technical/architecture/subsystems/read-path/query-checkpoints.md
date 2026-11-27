@@ -213,9 +213,10 @@ occurrence is evaluated against the admission node's current clock. Malformed
 expressions still reach the FSM's existing syntax validation and audited failure
 path. Raft apply never consults the clock for schedule validation.
 
-Admission also rejects `@every` intervals of zero or less, such as `@every 0s`
-and `@every -1h`, with `INVALID_CRON_EXPRESSION` (`schedule interval must be
-positive`). The cron library otherwise rounds these intervals up to one second.
+Admission also rejects `@every` intervals of zero or less, such as `@every 0s`,
+`@every -1h`, or `TZ=UTC @every 0s`, with `INVALID_CRON_EXPRESSION`
+(`schedule interval must be positive`). The cron library otherwise rounds these
+intervals up to one second.
 Positive subsecond intervals are still rounded up to one second, and a valid
 one-second schedule can consume all ten live checkpoint slots in about ten
 seconds if checkpoints are not deleted.

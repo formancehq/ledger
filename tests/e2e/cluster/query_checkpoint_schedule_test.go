@@ -83,7 +83,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should reject unusable schedules without replacing the stored schedule", func() {
-			for _, cron := range []string{"0 0 31 2 *", "0 0 0 31 2 *", "@every 0s", "@every -1h"} {
+			for _, cron := range []string{"0 0 31 2 *", "0 0 0 31 2 *", "@every 0s", "@every -1h", "TZ=UTC @every 0s", "CRON_TZ=UTC @every -1h"} {
 				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction(cron)))
 				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 				info := actions.ExtractGRPCErrorInfo(err)

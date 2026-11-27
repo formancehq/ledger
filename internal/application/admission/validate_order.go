@@ -76,13 +76,13 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 	if scheduleOrder := order.GetSystemScoped().GetSetQueryCheckpointSchedule(); scheduleOrder != nil {
-		if processing.NonPositiveCronInterval(scheduleOrder.GetCron()) {
+		schedule, err := processing.CronParser.Parse(scheduleOrder.GetCron())
+		if err == nil && processing.NonPositiveCronInterval(scheduleOrder.GetCron()) {
 			return &domain.BusinessError{Err: &domain.ErrInvalidCronExpression{
 				Expression: scheduleOrder.GetCron(),
 				Details:    "schedule interval must be positive",
 			}}
 		}
-		schedule, err := processing.CronParser.Parse(scheduleOrder.GetCron())
 		if err == nil && schedule.Next(time.Now()).IsZero() {
 			return &domain.BusinessError{Err: &domain.ErrInvalidCronExpression{
 				Expression: scheduleOrder.GetCron(),

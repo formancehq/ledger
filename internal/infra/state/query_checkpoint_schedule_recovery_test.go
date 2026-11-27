@@ -18,7 +18,7 @@ import (
 
 func TestQueryCheckpointSchedulerRecoveredNeverFiringSchedule(t *testing.T) {
 	t.Parallel()
-	for _, expression := range []string{"0 0 31 2 *", "@every 0s", "@every -1h"} {
+	for _, expression := range []string{"0 0 31 2 *", "@every 0s", "@every -1h", "TZ=UTC @every 0s", "CRON_TZ=UTC @every -1h"} {
 		t.Run(expression, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				machine, store, _ := newTestMachine(t)
@@ -76,7 +76,7 @@ func TestQueryCheckpointSchedulerRecoveredNeverFiringSchedule(t *testing.T) {
 
 func TestQueryCheckpointSchedulerNeverFiringScheduleChanged(t *testing.T) {
 	t.Parallel()
-	for _, invalidCron := range []string{"0 0 31 2 *", "@every 0s", "@every -1h"} {
+	for _, invalidCron := range []string{"0 0 31 2 *", "@every 0s", "@every -1h", "TZ=UTC @every 0s", "CRON_TZ=UTC @every -1h"} {
 		t.Run(invalidCron, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var cron atomic.Value

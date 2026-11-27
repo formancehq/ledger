@@ -17,10 +17,20 @@ import (
 var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 
 // NonPositiveCronInterval reports @every durations that cron accepts but
-// silently rounds up to one second. Keep this runtime/admission check out of
-// Raft apply so already committed schedules retain their apply semantics.
+// silently rounds up to one second. Call it after CronParser.Parse succeeds so
+// malformed time zones and expressions retain their existing error path. Keep
+// this runtime/admission check out of Raft apply so already committed schedules
+// retain their apply semantics.
 func NonPositiveCronInterval(expression string) bool {
-	durationText, ok := strings.CutPrefix(strings.TrimSpace(expression), "@every ")
+	expression = strings.TrimSpace(expression)
+	if strings.HasPrefix(expression, "TZ=") || strings.HasPrefix(expression, "CRON_TZ=") {
+		_, descriptor, ok := strings.Cut(expression, " ")
+		if !ok {
+			return false
+		}
+		expression = strings.TrimSpace(descriptor)
+	}
+	durationText, ok := strings.CutPrefix(expression, "@every ")
 	if !ok {
 		return false
 	}
