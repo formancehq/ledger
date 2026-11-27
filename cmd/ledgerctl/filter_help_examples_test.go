@@ -86,6 +86,11 @@ func TestFilterHelpExamplesAreValid(t *testing.T) {
 
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
+		// Pebble's --filter uses its own SSTable filter syntax, not Ledger's
+		// query filter parser exercised by this test.
+		if cmd.CommandPath() == "ledgerctl pebble" {
+			return
+		}
 		if cmd.LocalFlags().Lookup("filter") != nil {
 			path := cmd.CommandPath()
 			parse, ok := parsers[path]

@@ -104,6 +104,7 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.2 // indirect
 	github.com/ClickHouse/ch-go v0.71.0 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
+	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/RaduBerinde/axisds v0.1.0 // indirect
 	github.com/RaduBerinde/btreemap v0.0.0-20250419174037-3d62b7205d54 // indirect
@@ -319,4 +320,4 @@ require (
 
 replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204
 
-replace github.com/cockroachdb/pebble/v2 => github.com/formancehq/pebble/v2 v2.1.7
+replace github.com/cockroachdb/pebble/v2 => github.com/formancehq/pebble/v2 v2.1.8-0.20261127085605-61c774eb405e
