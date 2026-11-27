@@ -61,7 +61,7 @@ func TestRunnerSelectsCapabilityFromCommittedPolicyBeforeSerialization(t *testin
 	builder := newSubmitTestBuilder(t, tracker)
 	proposer := &recordingProposer{tracker: tracker}
 
-	proposeTransaction := func() {
+	proposeTransaction := func() error {
 		cmd := commands.NewCommand(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 			Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
@@ -69,21 +69,36 @@ func TestRunnerSelectsCapabilityFromCommittedPolicyBeforeSerialization(t *testin
 		}}})
 		build := &BuildResult{aggregate: NewCoverage(), token: &preload.CleanupToken{}}
 		result, err := builder.Run(t.Context(), cmd, build, func(*raftcmdpb.Proposal) error { return nil }, proposer)
-		require.NoError(t, err)
+		if err != nil {
+			return err
+		}
 		result.Guard.ReleaseLoaders()
+
+		return nil
 	}
 
-	proposeTransaction()
+	prepared := make(chan struct{})
+	resume := make(chan struct{})
+	builder.afterPrepare = func() {
+		close(prepared)
+		<-resume
+	}
+	firstResult := make(chan error, 1)
+	go func() { firstResult <- proposeTransaction() }()
+	<-prepared
 	batch := builder.store.OpenWriteSession()
 	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
 		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}},
 	}))
 	require.NoError(t, batch.Commit())
-	proposeTransaction()
+	close(resume)
+	require.NoError(t, <-firstResult)
+	builder.afterPrepare = nil
+	require.NoError(t, proposeTransaction())
 
 	proposals := proposer.capturedProposals(t)
 	require.Len(t, proposals, 2)
-	require.Empty(t, proposals[0].GetRequiredCapabilities(), "the in-flight proposal keeps its prepared semantics")
+	require.Empty(t, proposals[0].GetRequiredCapabilities(), "the proposal prepared before activation keeps its semantics at submission")
 	require.Equal(t, []uint32{1}, proposals[1].GetRequiredCapabilities())
 }
 

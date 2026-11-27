@@ -134,8 +134,10 @@ Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
 This release registers capability ID 1 for STRICT account-metadata validation
-in CreateTransaction and ExecuteNumscript. New proposals for these orders carry
-ID 1; historical unmarked proposals keep their original metadata validation.
+in CreateTransaction and ExecuteNumscript. Proposals whose preparation observes
+committed activation carry ID 1. Pre-activation proposals, including those
+submitted after activation, remain unmarked and retain their original metadata
+validation. The persisted marker selects apply and replay behavior.
 CreateLedger retains the RC.5 live validation rule without requiring ID 1;
 historical audit replay keeps the pre-RC.5 creation rule only for unmarked
 entries. Marked entries use the strengthened validation, including when

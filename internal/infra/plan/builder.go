@@ -51,6 +51,8 @@ type Builder struct {
 	// front rather than paying for proportionally-large coverage slices
 	// on every NewScope downstream. 0 disables the cap.
 	maxPlanSize int
+	// afterPrepare is a test barrier at the serialized-proposal boundary.
+	afterPrepare func()
 }
 
 // BuildResult carries the result of an optimistic Build call.

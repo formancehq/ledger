@@ -217,6 +217,9 @@ func (p *Builder) Run(
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
 	}
+	if p.afterPrepare != nil {
+		p.afterPrepare()
+	}
 
 	guardStart := time.Now()
 
@@ -387,6 +390,9 @@ func (p *Builder) runWithoutPreload(
 		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("%w: %w", ErrMarshalProposal, err)
+	}
+	if p.afterPrepare != nil {
+		p.afterPrepare()
 	}
 
 	guard := &ProposalGuard{p: p, token: build.token}

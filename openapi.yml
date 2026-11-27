@@ -4581,7 +4581,7 @@ components:
       additionalProperties: false
       properties:
         accountMetadata:
-          description: After capability 1 activates, a STRICT ledger rejects metadata for accounts that match no account type. This includes metadata produced by Numscript.
+          description: Proposals prepared after the producer observes committed capability 1 activation carry its marker; a STRICT ledger then rejects metadata for accounts that match no account type, including metadata produced by Numscript. An unmarked proposal prepared earlier retains legacy validation even if submitted after activation. The persisted marker controls apply and replay.
           additionalProperties:
             $ref: '#/components/schemas/AtomicApplyMetadataMap'
           type: object
