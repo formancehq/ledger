@@ -373,7 +373,7 @@ func TestBuildEnvVars_RaftFollowerRetention(t *testing.T) {
 			FollowerRetentionIdleTimeout: "10m",
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", "2Gi")
+		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", "2147483648")
 		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_IDLE_TIMEOUT", "10m")
 	})
 
@@ -384,6 +384,15 @@ func TestBuildEnvVars_RaftFollowerRetention(t *testing.T) {
 		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: &zero}
 		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", "0")
+	})
+
+	t.Run("exponent form forwarded as bytes", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		maxBytes := resource.MustParse("1e9")
+		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: &maxBytes}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "RAFT_FOLLOWER_RETENTION_MAX_BYTES", "1000000000")
 	})
 
 	t.Run("unset omitted", func(t *testing.T) {

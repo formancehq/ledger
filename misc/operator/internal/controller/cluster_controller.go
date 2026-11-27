@@ -953,6 +953,9 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 			return fmt.Errorf("health.interval must be greater than zero, got %q", spec.Health.Interval)
 		}
 	}
+	if err := validateFollowerRetention(spec.Raft); err != nil {
+		return err
+	}
 	if spec.Bloom == nil {
 		return nil
 	}
@@ -1007,4 +1010,32 @@ func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec, defaultSi
 func hasHostPathVolume(ledger *ledgerv1alpha1.Cluster) bool {
 	return ledger.Spec.Persistence.WAL.HostPath != nil ||
 		ledger.Spec.Persistence.Data.HostPath != nil
+}
+
+// validateFollowerRetention rejects follower log retention settings the
+// server refuses at startup, so a bad value never rolls out pods that cannot
+// boot.
+func validateFollowerRetention(raft *ledgerv1alpha1.RaftConfig) error {
+	if raft == nil {
+		return nil
+	}
+	if maxBytes := raft.FollowerRetentionMaxBytes; maxBytes != nil {
+		if maxBytes.Sign() < 0 {
+			return fmt.Errorf("raft.followerRetentionMaxBytes must not be negative, got %q", maxBytes.String())
+		}
+		if maxBytes.MilliValue()%1000 != 0 {
+			return fmt.Errorf("raft.followerRetentionMaxBytes must be a whole number of bytes, got %q", maxBytes.String())
+		}
+	}
+	if raft.FollowerRetentionIdleTimeout != "" {
+		timeout, err := time.ParseDuration(raft.FollowerRetentionIdleTimeout)
+		if err != nil {
+			return fmt.Errorf("raft.followerRetentionIdleTimeout %q is not a valid duration: %w", raft.FollowerRetentionIdleTimeout, err)
+		}
+		if timeout < 0 {
+			return fmt.Errorf("raft.followerRetentionIdleTimeout must not be negative, got %q", raft.FollowerRetentionIdleTimeout)
+		}
+	}
+
+	return nil
 }

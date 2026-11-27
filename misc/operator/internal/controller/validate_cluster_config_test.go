@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -48,6 +49,41 @@ func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 	})
 	require.Error(t, err, "a 48-char name overflows the 63-char DNS-1035 limit and must be rejected")
 	assert.Contains(t, err.Error(), headlessServiceName(name48))
+}
+
+func TestValidateClusterConfig_FollowerRetention(t *testing.T) {
+	t.Parallel()
+
+	quantity := func(s string) *resource.Quantity {
+		q := resource.MustParse(s)
+
+		return &q
+	}
+	tests := []struct {
+		name    string
+		raft    *ledgerv1alpha1.RaftConfig
+		wantErr string
+	}{
+		{name: "unset", raft: &ledgerv1alpha1.RaftConfig{}},
+		{name: "zero disables", raft: &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: quantity("0"), FollowerRetentionIdleTimeout: "0s"}},
+		{name: "valid", raft: &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: quantity("512Mi"), FollowerRetentionIdleTimeout: "10m"}},
+		{name: "negative size", raft: &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: quantity("-1Gi")}, wantErr: "followerRetentionMaxBytes must not be negative"},
+		{name: "fractional size", raft: &ledgerv1alpha1.RaftConfig{FollowerRetentionMaxBytes: quantity("500m")}, wantErr: "followerRetentionMaxBytes must be a whole number of bytes"},
+		{name: "invalid timeout", raft: &ledgerv1alpha1.RaftConfig{FollowerRetentionIdleTimeout: "soon"}, wantErr: `followerRetentionIdleTimeout "soon" is not a valid duration`},
+		{name: "negative timeout", raft: &ledgerv1alpha1.RaftConfig{FollowerRetentionIdleTimeout: "-1m"}, wantErr: "followerRetentionIdleTimeout must not be negative"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{Raft: tt.raft})
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
 func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
