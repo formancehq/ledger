@@ -43,5 +43,6 @@ func Resolve[T any](err error, mappings map[Key]T) T {
 	if !ok {
 		panic("unmapped generated input validation rule")
 	}
+
 	return value
 }
