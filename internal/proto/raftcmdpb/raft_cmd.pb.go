@@ -6139,7 +6139,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x03(\v2%.raft.SaveMetadataOrder.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xba\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x9d\x02\n" +
 	"\x16RevertTransactionOrder\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
@@ -6147,7 +6147,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x03(\v2*.raft.RevertTransactionOrder.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x15reverse_posting_order\"O\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"O\n" +
 	"\x13DeleteMetadataOrder\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\xb6\x01\n" +

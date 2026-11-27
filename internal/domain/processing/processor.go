@@ -503,9 +503,10 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 
 // MarshalOrderBusinessIntent returns the deterministic wire bytes of an order's
 // business intent: the order with its OrderTechnical sub-message excluded. This
-// defines what the audit hash chain (AuditItem.serialized_order) binds. The
-// idempotency hash also excludes the
-// revert posting-order marker so pre-upgrade retries match frozen outcomes.
+// defines what the audit hash chain (AuditItem.serialized_order) and the
+// order-based idempotency hash bind. The proposal's RequiredCapabilities
+// declares revert posting order separately and is outside the idempotency
+// hash, so retries across an upgrade match their frozen outcomes.
 //
 // Execution metadata normally lives on OrderTechnical, which is excluded so the
 // SAME logical request always serializes identically (idempotency dedup / replay

@@ -398,8 +398,6 @@ message RevertTransactionOrder {
   bool force = 2;
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
-  reserved 5;
-  reserved "reverse_posting_order";
 }
 
 message DeleteMetadataOrder {
