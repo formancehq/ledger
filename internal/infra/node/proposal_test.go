@@ -46,11 +46,13 @@ func TestProposalSelectsCommittedCapabilityAfterPredictedIndex(t *testing.T) {
 			}},
 		}},
 	}}}
-	proposal, err := NewProposal(1, command)
-	require.NoError(t, err)
-	proposal.SetPredictedIndex(42)
+	_, err := NewProposal(1, command)
+	require.ErrorIs(t, err, capabilities.ErrInvalidDeclaration)
 	for _, active := range []bool{false, true, false} {
-		proposal.SelectActiveCapabilities(active)
+		policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes), Active: active}}}
+		proposal, err := NewProposalWithPolicy(1, command, policy)
+		require.NoError(t, err)
+		proposal.SetPredictedIndex(42)
 		decoded := new(raftcmdpb.Proposal)
 		require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
 		require.Equal(t, uint64(42), decoded.GetPredictedIndex())

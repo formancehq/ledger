@@ -152,6 +152,12 @@ func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
 // captured by the proposal factory. The factory runs this before queueing the
 // proposal, keeping full decoding off the Raft orchestrator.
 func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
+	return ValidateFinalProposalForActivation(data, declared, true)
+}
+
+// ValidateFinalProposalForActivation accepts an unmarked semantic dependency
+// only when the producer observed an inactive committed capability policy.
+func ValidateFinalProposalForActivation(data []byte, declared []CapabilityID, active bool) error {
 	proposal := new(raftcmdpb.Proposal)
 	if err := proposal.UnmarshalVT(data); err != nil {
 		return fmt.Errorf("decode final proposal: %w", err)
@@ -159,6 +165,9 @@ func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
 	expected, err := RequiredCapabilities(proposal)
 	if err != nil {
 		return err
+	}
+	if !active {
+		expected = nil
 	}
 	wire := make([]CapabilityID, len(proposal.GetRequiredCapabilities()))
 	for i, id := range proposal.GetRequiredCapabilities() {

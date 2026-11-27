@@ -31,9 +31,9 @@ func TestValidateActiveAcceptsNoActivation(t *testing.T) {
 
 func TestProposalCapabilityAdmissionRecoversActiveWithoutIntent(t *testing.T) {
 	t.Parallel()
-	proposal, err := node.NewProposal(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{capabilityTransactionOrder("l")}})
-	require.NoError(t, err)
 	policy := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes), Active: true}}}
+	proposal, err := node.NewProposalWithPolicy(1, &raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{capabilityTransactionOrder("l")}}, policy)
+	require.NoError(t, err)
 	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
 	members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}}
 	require.NoError(t, validateProposalCapabilityAdmissionWithSupported(policy, proposal, members, supported))
@@ -78,10 +78,10 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 	command := &raftcmdpb.Proposal{Payload: &raftcmdpb.Proposal_Batch{Batch: &raftcmdpb.ExecutionBatch{
 		Orders: []*raftcmdpb.Order{capabilityTransactionOrder("ledger")},
 	}}}
-	proposal, err := node.NewProposal(1, command)
-	require.NoError(t, err)
 	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
 	for _, role := range []capabilities.MemberRole{capabilities.Voter, capabilities.Learner} {
+		proposal, err := node.NewProposalWithPolicy(1, command, nil)
+		require.NoError(t, err)
 		members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}, {NodeID: 2, Role: role, Reachable: true}}
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), "unmarked writes remain available during the rolling upgrade")
 		require.Empty(t, proposal.RequiredCapabilities())
@@ -108,6 +108,9 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, activation, members, supported))
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrActivationPending, "submission does not release the barrier before commit")
 		inactive.CapabilityActivations[0].Active = true
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), "a prepared unmarked proposal retains its selected semantics")
+		proposal, err = node.NewProposalWithPolicy(1, command, inactive)
+		require.NoError(t, err)
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported))
 		require.Equal(t, supported, proposal.RequiredCapabilities())
 		decoded = new(raftcmdpb.Proposal)

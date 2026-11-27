@@ -1,15 +1,91 @@
 package plan
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func BenchmarkPrepareCapabilityProposal(b *testing.B) {
+	store, err := dal.NewStore(b.TempDir(), logging.Testing(), noop.Meter{}, dal.DefaultConfig())
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = store.Close() })
+	batch := store.OpenWriteSession()
+	if err := state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}},
+	}); err != nil {
+		b.Fatal(err)
+	}
+	if err := batch.Commit(); err != nil {
+		b.Fatal(err)
+	}
+	builder := &Builder{store: store}
+	for _, count := range []int{1, 100, 1000} {
+		b.Run(fmt.Sprintf("orders-%d", count), func(b *testing.B) {
+			orders := make([]*raftcmdpb.Order, count)
+			for i := range orders {
+				orders[i] = &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+					}},
+				}}}
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				cmd := &raftcmdpb.Proposal{Id: 1, Orders: orders}
+				if _, err := builder.prepareProposal(cmd); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestRunnerSelectsCapabilityFromCommittedPolicyBeforeSerialization(t *testing.T) {
+	t.Parallel()
+	tracker := node.NewIndexTracker(1)
+	builder := newSubmitTestBuilder(t, tracker)
+	proposer := &recordingProposer{tracker: tracker}
+
+	proposeTransaction := func() {
+		cmd := commands.NewCommand(&raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger: "ledger", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+			}},
+		}}})
+		build := &BuildResult{aggregate: NewCoverage(), token: &preload.CleanupToken{}}
+		result, err := builder.Run(t.Context(), cmd, build, func(*raftcmdpb.Proposal) error { return nil }, proposer)
+		require.NoError(t, err)
+		result.Guard.ReleaseLoaders()
+	}
+
+	proposeTransaction()
+	batch := builder.store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: 1, Active: true}},
+	}))
+	require.NoError(t, batch.Commit())
+	proposeTransaction()
+
+	proposals := proposer.capturedProposals(t)
+	require.Len(t, proposals, 2)
+	require.Empty(t, proposals[0].GetRequiredCapabilities(), "the in-flight proposal keeps its prepared semantics")
+	require.Equal(t, []uint32{1}, proposals[1].GetRequiredCapabilities())
+}
 
 func TestRunnerSerializesPayloadOnEveryRetry(t *testing.T) {
 	t.Parallel()

@@ -30,7 +30,7 @@ func TestCapabilityActivationRetryRepreparesBeforeSubmission(t *testing.T) {
 		proposer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 			attempts++
 			if attempts == 1 {
-				require.Equal(t, []capabilities.CapabilityID{capabilities.StrictAccountTypes}, proposal.RequiredCapabilities())
+				require.Empty(t, proposal.RequiredCapabilities(), "the first attempt was prepared before activation")
 				policy, err := query.ReadClusterPolicy(store)
 				require.NoError(t, err)
 				policy.CapabilityActivations = []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes), Active: true}}

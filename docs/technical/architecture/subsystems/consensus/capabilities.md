@@ -14,13 +14,12 @@ IDs. The fields are optional and therefore backward-readable by binaries that
 predate this foundation. IDs are never reused; semantic dependencies must be
 declared even when they do not add bytes to a proposal.
 
-The producer must rebuild its plan first, derive the capabilities from that
-final plan, and prepare marked and unmarked forms from the same command.
-The serialized admission gate selects the form from committed activation state
-and passes its typed declaration alongside the bytes. Admission reuses that
-result without decoding the proposal a second time. A payload with an active
-semantic dependency but no declaration is invalid; the shared builder and
-stamping helper are the enforcement boundary for producers.
+The producer must rebuild its plan first and derive candidate capabilities from
+that final plan. The producer reads committed activation state, chooses the
+declaration, and serializes the final command once before the proposal guard.
+It passes the typed declaration alongside the bytes. A producer that observes
+active policy must declare the semantic dependency; the shared builder and
+proposal factory are the enforcement boundary for producers.
 
 ## Admission and membership
 
@@ -84,10 +83,10 @@ cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
 Capability ID 1 (`StrictAccountTypes`) marks CreateTransaction and
-ExecuteNumscript proposals after activation commits. For marked transactions and Numscript executions,
-the FSM checks the account type of every merged
-account-metadata address after syntax and metadata-budget validation and before
-metadata writes. Addresses are checked in lexical order so replicas select the
+ExecuteNumscript proposals when preparation observes committed activation. For
+marked transactions and Numscript executions, the FSM checks the account type
+of every merged account-metadata address after syntax and metadata-budget
+validation and before metadata writes. Addresses are checked in lexical order so replicas select the
 same failure. STRICT rejects unmatched addresses; AUDIT and matching addresses
 keep their existing behavior. Unmarked transaction and Numscript proposals
 retain the historical behavior. The audit
@@ -95,13 +94,26 @@ entry stores the declaration, and checker replay passes it to the processor;
 changing the currently active policy never changes replay of an old proposal.
 The marker is proposal-wide: each marked transaction or Numscript order uses
 the account-metadata validation rule. A batch with either order declares ID 1
-once. After activation, new transaction and Numscript executions carry ID 1
-even without account metadata, because Numscript can produce metadata during
-apply. The serialized proposal gate chooses the marked or unmarked wire form
-from the committed policy before reserving its Raft index. On the normal path,
-both forms are built from the same final order batch before the proposal guard
-is acquired. If stale preloads require a rebuilt execution plan, `Runner.Run`
-builds both forms again while holding that guard.
+once. Proposals prepared after activation is observed carry ID 1 even without
+account metadata, because Numscript can produce metadata during
+apply. The shared plan runner chooses the declaration from committed policy
+observed during preparation and serializes the command once before acquiring
+the proposal guard. The proposal gate checks the selected declaration and
+member evidence before reserving the Raft index. A proposal prepared before
+activation may remain unmarked if activation commits before it is submitted;
+its own marker still determines apply and audit replay semantics. If stale
+preloads require a rebuilt execution
+plan, `Runner.Run` serializes the rebuilt command after a fresh policy read.
+
+For capability-dependent writes, preparation adds one committed-policy read
+before one marshal and final payload validation. Work is linear in proposal
+size and adds no WAL bytes or second serialized buffer. Commands without
+candidate capabilities skip that policy read. The read is outside the shared
+proposal lock; the admission gate still reads current policy for its final
+membership and activation check.
+`BenchmarkPrepareCapabilityProposal` measures the policy read, marshal, and
+validation at 1, 100, and 1,000 transaction orders: approximately 6, 36, and
+225 microseconds per proposal on Apple M5 Pro with Go 1.27.3 (100 iterations).
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
