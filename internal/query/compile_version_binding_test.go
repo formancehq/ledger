@@ -76,7 +76,7 @@ func TestCompile_PromotionFlushedMidCompileKeepsOneVersionBinding(t *testing.T) 
 			require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(
 				kb, ledgerName, readstore.NamespaceAccount, "n", 1,
 				readstore.EncodeUint64(nil, uint64(i)), []byte(account),
-				uint64(4+i), readstore.MetadataEventAdd), nil))
+				uint64(4+i), readstore.IndexEventAdd), nil))
 		}
 		require.NoError(t, batch.Commit())
 

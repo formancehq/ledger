@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -32,7 +33,7 @@ func TestRunEventGC_StopsScanningAfterCompletedIdleCoverage(t *testing.T) {
 	b.runEventGC(10)
 	b.runEventGC(10)
 
-	require.Equal(t, 2, calls, "each zone must be scanned once, then remain idle")
+	require.Equal(t, 3, calls, "each zone must be scanned once, then remain idle")
 }
 
 func TestRunEventGC_TriggersOnWatermarkAndZoneWriteEpochEdges(t *testing.T) {
@@ -89,7 +90,7 @@ func TestRunEventGC_FreshSchedulerSweepsPositiveWatermarkAfterRestart(t *testing
 	}
 	restarted.runEventGC(10)
 
-	require.Equal(t, 2, calls, "fresh in-memory state conservatively sweeps both zones")
+	require.Equal(t, 3, calls, "fresh in-memory state conservatively sweeps all zones")
 }
 
 func TestRunEventGC_UsesStableCycleTupleAndFollowsMidCycleChanges(t *testing.T) {
@@ -156,28 +157,35 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 		key    = "status"
 	)
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
-	for _, entity := range []string{"a", "c", "d"} {
-		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 5, readstore.MetadataEventAdd)
-		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 6, readstore.MetadataEventDel)
+	// The first slice sees two rows in a with no reclaimable predecessor, so
+	// it skips that entire group and resumes after it. The late pair below is
+	// then physically behind the resume key.
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 5, readstore.IndexEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 11, readstore.IndexEventAdd)
+	for _, entity := range []string{"c", "d"} {
+		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 5, readstore.IndexEventAdd)
+		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 6, readstore.IndexEventDel)
 	}
 
 	behindAdd := cloneBytes(readstore.MetadataIndexEventKeyV(
-		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("b"), 5, readstore.MetadataEventAdd,
+		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 1, readstore.IndexEventAdd,
 	))
 	behindDel := cloneBytes(readstore.MetadataIndexEventKeyV(
-		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("b"), 6, readstore.MetadataEventDel,
+		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 2, readstore.IndexEventDel,
 	))
 
 	metadataCalls := 0
 	b.eventGCZone = func(zone byte, resume []byte, watermark uint64, _ int) (int, []byte, error) {
-		pruned, next, err := readstore.GCEventZone(b.readStore.DB(), zone, resume, watermark, 2)
+		changed, next, err := readstore.GCEventZone(b.readStore.DB(), zone, resume, watermark, 2)
 		if err != nil || zone != readstore.PrefixMetadataIndex {
-			return pruned, next, err
+			return changed, next, err
 		}
 
 		metadataCalls++
 		if metadataCalls == 1 {
-			require.NotNil(t, next, "fixture must split before the late event's position")
+			require.NotNil(t, next, "fixture must split after the skipped group")
+			require.Negative(t, bytes.Compare(behindAdd, next), "late ADD must sort behind resume")
+			require.Negative(t, bytes.Compare(behindDel, next), "late DEL must sort behind resume")
 			late := b.readStore.NewBatch()
 			require.NoError(t, late.SetBytes(behindAdd, nil))
 			require.NoError(t, late.SetBytes(behindDel, nil))
@@ -185,7 +193,7 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			b.eventGCWriteEpoch[zone]++
 		}
 
-		return pruned, next, nil
+		return changed, next, nil
 	}
 
 	for range 20 {
@@ -195,6 +203,8 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			break
 		}
 	}
+	state := b.eventGCCycle(readstore.PrefixMetadataIndex)
+	require.True(t, state.completed && state.completedWriteEpoch == 0 && !state.active, "first cycle must finish without revisiting a")
 	assertReadStoreValue(t, b, behindAdd, nil)
 	assertReadStoreValue(t, b, behindDel, nil)
 
@@ -205,6 +215,8 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			break
 		}
 	}
+	state = b.eventGCCycle(readstore.PrefixMetadataIndex)
+	require.True(t, state.completed && state.completedWriteEpoch == 1 && !state.active, "follow-up cycle must finish")
 	assertReadStoreMissing(t, b, behindAdd)
 	assertReadStoreMissing(t, b, behindDel)
 }
@@ -373,12 +385,12 @@ func TestGCVersionAt_PurgesForwardEidxAndRmap(t *testing.T) {
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
 
 	// v=1 entries (target of the GC).
-	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
-	eidxV1 := cloneBytes(readstore.EntityExistsEventKeyV(kb, ledger, ns, key, 1, false, entityID, 1, readstore.MetadataEventAdd))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.IndexEventAdd))
+	eidxV1 := cloneBytes(readstore.EntityExistsEventKeyV(kb, ledger, ns, key, 1, false, entityID, 1, readstore.IndexEventAdd))
 	rmapV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 1))
 
 	// v=2 entries (must survive).
-	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.IndexEventAdd))
 	rmapV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 2))
 
 	// Rmap row at v=1 for a different metadata key — the version-bounded
@@ -442,11 +454,11 @@ func TestPurgeOrphanVersions_SweepsKeyspacesOutsideCurrentAndPending(t *testing.
 	b.indexConfig[ledger] = cfg
 
 	// Seed orphan v=1 + v=2 entries and the live v=3 entries.
-	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.IndexEventAdd))
 	rmapV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 1))
-	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.IndexEventAdd))
 	rmapV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 2))
-	fwdV3 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 3, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV3 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 3, encoded, entityID, 1, readstore.IndexEventAdd))
 	rmapV3 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 3))
 
 	seed := b.readStore.NewBatch()
@@ -503,9 +515,9 @@ func TestPurgeOrphanVersions_PreservesPending(t *testing.T) {
 	b.indexConfig[ledger] = cfg
 
 	// Seed an orphan v=1 alongside the live (v=2 current, v=3 pending).
-	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
-	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
-	fwdV3 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 3, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.IndexEventAdd))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.IndexEventAdd))
+	fwdV3 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 3, encoded, entityID, 1, readstore.IndexEventAdd))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(fwdV1, nil))
@@ -553,9 +565,9 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 
 	// Seed both v=1 (orphan, abandoned by the partial GC) and v=2
 	// (live data).
-	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.IndexEventAdd))
 	rmapV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 1))
-	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.IndexEventAdd))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(fwdV1, nil))
@@ -592,4 +604,29 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	current, pending := b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(2), current)
 	assert.Equal(t, uint32(0), pending)
+}
+
+func TestAccountAssetEventCommitRestartsCompletedGCCycle(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	calls := 0
+	b.eventGCZone = func(zone byte, _ []byte, _ uint64, _ int) (int, []byte, error) {
+		if zone == readstore.PrefixAccountByAsset {
+			calls++
+		}
+
+		return 0, nil, nil
+	}
+	b.runEventGC(20)
+	require.Equal(t, 1, calls)
+	b.runEventGC(20)
+	require.Equal(t, 1, calls)
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.wb.SetEventSequence(5) // late historical backfill after the first GC pass
+	require.NoError(t, b.wb.WriteAccountByAssetIndex(b.kb, "test", "accounts:a", "USD", 2))
+	require.NoError(t, b.flushWriteBatch())
+	require.Equal(t, uint64(1), b.eventGCWriteEpoch[readstore.PrefixAccountByAsset])
+	b.runEventGC(20)
+	require.Equal(t, 2, calls)
 }

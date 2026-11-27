@@ -695,17 +695,15 @@ func compileAccountHasAssetConditionRev(ctx *compileCtx, c *commonpb.AccountHasA
 		return nil, err
 	}
 
-	// Stamp-gated in BOTH directions. See compileAccountHasAssetCondition for
-	// why the gate exists; a descending scan without it would serve rows the
-	// ascending scan hides.
-	iter, pErr := readstore.NewStampGatedReversePrefixIterator(ctx.indexReader, prefix, len(prefix), 0, ctx.pin)
+	// Resolve the same event history at the same pin in descending order.
+	iter, pErr := readstore.NewReverseEventResolveIterator(ctx.indexReader, prefix, ctx.pin)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating reverse has-asset prefix iterator: %w", pErr)
 	}
 
 	return trackReverse(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("ReversePrefixIterator(abya:%s:%s/%d)", ctx.ledgerName, c.GetAssetBase(), c.GetPrecision()),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("ReverseEventResolveIterator(abya:%s:%s/%d)", ctx.ledgerName, c.GetAssetBase(), c.GetPrecision()),
+		Kind:   "EventResolve",
 		Prefix: "abya",
 	}), nil
 }

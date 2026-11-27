@@ -60,13 +60,13 @@ func TestInspectIndexUsesRoutedBarrierAndMainSnapshotHorizon(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 	indexBatch := rs.NewBatch()
 	require.NoError(t, indexBatch.SetBytes(readstore.MetadataIndexEventKeyV(
-		kb, ledger, readstore.NamespaceAccount, metadataKey, 1, gold, []byte("alice"), 10, readstore.MetadataEventAdd,
+		kb, ledger, readstore.NamespaceAccount, metadataKey, 1, gold, []byte("alice"), 10, readstore.IndexEventAdd,
 	), nil))
 	require.NoError(t, indexBatch.SetBytes(readstore.MetadataIndexEventKeyV(
-		kb, ledger, readstore.NamespaceAccount, metadataKey, 1, gold, []byte("alice"), 30, readstore.MetadataEventDel,
+		kb, ledger, readstore.NamespaceAccount, metadataKey, 1, gold, []byte("alice"), 30, readstore.IndexEventDel,
 	), nil))
 	require.NoError(t, indexBatch.SetBytes(readstore.MetadataIndexEventKeyV(
-		kb, ledger, readstore.NamespaceAccount, metadataKey, 1, silver, []byte("alice"), 30, readstore.MetadataEventAdd,
+		kb, ledger, readstore.NamespaceAccount, metadataKey, 1, silver, []byte("alice"), 30, readstore.IndexEventAdd,
 	), nil))
 	require.NoError(t, rs.WriteIndexVersionState(indexBatch, ledger, indexes.Canonical(indexID), readstore.IndexVersionState{
 		CurrentVersion: 1,

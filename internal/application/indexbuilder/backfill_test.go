@@ -2,7 +2,6 @@ package indexbuilder
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
@@ -353,26 +352,31 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 
 // scanAccountByAsset returns the set of accounts recorded in the
 // account-by-asset index for (ledger, assetBase, precision).
+func scanAccountByAssetAtPin(t *testing.T, store *readstore.Store, prefix []byte, pin uint64) []string {
+	t.Helper()
+	iter, err := readstore.NewEventResolveIterator(store.DB(), prefix, pin)
+	require.NoError(t, err)
+	defer iter.Close()
+	var accounts []string
+	for iter.Next() {
+		accounts = append(accounts, string(iter.Current()))
+	}
+	require.NoError(t, iter.Err())
+
+	return accounts
+}
+
 func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase string, precision uint8) map[string]struct{} {
 	t.Helper()
-
 	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), ledger, assetBase, precision)
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: readstore.IncrementBytes(prefix),
-	})
+	iter, err := readstore.NewEventResolveIterator(store.DB(), prefix, ^uint64(0))
 	require.NoError(t, err)
-
-	defer func() { _ = iter.Close() }()
-
+	defer iter.Close()
 	out := make(map[string]struct{})
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-		// Key layout: [prefix][account]; the account is the suffix after prefix.
-		out[string(k[len(prefix):])] = struct{}{}
+	for iter.Next() {
+		out[string(iter.Current())] = struct{}{}
 	}
-
-	require.NoError(t, iter.Error())
+	require.NoError(t, iter.Err())
 
 	return out
 }
@@ -462,10 +466,8 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 }
 
 // TestAccountAssetBackfillRepairsLaterLiveFirstTouch reproduces EN-3309:
-// CreateIndex makes the account-asset index pending while live folding remains
-// active. A later live transaction can therefore write the row before the
-// backfill replays the historical first touch. Presence-only dedup used to
-// preserve the later stamp forever; the backfill must retain the minimum.
+// live folding writes ADD@10 before backfill discovers ADD@5. Both immutable
+// events must survive so a reader pinned at 5 sees the historical touch.
 func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
 	t.Parallel()
 
@@ -500,22 +502,14 @@ func TestAccountAssetBackfillRepairsLaterLiveFirstTouch(t *testing.T) {
 	))
 	require.NoError(t, b.wb.Flush())
 
-	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), "test", "USD", 2, "accounts:alice")
-	value, closer, err := store.DB().Get(key)
-	require.NoError(t, err)
-	defer func() { _ = closer.Close() }()
-	require.Len(t, value, 8)
-	assert.Equal(t, uint64(5), binary.BigEndian.Uint64(value), "backfill must repair a later live first-touch stamp")
+	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), "test", "USD", 2)
+	assert.Contains(t, scanAccountByAsset(t, store, "test", "USD", 2), "accounts:alice")
+	assert.Equal(t, []string{"accounts:alice", "accounts:bank"}, scanAccountByAssetAtPin(t, store, prefix, 5))
 }
 
-// TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete guards the
-// dedup against a DeleteLedger that lands in the same indexer batch as renewed
-// account-by-asset activity for a same-name (recreated) ledger. DeleteLedger
-// only queues a by-name range delete (no batch flush), and readstoreKeyExists
-// reads committed Pebble directly — so without the in-batch-delete guard the
-// dedup sees the about-to-be-deleted row, skips the new Put, and the range
-// delete then wipes the row, silently dropping the account from has-asset
-// queries.
+// TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete verifies
+// that a ledger range deletion clears in-batch event deduplication before a
+// same-name ledger receives new account-by-asset touches.
 func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testing.T) {
 	t.Parallel()
 
@@ -878,7 +872,7 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKey, rawEncoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID, 1, readstore.IndexEventAdd)
 
 	// The "age" account index is still backfilling; incremental writes flow to it.
 	cfg := newLedgerIndexConfig()
@@ -1010,8 +1004,8 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 	require.NoError(t, seed.SetBytes(v1Rmap, encoded))
 	require.NoError(t, seed.SetBytes(v2Rmap, encoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd)
-	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID, 1, readstore.IndexEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID, 1, readstore.IndexEventAdd)
 
 	dm := &commonpb.DeletedMetadata{
 		Target: &commonpb.Target{
@@ -1219,8 +1213,8 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 			require.NoError(t, seed.SetBytes(v1Rmap, oldEncoded))
 			require.NoError(t, seed.SetBytes(v2Rmap, oldEncoded))
 			require.NoError(t, seed.Commit())
-			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 1, oldEncoded, entityID, 1, readstore.MetadataEventAdd)
-			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 2, oldEncoded, entityID, 1, readstore.MetadataEventAdd)
+			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 1, oldEncoded, entityID, 1, readstore.IndexEventAdd)
+			seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 2, oldEncoded, entityID, 1, readstore.IndexEventAdd)
 
 			batch := b.readStore.NewBatch()
 			b.wb.Init(batch)
@@ -1411,8 +1405,8 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 
 	// v=1 forward entry (the pre-retype state). The rewrite no longer
 	// touches v=1 (in-place mutation is gone); v=1 stays until GC.
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, firstEntityID, 1, readstore.MetadataEventAdd)
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, secondEntityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, firstEntityID, 1, readstore.IndexEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, secondEntityID, 1, readstore.IndexEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.
@@ -1823,7 +1817,7 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.IndexEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.
@@ -1927,7 +1921,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
 	require.NoError(t, seed.Commit())
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.IndexEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.

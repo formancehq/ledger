@@ -32,7 +32,7 @@ type WriteBatch struct {
 	// row exists only in committed state and therefore has no exact overlay row.
 	rmapDeletedRanges []reverseMapDeletedRange
 
-	// eventSeq is the raft sequence stamped onto midx/eidx event keys, set by
+	// eventSeq is the raft sequence stamped onto event keys, set by
 	// the caller per folded log (SetEventSequence). Zero means unset — event
 	// writes fail loudly rather than stamping a stale or absent sequence.
 	eventSeq uint64
@@ -51,6 +51,7 @@ type EventZoneMask uint8
 const (
 	eventZoneMetadataIndex EventZoneMask = 1 << iota
 	eventZoneEntityExists
+	eventZoneAccountByAsset
 )
 
 // Has reports whether the batch appended an event in zone.
@@ -60,13 +61,14 @@ func (m EventZoneMask) Has(zone byte) bool {
 		return m&eventZoneMetadataIndex != 0
 	case PrefixEntityExists:
 		return m&eventZoneEntityExists != 0
+	case PrefixAccountByAsset:
+		return m&eventZoneAccountByAsset != 0
 	default:
 		return false
 	}
 }
 
-// SetEventSequence declares the raft sequence for subsequent metadata /
-// exists index event writes. The fold sets it once per log before
+// SetEventSequence declares the raft sequence for subsequent event writes. The fold sets it once per log before
 // dispatching; the schema-rewrite backfill sets it to the FSM handle's
 // applied sequence for the scan batch.
 func (wb *WriteBatch) SetEventSequence(seq uint64) {
@@ -74,8 +76,6 @@ func (wb *WriteBatch) SetEventSequence(seq uint64) {
 }
 
 // EventSequence returns the sequence declared for the current fold batch.
-// Callers that compare an existing single-stamp row against a candidate must
-// use the same declaration that WriteAccountByAssetIndex will validate.
 func (wb *WriteBatch) EventSequence() uint64 {
 	return wb.eventSeq
 }
@@ -241,26 +241,22 @@ func (wb *WriteBatch) WriteDestinationAccountTxMapping(kb *dal.KeyBuilder, ledge
 	return wb.put(key, nil)
 }
 
-// WriteAccountByAssetIndex records a touch of (assetBase, precision) by an
-// account, stamping the row with the writing fold's sequence. The caller
-// (writeAccountByAssetDedup) keeps the minimum stamp: a live fold skips an
-// existing earlier touch, while historical backfill can replace a later live
-// stamp when it discovers the actual first touch. A pinned read admits the row
-// only when that stamp is at or below its pin, which keeps an aligned snapshot
-// that folded ahead of the main handle from serving members the handle cannot
-// enrich (see compileAccountHasAssetCondition).
+// WriteAccountByAssetIndex appends an ADD event for one account and asset cell.
+// Historical backfill may append an earlier sequence after a live fold; event
+// resolution at the pin handles either write order without a committed Get.
 func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, account, assetBase string, precision uint8) error {
 	seq, err := wb.eventSequence()
 	if err != nil {
 		return err
 	}
 
-	key := AccountByAssetKey(kb, ledgerName, assetBase, precision, account)
+	key := AccountByAssetEventKey(kb, ledgerName, assetBase, precision, account, seq)
+	if err := wb.put(key, nil); err != nil {
+		return err
+	}
+	wb.eventZones |= eventZoneAccountByAsset
 
-	var stamp [8]byte
-	binary.BigEndian.PutUint64(stamp[:], seq)
-
-	return wb.put(key, stamp[:])
+	return nil
 }
 
 // InsertMetadataIndexV inserts a metadata index entry at an explicit
@@ -314,23 +310,23 @@ func (wb *WriteBatch) ReplaceMetadataIndexV(
 		isNullEncoded(oldEncodedValue) != isNullEncoded(newEncodedValue)
 
 	if oldEncodedValue != nil {
-		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
+		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, IndexEventDel); err != nil {
 			return err
 		}
 
 		if nullFlagChanged {
-			if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
+			if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, IndexEventDel); err != nil {
 				return err
 			}
 		}
 	}
 
-	if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID, MetadataEventAdd); err != nil {
+	if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID, IndexEventAdd); err != nil {
 		return err
 	}
 
 	if nullFlagChanged {
-		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID, MetadataEventAdd); err != nil {
+		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID, IndexEventAdd); err != nil {
 			return err
 		}
 	}
@@ -355,11 +351,11 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPreviousV(
 	oldEncodedValue, entityID []byte,
 ) error {
 	if oldEncodedValue != nil {
-		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
+		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, IndexEventDel); err != nil {
 			return err
 		}
 
-		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
+		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, IndexEventDel); err != nil {
 			return err
 		}
 	}

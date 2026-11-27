@@ -1,14 +1,64 @@
 package readstore
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+
+	"github.com/formancehq/invariants"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+)
+
+// indexEventRow is one decoded row in an event-backed read index. group aliases
+// the key and must be copied before advancing a Pebble iterator.
+type indexEventRow struct {
+	group  []byte
+	seq    uint64
+	op     byte
+	legacy bool
+}
+
+type indexEventRowSource interface {
+	Key() []byte
+	Value() []byte
+}
+
+// parseIndexEventRow is the shared row decoder for forward and reverse pin
+// resolution. Account-by-asset also accepts RC.5 first-touch rows; all other
+// event zones use the common event suffix directly and do not read the value.
+func parseIndexEventRow(source indexEventRowSource, prefixLen int) (indexEventRow, bool) {
+	key := source.Key()
+	if len(key) == 0 {
+		return indexEventRow{}, false
+	}
+
+	if key[0] == PrefixAccountByAsset {
+		group, seq, legacy, ok := parseAccountAssetKey(source, prefixLen)
+		if !ok {
+			return indexEventRow{}, false
+		}
+
+		return indexEventRow{group: group, seq: seq, op: IndexEventAdd, legacy: legacy}, true
+	}
+
+	group, seq, op, ok := parseEventKey(key, prefixLen)
+	if !ok {
+		return indexEventRow{}, false
+	}
+
+	return indexEventRow{group: group, seq: seq, op: op}, true
+}
 
 // parseEventKey splits an event key into (group, seq, op) independently of
 // scan direction. The fixed suffix locates the terminator from the right.
 // Unknown operations and malformed keys must fail the caller's scan loudly.
 func parseEventKey(key []byte, prefixLen int) (group []byte, seq uint64, op byte, ok bool) {
+	if len(key) < prefixLen {
+		return nil, 0, 0, false
+	}
 	rest := key[prefixLen:]
-	tpos := len(rest) - metadataEventSuffixLen - 1
-	if tpos < 0 || rest[tpos] != metadataEventTerminator {
+	tpos := len(rest) - indexEventSuffixLen - 1
+	if tpos < 0 || rest[tpos] != indexEventTerminator {
 		return nil, 0, 0, false
 	}
 
@@ -17,4 +67,47 @@ func parseEventKey(key []byte, prefixLen int) (group []byte, seq uint64, op byte
 	}
 
 	return rest[:tpos], binary.BigEndian.Uint64(rest[tpos+1 : tpos+9]), rest[tpos+9], true
+}
+
+// parseAccountAssetKey accepts both the RC.5 first-touch row and the event
+// form. The old row's eight-byte value is a synthetic ADD at that sequence.
+// Its key sorts immediately before the event keys for the same account.
+// TODO: Remove the plain-row branch and its value decoder only after supported
+// upgrades, restores, and retained query checkpoints can no longer expose
+// RC.5 account-by-asset rows. Live GC completion alone is insufficient.
+func parseAccountAssetKey(source indexEventRowSource, prefixLen int) (group []byte, seq uint64, legacy bool, ok bool) {
+	key := source.Key()
+	if len(key) <= prefixLen || key[0] != PrefixAccountByAsset {
+		return nil, 0, false, false
+	}
+	account := key[prefixLen:]
+	if bytes.IndexByte(account, indexEventTerminator) >= 0 {
+		// The event suffix format is shared with metadata; this index only
+		// permits ADD because a historical asset touch is never revoked.
+		group, seq, op, valid := parseEventKey(key, prefixLen)
+
+		return group, seq, false, valid && op == IndexEventAdd
+	}
+	value := source.Value()
+	if len(value) != 8 || invariants.ValidateLedgerAccountAddress(string(account)) != nil {
+		return nil, 0, false, false
+	}
+
+	return account, binary.BigEndian.Uint64(value), true, true
+}
+
+// accountAssetPrefixLen locates the precision byte after the asset base. GC
+// scans the entire zone, unlike a query whose prefix is already known.
+func accountAssetPrefixLen(key []byte) (int, bool) {
+	const assetStart = 1 + dal.LedgerNameFixedSize
+	if len(key) <= assetStart || key[0] != PrefixAccountByAsset {
+		return 0, false
+	}
+	end := bytes.IndexByte(key[assetStart:], 0)
+	if end < 0 {
+		return 0, false
+	}
+	prefixLen := assetStart + end + 2 // NUL plus precision
+
+	return prefixLen, len(key) > prefixLen
 }

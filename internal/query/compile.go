@@ -1080,37 +1080,23 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 	}), nil
 }
 
-// compileAccountHasAssetCondition compiles a has-asset condition into a prefix
-// scan on the account-by-asset inverted index, yielding the account address
-// (the trailing key segment) for every account that has touched the exact
-// (assetBase, precision) cell. Valid only on the ACCOUNTS target. Requires the
-// account asset builtin index to be READY — there is no on-scan fallback.
+// compileAccountHasAssetCondition resolves account-by-asset ADD events at the
+// read pin. A fold ahead of the main handle is invisible until its sequence
+// reaches the pin; historical backfill may append earlier events later.
 func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
-	// Target validity (ACCOUNTS only) and the one-byte precision bound are
-	// enforced at the dispatch site by rejectInvalidCondition; no local guard.
-	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
-	// The account is the variable-length trailing segment after the prefix,
-	// so entityOffset = len(prefix) and entityLen = 0 (extends to end of key).
-	// The scan is stamp-gated at the read's pin: each row's value is the
-	// account's FIRST touch of the cell, and the aligned snapshot may hold
-	// touches folded past the main handle. An unstamped scan would serve
-	// those members while enrichment through the handle cannot see them —
-	// an account rendered address-only that no single state contains. The
-	// gate keeps purged accounts servable (their touch is below any later
-	// pin), which is the case the ACCOUNTS horizon carve-out protects.
 	prefix, err := resolveAccountHasAssetPrefix(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 
-	iter, pErr := readstore.NewStampGatedPrefixIterator(ctx.indexReader, prefix, len(prefix), 0, ctx.pin)
+	iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, prefix, ctx.pin)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating has-asset prefix iterator: %w", pErr)
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(abya:%s:%s/%d)", ctx.ledgerName, c.GetAssetBase(), c.GetPrecision()),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(abya:%s:%s/%d)", ctx.ledgerName, c.GetAssetBase(), c.GetPrecision()),
+		Kind:   "EventResolve",
 		Prefix: "abya",
 	}), nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// EventResolveIterator reads a metadata / exists index event range at a
+// EventResolveIterator reads a metadata, exists, or account-by-asset range at a
 // pinned raft sequence, yielding — in key order — every group whose latest
 // event at or below the pin is an ADD (see event_keys.go).
 //
@@ -22,7 +22,7 @@ import (
 // Two shapes share the implementation:
 //
 //   - point form (NewEventResolveIterator): the prefix runs through the
-//     encoded value (or nullFlag), so a group IS an entity and Current()
+//     encoded value, nullFlag, or asset/precision, so a group IS an entity and Current()
 //     yields it directly. The absolute Seek contract
 //     (iterator-seek-contract.md) holds: a seek positions at the first event
 //     key of the first group whose entity >= target and resolves forward.
@@ -54,8 +54,9 @@ type EventResolveIterator struct {
 // iterator without materializing it first — see NewEventResolveRangeIterator.
 var errInvariantEventRangeSeek = errors.New("invariant: EventResolveIterator range form Seek called; materialize into a SliceIterator before composing")
 
-// NewEventResolveIterator scans the event range under prefix (built by
-// MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin.
+// NewEventResolveIterator scans metadata, exists, or account-by-asset groups
+// as of pin. Account-by-asset also accepts RC.5 first-touch rows whose value
+// holds the sequence; frozen query checkpoints may retain those rows.
 func NewEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*EventResolveIterator, error) {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
@@ -84,9 +85,6 @@ func NewEventResolveRangeIterator(reader dal.PebbleReader, lower, upper []byte, 
 	return &EventResolveIterator{iter: iter, prefixLen: prefixLen, emitOffset: emitOffset, pin: pin, rangeMode: true}, nil
 }
 
-// settle resolves consecutive groups starting at the raw iterator's current
-// position until one is live at the pin, leaving the raw iterator at the
-// following group.
 // settle resolves consecutive groups from the raw iterator's current position
 // until one is live at the pin. seekTarget is the target of the seek that led
 // here, or nil when advancing through Next: a scan that runs out while seeking
@@ -102,32 +100,33 @@ func (it *EventResolveIterator) settleFrom(seekTarget []byte) bool {
 
 func (it *EventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := parseEventKey(it.iter.Key(), it.prefixLen)
+		row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 			return false
 		}
 
-		group := append([]byte(nil), g...)
+		group := append([]byte(nil), row.group...)
 		live := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := parseEventKey(it.iter.Key(), it.prefixLen)
+			row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 				return false
 			}
 
-			if !bytes.Equal(g, group) {
+			if !bytes.Equal(row.group, group) {
 				break
 			}
 
-			// Events are seq-ascending within the group, so this keeps the
-			// verdict of the LATEST event at or below the pin.
-			if seq <= it.pin {
-				live = op == MetadataEventAdd
+			// Event keys are seq-ascending. An RC.5 plain row sorts first
+			// regardless of its stamp, but 0x0C only has ADD events, so any
+			// visible row makes that account a member at the pin.
+			if row.seq <= it.pin {
+				live = row.op == IndexEventAdd
 			}
 
 			if !it.iter.Next() {

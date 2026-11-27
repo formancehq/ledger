@@ -66,7 +66,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 		LedgerInfo:      info,
 		IndexRegistry:   registry,
 		IndexVersionFor: resolverZero,
-		Pin:             0,
+		Pin:             1,
 	})
 	require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
@@ -104,7 +104,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 		{"accounts:bob", "USD", 2},
 		{"accounts:carol", "EUR", 2},
 	} {
-		key := readstore.AccountByAssetKey(kb, ledgerName, seed.assetBase, seed.precision, seed.account)
+		key := readstore.AccountByAssetEventKey(kb, ledgerName, seed.assetBase, seed.precision, seed.account, 1)
 		require.NoError(t, batch.SetBytes(key, nil))
 	}
 	require.NoError(t, batch.Commit())
@@ -129,7 +129,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 		IndexRegistry:   registry,
 		IndexVersionFor: resolverReady,
 		MainReader:      reader,
-		Pin:             0,
+		Pin:             1,
 	})
 	require.NoError(t, err)
 
@@ -144,12 +144,9 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	require.Equal(t, []string{"accounts:alice", "accounts:bob"}, got)
 }
 
-// TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch pins the stamp gate.
-// Each account-by-asset row carries its FIRST touch's fold sequence, and the
-// aligned index snapshot legitimately holds touches folded past the main
-// handle; a pinned scan must exclude exactly those. A row at or below the pin
-// keeps serving — including the purged-account case, since the gate reads the
-// stamp and never main-store existence.
+// TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch pins event resolution.
+// A snapshot may hold ADD events beyond the main handle's sequence; those
+// events are invisible at the earlier pin, including for purged accounts.
 func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 	t.Parallel()
 
@@ -170,10 +167,8 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 		{"accounts:early", 5},
 		{"accounts:late", 9},
 	} {
-		key := readstore.AccountByAssetKey(kb, ledgerName, "USD", 2, seed.account)
-		stamp := make([]byte, 8)
-		binary.BigEndian.PutUint64(stamp, seed.seq)
-		require.NoError(t, batch.SetBytes(key, stamp))
+		key := readstore.AccountByAssetEventKey(kb, ledgerName, "USD", 2, seed.account, seed.seq)
+		require.NoError(t, batch.SetBytes(key, nil))
 	}
 	require.NoError(t, batch.Commit())
 
@@ -214,13 +209,13 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 	}
 
 	require.Equal(t, []string{"accounts:early"}, scan(7),
-		"a first touch folded past the pin must be invisible to the pinned read")
+		"an ADD event folded past the pin must be invisible to the pinned read")
 	require.Equal(t, []string{"accounts:early", "accounts:late"}, scan(9),
-		"a pin covering both stamps serves both members")
+		"a pin covering both events serves both members")
 }
 
 // TestCompile_RevertedAt_PinExcludesLaterRevert is the reverted_at twin of the
-// has-asset stamp test. The rvat row is written by the REVERT's fold — after
+// has-asset event test. The rvat row is written by the REVERT's fold — after
 // the transaction's creation — so the TRANSACTIONS existence trim proves
 // nothing about it at a pin; only the row's stamp can exclude a revert folded
 // past the main handle.

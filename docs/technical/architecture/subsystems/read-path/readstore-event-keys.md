@@ -1,6 +1,7 @@
 # Read-store event keys
 
-The metadata value index (`0x01`) and the entity-existence index (`0x02`) are
+The metadata value index (`0x01`), entity-existence index (`0x02`), and
+account-by-asset index (`0x0C`) are
 append-only event logs. A mutation never deletes a row: it appends an event
 stamped with the raft sequence that produced it, and a reader resolves the
 membership that held at its own pinned sequence.
@@ -19,7 +20,17 @@ deleted. Only history does.
 ```
 
 `op` is `ADD` (`0x01`) or `DEL` (`0x00`). The exists index uses the same shape
-with the null flag in place of the encoded value.
+with the null flag in place of the encoded value. The account-by-asset key is
+`[0x0C][ledger 64B][assetBase\x00][precision 1B][account\x00][seq BE8][ADD]`;
+its events are ADD-only because a historical touch is never revoked.
+
+RC.5 stored the account-by-asset cell as a plain key ending at `account`, with
+an eight-byte first-touch sequence in its value. Forward and reverse readers
+interpret that row as a synthetic ADD at its stored sequence and resolve it
+in the same account group as any new event keys. New writes use only event
+keys. Invalid legacy stamps fail the read rather than becoming membership.
+This dual reader is required for frozen query checkpoints, whose read stores
+open read-only and cannot be swept by live GC.
 
 Two details are load-bearing:
 
@@ -37,6 +48,14 @@ so a reader resolves in a single forward pass: within a group, the last event
 at or below the pin decides — `ADD` means the entity matches, `DEL` or nothing
 means it does not. Groups never consult each other, so iteration stays one
 ordered scan (`iterator_event_resolve.go`).
+
+The forward and reverse readers share one row decoder for these three event
+zones. It reads the value only for an RC.5 account-by-asset row; current event
+keys carry their sequence and operation in the key. Traversal, seek bounds,
+and exhaustion proofs remain direction-specific. The GC reuses the decoder's
+legacy sequence. A malformed event makes the current GC slice fail without
+committing its queued deletes; the builder retries that zone and reports the
+error until the corrupt row is repaired.
 
 A transition away from a value therefore writes into *two* ranges: an `ADD` in
 the new value's range and a `DEL` in the old value's own range. Without the
@@ -60,6 +79,16 @@ if it is an `ADD` (a `DEL` decides the same verdict as absence, so the whole
 dead group goes). Verdicts at every admissible pin are unchanged by a pass —
 that is a test, not a claim.
 
+The budget applies inside a group. Each slice compares adjacent events below
+the watermark and commits deletion of superseded predecessors. If a slice
+shortens a group, the next slice starts at that group's prefix and reads its
+surviving anchor again. This also catches a historical event written behind
+the cursor between slices. A group with no deletions after at least two rows
+can be skipped: any remaining rows are at or above the watermark. A malformed
+row aborts the slice before its pending batch is committed; it does not become
+evidence for deleting neighboring rows. A one-row requested budget is raised
+to two rows, the minimum needed to compare adjacent events.
+
 The watermark is the part that needs care. A pin is read from a main-store
 handle *before* it can be registered, so it can be arbitrarily older than the
 fold cursor, and a pass that swept at the cursor would reclaim beneath a pin
@@ -78,8 +107,8 @@ the floor after the walk would reopen exactly that gap.
 
 ### Edge-triggered cycles
 
-The indexbuilder keeps an in-memory cycle state independently for `0x01` and
-`0x02`. An inactive zone starts a full traversal only when it has never
+The indexbuilder keeps an in-memory cycle state independently for `0x01`,
+`0x02`, and `0x0C`. An inactive zone starts a full traversal only when it has never
 completed one, its effective lease-bounded watermark advanced, or its local
 committed write epoch advanced. A traversal remains budgeted to 4,096 keys per
 wake and captures one stable `(watermark, write epoch)` tuple at its start.
@@ -100,7 +129,7 @@ Cycle state and epochs are not persisted because the read store is a
 rebuildable per-replica projection. After restart, the first positive watermark
 therefore performs a conservative full traversal. Watermark zero keeps the
 existing fast path and performs no scan. A failed slice retains its exact
-resume key and captured tuple for retry, while the other zone continues and
+resume key and captured tuple for retry, while the other zones continue and
 may complete independently. Iterator failures abort before the current group is
 settled or the pending delete batch is committed, so a partial traversal can
 never be recorded as completed coverage.
@@ -121,10 +150,17 @@ every pin resolves them correctly.
 
 ## What still uses plain keys
 
-Add-only limbs — timestamp, inserted_at, address→tx (all roles), reference,
-has-asset, reverted_at — keep their plain rows. Membership there is never
+Other add-only limbs — timestamp, inserted_at, address→tx (all roles),
+reference, reverted_at — keep their plain rows. Membership there is never
 revoked, so fold-ahead can only *add* rows, and the per-row keep against the
 pinned main handle (`MainHorizonKeep`) restores exactness without a format
 change. The reverse map (`0x03`) also keeps prompt deletion: it is builder
 bookkeeping, never query-facing, and the index builder maintains it
 as-is.
+
+For the live `0x0C` zone, the budgeted sweep converts each RC.5 plain row
+by atomically putting its sequence-keyed ADD event and deleting the plain key.
+It skips pruning that account group in the conversion pass; later watermark
+advances can prune redundant events. A crash before the batch commit leaves
+the old row; repeating the conversion is idempotent. Checkpoint copies retain
+the old rows and use the dual reader for their lifetime.

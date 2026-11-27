@@ -32,14 +32,14 @@ func inspectPageFixture(t *testing.T) (InspectParams, func(string) []byte) {
 	}
 
 	for _, v := range []string{"v1", "v2", "v5"} {
-		put(v, "a:1", 10, MetadataEventAdd)
-		put(v, "a:2", 10, MetadataEventAdd)
+		put(v, "a:1", 10, IndexEventAdd)
+		put(v, "a:2", 10, IndexEventAdd)
 	}
 
-	put("v3", "a:1", 10, MetadataEventAdd)
-	put("v3", "a:1", 30, MetadataEventDel)
-	put("v4", "a:1", 10, MetadataEventAdd)
-	put("v4", "a:2", 40, MetadataEventAdd)
+	put("v3", "a:1", 10, IndexEventAdd)
+	put("v3", "a:1", 30, IndexEventDel)
+	put("v4", "a:1", 10, IndexEventAdd)
+	put("v4", "a:2", 40, IndexEventAdd)
 
 	return InspectParams{
 		Reader:          s.DB(),
@@ -142,7 +142,7 @@ func TestInspectIndex_CapsPageSize(t *testing.T) {
 	batch := s.DB().NewBatch()
 	for i := range MaxInspectPageSize + 1 {
 		value := EncodeMetadataValue(nil, &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: fmt.Sprintf("v%06d", i)}})
-		require.NoError(t, batch.Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, value, []byte("a:1"), 10, MetadataEventAdd), nil, nil))
+		require.NoError(t, batch.Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, value, []byte("a:1"), 10, IndexEventAdd), nil, nil))
 	}
 	require.NoError(t, batch.Commit(pebble.NoSync))
 

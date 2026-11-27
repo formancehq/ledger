@@ -139,18 +139,18 @@ reclamation leases and ahead-of-main trimming. It is deliberately not used as
 the causal cross-projection certificate:
 
 - main-store leaves and enrichment reflect the pin exactly;
-- metadata and exists index leaves resolve their append-only event groups at
+- metadata, exists, and has-asset index leaves resolve their append-only event groups at
   the pin (see [readstore-event-keys.md](readstore-event-keys.md)) — events
   folded past the handle are invisible, so selection and enrichment cannot
   disagree about a value flip in either direction;
 - add-only index leaves (timestamp, inserted_at, address→tx, reference,
-  has-asset, reverted_at) keep plain keys and can only *exceed* the handle
+  reverted_at) keep plain keys and can only *exceed* the handle
   (entities committed after it); the `MainHorizonKeep` filter trims those
   back for TRANSACTIONS and LOGS. ACCOUNTS get no trim: main-store existence
   is not a horizon signal there (purged accounts legitimately live on in the
   monotonic has-asset and metadata indexes), and account enrichment renders
-  absent accounts as address-only rows, so index membership is served as
-  folded.
+  absent accounts as address-only rows. The has-asset event leaf still resolves
+  membership at the pin, so fold-ahead touches do not leak into account results.
 
 Consumers: `listEntities` (ListTransactions/ListAccounts/ListLogs — including
 the reverse LOGS arm, whose unfiltered scan also iterates the read index),

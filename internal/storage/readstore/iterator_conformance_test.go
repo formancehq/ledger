@@ -35,10 +35,10 @@ import (
 // and a pair driving a test double instead of a production iterator fails
 // too.
 //
-// The gate-parity case (TestIteratorPairs_GateParity) is the one that earns
-// the suite. A whole-set parity test cannot catch a missing visibility gate:
-// it compares the two directions against the SAME pinned view, so a gate
-// absent from both halves still agrees and the test stays green. Only
+// The pin-parity case (TestIteratorPairs_GateParity) covers event visibility.
+// A whole-set parity test cannot catch missing pin resolution:
+// it compares the two directions against the SAME view, so missing pin
+// resolution in both halves still agrees and the test stays green. Only
 // comparing each direction against the independently known expected set at a
 // pin separates them.
 
@@ -138,12 +138,12 @@ func conformancePairs() []iterPair {
 			name: "EventResolveIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s, prefix := eventFixture(t, "v",
-					ev{"a", 5, MetadataEventAdd},
-					ev{"b", 6, MetadataEventAdd},
-					ev{"c", 7, MetadataEventAdd},
+					ev{"a", 5, IndexEventAdd},
+					ev{"b", 6, IndexEventAdd},
+					ev{"c", 7, IndexEventAdd},
 					// d was added then removed below the pin: dead either way.
-					ev{"d", 8, MetadataEventAdd},
-					ev{"d", 9, MetadataEventDel},
+					ev{"d", 8, IndexEventAdd},
+					ev{"d", 9, IndexEventDel},
 				)
 
 				fwd, err := NewEventResolveIterator(s.DB(), prefix, 100)
@@ -454,49 +454,18 @@ type gatedPair struct {
 func gatedPairs() []gatedPair {
 	return []gatedPair{
 		{
-			name: "StampGatedPrefixIterator",
-			build: func(t *testing.T, pin uint64) (EntityIterator, ReverseIterator) {
-				s := newTestStore(t)
-				kb := dal.NewKeyBuilder()
-				prefix := append([]byte(nil), MetadataIndexPrefixV(kb, "l", NamespaceAccount, "k", 1)...)
-				prefix = append(prefix, []byte("v")...)
-
-				// a,b are folded at or below the pin; z is folded above it and
-				// MUST be invisible in both directions.
-				for _, row := range []struct {
-					entity string
-					stamp  uint64
-				}{{"a", 5}, {"b", 10}, {"z", 999}} {
-					key := append(append([]byte(nil), prefix...), []byte(row.entity)...)
-					require.NoError(t, s.DB().Set(key, EncodeTxID(nil, row.stamp), pebble.NoSync))
-				}
-
-				fwd, err := NewStampGatedPrefixIterator(s.DB(), prefix, len(prefix), 0, pin)
-				require.NoError(t, err)
-				t.Cleanup(fwd.Close)
-
-				rev, err := NewStampGatedReversePrefixIterator(s.DB(), prefix, len(prefix), 0, pin)
-				require.NoError(t, err)
-				t.Cleanup(rev.Close)
-
-				return fwd, rev
-			},
-			wantAtPin: []string{"a", "b"},
-			pin:       10,
-		},
-		{
 			name: "EventResolveAtPin",
 			build: func(t *testing.T, pin uint64) (EntityIterator, ReverseIterator) {
 				s, prefix := eventFixture(t, "v",
-					ev{"a", 5, MetadataEventAdd},
+					ev{"a", 5, IndexEventAdd},
 					// b is ADDed above the pin: invisible at pin=10.
-					ev{"b", 50, MetadataEventAdd},
+					ev{"b", 50, IndexEventAdd},
 					// c is ADDed below and DELeted above: still visible at pin=10.
-					ev{"c", 6, MetadataEventAdd},
-					ev{"c", 60, MetadataEventDel},
+					ev{"c", 6, IndexEventAdd},
+					ev{"c", 60, IndexEventDel},
 					// d is ADDed then DELeted below the pin: invisible.
-					ev{"d", 3, MetadataEventAdd},
-					ev{"d", 4, MetadataEventDel},
+					ev{"d", 3, IndexEventAdd},
+					ev{"d", 4, IndexEventDel},
 				)
 
 				fwd, err := NewEventResolveIterator(s.DB(), prefix, pin)
@@ -518,8 +487,8 @@ func gatedPairs() []gatedPair {
 // TestIteratorPairs_GateParity is the case a whole-set parity test cannot
 // cover. Both directions are compared against the INDEPENDENTLY declared set
 // at the pin, so a gate missing from one direction — or from both — fails
-// here. Removing the gate from ReversePrefixIterator must break this test;
-// that is the check that keeps the registry honest.
+// here. Removing pin resolution from ReverseEventResolveIterator must break
+// this test; that is the check that keeps the registry honest.
 func TestIteratorPairs_GateParity(t *testing.T) {
 	t.Parallel()
 

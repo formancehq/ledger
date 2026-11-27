@@ -119,36 +119,36 @@ func parityStore(t *testing.T) *readstore.Store {
 		require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(
 			kb, parityLedger, readstore.NamespaceAccount, "colour", 1,
 			readstore.EncodeString(nil, colour), []byte(account),
-			uint64(10+i), readstore.MetadataEventAdd), nil))
+			uint64(10+i), readstore.IndexEventAdd), nil))
 
 		require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(
 			kb, parityLedger, readstore.NamespaceAccount, "size", 1,
 			readstore.EncodeUint64(nil, uint64(i%4)), []byte(account),
-			uint64(10+i), readstore.MetadataEventAdd), nil))
+			uint64(10+i), readstore.IndexEventAdd), nil))
 
 		// Signed metadata: values straddle zero so the sign-bit XOR in
 		// EncodeInt64 decides the descending order, not raw byte order.
 		require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(
 			kb, parityLedger, readstore.NamespaceAccount, "score", 1,
 			readstore.EncodeInt64(nil, int64(i)-6), []byte(account),
-			uint64(10+i), readstore.MetadataEventAdd), nil))
+			uint64(10+i), readstore.IndexEventAdd), nil))
 
 		require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(
 			kb, parityLedger, readstore.NamespaceAccount, "flag", 1,
 			readstore.EncodeBool(nil, i%2 == 0), []byte(account),
-			uint64(10+i), readstore.MetadataEventAdd), nil))
+			uint64(10+i), readstore.IndexEventAdd), nil))
 
 		// Existence rows so exists / NOT compositions have a universe.
 		require.NoError(t, batch.SetBytes(readstore.EntityExistsEventKeyV(
 			kb, parityLedger, readstore.NamespaceAccount, "colour", 1,
-			false, []byte(account), uint64(10+i), readstore.MetadataEventAdd), nil))
+			false, []byte(account), uint64(10+i), readstore.IndexEventAdd), nil))
 
 		// "note" splits its existence rows across the null and non-null
 		// flags, so exists(includeNull) compiles to the two-arm OR rather
 		// than collapsing to the same single scan as exists(colour).
 		require.NoError(t, batch.SetBytes(readstore.EntityExistsEventKeyV(
 			kb, parityLedger, readstore.NamespaceAccount, "note", 1,
-			i%4 == 1, []byte(account), uint64(10+i), readstore.MetadataEventAdd), nil))
+			i%4 == 1, []byte(account), uint64(10+i), readstore.IndexEventAdd), nil))
 	}
 
 	seedParityAccountVolumes(t, batch, kb)
@@ -257,25 +257,18 @@ func seedParityLogs(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 func seedParityAccountAssets(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 	t.Helper()
 
-	stamp := func(seq uint64) []byte {
-		v := make([]byte, 8)
-		binary.BigEndian.PutUint64(v, seq)
-
-		return v
-	}
-
 	for i := range 12 {
 		account := fmt.Sprintf("accounts:%02d", i)
 
 		switch {
 		case i == 1:
 			require.NoError(t, batch.SetBytes(
-				readstore.AccountByAssetKey(kb, parityLedger, parityAsset, parityAssetPrecision, account),
-				stamp(parityPin+5)))
+				readstore.AccountByAssetEventKey(kb, parityLedger, parityAsset, parityAssetPrecision, account, parityPin+5),
+				nil))
 		case i%2 == 0:
 			require.NoError(t, batch.SetBytes(
-				readstore.AccountByAssetKey(kb, parityLedger, parityAsset, parityAssetPrecision, account),
-				stamp(uint64(10+i))))
+				readstore.AccountByAssetEventKey(kb, parityLedger, parityAsset, parityAssetPrecision, account, uint64(10+i)),
+				nil))
 		}
 	}
 }

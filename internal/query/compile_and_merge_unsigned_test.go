@@ -52,7 +52,7 @@ func TestCompile_NegativeBoundOnUnsignedFieldIsRejectedBeforeMerge(t *testing.T)
 		require.NoError(t, batch.SetBytes(readstore.MetadataIndexEventKeyV(
 			kb, ledgerName, readstore.NamespaceAccount, "n", 1,
 			readstore.EncodeUint64(nil, uint64(i)), []byte(account),
-			uint64(10+i), readstore.MetadataEventAdd), nil))
+			uint64(10+i), readstore.IndexEventAdd), nil))
 	}
 	require.NoError(t, batch.Commit())
 

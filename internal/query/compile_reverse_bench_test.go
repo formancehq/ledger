@@ -59,7 +59,7 @@ func benchStore(b *testing.B, n int) *readstore.Store {
 			// Every row folds at seq 1, well below parityPin: the whole
 			// dataset must be visible, or the benchmark silently measures
 			// the pin gate instead of the traversal.
-			1, readstore.MetadataEventAdd), nil))
+			1, readstore.IndexEventAdd), nil))
 	}
 
 	require.NoError(b, batch.Commit())

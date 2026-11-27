@@ -10,7 +10,8 @@ import (
 )
 
 // ReverseEventResolveIterator is the descending twin of
-// EventResolveIterator's POINT form: it reads a metadata / exists index event
+// EventResolveIterator's POINT form: it reads a metadata, exists, or
+// account-by-asset index event
 // range at a pinned raft sequence and yields, in descending key order, every
 // group whose latest event at or below the pin is an ADD (see event_keys.go).
 //
@@ -38,9 +39,9 @@ type ReverseEventResolveIterator struct {
 	err       error
 }
 
-// NewReverseEventResolveIterator scans the event range under prefix (built by
-// MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin,
-// descending.
+// NewReverseEventResolveIterator scans metadata, exists, or account-by-asset
+// groups at the pin, descending. It accepts RC.5 first-touch rows in the
+// account-by-asset zone for live migration and frozen query checkpoints.
 func NewReverseEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*ReverseEventResolveIterator, error) {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
@@ -72,33 +73,33 @@ func (it *ReverseEventResolveIterator) settleFrom(seekTarget []byte) bool {
 // preceding group.
 func (it *ReverseEventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := parseEventKey(it.iter.Key(), it.prefixLen)
+		row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 			return false
 		}
 
-		group := append([]byte(nil), g...)
+		group := append([]byte(nil), row.group...)
 		live := false
 		decided := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := parseEventKey(it.iter.Key(), it.prefixLen)
+			row, ok := parseIndexEventRow(it.iter, it.prefixLen)
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
 				return false
 			}
 
-			if !bytes.Equal(g, group) {
+			if !bytes.Equal(row.group, group) {
 				break
 			}
 
 			// Walking backwards, the first event at or below the pin is the
 			// LATEST such event — the one the forward pass settles on.
-			if !decided && seq <= it.pin {
-				live = op == MetadataEventAdd
+			if !decided && row.seq <= it.pin {
+				live = row.op == IndexEventAdd
 				decided = true
 			}
 
@@ -169,7 +170,7 @@ func (it *ReverseEventResolveIterator) Seek(target []byte) bool {
 	seekKey := make([]byte, 0, len(it.seekPrefix)+len(target)+1)
 	seekKey = append(seekKey, it.seekPrefix...)
 	seekKey = append(seekKey, target...)
-	seekKey = append(seekKey, metadataEventTerminator+1)
+	seekKey = append(seekKey, indexEventTerminator+1)
 
 	if it.iter.SeekGE(seekKey) {
 		if !it.iter.Prev() {

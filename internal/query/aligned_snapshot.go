@@ -323,11 +323,9 @@ func requireLedgerLive(mainReader *dal.ReadHandle, ledgerName string) error {
 // and metadata indexes while absent from the V+M universe, and account
 // enrichment (scanAccount) renders absent accounts as address-only rows.
 // The account leaves trim themselves instead: metadata membership resolves
-// through event keys at the pin, and the has-asset scan is gated by each
-// row's first-touch stamp (compileAccountHasAssetCondition) — so a purged
-// account keeps serving while one whose first index row folded past the
-// handle stays invisible, exactly the split main-store existence cannot
-// express.
+// through event keys at the pin. The has-asset resolver also treats an RC.5
+// first-touch row as a synthetic event at its stored sequence, so a purged
+// account keeps serving while a post-pin touch stays invisible.
 //
 // Returns nil for targets with no trimmable cross-store membership (callers
 // skip wrapping).

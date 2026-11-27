@@ -104,7 +104,7 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 
 	defer func() { _ = iter.Close() }()
 
-	suffix := metadataEventSuffixLen + 1
+	suffix := indexEventSuffixLen + 1
 
 	var (
 		group   []byte
@@ -116,7 +116,7 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 		key := iter.Key()
 
 		tpos := len(key) - suffix
-		if tpos < prefixLen || key[tpos] != metadataEventTerminator {
+		if tpos < prefixLen || key[tpos] != indexEventTerminator {
 			return fmt.Errorf("malformed metadata event key %x", key)
 		}
 
@@ -139,7 +139,7 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 		}
 
 		// Events are seq-ascending within a group: the last op wins.
-		live = key[tpos+9] == MetadataEventAdd
+		live = key[tpos+9] == IndexEventAdd
 	}
 
 	if started && live {
@@ -163,7 +163,7 @@ func forEachLiveGroupReverse(reader dal.PebbleReader, lower, upper []byte, prefi
 
 	defer func() { _ = iter.Close() }()
 
-	suffix := metadataEventSuffixLen + 1
+	suffix := indexEventSuffixLen + 1
 
 	var (
 		group   []byte
@@ -176,7 +176,7 @@ func forEachLiveGroupReverse(reader dal.PebbleReader, lower, upper []byte, prefi
 		key := iter.Key()
 
 		tpos := len(key) - suffix
-		if tpos < prefixLen || key[tpos] != metadataEventTerminator {
+		if tpos < prefixLen || key[tpos] != indexEventTerminator {
 			return fmt.Errorf("malformed metadata event key %x", key)
 		}
 
@@ -199,7 +199,7 @@ func forEachLiveGroupReverse(reader dal.PebbleReader, lower, upper []byte, prefi
 			continue
 		}
 
-		live = key[tpos+9] == MetadataEventAdd
+		live = key[tpos+9] == IndexEventAdd
 		decided = true
 	}
 
