@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -35,30 +36,29 @@ func (stream *blockedLogSinkStream) Send(*servicepb.SubscribeLedgerLogsResponse)
 
 func TestLogSinkTokenExpiryInterruptsBlockedDelivery(t *testing.T) {
 	t.Parallel()
-	claims := &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{
-		Expiration: oidc.Time(time.Now().Add(2 * time.Second).Unix()),
-	}}
-	ctx, cancel, expiry, err := logSinkAuthorizationContext(internalAuth.WithClaims(t.Context(), claims))
-	require.NoError(t, err)
-	defer cancel()
-	require.Equal(t, claims.GetExpiration().Time, expiry)
-	stream := &blockedLogSinkStream{started: make(chan struct{}), release: make(chan struct{})}
-	defer close(stream.release)
-	result := make(chan error, 1)
-	go func() {
-		result <- sendLogSinkResponse(ctx, stream, &servicepb.SubscribeLedgerLogsResponse{})
-	}()
-	select {
-	case <-stream.started:
-	case <-t.Context().Done():
-		t.Fatal("send did not start")
-	}
-	select {
-	case err := <-result:
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-	case <-time.After(3 * time.Second):
-		t.Fatal("send continued after token expiry")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		claims := &oidc.AccessTokenClaims{TokenClaims: oidc.TokenClaims{
+			Expiration: oidc.Time(time.Now().Add(2 * time.Second).Unix()),
+		}}
+		ctx, cancel, expiry, err := logSinkAuthorizationContext(internalAuth.WithClaims(context.Background(), claims))
+		require.NoError(t, err)
+		defer cancel()
+		require.Equal(t, claims.GetExpiration().Time, expiry)
+		stream := &blockedLogSinkStream{started: make(chan struct{}), release: make(chan struct{})}
+		defer func() {
+			close(stream.release)
+			synctest.Wait()
+		}()
+		result := make(chan error, 1)
+		go func() {
+			result <- sendLogSinkResponse(ctx, stream, &servicepb.SubscribeLedgerLogsResponse{})
+		}()
+		<-stream.started
+		synctest.Wait()
+		require.NoError(t, ctx.Err(), "delivery must be blocked before token expiry")
+		<-time.After(time.Until(expiry))
+		require.ErrorIs(t, <-result, context.DeadlineExceeded)
+	})
 }
 
 func TestLogSinkAuthorizationDeadlineFollowsTokenExpiry(t *testing.T) {
