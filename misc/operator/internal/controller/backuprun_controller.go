@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -58,8 +59,6 @@ type BackupRunReconciler struct {
 const concurrencyRequeue = 10 * time.Second
 
 func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
 	var run ledgerv1alpha1.BackupRun
 	if err := r.Get(ctx, req.NamespacedName, &run); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -112,65 +111,79 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
 	}
 
-	// Reserve this run before creating the Job. A lost Create response must
-	// still exclude siblings even when the Job is not yet visible in the cache.
-	if run.Status.Phase != ledgerv1alpha1.BackupRunPhaseRunning {
-		now := metav1.Now()
-		run.Status.Phase = ledgerv1alpha1.BackupRunPhaseRunning
-		run.Status.Message = ""
-		if run.Status.StartTime == nil {
-			run.Status.StartTime = &now
-		}
-
-		if err := r.Status().Update(ctx, &run); err != nil {
-			return ctrl.Result{}, err
-		}
+	if err := r.reserveBackupRun(ctx, &run); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// Ensure the backing Job exists.
-	job, err := r.ensureBackupJob(ctx, &run, &backup, &cluster)
+	return r.reconcileReservedRun(ctx, &run, &backup, &cluster)
+}
+
+// reserveBackupRun persists the sibling exclusion before any Job write. An
+// uncertain Create outcome can then be retried under the same reservation.
+func (r *BackupRunReconciler) reserveBackupRun(ctx context.Context, run *ledgerv1alpha1.BackupRun) error {
+	if run.Status.Phase == ledgerv1alpha1.BackupRunPhaseRunning {
+		return nil
+	}
+
+	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseRunning
+	run.Status.Message = ""
+	if run.Status.StartTime == nil {
+		now := metav1.Now()
+		run.Status.StartTime = &now
+	}
+
+	return r.Status().Update(ctx, run)
+}
+
+func (r *BackupRunReconciler) reconcileReservedRun(
+	ctx context.Context,
+	run *ledgerv1alpha1.BackupRun,
+	backup *ledgerv1alpha1.Backup,
+	cluster *ledgerv1alpha1.Cluster,
+) (ctrl.Result, error) {
+	job, err := r.ensureBackupJob(ctx, run, backup, cluster)
 	if err != nil {
 		if _, ok := errors.AsType[*permanentBackupJobError](err); ok {
-			return r.setRunFailed(ctx, &run, fmt.Sprintf("provisioning backup Job: %v", err))
+			return r.setRunFailed(ctx, run, fmt.Sprintf("provisioning backup Job: %v", err))
 		}
 		// A transport error does not prove Create failed. Keep the reservation
 		// and retry the deterministic name, including after AlreadyExists.
-		return r.retryRun(ctx, &run, fmt.Errorf("provisioning backup Job: %w", err))
+		return r.retryRun(ctx, run, fmt.Errorf("provisioning backup Job: %w", err))
 	}
 
-	succeeded, terminal, jobMsg := jobTerminalCondition(job)
-	if !terminal {
+	action, message := nextBackupRunJobAction(job)
+	switch action {
+	case backupRunWaitForJob:
 		// Clear a previous diagnostic once the owned Job is available and running.
 		if run.Status.Message != "" {
 			run.Status.Message = ""
-			if err := r.Status().Update(ctx, &run); err != nil {
+			if err := r.Status().Update(ctx, run); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
 
-		// Job still running: wait for the next status update via the Owns watch.
-		logger.V(1).Info("backup Job still in progress", "job", job.Name, "active", job.Status.Active)
+		// Wait for the next status update via the Owns watch.
+		log.FromContext(ctx).V(1).Info("backup Job still in progress", "job", job.Name, "active", job.Status.Active)
 
 		return ctrl.Result{}, nil
+	case backupRunRecordJobFailure:
+		return r.setRunFailed(ctx, run, cmp.Or(message, "backup Job failed without a status message"))
+	case backupRunRecoverJobResult:
+		return r.completeRunFromJob(ctx, run, job)
+	default:
+		return ctrl.Result{}, fmt.Errorf("unknown BackupRun Job action %d", action)
 	}
+}
 
-	if !succeeded {
-		message := jobMsg
-		if message == "" {
-			message = "backup Job failed without a status message"
-		}
-
-		return r.setRunFailed(ctx, &run, message)
-	}
-
+func (r *BackupRunReconciler) completeRunFromJob(ctx context.Context, run *ledgerv1alpha1.BackupRun, job *batchv1.Job) (ctrl.Result, error) {
 	// A completed Job's result may be temporarily unavailable. Retry observation
 	// without releasing the reservation or misclassifying the execution outcome.
-	if err := r.applyJobResult(ctx, &run, &cluster, job); err != nil {
+	if err := r.applyJobResult(ctx, run, job); err != nil {
 		if _, ok := errors.AsType[*backupResultReadError](err); ok {
-			return r.retryRun(ctx, &run, fmt.Errorf("reading backup result: %w", err))
+			return r.retryRun(ctx, run, fmt.Errorf("reading backup result: %w", err))
 		}
 
-		return r.setRunFailed(ctx, &run, fmt.Sprintf("reading backup result: %v", err))
+		return r.setRunFailed(ctx, run, fmt.Sprintf("reading backup result: %v", err))
 	}
 
 	completedAt := time.Now()
@@ -186,7 +199,7 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Reason:             "Succeeded",
 		ObservedGeneration: run.Generation,
 	})
-	if err := r.Status().Update(ctx, &run); err != nil {
+	if err := r.Status().Update(ctx, run); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -304,7 +317,6 @@ func backupLedgerImage(sts *appsv1.StatefulSet) (string, error) {
 func (r *BackupRunReconciler) applyJobResult(
 	ctx context.Context,
 	run *ledgerv1alpha1.BackupRun,
-	_ *ledgerv1alpha1.Cluster,
 	job *batchv1.Job,
 ) error {
 	payload, err := fetchJobResultPayload(ctx, r.Clientset, job.Namespace, job.Name)

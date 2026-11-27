@@ -253,10 +253,17 @@ func buildBackupJob(
 	return job, nil
 }
 
-// jobTerminalCondition reports whether the Job has reached a terminal state
-// (Complete or Failed) and which one. The boolean return is true iff the Job
-// is terminal.
-func jobTerminalCondition(job *batchv1.Job) (succeeded bool, terminal bool, message string) {
+// backupRunJobAction is a decision from the owned Job's current conditions.
+// It is derived on each reconcile, never persisted as a BackupRun phase.
+type backupRunJobAction uint8
+
+const (
+	backupRunWaitForJob backupRunJobAction = iota
+	backupRunRecordJobFailure
+	backupRunRecoverJobResult
+)
+
+func nextBackupRunJobAction(job *batchv1.Job) (backupRunJobAction, string) {
 	for _, c := range job.Status.Conditions {
 		if c.Status != corev1.ConditionTrue {
 			continue
@@ -264,18 +271,18 @@ func jobTerminalCondition(job *batchv1.Job) (succeeded bool, terminal bool, mess
 
 		switch c.Type {
 		case batchv1.JobComplete, batchv1.JobSuccessCriteriaMet:
-			return true, true, c.Message
+			return backupRunRecoverJobResult, ""
 		case batchv1.JobFailed:
 			msg := c.Message
 			if c.Reason != "" {
 				msg = c.Reason + ": " + msg
 			}
 
-			return false, true, msg
+			return backupRunRecordJobFailure, msg
 		}
 	}
 
-	return false, false, ""
+	return backupRunWaitForJob, ""
 }
 
 // fetchJobResultPayload returns the bytes the operator should hand to
