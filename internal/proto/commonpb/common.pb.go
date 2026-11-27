@@ -5795,6 +5795,7 @@ type HttpSinkConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Endpoint      string                 `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"` // Target URL (e.g. "https://example.com/webhooks/ledger")
 	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`     // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+	Batch         bool                   `protobuf:"varint,3,opt,name=batch,proto3" json:"batch,omitempty"`      // Send versioned HTTP batch requests when the receiver supports batch v1.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5841,6 +5842,13 @@ func (x *HttpSinkConfig) GetSecret() string {
 		return x.Secret
 	}
 	return ""
+}
+
+func (x *HttpSinkConfig) GetBatch() bool {
+	if x != nil {
+		return x.Batch
+	}
+	return false
 }
 
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
@@ -23051,10 +23059,11 @@ const file_common_proto_rawDesc = "" +
 	"\x03tls\x18\x03 \x01(\bR\x03tls\x12%\n" +
 	"\x0esasl_mechanism\x18\x04 \x01(\tR\rsaslMechanism\x12#\n" +
 	"\rsasl_username\x18\x05 \x01(\tR\fsaslUsername\x12)\n" +
-	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword:\x04\xd8\xd5\"\x01\"V\n" +
+	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword:\x04\xd8\xd5\"\x01\"l\n" +
 	"\x0eHttpSinkConfig\x12 \n" +
 	"\bendpoint\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\bendpoint\x12\x1c\n" +
-	"\x06secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\x06secret:\x04\xd8\xd5\"\x01\"\x9f\x02\n" +
+	"\x06secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\x06secret\x12\x14\n" +
+	"\x05batch\x18\x03 \x01(\bR\x05batch:\x04\xd8\xd5\"\x01\"\x9f\x02\n" +
 	"\x14DatabricksSinkConfig\x12'\n" +
 	"\x0fserver_hostname\x18\x01 \x01(\tR\x0eserverHostname\x12\x1b\n" +
 	"\thttp_path\x18\x02 \x01(\tR\bhttpPath\x12\x18\n" +

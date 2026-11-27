@@ -1507,7 +1507,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type. Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:WriteMetadata` on both the dedicated route and gRPC `Apply` |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:ReadOps`) |
-| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink cursor and error status, including startup failures (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`); cursor zero without error means delivery is pending, while a nonzero cursor can also reflect filtered or internal logs rather than external delivery |
+| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink cursor and error status, including startup failures (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`); `http.batch` reports the optional HTTP batch v1 mode; cursor zero without error means delivery is pending, while a nonzero cursor can also reflect filtered or internal logs rather than external delivery |
 | `POST /v3/_/events-sinks` | ✅ | ❌ | Create an instance-wide sink from protobuf JSON; `ledger:WriteOps`, `201 {data: {name}}`, optional `Idempotency-Key` |
 | `DELETE /v3/_/events-sinks/{sinkName}` | ✅ | ❌ | Remove an instance-wide sink; `ledger:WriteOps`, optional `controllerId` precondition and `Idempotency-Key`, `204` |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys, paged by key id ([pagination](#pagination)) |

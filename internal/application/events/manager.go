@@ -549,6 +549,7 @@ func (m *Manager) createSink(ctx context.Context, sc *commonpb.SinkConfig) (Sink
 			Endpoint: s.Http.GetEndpoint(),
 			Secret:   s.Http.GetSecret(),
 			Format:   format,
+			Batch:    s.Http.GetBatch(),
 		})
 	}
 

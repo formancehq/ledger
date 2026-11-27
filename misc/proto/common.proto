@@ -748,6 +748,7 @@ message HttpSinkConfig {
 	option (ledger_json) = true;
   string endpoint = 1 [(sensitive_url) = true];  // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+  bool batch = 3; // Send versioned HTTP batch requests when the receiver supports batch v1.
 }
 
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.

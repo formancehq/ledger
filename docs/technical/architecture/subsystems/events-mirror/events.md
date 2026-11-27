@@ -377,7 +377,7 @@ The cursor is advanced only after the entire batch is successfully published to 
 | **NATS JetStream** | `nats` | Publishes to NATS JetStream for durable consumption. Requires `url` and `topic`. |
 | **ClickHouse** | `clickhouse` | Inserts events into a ClickHouse table for analytics. Requires `dsn`. Optional `table` (default: `ledger_events`). Uses experimental JSON type with Variant support. Always uses ClickHouse-native JSON format (ignores `format` setting). Table uses `ReplacingMergeTree` keyed on `(ledger, log_sequence)`: because delivery is at-least-once, a redelivered batch produces byte-identical duplicate rows that this engine collapses on background merges. Dedup is eventual, so exact queries must use `FINAL` or `GROUP BY`. |
 | **Kafka** | `kafka` | Publishes to Apache Kafka topics. Requires `brokers` and `topic`. Optional TLS and SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512). Uses synchronous producer for delivery guarantees. |
-| **HTTP Webhooks** | `http` | Sends individual HTTP POST requests per event. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
+| **HTTP Webhooks** | `http` | Sends one HTTP POST per event by default; optional `batch` sends versioned batch requests. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
 | **Databricks** | `databricks` | Inserts events into a Databricks SQL Warehouse table via Unity Catalog. Requires `server_hostname`, `http_path`, `catalog`, `schema`, `table`, and exactly one auth method (`token` for a Personal Access Token, or `oauth_m2m` with `client_id`/`client_secret` for OAuth M2M / service principal). |
 
 New sink types can be added by implementing the `Sink` interface and adding a variant to `SinkConfig.oneof type`.
@@ -523,6 +523,7 @@ message KafkaSinkConfig {
 message HttpSinkConfig {
   string endpoint = 1;           // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2;             // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+  bool batch = 3;                // Opt in to HTTP batch v1; false by default
 }
 
 message DatabricksSinkConfig {
@@ -839,7 +840,51 @@ sequenceDiagram
 
 ### HTTP Webhook Details
 
-The HTTP sink sends each event as an individual HTTP POST request with the following headers:
+The operational need is to reduce receiver request load: the emitter already
+collects up to 64 events by default, but the legacy HTTP sink sends one POST
+per event. Existing receivers expect one Event per body, so that contract
+remains the default. Operators set `http.batch: true` when creating the sink
+through the configuration API. The additive `HttpSinkConfig.batch` field is
+false when absent; existing configurations and receivers keep their behavior.
+The field travels in the `AddEventsSink` Raft order and its
+`AddedEventsSinkLog`, and is stored in the replicated sink configuration.
+Existing stored configurations decode with `batch=false`; no migration is
+needed. The previous RC's protobuf decoder and marshaler retain unknown fields,
+so an old voter can preserve field 3 while applying the order, but an old
+leader cannot use it to select the batch HTTP format. Enable it only after
+the server rollout completes.
+
+For example, the HTTP sink configuration sent to `POST /v3/_/events-sinks`
+contains `"http": {"endpoint": "https://receiver.example/events", "batch": true}`.
+
+Batch v1 sends events in ascending global log sequence order. JSON bodies are
+arrays of the existing Event JSON objects. Protobuf bodies concatenate the
+existing Event wire encodings, each preceded by its byte length as a four-byte
+big-endian unsigned integer. The sink targets at most 1 MiB per POST and splits
+an emitter batch at this boundary. An individual event larger than 1 MiB is
+sent alone in the same batch framing; it is never skipped or acknowledged
+without a successful POST. Batch requests use the same Content-Type
+as legacy requests and set `X-Ledger-Batch-Version: 1`, `X-Event-Count`,
+`X-Log-Sequence-First`, and `X-Log-Sequence-Last`. Single-event headers
+`X-Event-Type`, `X-Ledger`, and `X-Log-Sequence` are absent because a batch can
+contain different event types and ledgers. HMAC-SHA256 signs the complete body
+under the existing `X-Webhook-Signature` header. Redirects remain failures.
+
+Each 2xx acknowledges the entire POST, never a subset. A non-2xx response or
+transport failure returns an error from Publish; the emitter does not advance
+its Raft cursor and retries the entire emitter batch. Previously accepted
+POSTs from a split batch can therefore reappear. Receivers must process a POST
+atomically before returning 2xx and deduplicate using the global log sequence.
+After all POSTs succeed, the emitter proposes its cursor update through Raft;
+failure to commit that update can also cause redelivery. The configuration
+field is also present in the persisted global log and the serialized audit
+order, and is carried by snapshots and backups that include the sink config.
+It does not change event payloads or the cursor update format. During a rolling
+server upgrade, an older leader emits legacy single-event requests; wait until
+all voters support batch v1 before creating a batch-enabled sink.
+
+In the default legacy mode, the HTTP sink sends each event as an individual
+HTTP POST request with the following headers:
 
 | Header | Description |
 |---|---|

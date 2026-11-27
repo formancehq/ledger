@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -329,6 +330,90 @@ func TestHTTPSinkIntegration_ServerError(t *testing.T) {
 	err = sink.Publish(t.Context(), []*eventspb.Event{evt})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "500")
+}
+
+func TestHTTPSinkIntegration_BatchSplitFailureReplaysBeforeCursorAdvance(t *testing.T) {
+	t.Parallel()
+
+	type request struct {
+		body  []byte
+		first string
+		last  string
+	}
+	var mu sync.Mutex
+	var requests []request
+	thirdSeen := make(chan struct{})
+	allowThird := make(chan struct{})
+	var release sync.Once
+	t.Cleanup(func() { release.Do(func() { close(allowThird) }) })
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read batch request: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		mu.Lock()
+		requests = append(requests, request{body: body, first: r.Header.Get("X-Log-Sequence-First"), last: r.Header.Get("X-Log-Sequence-Last")})
+		attempt := len(requests)
+		mu.Unlock()
+		if attempt == 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		if attempt == 3 {
+			close(thirdSeen)
+			<-allowThird
+		}
+	}))
+	defer server.Close()
+	defer release.Do(func() { close(allowThird) })
+
+	store := newTestStore(t)
+	proposer := &directProposer{store: store}
+	largeName := strings.Repeat("x", (1<<20)/2)
+	now := libtime.Now()
+	appendTestLogs(t, store,
+		&commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{Name: largeName, CreatedAt: commonpb.NewTimestamp(now)},
+		}}},
+		&commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{Name: largeName, CreatedAt: commonpb.NewTimestamp(now)},
+		}}},
+	)
+	sink, err := events.NewHTTPSink(events.HTTPSinkConfig{Endpoint: server.URL, Format: events.FormatJSON, Batch: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sink.Close()) })
+	cfg := events.DefaultEmitterConfig()
+	cfg.BatchSize = 2
+	emitter := events.NewEmitter(store, sink, "batch-split-failure", proposer, newPlanBuilder(t, store), logging.Testing(), cfg)
+	emitter.Start()
+	t.Cleanup(emitter.Stop)
+
+	select {
+	case <-thirdSeen:
+	case <-time.After(10 * time.Second):
+		t.Fatal("batch replay did not start")
+	}
+	cursor, err := query.ReadSinkCursor(store, "batch-split-failure")
+	require.NoError(t, err)
+	require.Zero(t, cursor, "the first successful POST must not acknowledge the failed emitter batch")
+	release.Do(func() { close(allowThird) })
+	require.Eventually(t, func() bool {
+		cursor, err := query.ReadSinkCursor(store, "batch-split-failure")
+		return err == nil && cursor == 2
+	}, 5*time.Second, 10*time.Millisecond)
+	emitter.Stop()
+
+	mu.Lock()
+	got := append([]request(nil), requests...)
+	mu.Unlock()
+	require.Len(t, got, 4)
+	for i, want := range []string{"1", "2", "1", "2"} {
+		require.Equal(t, want, got[i].first)
+		require.Equal(t, want, got[i].last)
+	}
+	require.Equal(t, got[0].body, got[2].body)
+	require.Equal(t, got[1].body, got[3].body)
 }
 
 // verifyHMAC verifies a "sha256=<hex>" signature against a body and secret.

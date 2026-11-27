@@ -5746,6 +5746,7 @@ func NewKafkaSinkConfigListReader(s []*KafkaSinkConfig) KafkaSinkConfigListReade
 type HttpSinkConfigReader interface {
 	GetEndpoint() string
 	GetSecret() string
+	GetBatch() bool
 	Mutate() *HttpSinkConfig
 }
 
@@ -5757,6 +5758,10 @@ func (r *httpSinkConfigReadonly) GetEndpoint() string {
 
 func (r *httpSinkConfigReadonly) GetSecret() string {
 	return (*HttpSinkConfig)(r).GetSecret()
+}
+
+func (r *httpSinkConfigReadonly) GetBatch() bool {
+	return (*HttpSinkConfig)(r).GetBatch()
 }
 
 func (r *httpSinkConfigReadonly) Mutate() *HttpSinkConfig {
