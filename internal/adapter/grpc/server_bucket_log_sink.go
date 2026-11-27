@@ -141,6 +141,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 				if authErr := authorizationError(); authErr != nil {
 					return authErr
 				}
+
 				return err
 			}
 			if err := authorizationError(); err != nil {
@@ -196,6 +197,7 @@ func (impl *BucketServiceServerImpl) SubscribeLedgerLogs(stream servicepb.Bucket
 					if authErr := authorizationError(); authErr != nil {
 						return authErr
 					}
+
 					return err
 				}
 				if err := authorizationError(); err != nil {

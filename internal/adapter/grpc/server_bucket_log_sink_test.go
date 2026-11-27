@@ -21,6 +21,7 @@ import (
 
 type blockedLogSinkStream struct {
 	servicepb.BucketService_SubscribeLedgerLogsServer
+
 	started chan struct{}
 	release chan struct{}
 }
@@ -28,6 +29,7 @@ type blockedLogSinkStream struct {
 func (stream *blockedLogSinkStream) Send(*servicepb.SubscribeLedgerLogsResponse) error {
 	close(stream.started)
 	<-stream.release
+
 	return nil
 }
 
