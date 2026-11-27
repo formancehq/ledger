@@ -119,15 +119,23 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 		return false, err
 	}
 
-	attributedOut, err := exec("indexes", "list", "--ledger", ledgerName, "--json", "--creation-key-prefix", creationPrefix)
-	if err != nil {
-		return false, err
+	// Indexes are the operator's when it created them: standalone, or
+	// atomically with the ledger under its creation key (EN-2070).
+	owned := map[string]bool{}
+	for _, prefix := range []string{creationPrefix, ledgerCreationKeyPrefix(ledger.UID)} {
+		attributedOut, err := exec("indexes", "list", "--ledger", ledgerName, "--json", "--creation-key-prefix", prefix)
+		if err != nil {
+			return false, err
+		}
+		attributed, err := parseActualIndexes(attributedOut)
+		if err != nil {
+			return false, err
+		}
+		for canonical := range attributed {
+			owned[canonical] = true
+		}
 	}
-	attributed, err := parseActualIndexes(attributedOut)
-	if err != nil {
-		return false, err
-	}
-	for canonical := range attributed {
+	for canonical := range owned {
 		applied = append(applied, canonical)
 	}
 	sort.Strings(applied)

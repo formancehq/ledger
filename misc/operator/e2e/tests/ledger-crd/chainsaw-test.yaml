@@ -60,7 +60,7 @@ spec:
               metadata:
                 name: test-ledger
               status:
-                (conditions[?type == 'IndexesSynced'])[0].status: "True"
+                (conditions[?type == 'IndexesSynced'].status): ['True']
         - script:
             content: |
               OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
@@ -85,11 +85,19 @@ spec:
               metadata:
                 name: test-ledger
               status:
-                (conditions[?type == 'IndexesSynced'])[0].status: "True"
+                (conditions[?type == 'IndexesSynced'].status): ['True']
+        # IndexesSynced is still True from the previous generation when the
+        # assertion above runs, so poll until the new declaration converges.
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
-                /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              for _ in $(seq 1 25); do
+                OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
+                  /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+                if echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_TIMESTAMP && ! echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_ADDRESS; then
+                  break
+                fi
+                sleep 2
+              done
               echo "$OUTPUT"
               echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_TIMESTAMP  || { echo "FAIL: timestamp index not created"; exit 1; }
               echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_REFERENCE  || { echo "FAIL: reference index lost"; exit 1; }

@@ -22,25 +22,32 @@ there is no persisted owner, creation-owner argument, or conditional drop field.
 
 ## Evidence and recovery
 
-Each operator creation uses its own batch and a fresh idempotency key beginning
-with `ledger-operator/index/<Ledger CR UID>/`. The suffix identifies a single
-attempt. A recreated CR gets a different UID; names and spec generations are
+Each later operator creation uses its own batch and a fresh idempotency key
+beginning with `ledger-operator/index/<Ledger CR UID>/`. The suffix identifies a
+single attempt. Indexes declared when the Ledger is created are committed in
+the ledger creation batch instead, so a mirror never consumes history before
+they exist (EN-2070); that batch's key is
+`operator-ledger-create:<Ledger CR UID>:<generation>`. The operator queries
+attribution under both prefixes, the second without the generation, so a
+creation retried under a later generation is still attributed. A recreated CR gets a different UID; names and spec generations are
 not ownership identities. The marker is cooperative attribution, not an
 authentication credential.
 
 `ledgerctl indexes list --creation-key-prefix` selects current registry rows
-whose creation is supported by a matching audit entry. Evidence must describe
-one successful creation order for the same ledger and canonical index ID,
-with a fresh nonzero log sequence inside the successful log range. The audit
-timestamp must equal the index's existing `createdAt`. Failed requests, replay
-outcomes without a fresh creation, unrelated orders and multi-order batches
-cannot establish attribution.
+whose creation is supported by a matching audit entry. Evidence must be a
+successful entry whose items are freshly applied: one item per order at
+distinct positions, each with a distinct nonzero log sequence, together
+filling the successful log range exactly. A creation order in it attributes
+the same ledger's canonical index ID when the audit timestamp equals the
+index's existing `createdAt`. Failed requests, replay outcomes without a fresh
+creation and unrelated orders cannot establish attribution.
 
-The FSM's effective timestamp advances strictly between proposals. The dedicated
-creation batch matters because multiple orders in one proposal share a date.
-A later deletion and recreation changes the observed date; schema retyping
-preserves it. Date equality is used with verified singleton creation evidence,
-not as a universal identity for arbitrary orders inside a batch.
+The FSM's effective timestamp advances strictly between proposals, but
+multiple orders in one proposal share a date. A batch therefore attributes an
+index only when it creates that index exactly once and does not drop it, so
+the shared date still identifies that creation. A later deletion and
+recreation in another proposal changes the observed date; schema retyping
+preserves it.
 
 The CLI filters audit entries by idempotency-key prefix using the secondary audit index, then fetches item details for matching candidates. A failed
 read does not authorize a deletion or return partial attribution as success.
