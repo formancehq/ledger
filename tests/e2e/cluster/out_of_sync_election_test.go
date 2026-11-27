@@ -64,6 +64,9 @@ var _ = Describe("Out-of-sync election", func() {
 					i,
 					testserver.WithRaftCompactionMargin(raftCompactionMargin),
 					testserver.WithMaintenanceInterval(maintenanceInterval),
+					// This scenario needs the leader to compact past the lagging
+					// follower; disable the hold that would keep its log.
+					testserver.WithRaftFollowerRetentionMaxBytes(0),
 				))
 			}
 

@@ -218,6 +218,17 @@ func WithRaftCompactionMargin(margin uint64) testservice.InstrumentationFunc {
 	}
 }
 
+// WithRaftFollowerRetentionMaxBytes caps the log the leader holds back for
+// followers still catching up. Zero disables the hold, so the leader compacts
+// past a lagging follower and must send it a snapshot.
+func WithRaftFollowerRetentionMaxBytes(maxBytes uint64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--raft-follower-retention-max-bytes", strconv.FormatUint(maxBytes, 10))
+
+		return nil
+	}
+}
+
 func WithClusterID(id string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--cluster-id", id)

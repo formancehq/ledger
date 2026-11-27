@@ -35,6 +35,9 @@ var _ = Describe("Checkpoint donor loss", func() {
 			options = append(options, testutil.WithNodeInstruments(i,
 				testserver.WithRaftCompactionMargin(1),
 				testserver.WithMaintenanceInterval(250*time.Millisecond),
+				// This scenario needs the leader to compact past the lagging
+				// follower; disable the hold that would keep its log.
+				testserver.WithRaftFollowerRetentionMaxBytes(0),
 			))
 		}
 		ctx, servers, gateway, leaderID := testutil.SetupMultiNodeCluster(3, options...)
