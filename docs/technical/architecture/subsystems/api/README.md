@@ -23,6 +23,9 @@ Maintenance rejections retain that status but stop native gRPC retries with a
 negative retry-pushback trailer; explicit application recovery loops retain
 their own retry policy.
 
+The [HTTP idempotency contract](http-api.md#bulk-identity-and-response-contract)
+also covers seven single-request configuration and prepared-query mutations.
+
 Decoded leader errors retain their exact gRPC status through routing wrappers
 and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
 for the distinction between a decoded rejection and raw transport cancellation.

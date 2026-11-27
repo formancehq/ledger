@@ -1962,6 +1962,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/TargetType'
         - $ref: '#/components/parameters/MetadataKey'
       requestBody:
@@ -2007,6 +2008,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/TargetType'
         - $ref: '#/components/parameters/MetadataKey'
       responses:
@@ -2671,6 +2673,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/QueryName'
       requestBody:
         required: true
@@ -2715,6 +2718,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/QueryName'
       responses:
         '204':
@@ -2840,6 +2844,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -2926,6 +2931,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -3006,6 +3012,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/TypeName'
       responses:
         '204':

@@ -63,7 +63,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
+	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,

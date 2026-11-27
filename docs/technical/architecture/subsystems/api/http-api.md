@@ -1053,6 +1053,21 @@ route. Existing `/v3/{ledgerName}/bulk` modes and response contracts are unchang
 
 ## Bulk identity and response contract
 
+The optional `Idempotency-Key` header is also forwarded unchanged as the
+batch identity for seven single-request mutations: add/remove account type,
+set/remove metadata field type, set default enforcement mode, and
+update/delete prepared query. A retry with the same key therefore reaches
+the existing Apply idempotency mechanism. Requests without the header retain
+the previous empty-key behavior. The gRPC and durable record formats are
+unchanged, and no migration is required. A keyed request now populates the
+existing proposal idempotency field, retained outcome, and audit header; the
+durable contents therefore differ from an unkeyed request. FSM apply still
+uses the existing keyed-batch semantics. Where old and new HTTP servers may
+coexist, an older server can omit the key for these routes; clients requiring
+retry deduplication should use upgraded servers. This change does not relax
+the mandatory stopped-upgrade boundaries from rc.3 to rc.4 and rc.4 to rc.5
+in the [upgrade procedure](../../../../ops/upgrades.md).
+
 `POST /v3/{ledgerName}/bulk` accepts a JSON array. All elements target the
 ledger named in the URL. With `atomic=true`, admission receives one batch under
 the optional `Idempotency-Key` header; per-element `ik` values are ignored.
