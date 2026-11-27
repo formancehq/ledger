@@ -368,11 +368,16 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 	}
 	// A complete marker can precede write activation on an empty store, so it
 	// cannot by itself establish that this projection is authoritative.
-	// Operational policy is outside the store checker's business-state contract:
-	// an unreadable policy must not make the business integrity check fail.
+	// Operational policy is outside the store checker's business-state contract
+	// for unmigrated stores. Once migration is complete, an unreadable policy
+	// leaves incarnation verification inconclusive rather than clean.
 	policy, err := query.ReadClusterPolicy(source)
 	if err != nil {
-		return nil
+		if !marker.Complete {
+			return nil
+		}
+
+		return fmt.Errorf("account incarnation verification inconclusive: reading activation state: %w", err)
 	}
 	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
 		return nil

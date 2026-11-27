@@ -293,7 +293,7 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 	require.ErrorContains(t, check(), "differs from audited history")
 }
 
-func TestVerifySkipsUnreadableActivationState(t *testing.T) {
+func TestVerifyUnreadableActivationState(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		key  []byte
@@ -301,17 +301,26 @@ func TestVerifySkipsUnreadableActivationState(t *testing.T) {
 		{name: "policy", key: []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}},
 		{name: "capabilities", key: []byte{dal.ZoneGlobal, dal.SubGlobCapabilityState}},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			store := migrationStore(t)
-			batch := store.OpenWriteSession()
-			require.NoError(t, putMarker(batch, Marker{Complete: true}))
-			require.NoError(t, batch.SetBytes(test.key, []byte{0xff}))
-			require.NoError(t, batch.Commit())
-			reader, err := store.NewReadHandle()
-			require.NoError(t, err)
-			defer func() { require.NoError(t, reader.Close()) }()
-			require.NoError(t, Verify(t.Context(), reader, logging.Testing()))
-		})
+		for _, complete := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/complete=%t", test.name, complete), func(t *testing.T) {
+				store := migrationStore(t)
+				batch := store.OpenWriteSession()
+				if complete {
+					require.NoError(t, putMarker(batch, Marker{Complete: true}))
+				}
+				require.NoError(t, batch.SetBytes(test.key, []byte{0xff}))
+				require.NoError(t, batch.Commit())
+				reader, err := store.NewReadHandle()
+				require.NoError(t, err)
+				defer func() { require.NoError(t, reader.Close()) }()
+				err = Verify(t.Context(), reader, logging.Testing())
+				if complete {
+					require.ErrorContains(t, err, "account incarnation verification inconclusive")
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
 	}
 }
 
