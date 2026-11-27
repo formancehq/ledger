@@ -197,6 +197,101 @@ func TestEnsureAccountIncarnationsUpdatesOnMetadataDeletion(t *testing.T) {
 	require.Equal(t, uint64(200), updated.GetUpdatedAt().GetData())
 }
 
+func TestEnsureAccountIncarnationsRetainsReclassifiedTransientOnLastVolumePurge(t *testing.T) {
+	t.Parallel()
+	machine, _, _ := newTestMachine(t)
+	b := machine.writeSet
+	b.Reset(&commonpb.Timestamp{Data: 200})
+	account := domain.AccountKey{LedgerName: "ledger", Account: "transient:one"}
+	b.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: account.LedgerName, AccountTypes: map[string]*commonpb.AccountType{
+		"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT},
+	}})
+	id, tag := attributes.MakeKey(account.Bytes())
+	machine.Registry.Cache.AccountIncarnations.Put(id, attributes.Entry[*commonpb.AccountIncarnation]{
+		Tag: tag,
+		Data: &commonpb.AccountIncarnation{
+			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			InsertedAt:  &commonpb.Timestamp{Data: 100},
+			UpdatedAt:   &commonpb.Timestamp{Data: 100},
+			VolumeCount: 1,
+		},
+	})
+	volume := domain.NewVolumeKey(account.LedgerName, account.Account, "USD", "")
+	b.Derived.Volumes.Delete(volume)
+	factory := NewScopeFactory(b, &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
+		declareTestPlan(id, dal.SubAttrAccountIncarnation),
+	}}, logging.FromContext(logging.TestingContext()), nil, 42)
+	scope, err := factory.NewProposalScope()
+	require.NoError(t, err)
+	require.NoError(t, b.ensureAccountIncarnations(scope))
+	row, err := b.Derived.AccountIncarnations.Get(account)
+	require.NoError(t, err)
+	require.Equal(t, commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, row.GetPersistence())
+	require.Equal(t, uint64(100), row.GetInsertedAt().GetData())
+	require.Equal(t, uint64(200), row.GetUpdatedAt().GetData())
+	require.NoError(t, b.adjustIncarnationVolumeCounts(volumePartitionResult{purged: []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
+		{Key: volume, Old: kv.Some(&raftcmdpb.VolumePair{})},
+	}}))
+	row, err = b.Derived.AccountIncarnations.Get(account)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), row.GetVolumeCount())
+	require.Equal(t, uint64(100), row.GetInsertedAt().GetData())
+}
+
+func TestEnsureAccountIncarnationsDoesNotOpenNativeTransient(t *testing.T) {
+	t.Parallel()
+	machine, _, _ := newTestMachine(t)
+	b := machine.writeSet
+	b.Reset(&commonpb.Timestamp{Data: 200})
+	account := domain.AccountKey{LedgerName: "ledger", Account: "transient:one"}
+	b.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: account.LedgerName, AccountTypes: map[string]*commonpb.AccountType{
+		"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT},
+	}})
+	volume := domain.NewVolumeKey(account.LedgerName, account.Account, "USD", "")
+	b.Derived.Volumes.Put(volume, &raftcmdpb.VolumePair{})
+	id, _ := attributes.MakeKey(account.Bytes())
+	factory := NewScopeFactory(b, &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
+		declareTestPlan(id, dal.SubAttrAccountIncarnation),
+	}}, logging.FromContext(logging.TestingContext()), nil, 42)
+	scope, err := factory.NewProposalScope()
+	require.NoError(t, err)
+	require.NoError(t, b.ensureAccountIncarnations(scope))
+	_, err = b.Derived.AccountIncarnations.Get(account)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+	require.NoError(t, b.adjustIncarnationVolumeCounts(volumePartitionResult{kept: []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
+		{Key: volume},
+	}}))
+}
+
+func TestEnsureAccountIncarnationsRequiresCoverageForTransient(t *testing.T) {
+	t.Parallel()
+	machine, _, _ := newTestMachine(t)
+	b := machine.writeSet
+	b.Reset(&commonpb.Timestamp{Data: 200})
+	transient := domain.AccountKey{LedgerName: "ledger", Account: "transient:one"}
+	other := domain.AccountKey{LedgerName: "ledger", Account: "normal:other"}
+	b.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: transient.LedgerName, AccountTypes: map[string]*commonpb.AccountType{
+		"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT},
+	}})
+	transientID, tag := attributes.MakeKey(transient.Bytes())
+	machine.Registry.Cache.AccountIncarnations.Put(transientID, attributes.Entry[*commonpb.AccountIncarnation]{
+		Tag: tag,
+		Data: &commonpb.AccountIncarnation{
+			Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			InsertedAt:  &commonpb.Timestamp{Data: 100}, UpdatedAt: &commonpb.Timestamp{Data: 100}, VolumeCount: 1,
+		},
+	})
+	b.Derived.Volumes.Delete(domain.NewVolumeKey(transient.LedgerName, transient.Account, "USD", ""))
+	b.Derived.Volumes.Put(domain.NewVolumeKey(other.LedgerName, other.Account, "USD", ""), &raftcmdpb.VolumePair{})
+	otherID, _ := attributes.MakeKey(other.Bytes())
+	factory := NewScopeFactory(b, &raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
+		declareTestPlan(otherID, dal.SubAttrAccountIncarnation),
+	}}, logging.FromContext(logging.TestingContext()), nil, 42)
+	scope, err := factory.NewProposalScope()
+	require.NoError(t, err)
+	require.ErrorContains(t, b.ensureAccountIncarnations(scope), "coverage")
+}
+
 func TestApplyProposalWorldIncarnationTracksMetadataWrites(t *testing.T) {
 	t.Parallel()
 	machine, store, attrs := newTestMachine(t)

@@ -16,7 +16,7 @@ The probe runs only when the execution plan contains an incarnation key. This le
 
 ## Deliberate limits
 
-The FSM tracks the number of persisted `(asset, color)` volume cells per incarnation. A normal account retains its incarnation at zero cells. An ephemeral account closes its incarnation when its last cell is purged; a later write opens a new one with a new `inserted_at`. Other assets can keep the same ephemeral incarnation alive, and account metadata is retained after closure. Transient accounts still have no incarnation. This remains a benchmark prototype: it does not enforce a pinned type or add an explicit account lifecycle operation.
+The FSM tracks the number of persisted `(asset, color)` volume cells per incarnation. A normal account retains its incarnation at zero cells. An ephemeral account closes its incarnation when its last cell is purged; a later write opens a new one with a new `inserted_at`. Other assets can keep the same ephemeral incarnation alive, and account metadata is retained after closure. A transient account with no previous incarnation does not open one. If a normal account is reclassified as transient, its existing incarnation remains: each accepted account write updates `updated_at` and the recorded persistence, and draining the last volume leaves the incarnation at zero cells. The FSM checks declared incarnation coverage before reading either kind of transient account. This remains a benchmark prototype: it does not enforce a pinned type or add an explicit account lifecycle operation.
 
 ## Capability-gated migration
 

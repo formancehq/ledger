@@ -13,8 +13,8 @@ import (
 )
 
 // ensureAccountIncarnations observes the final account write set for this
-// proposal. It opens or updates one incarnation per touched normal or ephemeral
-// account, regardless of the number of assets or metadata keys.
+// proposal. It opens an incarnation for each touched normal or ephemeral
+// account, and updates any existing incarnation when its account is touched.
 func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Describable {
 	b.incarnationsEnabled = true
 	seen := make(map[domain.AccountKey]struct{})
@@ -67,9 +67,6 @@ func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Desc
 		if matched := accounttype.FindMatchingType(key.Account, ledgerType.compiled); matched != nil {
 			persistence = matched.GetPersistence()
 		}
-		if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
-			continue
-		}
 		if err := scope.CheckCoverage(dal.SubAttrAccountIncarnation, key); err != nil {
 			return domain.StoreFailure("checking account incarnation coverage", err)
 		}
@@ -84,6 +81,9 @@ func (b *WriteSet) ensureAccountIncarnations(scope processing.Scope) domain.Desc
 			continue
 		} else if !errors.Is(err, domain.ErrNotFound) {
 			return domain.StoreFailure("reading account incarnation", err)
+		}
+		if persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+			continue
 		}
 		b.Derived.AccountIncarnations.Put(key, &commonpb.AccountIncarnation{
 			Persistence: persistence,
