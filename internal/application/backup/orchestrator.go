@@ -121,6 +121,7 @@ func (r *ExecutorRegistry) tryRegisterAuthorized(jobID uint64, lease LeadershipL
 		r.jobs[jobID] = struct{}{}
 		owner = true
 	})
+
 	return authorized, owner
 }
 
@@ -239,9 +240,11 @@ func (o *Orchestrator) runContext(ctx context.Context, lease LeadershipLease) (c
 	runCtx, cancel := context.WithCancel(ctx)
 	if lease == nil {
 		cancel()
+
 		return runCtx, cancel
 	}
 	stop := context.AfterFunc(lease.Context(), cancel)
+
 	return runCtx, func() { stop(); cancel() }
 }
 

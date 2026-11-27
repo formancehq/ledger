@@ -112,6 +112,7 @@ type testLeadershipLease struct {
 
 func newTestLeadershipLease() *testLeadershipLease {
 	ctx, cancel := context.WithCancel(context.Background())
+
 	return &testLeadershipLease{ctx: ctx, cancel: cancel}
 }
 func (l *testLeadershipLease) Context() context.Context { return l.ctx }
@@ -123,6 +124,7 @@ func (l *testLeadershipLease) Authorize(fn func()) bool {
 		return false
 	}
 	fn()
+
 	return true
 }
 func (l *testLeadershipLease) ProposalContext(ctx context.Context) context.Context { return ctx }
@@ -311,7 +313,7 @@ func TestProposeTerminal(t *testing.T) {
 		capture := &proposalCapture{}
 		prop := recordingProposer(t, capture, nil)
 		o := newOrchestrator(prop, nil)
-		o.proposeTerminal(fullFail(7, "boom"), 7, "fail")
+		o.proposeTerminal(o.leases.CurrentLeadershipLease(), fullFail(7, "boom"), 7, "fail")
 		require.Len(t, capture.all(), 1)
 	})
 
@@ -319,7 +321,7 @@ func TestProposeTerminal(t *testing.T) {
 		t.Parallel()
 		prop := erroringProposer(t, errors.New("down"))
 		o := newOrchestrator(prop, nil)
-		o.proposeTerminal(fullFail(7, "boom"), 7, "fail") // must not panic
+		o.proposeTerminal(o.leases.CurrentLeadershipLease(), fullFail(7, "boom"), 7, "fail") // must not panic
 	})
 }
 
