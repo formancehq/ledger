@@ -65,6 +65,7 @@ func TestAtomicApplyRejectsMalformedReceiptBeforeDispatch(t *testing.T) {
 	signer := signing.NewResponseSigner(make([]byte, ed25519.SeedSize))
 	service := atomicApplyTestService{apply: func(*servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 		t.Fatal("Apply must not be dispatched for malformed receipt negotiation")
+
 		return nil, nil
 	}}
 	handler := NewHandler(logging.Testing(), NewMockBackend(gomock.NewController(t)), internalauth.AuthConfig{}, version.Info{}, service, signer)
