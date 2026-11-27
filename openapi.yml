@@ -6475,6 +6475,8 @@ components:
       properties:
         clientId:
           type: string
+          minLength: 1
+          maxLength: 128
         incarnation:
           description: Server-assigned; omit when registering.
           oneOf:
@@ -6489,17 +6491,25 @@ components:
       type: object
       additionalProperties: false
       description: Exactly one of issuer or keyId identifies the credential source.
-      required: [subject]
       oneOf:
-        - required: [issuer]
+        - required: [issuer, subject]
+          not:
+            required: [keyId]
+          properties:
+            subject:
+              minLength: 1
         - required: [keyId]
+          not:
+            required: [issuer]
       properties:
         subject:
           type: string
         issuer:
           type: string
+          minLength: 1
         keyId:
           type: string
+          minLength: 1
 
     DatabricksSinkConfig:
       type: object
