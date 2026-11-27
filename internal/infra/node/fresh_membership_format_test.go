@@ -24,7 +24,7 @@ func TestNewNodeMarksFreshMembershipFormatBeforeRegisteringPeers(t *testing.T) {
 	n, err := NewNode(NodeConfig{
 		NodeID: 1, Bootstrap: true, AdvertiseAddr: "self:7777",
 		ServiceAdvertiseAddr: "self:8889", InstanceID: []byte("self-instance-id"),
-		Peers: []Peer{{ID: 2, Address: "peer:7777", ServiceAddress: "peer:8891", InstanceID: []byte("peer-instance-id")}},
+		Peers: []Peer{{ID: 2, Address: "peer:7777", ServiceAddress: "peer:8891", InstanceID: []byte("peer-instance-id"), Capabilities: []uint32{7, 9}}},
 	}, nil, setup.applier, logging.Testing(), noop.Meter{}, setup.wal,
 		setup.fsm, setup.applier.recovery, setup.applier.synchronizer, m, setup.responseSink)
 	require.NoError(t, err)
@@ -40,4 +40,6 @@ func TestNewNodeMarksFreshMembershipFormatBeforeRegisteringPeers(t *testing.T) {
 		1, "self:7777", "self:8889", 8889, []byte("self-instance-id"), logging.Testing(), membership.NoopClusterPolicyProvider)
 	require.NoError(t, err)
 	require.Equal(t, "peer:8891", restarted.PeerAddresses()[2].ServiceAddress)
+	require.Equal(t, []byte("peer-instance-id"), restarted.PeerAddresses()[2].InstanceID)
+	require.Equal(t, []uint32{7, 9}, restarted.PeerAddresses()[2].Capabilities)
 }
