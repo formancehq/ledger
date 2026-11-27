@@ -222,6 +222,11 @@ the CI `Build` job still links the binaries. It does not run the full pre-commit
 It classifies the exact base-to-worktree diff, runs the straightforward
 pre-commit recipe only when Go/generated/tooling inputs are involved, runs the
 baseline, and adds focused race or affected subsystem tests.
+Changes under `tools/` select pre-commit. That recipe runs tests for the
+`protoc-gen-reader`, `protoc-gen-rpcauth`, and `buf-plugin-ledger` nested Go
+modules in the pinned Nix environment. The baseline inventory gate checks that
+every nested `tools/` module containing Go tests is represented in pre-commit,
+so adding a tested module cannot silently leave its tests unreachable.
 
 Agents use `AI_REVIEW_BASE_SHA=<sha> bash scripts/agent-push origin <branch>`
 for an ordinary PR push. This runs `agent-check-pr` with the pinned Nix tools

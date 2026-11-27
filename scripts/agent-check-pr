@@ -188,7 +188,8 @@ classify_path() {
             ;;
         tools/*)
             # Each tools/* directory is its own Go module: the root module
-            # cannot race-test it, and pre-commit builds and tests them.
+            # cannot race-test it. Pre-commit builds generators and tests every
+            # nested tools module with tests (enforced by the inventory gate).
             needs_precommit=true
             needs_tooling=true
             return

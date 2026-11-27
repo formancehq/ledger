@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root=$(git rev-parse --show-toplevel)
+cd "$repository_root"
+
+fail() {
+    echo "TOOLS_TEST_REACHABILITY: $*" >&2
+    exit 1
+}
+
+# Check the resolved recipe, rather than maintaining a second list of modules.
+# The default CI Dirty job executes pre-commit in the pinned Nix CI shell.
+pre_commit_plan=$(just --dry-run pre-commit 2>&1)
+while IFS= read -r module_file; do
+    module=${module_file%/go.mod}
+    if ! git ls-files --cached --others --exclude-standard -- "$module" | grep -Eq '(^|/)[^/]+_test\.go$'; then
+        continue
+    fi
+    if ! grep -Eq "^go -C ${module} test ([^[:space:]]+ )*\./\.\.\.([[:space:]]|$)" <<<"$pre_commit_plan"; then
+        fail "$module has Go tests but pre-commit does not run go test ./..."
+    fi
+done < <(git ls-files --cached --others --exclude-standard -- tools | grep -E '^tools/.+/go\.mod$' | sort -u)
+
+echo "tools-test-reachability: PASS"
