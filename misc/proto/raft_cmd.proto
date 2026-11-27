@@ -398,9 +398,8 @@ message RevertTransactionOrder {
   bool force = 2;
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
-  // Selects reverse posting order for new proposals. Historical orders omit
-  // this marker and retain their original apply and replay semantics.
-  bool reverse_posting_order = 5;
+  reserved 5;
+  reserved "reverse_posting_order";
 }
 
 message DeleteMetadataOrder {

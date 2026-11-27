@@ -13,7 +13,69 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
+
+func TestAuditReplayRevertPostingOrderFromProposalCapability(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, firstSource string
+		capability        bool
+	}{
+		{name: "historical proposal", firstSource: "A"},
+		{name: "capability one proposal", firstSource: "B", capability: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			machine, store, _ := newTestMachine(t)
+			const ledger = "revert-audit"
+			postings := []*commonpb.Posting{
+				newPosting("world", "A", "USD", 10),
+				newPosting("A", "B", "USD", 10),
+			}
+			initial := makeProposal(1, createLedgerOrder(ledger), createTransactionOrder(ledger, false, postings...))
+			result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, 1, initial))
+			require.NoError(t, err)
+			require.NoError(t, result.Results[0].Error)
+			created := result.Results[0].Logs[1].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction()
+			revert := revertObservedTransactionOrder(ledger, created.GetId(), created.GetPostings())
+			revert.GetLedgerScoped().GetApply().GetRevertTransaction().Force = !tc.capability
+			proposal := makeProposal(2, revert)
+			proposal.ExecutionPlan.Attributes = append(proposal.ExecutionPlan.Attributes, buildVolumePreloads([]*raftcmdpb.Order{initial.GetOrders()[1]})...)
+			if tc.capability {
+				proposal.RequiredCapabilities = []uint32{1}
+			}
+			result, err = machine.ApplyEntries(t.Context(), store, makeEntry(t, 2, proposal))
+			require.NoError(t, err)
+			require.NoError(t, result.Results[0].Error)
+
+			handle, err := store.NewDirectReadHandle()
+			require.NoError(t, err)
+			defer func() { _ = handle.Close() }()
+			replayer, err := NewAuditReplayer(logging.Testing(), "test-cluster")
+			require.NoError(t, err)
+			defer func() { require.NoError(t, replayer.Close()) }()
+			for sequence := uint64(1); sequence <= 2; sequence++ {
+				entry, err := query.ReadAuditEntry(t.Context(), handle, sequence)
+				require.NoError(t, err)
+				items, err := query.ReadAuditItems(t.Context(), handle, sequence)
+				require.NoError(t, err)
+				orders := make([]*raftcmdpb.Order, len(items))
+				for i, item := range items {
+					orders[i] = new(raftcmdpb.Order)
+					require.NoError(t, orders[i].UnmarshalVT(item.GetSerializedOrder()))
+				}
+				logs, err := replayer.Replay(entry.GetTimestamp(), orders, entry.GetRequiredCapabilities()...)
+				require.NoError(t, err)
+				if sequence == 2 {
+					require.Equal(t, proposal.GetRequiredCapabilities(), entry.GetRequiredCapabilities())
+					got := logs[0].GetPayload().GetApply().GetLog().GetData().GetRevertedTransaction().GetRevertTransaction().GetPostings()
+					require.Equal(t, tc.firstSource, got[0].GetSource())
+				}
+			}
+		})
+	}
+}
 
 func TestAuditReplayerDisablesWAL(t *testing.T) {
 	t.Parallel()

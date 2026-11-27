@@ -4083,7 +4083,6 @@ type RevertTransactionOrderReader interface {
 	GetForce() bool
 	GetAtEffectiveDate() bool
 	GetMetadata() RevertTransactionOrder_MetadataMapReader
-	GetReversePostingOrder() bool
 	Mutate() *RevertTransactionOrder
 }
 
@@ -4103,10 +4102,6 @@ func (r *revertTransactionOrderReadonly) GetAtEffectiveDate() bool {
 
 func (r *revertTransactionOrderReadonly) GetMetadata() RevertTransactionOrder_MetadataMapReader {
 	return revertTransactionOrder_metadataMapReadonly((*RevertTransactionOrder)(r).GetMetadata())
-}
-
-func (r *revertTransactionOrderReadonly) GetReversePostingOrder() bool {
-	return (*RevertTransactionOrder)(r).GetReversePostingOrder()
 }
 
 func (r *revertTransactionOrderReadonly) Mutate() *RevertTransactionOrder {

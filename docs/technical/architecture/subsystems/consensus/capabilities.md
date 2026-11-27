@@ -82,33 +82,30 @@ cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
 The supported registry contains capability ID 1, `RevertReversePostingOrder`.
-Admission marks newly built revert orders with
-`RevertTransactionOrder.reverse_posting_order`. The final proposal derives ID 1
-when any order carries that marker. Apply selects posting sequence from the
-persisted marker alone: marked orders swap directions and reverse the sequence;
-historical unmarked orders swap directions in their original sequence. Both
-forms remain replayable after activation. The marker is internal Raft and audit
-data; the client request and service protocol revision are unchanged.
+The final proposal derives ID 1 when any order reverts a transaction. Apply
+selects posting sequence from the persisted proposal declaration: capability-1
+proposals swap directions and reverse the sequence; historical proposals without
+ID 1 swap directions in their original sequence. The audit entry retains the
+declaration for replay after WAL compaction. The client request and service
+protocol revision are unchanged.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
-2. The order declares the capability that selects the behavior during FSM
-   apply.
+2. The proposal declares the capability that selects the behavior during FSM
+   apply and audit replay.
 
 The serialized proposal carries `required_capabilities` at proposal scope.
-Because a proposal can batch old and new semantic forms, the revert change
-also persists `reverse_posting_order` on each revert order. The proposal
-declares ID 1 if any contained revert is marked; apply dispatches each revert
-from its own marker. Other future mixed-semantic changes need an equivalent
-per-order marker or must reject mixed batches. The revert declaration is:
+Every revert in one proposal uses the same posting order. The proposal builder
+declares ID 1 whenever it contains a revert, and final-proposal validation
+rejects an omitted declaration. The revert declaration is:
 
 ```text
-historical revert: reverse_posting_order = false
-new revert:        reverse_posting_order = true; required_capabilities includes 1
+historical proposal: required_capabilities omits 1
+new revert proposal: required_capabilities includes 1
 ```
 
-The FSM must use the persisted order marker to select the behavior. It must not
-infer the behavior from the current policy alone. An old order can be replayed
+The FSM must use the persisted proposal declaration to select the behavior. It must not
+infer the behavior from the current policy alone. An old proposal can be replayed
 after the capability becomes active, and it must keep its old semantics.
 
 If a producer cannot mark the new orders, the change must remain backward
@@ -125,9 +122,9 @@ binary versions.
 2. Allocate a new capability ID. Never reuse an ID for a different contract.
 3. Add the capability to the binary registry and derive it from the final
    proposal in `RequiredCapabilities`.
-4. Stamp the capability on every new order that needs the new behavior. Do not
+4. Stamp the capability on every new proposal that needs the new behavior. Do not
    infer it from the current policy during FSM apply.
-5. Keep the old behavior for orders that do not carry the capability. Add
+5. Keep the old behavior for proposals that do not carry the capability. Add
    replay tests that apply both order forms with the new binary.
 6. Add admission tests for an inactive capability, an active capability, and a
    member that does not advertise it.

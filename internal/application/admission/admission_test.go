@@ -907,8 +907,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 
 		order, err := admission.requestToOrder(t.Context(), request, nil, newBulkOverlay())
 		require.NoError(t, err)
-		require.True(t, order.GetLedgerScoped().GetApply().GetRevertTransaction().GetReversePostingOrder(),
-			"new revert orders must carry the capability-selected replay marker")
+		require.NotNil(t, order.GetLedgerScoped().GetApply().GetRevertTransaction())
 
 		require.Equal(t, domain.RevertTargetDigest(nil, false), order.GetTechnical().GetRevertTargetDigest(),
 			"an absent target must be bound as absent, not left empty")

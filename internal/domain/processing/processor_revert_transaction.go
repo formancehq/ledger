@@ -106,7 +106,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	revertPostings := make([]*commonpb.Posting, len(originalPostings))
 	for i, originalPosting := range originalPostings {
 		index := i
-		if order.GetReversePostingOrder() {
+		if ctx.reverseRevertPostings {
 			index = len(originalPostings) - 1 - i
 		}
 		revertPostings[index] = &commonpb.Posting{

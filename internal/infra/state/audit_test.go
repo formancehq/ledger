@@ -24,8 +24,7 @@ func TestApplyProposalPersistsRequiredCapabilities(t *testing.T) {
 	declarations := [][]uint32{{7}, {7, 11}}
 	for i, ids := range declarations {
 		proposal := makeProposal(uint64(i+1), createLedgerOrder("capability-audit"))
-		// Exercise the FSM write path directly. Admission currently has no active
-		// semantic capabilities and would not produce a nonempty declaration.
+		// Exercise the FSM write path directly with synthetic declarations.
 		proposal.RequiredCapabilities = ids
 		result, err := machine.ApplyEntries(t.Context(), store, makeEntry(t, uint64(i+1), proposal))
 		require.NoError(t, err)

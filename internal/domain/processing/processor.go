@@ -3,6 +3,7 @@ package processing
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/zeebo/blake3"
@@ -12,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -46,6 +48,8 @@ type Context struct {
 	// strictCreateLedgerAccountTypes enables strict initial type validation for
 	// new orders. Audit replay retains the historical creation semantics.
 	strictCreateLedgerAccountTypes bool
+	// reverseRevertPostings is selected from the persisted proposal declaration.
+	reverseRevertPostings bool
 
 	// Metadata budget is shared by all orders in one atomic proposal.
 	metadataBudget *commandMetadataBudget
@@ -234,7 +238,13 @@ func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, false, true)
+	return p.processOrders(orders, scopeFactory, sink, false, true, false)
+}
+
+// ProcessProposal applies the semantics declared by the committed proposal.
+func (p *RequestProcessor) ProcessProposal(proposal *raftcmdpb.Proposal, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
+	return p.processOrders(proposals.BatchOrders(proposal), scopeFactory, sink, false, true,
+		slices.Contains(proposal.GetRequiredCapabilities(), uint32(capabilities.RevertReversePostingOrder)))
 }
 
 // ProcessAuditedOrders verifies recorded business effects. Operational quotas
@@ -243,10 +253,16 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 // types that the stricter new-order validation would reject. Successful new
 // creations satisfy the legacy validation and reconstruct the same log.
 func (p *RequestProcessor) ProcessAuditedOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
-	return p.processOrders(orders, scopeFactory, sink, true, false)
+	return p.processOrders(orders, scopeFactory, sink, true, false, false)
 }
 
-func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool) (*OrdersResult, domain.Describable) {
+// ProcessAuditedProposal applies the semantics recorded in the audit header.
+func (p *RequestProcessor) ProcessAuditedProposal(orders []*raftcmdpb.Order, requiredCapabilities []uint32, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
+	return p.processOrders(orders, scopeFactory, sink, true, false,
+		slices.Contains(requiredCapabilities, uint32(capabilities.RevertReversePostingOrder)))
+}
+
+func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink, auditReplay bool, strictCreateLedgerAccountTypes bool, reverseRevertPostings bool) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -257,6 +273,7 @@ func (p *RequestProcessor) processOrders(orders []*raftcmdpb.Order, scopeFactory
 	ctx := &Context{
 		auditReplay:                    auditReplay,
 		strictCreateLedgerAccountTypes: strictCreateLedgerAccountTypes,
+		reverseRevertPostings:         reverseRevertPostings,
 		NumscriptCache:                 p.numscriptCache,
 		CompiledTypes:                  p.compiledTypesCache,
 		AssetCache:                     p.assetCache,
@@ -527,17 +544,10 @@ func MarshalOrderBusinessIntent(order *raftcmdpb.Order, buf []byte) []byte {
 	return out
 }
 
-// hashOrder computes the request identity used for idempotency. A revert's
-// posting-order marker selects committed execution semantics, but an RC.4
-// request retried after upgrade must still match its frozen outcome. The audit
-// serialization retains the marker so replay preserves those semantics.
+// hashOrder computes request identity from business order bytes. Proposal-level
+// capability declarations are excluded, so retries across upgrade match their
+// frozen outcome while audit replay retains the original declaration.
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
-	revert := order.GetLedgerScoped().GetApply().GetRevertTransaction()
-	if revert != nil {
-		saved := revert.GetReversePostingOrder()
-		revert.ReversePostingOrder = false
-		defer func() { revert.ReversePostingOrder = saved }()
-	}
 	buf = MarshalOrderBusinessIntent(order, buf)
 
 	sum := blake3.Sum256(buf)

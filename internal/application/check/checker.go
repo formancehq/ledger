@@ -2358,7 +2358,7 @@ func (c *Checker) verifyAuditHashChain(
 				orders[i] = order
 			}
 			if replaySound {
-				logs, replayErr := replayer.Replay(entry.GetTimestamp(), orders)
+				logs, replayErr := replayer.Replay(entry.GetTimestamp(), orders, entry.GetRequiredCapabilities()...)
 				if replayErr != nil {
 					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
 				}

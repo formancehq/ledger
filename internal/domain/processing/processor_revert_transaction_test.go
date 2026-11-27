@@ -196,14 +196,15 @@ func TestProcessRevertTransaction_ChainedPostingOrder(t *testing.T) {
 				expectPutTransactionState(t, store, domain.TransactionKey{LedgerName: "L", ID: 2}, nil)
 			}
 			committed := &raftcmdpb.RevertTransactionOrder{
-				TransactionId: 1, ReversePostingOrder: tc.marked, Force: tc.force,
+				TransactionId: 1, Force: tc.force,
 			}
 			encoded, encodeErr := committed.MarshalVT()
 			require.NoError(t, encodeErr)
 			decoded := new(raftcmdpb.RevertTransactionOrder)
 			require.NoError(t, decoded.UnmarshalVT(encoded))
 			payload, err := processRevertTransaction("L", decoded, &Context{
-				Scope: store, Boundaries: &raftcmdpb.LedgerBoundaries{NextTransactionId: 2},
+				reverseRevertPostings: tc.marked,
+				Scope:                 store, Boundaries: &raftcmdpb.LedgerBoundaries{NextTransactionId: 2},
 				LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
 				RevertTargetDigest: domain.RevertTargetDigest(postings, true),
 			})

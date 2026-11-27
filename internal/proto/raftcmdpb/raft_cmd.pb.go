@@ -3205,11 +3205,8 @@ type RevertTransactionOrder struct {
 	Force           bool                               `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
 	AtEffectiveDate bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Selects reverse posting order for new proposals. Historical orders omit
-	// this marker and retain their original apply and replay semantics.
-	ReversePostingOrder bool `protobuf:"varint,5,opt,name=reverse_posting_order,json=reversePostingOrder,proto3" json:"reverse_posting_order,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RevertTransactionOrder) Reset() {
@@ -3268,13 +3265,6 @@ func (x *RevertTransactionOrder) GetMetadata() map[string]*commonpb.MetadataValu
 		return x.Metadata
 	}
 	return nil
-}
-
-func (x *RevertTransactionOrder) GetReversePostingOrder() bool {
-	if x != nil {
-		return x.ReversePostingOrder
-	}
-	return false
 }
 
 type DeleteMetadataOrder struct {
@@ -6149,16 +6139,15 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x03(\v2%.raft.SaveMetadataOrder.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xd1\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xba\x02\n" +
 	"\x16RevertTransactionOrder\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12F\n" +
-	"\bmetadata\x18\x04 \x03(\v2*.raft.RevertTransactionOrder.MetadataEntryR\bmetadata\x122\n" +
-	"\x15reverse_posting_order\x18\x05 \x01(\bR\x13reversePostingOrder\x1aR\n" +
+	"\bmetadata\x18\x04 \x03(\v2*.raft.RevertTransactionOrder.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"O\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x15reverse_posting_order\"O\n" +
 	"\x13DeleteMetadataOrder\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\xb6\x01\n" +

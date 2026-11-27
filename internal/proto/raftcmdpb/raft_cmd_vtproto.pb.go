@@ -1304,7 +1304,6 @@ func (m *RevertTransactionOrder) CloneVT() *RevertTransactionOrder {
 	r.TransactionId = m.TransactionId
 	r.Force = m.Force
 	r.AtEffectiveDate = m.AtEffectiveDate
-	r.ReversePostingOrder = m.ReversePostingOrder
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -4607,9 +4606,6 @@ func (this *RevertTransactionOrder) EqualVT(that *RevertTransactionOrder) bool {
 				return false
 			}
 		}
-	}
-	if this.ReversePostingOrder != that.ReversePostingOrder {
-		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -9335,16 +9331,6 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ReversePostingOrder {
-		i--
-		if m.ReversePostingOrder {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
 	if len(m.Metadata) > 0 {
 		for k := range m.Metadata {
 			v := m.Metadata[k]
@@ -13360,9 +13346,6 @@ func (m *RevertTransactionOrder) SizeVT() (n int) {
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
-	}
-	if m.ReversePostingOrder {
-		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -22204,26 +22187,6 @@ func (m *RevertTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Metadata[mapkey] = mapvalue
 			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ReversePostingOrder", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.ReversePostingOrder = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -124,7 +124,7 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 		orders = proposal.GetBatch().GetOrders()
 	}
 	for _, order := range orders {
-		if order.GetLedgerScoped().GetApply().GetRevertTransaction().GetReversePostingOrder() {
+		if order.GetLedgerScoped().GetApply().GetRevertTransaction() != nil {
 			return []CapabilityID{RevertReversePostingOrder}, nil
 		}
 	}

@@ -66,13 +66,13 @@ port and Membership address migration first ship after the published `rc.4`.
 That stopped boundary also enables capability ID 1 for reverse-order reverts.
 Keep the original PVCs and committed history. After all RC.4 voters have
 stopped and all RC.5 members have advertised support, the replicated capability
-activation commits; only then can new revert proposals carry the reverse-order
-marker. Until activation, new reverts are rejected at admission and may be
-retried. Historical unmarked reverts replay with their original posting order,
-including their recorded audit result; the marker does not rewrite stored
-transaction states, snapshots, backups, or audit entries. A rollback to RC.4
-after the first marked revert is unsafe because RC.4 does not recognize the
-marker or apply the new semantics.
+activation commits; only then can new revert proposals declare capability ID 1.
+Until activation, new reverts are rejected at admission and may be retried.
+Historical proposals without that declaration replay with their original posting
+order, including their recorded audit result. The declaration does not rewrite
+stored transaction states, snapshots, backups, or audit entries. A rollback to
+RC.4 after the first capability-1 revert is unsafe because RC.4 does not apply
+the new semantics.
 Every explicit-target `UpdatePreparedQuery` order must wait until the stopped
 `rc.3` to `rc.4` upgrade completes. Even when the target value is unchanged,
 the new processor records target fields in the audit log, so old and new voters
@@ -130,7 +130,7 @@ recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
 The supported registry contains capability ID 1, `RevertReversePostingOrder`.
 After all current members advertise it, the leader automatically activates it;
-until activation, admission rejects new marked revert proposals.
+until activation, admission rejects new revert proposals.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
