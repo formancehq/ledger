@@ -21,6 +21,7 @@ import (
 
 const (
 	maxActiveLogSinkStreams = 8
+	maxPendingLogSinkOpens  = 2
 	maxLogSinksPerPrincipal = 2
 	maxUnacknowledgedLogs   = 16
 	maxLogSinkPageBytes     = 8 << 20
@@ -247,8 +248,8 @@ func receiveLogSinkOpen(stream servicepb.BucketService_SubscribeLogsServer) (*se
 func (impl *BucketServiceServerImpl) reserveLogSinkOpen() error {
 	impl.logSinkMu.Lock()
 	defer impl.logSinkMu.Unlock()
-	if len(impl.activeLogSinks)+impl.pendingLogSinkOpens >= maxActiveLogSinkStreams {
-		return status.Error(codes.ResourceExhausted, "too many active log sinks")
+	if impl.pendingLogSinkOpens >= maxPendingLogSinkOpens {
+		return status.Error(codes.ResourceExhausted, "too many pending log sink opens")
 	}
 	impl.pendingLogSinkOpens++
 
@@ -286,7 +287,7 @@ func (impl *BucketServiceServerImpl) claimLogSinkLocked(name, principal string) 
 	if _, exists := impl.activeLogSinks[name]; exists {
 		return status.Error(codes.AlreadyExists, "log sink already has an active stream")
 	}
-	if len(impl.activeLogSinks)+impl.pendingLogSinkOpens >= maxActiveLogSinkStreams || impl.activeLogSinkPrincipals[principal] >= maxLogSinksPerPrincipal {
+	if len(impl.activeLogSinks) >= maxActiveLogSinkStreams || impl.activeLogSinkPrincipals[principal] >= maxLogSinksPerPrincipal {
 		return status.Error(codes.ResourceExhausted, "too many active log sinks")
 	}
 	impl.activeLogSinks[name] = principal

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -104,17 +105,24 @@ func TestLogSinkConnectionLimitsAndRelease(t *testing.T) {
 	require.NoError(t, impl.claimLogSink("third", "principal"))
 }
 
-func TestLogSinkPendingOpenCountsAgainstGlobalLimit(t *testing.T) {
+func TestLogSinkPendingOpensDoNotConsumeActiveCapacity(t *testing.T) {
 	t.Parallel()
 	impl := &BucketServiceServerImpl{}
-	for range maxActiveLogSinkStreams {
+	for range maxPendingLogSinkOpens {
 		require.NoError(t, impl.reserveLogSinkOpen())
 	}
 	require.Equal(t, codes.ResourceExhausted, status.Code(impl.reserveLogSinkOpen()))
-	require.NoError(t, impl.promoteLogSinkOpen("first", "principal"))
+	for i := range maxActiveLogSinkStreams {
+		name := fmt.Sprintf("sink-%d", i)
+		require.NoError(t, impl.claimLogSink(name, "sink:"+name), "pending opens must not consume active capacity")
+	}
+	require.Equal(t, codes.ResourceExhausted, status.Code(impl.promoteLogSinkOpen("next", "sink:next")))
+	impl.releaseLogSink("sink-0")
+	require.NoError(t, impl.promoteLogSinkOpen("next", "sink:next"))
+	for range maxPendingLogSinkOpens {
+		require.NoError(t, impl.reserveLogSinkOpen())
+	}
 	require.Equal(t, codes.ResourceExhausted, status.Code(impl.reserveLogSinkOpen()))
-	impl.releaseLogSink("first")
-	require.NoError(t, impl.reserveLogSinkOpen())
 }
 
 func testLedgerLog(id uint64) *commonpb.Log {

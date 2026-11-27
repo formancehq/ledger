@@ -239,8 +239,8 @@ clients do not confuse sources.
 
 The server bounds each stream to 16 unacknowledged logs, an 8 MiB catch-up
 page budget (or one larger log), and 30 seconds without an ack while logs are
-outstanding. Eight stream slots are shared across active and pending
-connections. Each secret-backed connection is counted under its sink name;
+outstanding. The server admits at most two pending Open requests and eight
+verified active streams, counted separately. Each active connection is counted under its sink name;
 duplicate connections for the same sink are rejected. The server rescans the
 committed global log every 250 ms from the last sent sequence;
 an empty scan never advances the cursor. Leadership loss, sink removal, or a
