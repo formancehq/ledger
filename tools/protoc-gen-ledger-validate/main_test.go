@@ -65,20 +65,43 @@ Mode mode = 6 [(common.non_zero_for_input) = true];`
 	fields += `
 string reference = 7 [(common.max_bytes_for_input) = 4096];
 bytes public_key = 8 [(common.exact_bytes_for_input) = 32];`
+	fields += `
+optional string optional_max = 9 [(common.max_bytes_for_input) = 4];
+optional string optional_exact = 10 [(common.exact_bytes_for_input) = 3];`
 	if err := os.WriteFile(fixture, []byte(strings.Replace(definitions, "FIELD", fields, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command("protoc", "-I", dir, "--plugin=protoc-gen-ledger-validate="+plugin, "--ledger-validate_out="+dir, fixture)
+	command := exec.Command("protoc", "-I", dir, "--plugin=protoc-gen-ledger-validate="+plugin, "--go_out=paths=source_relative:"+dir, "--ledger-validate_out=paths=source_relative:"+dir, fixture)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("generate non-zero checks: %v: %s", err, output)
 	}
-	generated, err := os.ReadFile(filepath.Join(dir, "example", "commonpb", "positive_ledger_validate.pb.go"))
+	generated, err := os.ReadFile(filepath.Join(dir, "positive_ledger_validate.pb.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, check := range []string{`m.Name == ""`, `len(m.Key) == 0`, `m.Count == 0`, `!m.Enabled`, `m.Limit == nil || *m.Limit == 0`, `m.Mode == 0`, `len(m.Reference) > 4096`, `len(m.PublicKey) != 32`} {
+	for _, check := range []string{`m.Name == ""`, `len(m.Key) == 0`, `m.Count == 0`, `!m.Enabled`, `m.Limit == nil || *m.Limit == 0`, `m.Mode == 0`, `len(m.Reference) > 4096`, `len(m.PublicKey) != 32`, `len(m.GetOptionalMax()) > 4`, `len(m.GetOptionalExact()) != 3`} {
 		if !strings.Contains(string(generated), check) {
 			t.Errorf("generated validator missing %q: %s", check, generated)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/formancehq/ledger/v3\n\ngo 1.26.0\n\nrequire google.golang.org/protobuf v1.36.11\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	errorSource, err := os.ReadFile("../../internal/proto/inputvalidation/error.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errorDir := filepath.Join(dir, "internal", "proto", "inputvalidation")
+	if err := os.MkdirAll(errorDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(errorDir, "error.go"), errorSource, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compile := exec.Command("go", "test", "-mod=mod", "./...")
+	compile.Dir = dir
+	compile.Env = append(os.Environ(), "GOWORK=off")
+	if output, err := compile.CombinedOutput(); err != nil {
+		t.Fatalf("compile generated validators: %v: %s", err, output)
 	}
 }

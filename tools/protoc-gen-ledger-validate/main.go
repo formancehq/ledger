@@ -162,14 +162,18 @@ func generate(gen *protogen.Plugin) error {
 			for _, rule := range item.fields {
 				condition := ""
 				errorRule := ""
+				lengthValue := "m." + rule.field.GoName
+				if rule.field.Desc.Kind() == protoreflect.StringKind && rule.field.Desc.HasPresence() {
+					lengthValue = "m.Get" + rule.field.GoName + "()"
+				}
 				switch {
 				case rule.nonZero:
 					condition = nonZeroCondition(rule.field)
 				case rule.maxBytes > 0:
-					condition = fmt.Sprintf("len(m.%s) > %d", rule.field.GoName, rule.maxBytes)
+					condition = fmt.Sprintf("len(%s) > %d", lengthValue, rule.maxBytes)
 					errorRule = `, Rule: "max_bytes"`
 				case rule.exactBytes > 0:
-					condition = fmt.Sprintf("len(m.%s) != %d", rule.field.GoName, rule.exactBytes)
+					condition = fmt.Sprintf("len(%s) != %d", lengthValue, rule.exactBytes)
 					errorRule = `, Rule: "exact_bytes"`
 				default:
 					condition = "m." + rule.field.GoName + " == nil"
