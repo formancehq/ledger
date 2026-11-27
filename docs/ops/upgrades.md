@@ -11,10 +11,9 @@ their original validation.
 Live CreateLedger apply keeps the initial account-type validation shipped in
 RC.5, including for unmarked proposals from an RC.5 leader. Historical audit
 replay retains the earlier creation rule only for unmarked entries; marked
-entries use the strengthened validation. The capability foundation's
-coordinated upgrade procedure remains the deployment requirement until a
-mixed-version rolling validation proves this activation safe from every
-published RC. Do not activate the capability on a partially upgraded cluster.
+entries use the strengthened validation. The RC.5 to RC.6 boundary requires
+the published-RC rolling validation below before RC.6 can be released. Do not
+activate the capability on a partially upgraded cluster.
 
 `v3.0.0-rc.1` is the first supported v3 persisted-state baseline. Every later
 v3 release, including another RC and the stable release, must provide a tested
@@ -660,6 +659,23 @@ validation report. `just test-rolling-upgrade v3.0.0-rc.1 <target-sha>`
 rehearses a specific local commit without fetching the release branch. The
 release-branch example refuses to run while `release/v3.0` lacks the integrated
 harness.
+
+For the RC.5 to RC.6 capability boundary, run the separate live rolling mode
+against the published RC.5 tag and the exact candidate commit:
+
+```bash
+UPGRADE_ROLLING_CAPABILITY=1 just test-rolling-upgrade v3.0.0-rc.5 <candidate-sha>
+```
+
+This mode replaces voters one at a time without maintenance. It commits
+transactions while an RC.5 leader and a candidate voter coexist, transfers
+leadership to the candidate voter, commits another transaction from the RC.5
+node, then upgrades the remaining voters. It verifies a post-activation write,
+unmarked mixed-version audit entries, a marked post-activation audit entry,
+equal account state and the audit/store checker on all three nodes. The source
+must be a published release and the candidate must contain this harness. Record
+the command and retained evidence in the RC.6 release validation report before
+claiming rolling compatibility; adding the test alone is not that evidence.
 
 The test creates a dedicated kind cluster and Chainsaw namespace. Three Pods
 mount separate persistent WAL and data claims and boot from an image containing

@@ -11,6 +11,12 @@ if [ "${LEDGER_UPGRADE_SHELL:-}" != 1 ]; then
 fi
 source_ref="$1"
 target_ref="$2"
+if [ "${UPGRADE_ROLLING_CAPABILITY:-}" = 1 ]; then
+	[ "$source_ref" = v3.0.0-rc.5 ] || { echo 'capability rolling test requires published rc.5' >&2; exit 2; }
+	[ "$(gh release view "$source_ref" --json isDraft --jq '.isDraft')" = false ] || {
+		echo "$source_ref is not a published release" >&2; exit 2;
+	}
+fi
 [ -z "$(git -C "$repo" status --porcelain)" ] || {
 	echo "the harness checkout must be clean so its recorded SHA identifies the test code" >&2
 	exit 2
@@ -43,7 +49,11 @@ git -C "$repo" merge-base --is-ancestor "$source_sha" "$target_sha" || {
 workdir="$(mktemp -d "${TMPDIR:-/tmp}/ledger-upgrade.XXXXXX")"
 cluster="ledger-upgrade-$$"
 cleanup() {
-	kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
+	if [ "${KEEP_CLUSTER:-}" = 1 ]; then
+		echo "upgrade cluster retained: $cluster"
+	else
+		kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
+	fi
 	if [ -n "${KEEP_WORKDIR:-}" ]; then echo "upgrade evidence: $workdir"; else rm -rf "$workdir"; fi
 }
 trap cleanup EXIT
@@ -82,10 +92,14 @@ printf 'sourceImage=%s\ntargetImage=%s\n' "$source_image" "$target_image" | tee 
 kind create cluster --name "$cluster"
 kind load docker-image "$source_image" "$target_image" --name "$cluster"
 kind get kubeconfig --name "$cluster" > "$workdir/kubeconfig"
+chainsaw_args=()
+if [ "${KEEP_CLUSTER:-}" = 1 ]; then chainsaw_args+=(--skip-delete); fi
 UPGRADE_CLUSTER_SCRIPT="$script_dir/cluster_upgrade.sh" \
 UPGRADE_KUBECONFIG="$workdir/kubeconfig" UPGRADE_KUBE_CONTEXT="kind-$cluster" \
 UPGRADE_SOURCE_IMAGE="$source_image" UPGRADE_TARGET_IMAGE="$target_image" \
+	UPGRADE_ROLLING_CAPABILITY="${UPGRADE_ROLLING_CAPABILITY:-}" \
 UPGRADE_EVIDENCE_DIR="$workdir" \
 	chainsaw test --config "$script_dir/chainsaw/config.yaml" \
 		--test-dir "$script_dir/chainsaw" --kube-context "kind-$cluster" \
+		"${chainsaw_args[@]}" \
 		2>&1 | tee "$workdir/chainsaw.log"

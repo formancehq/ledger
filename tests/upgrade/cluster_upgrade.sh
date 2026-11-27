@@ -280,6 +280,75 @@ before="$(account 0)"
 jq -e '.address == "bank" and any(.volumes[]; .asset == "USD" and .volumes.balance == "100")' <<<"$before" >/dev/null
 check_data "$before"
 
+if [ "${UPGRADE_ROLLING_CAPABILITY:-}" = 1 ]; then
+	# Keep the published RC.5 leader in place while a target voter joins.
+	# Replacing Pods one at a time makes the mixed-version write window stable.
+	followers=()
+	for i in 0 1 2; do
+		[ "$((i+1))" -eq "$original_leader" ] || followers+=("$i")
+	done
+	replace_rolling_pod() {
+		local i="$1" name old_uid
+		name="$(pod_name "$i")"
+		old_uid="$(k get pod "$name" -o jsonpath='{.metadata.uid}')"
+		k delete pod "$name" --wait=true
+		create_pod "$i" "$UPGRADE_TARGET_IMAGE" rejoin
+		[ "$(k get pod "$name" -o jsonpath='{.metadata.uid}')" != "$old_uid" ] || {
+			echo "Pod $name was not replaced" >&2; return 1;
+		}
+		wait_consistent false
+	}
+	replace_rolling_pod "${followers[0]}"
+	[ "$(cluster_health | cut -d' ' -f1)" = "$original_leader" ] || {
+		echo 'source leader changed before mixed-version write' >&2; exit 1;
+	}
+	cli "${followers[0]}" transactions create --ledger "$ledger" --posting world,bank,1,USD --reference mixed-old-leader
+	wait_consistent false
+	cli "$((original_leader-1))" cluster transfer-leader "$((followers[0]+1))"
+	wait_consistent false
+	[ "$(cluster_health | cut -d' ' -f1)" = "$((followers[0]+1))" ] || {
+		echo 'target voter did not become leader' >&2; exit 1;
+	}
+	# The old voter can retain the replaced Pod's DNS address briefly. Probe
+	# forwarding with an idempotent read before issuing a non-idempotent write.
+	deadline=$(( $(date +%s) + 120 ))
+	until cli "$((original_leader-1))" cluster status --json --timeout 3s 2>/dev/null |
+		jq -e --argjson leader "$((followers[0]+1))" '(.leader | tonumber) == $leader' >/dev/null 2>&1; do
+		[ "$(date +%s)" -lt "$deadline" ] || { echo 'old voter did not regain forwarding connectivity' >&2; exit 1; }
+		sleep 2
+	done
+	cli "$((original_leader-1))" transactions create --ledger "$ledger" --posting world,bank,1,USD --reference mixed-new-leader
+	wait_consistent false
+	mixed="$(account 0)"
+	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "102")' <<<"$mixed" >/dev/null
+	check_data "$mixed"
+	cli "${followers[0]}" audit list --reverse --page-size 1 --json |
+		jq -e '.[0].requiredCapabilities == null or .[0].requiredCapabilities == []' >/dev/null
+	replace_rolling_pod "${followers[1]}"
+	replace_rolling_pod "$((original_leader-1))"
+	# All members now advertise capability 1. Admission may briefly wait for
+	# the activation entry to commit. Retry only that explicit rejection;
+	# transactions create has no idempotency key for ambiguous outcomes.
+	deadline=$(( $(date +%s) + 120 ))
+	while ! output="$(cli "${followers[0]}" transactions create --ledger "$ledger" \
+		--posting world,bank,1,USD --reference after-activation 2>&1)"; do
+		grep -iq 'capability activation is pending' <<<"$output" || {
+			echo "post-activation write failed: $output" >&2; exit 1;
+		}
+		[ "$(date +%s)" -lt "$deadline" ] || { echo 'post-activation write did not commit' >&2; exit 1; }
+		sleep 2
+	done
+	wait_consistent false
+	after="$(account 0)"
+	jq -e 'any(.volumes[]; .asset == "USD" and .volumes.balance == "103")' <<<"$after" >/dev/null
+	check_data "$after"
+	cli "${followers[0]}" audit list --reverse --page-size 1 --json |
+		jq -e '.[0].requiredCapabilities == [1]' >/dev/null
+	for i in 0 1 2; do cli "$i" store check; done
+	echo 'PASS: published RC.5 and candidate mixed-version writes, leadership transfer, activation, audit and retained data'
+	exit 0
+fi
+
 cli "$((original_leader-1))" cluster maintenance enable
 wait_consistent true
 check_maintenance baseline
