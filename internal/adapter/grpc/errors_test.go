@@ -568,9 +568,34 @@ func TestConvertToGRPCError_MirrorNotCaughtUp(t *testing.T) {
 
 func TestConvertToGRPCError_InactiveCapability(t *testing.T) {
 	t.Parallel()
-	st := status.Convert(convertToGRPCError(fmt.Errorf("mirror promotion: %w", capabilities.ErrCapabilityUnsupported), testLogger()))
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-	require.Contains(t, st.Message(), "capability is unsupported")
+	for _, tc := range []struct {
+		name   string
+		err    error
+		code   codes.Code
+		reason string
+		kind   domain.ErrorKind
+	}{
+		{"unsupported", capabilities.ErrCapabilityUnsupported, codes.FailedPrecondition, grpcerr.CapabilityUnsupportedReason, domain.KindPrecondition},
+		{"activation pending", capabilities.ErrActivationPending, codes.Unavailable, grpcerr.CapabilityActivationPendingReason, domain.KindUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			encoded := convertToGRPCError(fmt.Errorf("mirror promotion: %w", tc.err), testLogger())
+			st := status.Convert(encoded)
+			require.Equal(t, tc.code, st.Code())
+			require.Equal(t, tc.err.Error(), st.Message())
+			require.Len(t, st.Details(), 1)
+			info, ok := st.Details()[0].(*errdetails.ErrorInfo)
+			require.True(t, ok)
+			require.Equal(t, tc.reason, info.GetReason())
+			require.Equal(t, errorDomain, info.GetDomain())
+
+			forwarded := grpcerr.FromStatusError(encoded)
+			classification, ok := errors.AsType[domain.Classifiable](forwarded)
+			require.True(t, ok)
+			require.Equal(t, tc.kind, classification.Kind())
+		})
+	}
 }
 
 // TestConvertToGRPCError_UnknownErrorIsSanitized pins the fix for #326.

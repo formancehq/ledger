@@ -674,7 +674,20 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 	// activates it and every member advertises support. This is an operator
 	// precondition, not an unexpected server failure.
 	if errors.Is(err, capabilities.ErrCapabilityUnsupported) {
-		return status.Error(codes.FailedPrecondition, err.Error())
+		st, detailErr := status.New(codes.FailedPrecondition, capabilities.ErrCapabilityUnsupported.Error()).WithDetails(
+			&errdetails.ErrorInfo{Reason: grpcerr.CapabilityUnsupportedReason, Domain: errorDomain})
+		if detailErr == nil {
+			return st.Err()
+		}
+		return status.Error(codes.FailedPrecondition, capabilities.ErrCapabilityUnsupported.Error())
+	}
+	if errors.Is(err, capabilities.ErrActivationPending) {
+		st, detailErr := status.New(codes.Unavailable, capabilities.ErrActivationPending.Error()).WithDetails(
+			&errdetails.ErrorInfo{Reason: grpcerr.CapabilityActivationPendingReason, Domain: errorDomain})
+		if detailErr == nil {
+			return st.Err()
+		}
+		return status.Error(codes.Unavailable, capabilities.ErrActivationPending.Error())
 	}
 
 	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).

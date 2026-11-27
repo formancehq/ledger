@@ -20,6 +20,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -58,6 +59,19 @@ func TestHandleError(t *testing.T) {
 			err:            fmt.Errorf("building preloads: %w", plan.ErrCacheHorizonExceeded),
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedCode:   "CACHE_HORIZON_EXCEEDED",
+			checkRetry:     true,
+		},
+		{
+			name:           "unsupported capability wrapped by admission",
+			err:            fmt.Errorf("mirror promotion: %w", capabilities.ErrCapabilityUnsupported),
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "CAPABILITY_UNSUPPORTED",
+		},
+		{
+			name:           "capability activation pending wrapped by admission",
+			err:            fmt.Errorf("mirror promotion: %w", capabilities.ErrActivationPending),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   "CAPABILITY_ACTIVATION_PENDING",
 			checkRetry:     true,
 		},
 		{

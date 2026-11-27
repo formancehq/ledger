@@ -92,6 +92,13 @@ import (
 // left alone.
 const errorDomain = "ledger"
 
+// Operational capability refusals occur before a proposal commits. They are
+// public transport reasons, not persisted FSM ErrorReason values.
+const (
+	CapabilityUnsupportedReason       = "CAPABILITY_UNSUPPORTED"
+	CapabilityActivationPendingReason = "CAPABILITY_ACTIVATION_PENDING"
+)
+
 // CodeForKind maps a semantic ErrorKind to the gRPC status code the server
 // sends it under. Adding a new Kind without a branch fails the `exhaustive`
 // golangci-lint rule, which is the whole point of this design (#431): a new

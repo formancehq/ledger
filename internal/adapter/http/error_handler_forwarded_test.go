@@ -89,6 +89,19 @@ func TestHandleErrorForwardedFromLeader(t *testing.T) {
 			expectedCode:   domain.ErrReasonMirrorNotCaughtUp,
 		},
 		{
+			name:           "unsupported capability keeps its precondition classification",
+			leaderErr:      leaderStatus(t, codes.FailedPrecondition, "capability is unsupported by a cluster member", grpcerr.CapabilityUnsupportedReason),
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   grpcerr.CapabilityUnsupportedReason,
+		},
+		{
+			name:           "pending capability activation stays retryable",
+			leaderErr:      leaderStatus(t, codes.Unavailable, "capability activation is pending", grpcerr.CapabilityActivationPendingReason),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   grpcerr.CapabilityActivationPendingReason,
+			checkRetry:     true,
+		},
+		{
 			// The collapse case. Both KindConflict and KindPrecondition are sent
 			// as codes.FailedPrecondition, so deriving the kind from the code
 			// alone answers 400 here where the leader answers 409.
