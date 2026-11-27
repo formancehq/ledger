@@ -69,7 +69,7 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if run.IsTerminal() {
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.releaseClusterBackupReservation(ctx, &run)
 	}
 
 	var backup ledgerv1alpha1.Backup
@@ -85,7 +85,11 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var cluster ledgerv1alpha1.Cluster
-	if err := r.Get(ctx, types.NamespacedName{
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	if err := reader.Get(ctx, types.NamespacedName{
 		Name:      backup.Spec.ClusterRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
@@ -94,6 +98,17 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
+	}
+	if suspensionActive(&cluster) && !backupRunReserved(&cluster, &run) && run.Status.Phase != ledgerv1alpha1.BackupRunPhaseRunning {
+		if run.Status.Phase != ledgerv1alpha1.BackupRunPhasePending || run.Status.Message != "waiting for Cluster resume" {
+			run.Status.Phase = ledgerv1alpha1.BackupRunPhasePending
+			run.Status.Message = "waiting for Cluster resume"
+			if err := r.Status().Update(ctx, &run); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
 	}
 
 	// Forbid concurrency: any sibling already Running blocks this one.
@@ -109,6 +124,15 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
+	}
+	if run.Status.Phase != ledgerv1alpha1.BackupRunPhaseRunning {
+		admitted, err := r.reserveClusterBackup(ctx, backup.Spec.ClusterRef, &run)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("reserving Cluster backup admission: %w", err)
+		}
+		if !admitted {
+			return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
+		}
 	}
 
 	if err := r.reserveBackupRun(ctx, &run); err != nil {
@@ -204,6 +228,62 @@ func (r *BackupRunReconciler) completeRunFromJob(ctx context.Context, run *ledge
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func backupRunReserved(cluster *ledgerv1alpha1.Cluster, run *ledgerv1alpha1.BackupRun) bool {
+	uid, exists := cluster.Status.BackupReservations[run.Name]
+
+	return exists && uid == string(run.UID)
+}
+
+// reserveClusterBackup uses the Cluster status resourceVersion as the common
+// fence with suspension intent. Whichever status update wins forces the other
+// controller to retry against the winner before it can start a Job or stop Pods.
+func (r *BackupRunReconciler) reserveClusterBackup(ctx context.Context, clusterName string, run *ledgerv1alpha1.BackupRun) (bool, error) {
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	cluster := &ledgerv1alpha1.Cluster{}
+	if err := reader.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: run.Namespace}, cluster); err != nil {
+		return false, err
+	}
+	if backupRunReserved(cluster, run) {
+		return true, nil
+	}
+	if suspensionActive(cluster) {
+		return false, nil
+	}
+	if cluster.Status.BackupReservations == nil {
+		cluster.Status.BackupReservations = make(map[string]string)
+	}
+	cluster.Status.BackupReservations[run.Name] = string(run.UID)
+	if err := r.Status().Update(ctx, cluster); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (r *BackupRunReconciler) releaseClusterBackupReservation(ctx context.Context, run *ledgerv1alpha1.BackupRun) error {
+	backup := &ledgerv1alpha1.Backup{}
+	if err := r.Get(ctx, types.NamespacedName{Name: run.Spec.BackupRef, Namespace: run.Namespace}, backup); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	cluster := &ledgerv1alpha1.Cluster{}
+	if err := reader.Get(ctx, types.NamespacedName{Name: backup.Spec.ClusterRef, Namespace: run.Namespace}, cluster); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if !backupRunReserved(cluster, run) {
+		return nil
+	}
+	delete(cluster.Status.BackupReservations, run.Name)
+
+	return r.Status().Update(ctx, cluster)
 }
 
 // permanentBackupJobError identifies a definitive validation failure before

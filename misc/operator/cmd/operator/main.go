@@ -142,6 +142,7 @@ func main() {
 
 	if err = (&controller.LedgerReconciler{
 		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
 		Scheme:    mgr.GetScheme(),
 		Dynamic:   dynamicClient,
 		Config:    cfg,

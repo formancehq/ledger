@@ -164,6 +164,23 @@ future edits as retrospective identity recovery, external ownership proof, or
 fencing against a Cluster recreated under the same name. Ledger cleanup remains
 best-effort after target selection; endpoint/exec failure can leave the external
 ledger after finalizer removal.
+## Reversible suspension boundary
+
+Trace `Cluster.spec.disabled` through the durable suspension status, replicated
+maintenance entry, per-voter barrier observation, StatefulSet zero-replica
+update, PVC owner references and resumption. Distinguish an operator restart
+from a Ledger process restart and a graceful Pod termination from a power
+loss. The oracle is the same Cluster UID/ID, original voter identities and PVC
+UIDs, pre-stop data, and write admission after verified recovery; a `Ready`
+Pod or `Suspended` string alone is insufficient. Running BackupRuns hold the
+stop barrier, while new runs must not start after suspension intent is visible.
+Check `SuspensionBlocked` paths with Pods still running and already-stopped
+paths that must remain blocked until their original volumes return.
+
+The operator owns Kubernetes transitions and barrier observation. Raft WAL
+sync, Pebble replay and process reopening are proved in the adjacent Raft,
+storage and process-boundary domains; cite their actual code and evidence when
+a control-plane conclusion depends on them.
 
 ## Backup Secret delivery boundary
 

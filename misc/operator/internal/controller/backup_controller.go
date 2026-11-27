@@ -73,7 +73,7 @@ func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now 
 
 	// Validate that the referenced Cluster exists.
 	var cluster ledgerv1alpha1.Cluster
-	if err := r.Get(ctx, types.NamespacedName{
+	if err := r.APIReader.Get(ctx, types.NamespacedName{
 		Name:      backup.Spec.ClusterRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
@@ -107,6 +107,16 @@ func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now 
 	// disabled. Successful summaries remain distinct from scheduling cursors.
 	r.refreshStatusSummaries(&backup, runs)
 	r.refreshCompletionCursors(&backup, runs)
+	if suspensionActive(&cluster) {
+		backup.Status.Phase = ledgerv1alpha1.BackupPhasePending
+		backup.Status.Message = "waiting for Cluster suspension or resume to finish"
+		backup.Status.NextBackupTime = nil
+		if err := r.Status().Update(ctx, &backup); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
+	}
 
 	var nextRequeue time.Duration
 

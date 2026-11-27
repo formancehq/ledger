@@ -14,6 +14,7 @@ The replication and ordering layer (`internal/infra/node`, `internal/infra/trans
 | [removed-member-registry.md](removed-member-registry.md) | Universal member-identity invariant, committed-only peer routing, and replicated `(nodeID, instanceID)` set that prevents a removed member from silently rejoining and being auto-promoted; replay-safe per-event admission barriers, lookup costs, removal write ordering and durable restart states. |
 | [controlled-shutdown.md](controlled-shutdown.md) | Raft-ordered admission cutoff, local persistence confirmation, restart behavior, rolling-upgrade capability gate, and operator completion contract. |
 | [capabilities.md](capabilities.md) | Stable capability declarations, single-commit automatic activation and creation fence, persisted policy, membership evidence, and mixed-version rollout boundaries. |
+| [operator-suspension.md](operator-suspension.md) | Reversible Ledger v3 stop/start without Raft membership or identity changes, safety gates, and rollout constraints. |
 
 ## Related
 

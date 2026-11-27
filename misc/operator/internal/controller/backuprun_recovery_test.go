@@ -46,7 +46,7 @@ func backupRunRecoveryFixture(t *testing.T) (client.WithWatch, *ledgerv1alpha1.B
 	}
 
 	return fake.NewClientBuilder().WithScheme(scheme).
-		WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).WithStatusSubresource(run, &batchv1.Job{}, &ledgerv1alpha1.Backup{}).WithObjects(run, backup, cluster, backupTLSWorkload(cluster, tlsModeDisabled), backupClusterService(cluster)).Build(), run
+		WithIndex(&ledgerv1alpha1.BackupRun{}, backupRunParentField, backupRunParentIndex).WithStatusSubresource(run, &batchv1.Job{}, &ledgerv1alpha1.Backup{}, &ledgerv1alpha1.Cluster{}).WithObjects(run, backup, cluster, backupTLSWorkload(cluster, tlsModeDisabled), backupClusterService(cluster)).Build(), run
 }
 
 func TestBackupRunUsesOwnedWorkloadImage(t *testing.T) {
@@ -252,7 +252,7 @@ func TestBackupRunReservationMustPersistBeforeCreate(t *testing.T) {
 	require.Empty(t, jobs.Items)
 	_, err = r.Reconcile(ctx, req)
 	require.NoError(t, err)
-	require.Equal(t, 2, attempts)
+	require.Equal(t, 3, attempts, "Cluster admission and BackupRun execution both persist before Job creation")
 	require.NoError(t, c.List(ctx, &jobs))
 	require.Len(t, jobs.Items, 1)
 }
