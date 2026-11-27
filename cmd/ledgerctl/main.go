@@ -81,15 +81,15 @@ func newRootCommand() *cobra.Command {
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Refine the root span name now that the target subcommand is known
+			// (e.g. "ledgerctl transactions get").
+			cmdutil.NameCommandSpan(cmd)
+
 			for parent := cmd; parent != nil; parent = parent.Parent() {
 				if parent.Name() == "pebble" && parent.Parent() == cmd.Root() {
 					return nil
 				}
 			}
-			// Refine the root span name now that the target subcommand is known
-			// (e.g. "ledgerctl transactions get").
-			cmdutil.NameCommandSpan(cmd)
-
 			// Keep stdout reserved for machine-readable payloads when the
 			// caller asked for --json or --yaml. Spinners, success messages,
 			// errors — every pterm printer — gets redirected to stderr so a
