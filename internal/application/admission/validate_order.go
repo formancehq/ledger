@@ -179,8 +179,12 @@ func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
 			return domain.ErrAccountTypePatternTooLong
 		}
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-		if d.RemoveAccountType != nil && d.RemoveAccountType.ValidateInput() != nil {
-			return domain.ErrAccountTypeNameTooLong
+		if d.RemoveAccountType != nil {
+			if err := d.RemoveAccountType.ValidateInput(); err != nil {
+				inputvalidation.MustMatch(err, "name", "max_bytes")
+
+				return domain.ErrAccountTypeNameTooLong
+			}
 		}
 	}
 
@@ -229,6 +233,8 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 	if err := ls.ValidateInput(); err != nil {
+		inputvalidation.MustMatch(err, "ledger", "")
+
 		return domain.ErrLedgerNameRequired
 	}
 
@@ -306,13 +312,21 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	switch data := apply.Apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		o = data.CreateTransaction
-		if o != nil && o.ValidateInput() != nil {
-			return domain.ErrTransactionReferenceTooLong
+		if o != nil {
+			if err := o.ValidateInput(); err != nil {
+				inputvalidation.MustMatch(err, "reference", "max_bytes")
+
+				return domain.ErrTransactionReferenceTooLong
+			}
 		}
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
 		execute = true
-		if data.ExecuteNumscript != nil && data.ExecuteNumscript.ValidateInput() != nil {
-			return domain.ErrTransactionReferenceTooLong
+		if data.ExecuteNumscript != nil {
+			if err := data.ExecuteNumscript.ValidateInput(); err != nil {
+				inputvalidation.MustMatch(err, "reference", "max_bytes")
+
+				return domain.ErrTransactionReferenceTooLong
+			}
 		}
 		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
 	default:
@@ -346,6 +360,9 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 			ok := errors.As(err, &fieldErr)
 			if !ok {
 				panic("unexpected generated Posting validation error")
+			}
+			if fieldErr.Rule != "" {
+				panic("unexpected generated Posting validation rule")
 			}
 			switch fieldErr.Path {
 			case "source", "destination":
@@ -421,10 +438,14 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	switch p := order.GetLedgerScoped().GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
 		if err := p.CreatePreparedQuery.ValidateInput(); err != nil {
+			inputvalidation.MustMatch(err, "query", "")
+
 			return domain.ErrPreparedQueryRequired
 		}
 		q := p.CreatePreparedQuery.GetQuery()
 		if err := q.ValidateInput(); err != nil {
+			inputvalidation.MustMatch(err, "name", "")
+
 			return domain.ErrPreparedQueryNameRequired
 		}
 
@@ -449,6 +470,8 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		return domain.ValidateFilterAdmissionShape(q.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
 		if err := p.UpdatePreparedQuery.ValidateInput(); err != nil {
+			inputvalidation.MustMatch(err, "name", "")
+
 			return domain.ErrPreparedQueryNameRequired
 		}
 		if err := domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName()); err != nil {
@@ -469,6 +492,8 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		if err := p.DeletePreparedQuery.ValidateInput(); err != nil {
+			inputvalidation.MustMatch(err, "name", "")
+
 			return domain.ErrPreparedQueryNameRequired
 		}
 
@@ -547,6 +572,8 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	if err := iam.ValidateInput(); err != nil {
+		inputvalidation.MustMatch(err, "region", "")
+
 		return ErrMirrorIAMRegionRequired
 	}
 
@@ -566,7 +593,9 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	if reg.RegisterSigningKey.ValidateInput() != nil {
+	if err := reg.RegisterSigningKey.ValidateInput(); err != nil {
+		inputvalidation.MustMatch(err, "public_key", "exact_bytes")
+
 		return ErrSigningKeyInvalidLength
 	}
 

@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -199,7 +200,12 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 // the marker semantics. An older binary cannot apply the new technical update
 // deterministically, so mixed-version clusters fail closed until rollout ends.
 func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clusterpb.BeginDrainRequest) (*clusterpb.BeginDrainResponse, error) {
-	if err := req.ValidateInput(); err != nil || len(req.GetEpoch()) > 128 {
+	if err := req.ValidateInput(); err != nil {
+		inputvalidation.MustMatch(err, "epoch", "")
+
+		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+	}
+	if len(req.GetEpoch()) > 128 {
 		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
 	}
 	if !impl.node.IsLeader() {
@@ -245,7 +251,12 @@ func (impl *ClusterServiceServerImpl) BeginDrain(ctx context.Context, req *clust
 // EndDrain lifts the active epoch only after every current member confirms
 // that it can apply the Raft-ordered release marker.
 func (impl *ClusterServiceServerImpl) EndDrain(ctx context.Context, req *clusterpb.EndDrainRequest) (*clusterpb.EndDrainResponse, error) {
-	if err := req.ValidateInput(); err != nil || len(req.GetEpoch()) > 128 {
+	if err := req.ValidateInput(); err != nil {
+		inputvalidation.MustMatch(err, "epoch", "")
+
+		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
+	}
+	if len(req.GetEpoch()) > 128 {
 		return nil, status.Error(codes.InvalidArgument, "drain epoch must contain 1 to 128 bytes")
 	}
 	if !impl.node.IsLeader() {
@@ -409,6 +420,8 @@ func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceCl
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
 	if err := req.ValidateInput(); err != nil {
+		inputvalidation.MustMatch(err, "transferee", "")
+
 		return nil, errors.New("transferee node ID must be non-zero")
 	}
 

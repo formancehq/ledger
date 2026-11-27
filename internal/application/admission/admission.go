@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -2298,6 +2299,8 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 	order := &raftcmdpb.Order{}
 	if update, ok := req.GetType().(*servicepb.Request_UpdatePreparedQuery); ok {
 		if err := update.UpdatePreparedQuery.ValidateInput(); err != nil {
+			inputvalidation.MustMatch(err, "target", "")
+
 			return nil, domain.ErrPreparedQueryTargetRequired
 		}
 	}
