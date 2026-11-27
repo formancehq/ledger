@@ -178,6 +178,13 @@ func (it *ReverseEventResolveIterator) Seek(target []byte) bool {
 
 			return false
 		}
+	} else if err := it.iter.Error(); err != nil {
+		// Absolute repositioning can clear Pebble's error. Preserve the
+		// failed SeekGE before attempting the clean-exhaustion fallback.
+		it.err = err
+		it.exhausted = true
+
+		return false
 	} else if !it.iter.Last() {
 		// Nothing at or above the bound and the range is empty.
 		it.exhausted = true

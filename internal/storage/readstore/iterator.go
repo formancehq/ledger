@@ -69,13 +69,15 @@ type Iterator[D Direction] interface {
 	//     position, distance travelled, or exhaustion state;
 	//   - it is idempotent: repeating Seek with the same target yields the
 	//     same entity, and must not consume it;
-	//   - it is well-defined after exhaustion (a false Next/Seek) — a later
-	//     seek to a target further back repositions normally;
-	//   - a failed seek leaves the iterator un-positioned (Next returns false)
-	//     but still re-seekable.
+	//   - it is well-defined after clean exhaustion (a false Next/Seek with
+	//     nil Err) — a later seek to a target further back repositions normally;
+	//   - a cleanly failed seek leaves the iterator un-positioned (Next returns
+	//     false) but still re-seekable. A retained storage error is terminal;
+	//     callers must check Err rather than retrying the iterator.
 	//
 	// Composite iterators (AND/OR/NOT) re-seek children freely under this
-	// contract; a latch or a consuming seek silently drops rows (EN-1597).
+	// contract; latching clean exhaustion or consuming a seek silently drops
+	// rows (EN-1597).
 	Seek(target []byte) bool
 
 	// Err returns the first storage error encountered during iteration, or

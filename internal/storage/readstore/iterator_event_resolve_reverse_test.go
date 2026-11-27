@@ -1,15 +1,54 @@
 package readstore
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestReverseEventResolveIterator_SeekRetainsPebbleReadError(t *testing.T) {
+	t.Parallel()
+	var armed atomic.Bool
+	var injected atomic.Int32
+	readErr := errors.New("seek read failed")
+	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if armed.Load() && op.Kind == errorfs.OpFileReadAt && strings.HasSuffix(op.Path, ".sst") && injected.CompareAndSwap(0, 1) {
+			return readErr
+		}
+
+		return nil
+	}))
+	cache := pebble.NewCache(0)
+	defer cache.Unref()
+	db, err := pebble.Open("test", &pebble.Options{FS: fs, Cache: cache})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+	prefix := eventValuePrefix("l", NamespaceAccount, "k", 1, []byte("v"))
+	for _, entity := range []string{"a", "b", "c"} {
+		key := MetadataIndexEventKeyV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte("v"), []byte(entity), 5, MetadataEventAdd)
+		require.NoError(t, db.Set(key, nil, pebble.NoSync))
+	}
+	require.NoError(t, db.Flush())
+	it, err := NewReverseEventResolveIterator(db, prefix, 10)
+	require.NoError(t, err)
+	defer it.Close()
+	armed.Store(true)
+	require.False(t, it.Seek([]byte("b")))
+	require.EqualValues(t, 1, injected.Load(), "SeekGE must encounter the injected SST read failure")
+	require.ErrorIs(t, it.Err(), readErr)
+	require.False(t, it.Next())
+	require.False(t, it.Seek([]byte("a")))
+}
 
 func TestReverseEventResolveIterator_PinnedHistories(t *testing.T) {
 	t.Parallel()

@@ -48,10 +48,13 @@ be derived from its ID. Its first `Next` streams directly from the bound.
    yields the same entity; a seek must not consume `Current()` (a destructive
    consume makes a repeated seek return the *next* row, silently dropping an
    intersection — the `AddressTxIterator` bug class).
-3. **Well-defined after exhaustion.** A false `Next`/`Seek` does not latch
-   the iterator; a later seek to a target further back repositions normally.
-4. **A failed seek leaves the iterator un-positioned but re-seekable.**
-   `Next` returns false until the next successful seek.
+3. **Well-defined after clean exhaustion.** A false `Next`/`Seek` with nil
+   `Err()` does not latch the iterator; a later seek to a target further back
+   repositions normally.
+4. **A cleanly failed seek leaves the iterator un-positioned but re-seekable.**
+   `Next` returns false until the next successful seek. A retained storage
+   error is terminal: callers must check `Err()` rather than retrying that
+   iterator.
 
 Composite iterators rely on this freely: `AndIterator.Seek` seeks **every**
 child to the target (a child left at a stale position past the target would
@@ -228,7 +231,8 @@ Two preconditions make the proof permanent, and both are load-bearing:
 2. **Only clean exhaustion proves anything.** `Seek` also returns false on
    I/O error (`Err()`), and an I/O-failed seek proves nothing about the view's
    contents. `seekFloor.fail`/`seekCeil.fail` take the iterator's storage
-   error and drop the proof when it is non-nil. (Pebble's error is sticky and
-   pagination propagates `Err()` unconditionally, so the query still fails
-   loudly either way — the guard keeps the cache sound on its own terms
-   rather than by leaning on that second-order property.)
+   error and drop the proof when it is non-nil. Pebble may clear an error on
+   absolute repositioning. A reverse event leaf therefore captures a failed
+   `SeekGE` error before trying `Last` as the clean-exhaustion fallback, so
+   pagination still receives the original error and cannot return a group
+   above its cursor.
