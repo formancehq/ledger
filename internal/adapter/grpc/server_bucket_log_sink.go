@@ -404,8 +404,12 @@ func (impl *BucketServiceServerImpl) readLogSinkPage(ctx context.Context, ledger
 		if err != nil {
 			return nil, status.Errorf(codes.Unavailable, "reading committed ledger log: %v", err)
 		}
+		logBytes := log.SizeVT()
+		if len(logs) > 0 && pageBytes+logBytes > maxLogSinkPageBytes {
+			break
+		}
 		logs = append(logs, log)
-		pageBytes += log.SizeVT()
+		pageBytes += logBytes
 		if pageBytes >= maxLogSinkPageBytes {
 			break
 		}

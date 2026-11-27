@@ -93,6 +93,28 @@ func TestReadLogSinkPageContinuesAfterLargeHistoricalLog(t *testing.T) {
 	require.Equal(t, []*commonpb.Log{next}, second)
 }
 
+func TestReadLogSinkPageDefersLogThatExceedsNonemptyPageBudget(t *testing.T) {
+	t.Parallel()
+	controller := NewMockController(gomock.NewController(t))
+	firstLog := testLedgerLog(1)
+	firstLog.ResponseSignature = &signaturepb.SignedLog{Payload: make([]byte, 7<<20)}
+	secondLog := testLedgerLog(2)
+	secondLog.ResponseSignature = &signaturepb.SignedLog{Payload: make([]byte, 7<<20)}
+	require.Less(t, firstLog.SizeVT(), maxLogSinkPageBytes)
+	require.Greater(t, firstLog.SizeVT()+secondLog.SizeVT(), maxLogSinkPageBytes)
+	controller.EXPECT().ListLogs(gomock.Any(), "ledger", uint64(0), uint32(2), nil, false).
+		Return(cursor.NewSliceCursor([]*commonpb.Log{firstLog, secondLog}), nil)
+	controller.EXPECT().ListLogs(gomock.Any(), "ledger", uint64(1), uint32(2), nil, false).
+		Return(cursor.NewSliceCursor([]*commonpb.Log{secondLog}), nil)
+	impl := &BucketServiceServerImpl{ctrl: controller}
+	page, err := impl.readLogSinkPage(context.Background(), "ledger", 0, 2)
+	require.NoError(t, err)
+	require.Equal(t, []*commonpb.Log{firstLog}, page)
+	page, err = impl.readLogSinkPage(context.Background(), "ledger", 1, 2)
+	require.NoError(t, err)
+	require.Equal(t, []*commonpb.Log{secondLog}, page)
+}
+
 func TestSubscribeWrapperFitsListLogsBoundary(t *testing.T) {
 	t.Parallel()
 	log := testLedgerLog(1)
