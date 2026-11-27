@@ -584,3 +584,14 @@ The `payload` contains the serialized `Log` message with the `response_signature
 - **Signing happens in the gRPC handler, not the FSM**: response signing is a presentation-layer concern. The FSM produces deterministic state; signing adds a transport-level proof on top.
 - **Single server keypair**: no per-client keys needed. All clients verify using the same public key, obtained via `Discovery` or out-of-band.
 - **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It appears in the gRPC response and the atomic HTTP Apply log projection.
+
+For `POST /v3/_/apply`, an HTTP client can request
+`Formance-Public-Receipt: v1` to authenticate the exact public status and body.
+Use `pkg/httpreceipt.Verify` with the trusted serving-node Ed25519 public key,
+the Ledger-facing request target, method, status and unmodified response bytes
+before consuming the JSON. This covers credential-redacted logs, whose original
+service signatures cannot safely be returned. The proof does not authenticate
+the request body, establish freshness or prove audit inclusion. The response
+signing key must be configured before using this opt-in header. A failed or
+missing proof after Apply does not roll back the mutation; use the batch
+idempotency key to recover an ambiguous outcome.

@@ -1026,6 +1026,24 @@ Response signature bytes authenticate the protobuf log; clients must verify
 those exact bytes and bind their decoded public projection to the visible log.
 The JSON projection is not a lossless protobuf reconstruction format.
 
+Clients that need to authenticate the complete public Apply outcome may send
+`Formance-Public-Receipt: v1` on this route. With response signing configured,
+the serving node returns a proof in the same response header. The proof binds
+the method, Ledger-observed request target, status, and SHA-256 hash of the exact
+public response bytes. This includes redacted sink and mirror creation logs
+without exposing their original service signature payloads. Other service log
+signatures remain available. The proof describes the returned HTTP outcome;
+it is not an audit signature or evidence of inclusion in the audit chain.
+The trusted serving-node public key must be provisioned independently. This
+proof does not establish freshness, request-body identity, actor or cluster
+identity. A historical response for the same method and target can verify.
+Omitting the header preserves the ordinary unsigned response. Invalid or
+repeated negotiation is rejected before Apply; a node without a
+response signing key returns 503. The response is buffered up to 16 MiB before
+signing. Encoding, overflow, signing, delivery or verification failure after
+Apply may leave a committed batch without a usable proof; retry only under the
+existing idempotency contract. Legacy mutation routes do not support the header.
+
 An unskipped business failure discards all staged business mutations in this
 batch. Explicit allowed `skippableReasons` retain the existing gRPC semantics:
 a matching failure becomes an audited skipped-order log and the batch succeeds.

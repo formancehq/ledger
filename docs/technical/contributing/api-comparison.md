@@ -91,6 +91,11 @@ receiving HTTP nodes before using the additive route; protobuf and persisted
 formats and service revision 40 are unchanged. See
 [the complete contract](../architecture/subsystems/api/http-api.md#atomic-http-apply).
 
+The opt-in `Formance-Public-Receipt: v1` header on this route authenticates the
+exact public status and body, including credential-redacted logs. It supplies a
+verifiable HTTP Apply outcome without changing the service signatures or the
+existing ledger-local bulk routes. V2 has no corresponding proof.
+
 ## HTTP transaction request signatures
 
 V3 adds opt-in signing headers with `application/json` for the

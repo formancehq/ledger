@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -27,7 +28,7 @@ const APIVersionPrefix = "/v3"
 // NewHandler creates a new HTTP handler (router) for the ledger service.
 // The authCfg parameter controls JWT authentication with read/write scopes:
 // when Enabled is false, requests pass through without authentication.
-func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer) http.Handler {
+func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info, applyService servicepb.BucketServiceServer, signers ...*signing.ResponseSigner) http.Handler {
 	r := chi.NewRouter()
 
 	// Granular scope-bound middleware helpers
@@ -82,6 +83,9 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 	// Create server instance for handlers
 	server := NewServer(logger, backend, authCfg, defaultBulkMaxSize)
+	if len(signers) != 0 {
+		server.responseSigner = signers[0]
+	}
 
 	// Ops routes: not versioned (K8s probes, monitoring, profiling).
 	// /health, /livez, /readyz, /_info are also exempted from auth in
@@ -113,7 +117,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	// Business API routes: mounted under APIVersionPrefix.
 	registerAPIRoutes := func(r chi.Router) {
 		r.With(contentTypeMiddleware, utf8PathParamValidator, readConsistency).Group(func(r chi.Router) {
-			r.Post("/_/apply", signedRequest(knownQuery(server.handleAtomicApply(applyService))))
+			r.Post("/_/apply", server.publicReceipt(signedRequest(knownQuery(server.handleAtomicApply(applyService)))))
 
 			// Profiled reads (EN-1859). Declared here, outside the scope groups
 			// below, because chi applies group middleware BEFORE route
