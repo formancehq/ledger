@@ -1,9 +1,10 @@
 # Coordinated-upgrade capabilities
 
-Ledger's capability metadata is the protocol foundation for future incompatible
-features deployed with a coordinated stop-and-restart. It is separate from the
-client-facing gRPC protocol revision. This release does not implement a
-mixed-version rolling activation path.
+Ledger's capability metadata controls changes to replicated behavior. It is
+separate from the client-facing gRPC protocol revision. Capability 2 uses a
+rolling deployment: leaders emit unmarked backup Starts until all members have
+committed support and activation has applied. Other incompatible features must
+establish their own mixed-version contract or use a coordinated restart.
 
 ## Wire contract
 
@@ -81,10 +82,13 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-The supported registry remains empty in this change. A feature must separately
-register its stable ID, select its proposal marker at preparation, and dispatch
-deterministic apply from that persisted marker. This infrastructure change does
-not introduce the account-type validation feature from PR #2552.
+Capability 2 (`BackupDestinationAlias`) is registered for backup `Start`
+proposals. The producer reads committed activation state during preparation:
+before activation it emits an unmarked Start; afterward it emits a Start marked
+with ID 2. The FSM selects physical-destination exclusion from that persisted
+marker. Historical unmarked Starts retain their released destination-key rule,
+including during replay after activation. A marked Start compares against
+both marked and unmarked active jobs without changing their stored keys.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.
@@ -203,9 +207,12 @@ replays exactly as before. No capability ID is needed.
 
 ## Rollout and recovery
 
-Deploy the barrier-aware binary to every member, stop the cluster, and restart
-the complete cluster before enabling an incompatible feature. An old leader
-cannot be made safe by upgrading only the other nodes. Restart, snapshot
+For capability 2, deploy the binary one member at a time. A new leader emits
+unmarked backup Starts while any member lacks support. After every member has
+committed capability evidence, the activation worker commits ID 2; only then
+can the leader emit marked Starts. Pausing backups while an older leader can
+serve requests protects destination identity during the mixed-version interval.
+An old leader cannot be made safe by upgrading only the other nodes. Restart, snapshot
 install, restore, and downgrade code must preserve the policy. Membership
 changes are not used as a rolling activation mechanism. `Node.Propose` evaluates the authoritative
 policy while holding the proposal and index-tracker guards, before reserving a

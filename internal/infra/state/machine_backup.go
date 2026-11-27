@@ -30,9 +30,16 @@ func (fsm *Machine) applyBackupOrder(
 	kind raftcmdpb.BackupKind,
 	order *raftcmdpb.BackupOrder,
 ) error {
+	return fsm.applyBackupOrderWithPhysicalExclusion(batch, raftIndex, kind, order, false)
+}
+
+func (fsm *Machine) applyBackupOrderWithPhysicalExclusion(
+	batch *dal.WriteSession, raftIndex uint64, kind raftcmdpb.BackupKind,
+	order *raftcmdpb.BackupOrder, physicalExclusion bool,
+) error {
 	switch op := order.GetOp().(type) {
 	case *raftcmdpb.BackupOrder_Start:
-		return fsm.dispatchBackupStart(batch, raftIndex, kind, op.Start)
+		return fsm.dispatchBackupStart(batch, raftIndex, kind, op.Start, physicalExclusion)
 	case *raftcmdpb.BackupOrder_Complete:
 		return fsm.dispatchBackupComplete(batch, raftIndex, op.Complete)
 	case *raftcmdpb.BackupOrder_Fail:
@@ -60,9 +67,16 @@ func (fsm *Machine) applyIncrementalBackupOrder(
 	raftIndex uint64,
 	order *raftcmdpb.IncrementalBackupOrder,
 ) error {
+	return fsm.applyIncrementalBackupOrderWithPhysicalExclusion(batch, raftIndex, order, false)
+}
+
+func (fsm *Machine) applyIncrementalBackupOrderWithPhysicalExclusion(
+	batch *dal.WriteSession, raftIndex uint64,
+	order *raftcmdpb.IncrementalBackupOrder, physicalExclusion bool,
+) error {
 	switch op := order.GetOp().(type) {
 	case *raftcmdpb.IncrementalBackupOrder_Start:
-		return fsm.dispatchBackupStart(batch, raftIndex, raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL, op.Start)
+		return fsm.dispatchBackupStart(batch, raftIndex, raftcmdpb.BackupKind_BACKUP_KIND_INCREMENTAL, op.Start, physicalExclusion)
 	case *raftcmdpb.IncrementalBackupOrder_Complete:
 		return fsm.dispatchBackupComplete(batch, raftIndex, op.Complete)
 	case *raftcmdpb.IncrementalBackupOrder_Fail:
@@ -75,8 +89,8 @@ func (fsm *Machine) applyIncrementalBackupOrder(
 	}
 }
 
-func (fsm *Machine) dispatchBackupStart(batch *dal.WriteSession, raftIndex uint64, kind raftcmdpb.BackupKind, start *raftcmdpb.BackupOrderStart) error {
-	_, ok, err := fsm.Registry.BackupJobs.Start(batch, raftIndex, kind, start)
+func (fsm *Machine) dispatchBackupStart(batch *dal.WriteSession, raftIndex uint64, kind raftcmdpb.BackupKind, start *raftcmdpb.BackupOrderStart, physicalExclusion bool) error {
+	_, ok, err := fsm.Registry.BackupJobs.StartWithPhysicalExclusion(batch, raftIndex, kind, start, physicalExclusion)
 	if err != nil {
 		// Destination-busy or job_id-collision: business rejections,
 		// passed through verbatim. Other errors (Pebble write,

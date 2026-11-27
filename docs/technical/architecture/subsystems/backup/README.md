@@ -13,6 +13,55 @@ backup of the same destination is rejected. The leader cancels its executor on
 leadership loss, and the next leader fails orphaned jobs to release their slots.
 The FSM records lifecycle orders without blocking on object upload.
 
+### Destination identity at admission
+
+The leader's singleton backup orchestrator reserves the physical destination
+before proposing Start and retains that reservation until the attempt returns,
+including its terminal proposal. The admission identity lower-cases URL schemes
+and host names for S3 and Azure, as well as Azure account names. URL paths,
+user information and IPv6 interface zone identifiers retain their case.
+Existing AWS/default-endpoint, region and reserved `base_path` equivalences
+still apply. DNS aliases and IP-versus-hostname equivalence are not resolved.
+
+Admission also compares this identity against every active FSM job, including
+jobs restored from older binaries and legacy incremental jobs. It rejects a
+matching destination with `ErrBackupInProgress` before any object-store access.
+The short mutex protects only the check and local reservation; it is not held
+while waiting for Raft, uploading, publishing or pruning. Unrelated destinations
+remain independent. A rejected or failed attempt releases its own local
+reservation. If Start committed but a terminal proposal did not, the durable
+RUNNING job still blocks retries until cleanup commits Fail.
+The destination mutex is separate from the leadership-context mutex, so the
+synchronous leadership-loss callback can cancel uploads during a scan. The FSM
+registry lock is held only while copying immutable active destination pointers;
+normalization and hashing run after that lock is released. A miss scans every
+active job, O(jobs × destination size); a match exits early. The representative
+`BenchmarkActiveDestinationIdentity` measures 0, 10 and 100 active jobs.
+
+The persisted `CanonicalDestinationKey`, destination payloads and job/history
+rows remain unchanged. Capability 2 selects physical-destination exclusion for
+new backup `Start` proposals. An unmarked historical `Start` keeps the released
+FSM rule during replay. A marked `Start` compares its normalized physical
+identity with every active job, including unmarked jobs, before storing a job
+under the released key. Complete and Fail retain their existing behavior.
+No persisted job migration or checkpoint, snapshot, audit or business format
+change is required.
+Protocol revision remains 40. Both published backup RPCs use this admission path.
+
+During rolling deployment an upgraded leader still uses local destination
+admission before capability 2 activates. It waits for its current leadership
+generation to catch up before scanning inherited jobs. New `Start` proposals
+remain unmarked until the committed cluster policy activates capability 2 after
+every member advertises support; proposals prepared after activation carry the
+marker. A proposal prepared before activation retains its unmarked semantics
+even if submission or apply occurs afterward. An old
+leader retains the original vulnerability, so pause scheduled/manual backups
+while one can accept them, drain current jobs, and resume after leadership is
+upgraded. After activation, a binary without capability 2 cannot safely replay
+new marked entries or boot against the active policy. Rollback requires a
+capability-aware binary retaining the new apply branch. This change cannot
+repair objects already deleted by competing writers.
+
 `RunBackup` requires the committed audit key. It calls `Store.Flush` before
 `Store.CreateTemporaryCheckpoint`, which calls
 `pebble.DB.Checkpoint(..., pebble.WithFlushedWAL())`. The backup flush materializes
@@ -106,6 +155,13 @@ entries identically during a rolling upgrade; new leaders never propose them.
 The old exporter and replay tests were removed with their implementation.
 
 ## Tests and limits
+
+- `internal/application/backup/destination_test.go` drives the real orchestrator,
+  FSM job transitions and checkpoint publisher/pruner against a shared,
+  byte-preserving mock object store. Barriers cover scheme/host aliases for S3
+  and Azure, the pre-Start window, and inherited full/incremental jobs. Rejected
+  writers perform no storage calls; published checkpoint bytes remain verified.
+  These tests do not simulate cloud transport or Raft elections.
 
 - `internal/infra/backup/crash_safety_test.go` pins manifest publication after
   uploads and before deletion, content-addressed object immutability, and

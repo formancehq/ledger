@@ -1,5 +1,13 @@
 # Persistence, checkpoint restore, and replay evidence contract
 
+The destination-alias regression in
+`internal/application/backup/destination_test.go` pauses a real checkpoint
+runner after manifest publication and races a second endpoint spelling against
+it. Verify the referenced objects and their hashes, not just successful jobs.
+Destination reservation and inherited-job exclusion belong to
+`concurrency-lifecycle-shutdown`; released FSM keys remain unchanged. No new
+business, audit, snapshot or backup format is introduced by this admission fix.
+
 This is the companion to
 [`persistence-restore-replay.json`](./persistence-restore-replay.json).
 The audit covers primary-store durability, backup publication, cross-cluster

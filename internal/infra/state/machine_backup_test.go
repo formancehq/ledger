@@ -55,6 +55,45 @@ func TestApplyBackupOrder_RejectsBusyDestination(t *testing.T) {
 	_ = batch2.Cancel()
 }
 
+func TestApplyEntries_BackupPhysicalExclusionCapability(t *testing.T) {
+	t.Parallel()
+	fsm, store, _ := newTestMachine(t)
+	start := func(id uint64, endpoint string, marked bool) *raftcmdpb.Proposal {
+		p := makeProposal(id)
+		p.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_BackupOrder{
+			BackupOrder: &raftcmdpb.BackupOrder{Op: &raftcmdpb.BackupOrder_Start{Start: &raftcmdpb.BackupOrderStart{
+				JobId: id,
+				Destination: &raftcmdpb.BackupDestination{BucketId: "same", Target: &raftcmdpb.BackupDestination_S3{
+					S3: &raftcmdpb.S3BackupTarget{Bucket: "backups", Endpoint: endpoint},
+				}},
+			}}},
+		}}}
+		if marked {
+			p.RequiredCapabilities = []uint32{2}
+		}
+
+		return p
+	}
+	for _, entry := range []struct {
+		index    uint64
+		proposal *raftcmdpb.Proposal
+		busy     bool
+	}{
+		{1, start(1, "http://localhost:9000", false), false},
+		{2, start(2, "HTTP://LOCALHOST:9000", false), false},
+		{3, start(3, "HtTp://LoCaLhOsT:9000", true), true},
+	} {
+		result, err := fsm.ApplyEntries(t.Context(), store, makeEntry(t, entry.index, payloadProposal(t, entry.proposal)))
+		require.NoError(t, err)
+		if entry.busy {
+			require.ErrorIs(t, result.Results[0].Error, ErrBackupInProgress)
+		} else {
+			require.NoError(t, result.Results[0].Error)
+		}
+	}
+	require.Len(t, fsm.Registry.BackupJobs.Snapshot(), 2, "rejected marked Start must not add a job")
+}
+
 // TestApplyBackupOrder_UnknownJobReturnsNotFound covers the other
 // branch: Complete / Fail against a job_id that no longer matches the
 // active job (taken over by cleanup, never existed, already completed)

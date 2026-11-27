@@ -33,6 +33,24 @@ CLI prints the normal checkpoint result. New clients should call `Backup` /
 For topology and region-loss behavior, see
 [Availability and Disaster Recovery](./availability-and-recovery.md).
 
+### Endpoint case and rolling deployment
+
+An upgraded leader rejects a second backup to an active destination even if
+the endpoint differs only in scheme or host case. Paths and IPv6 zone names
+remain case-sensitive. Both backup RPCs return the existing busy-destination
+error; retry after the running job completes or cleanup fails an orphan.
+
+Pause scheduled and manual backups and drain active jobs while older leaders
+can still accept requests. Resume only with an upgraded leader. After every
+member advertises capability 2, its replicated activation makes new backup
+Starts use physical-destination exclusion in the FSM. No job-key or data
+migration is required. Before activation, rollback restores the vulnerable
+admission behavior; keep backups paused until protection is restored. After
+activation, rollback requires a binary that supports capability 2 and its FSM
+apply rule. Validate or replace a backup suspected of concurrent publication:
+the fix cannot reconstruct objects already pruned by another writer. See
+[destination admission](../technical/architecture/subsystems/backup/README.md#destination-identity-at-admission).
+
 ### Storage Backends
 
 Backups and restores support two storage backends, selected with `--driver`:
