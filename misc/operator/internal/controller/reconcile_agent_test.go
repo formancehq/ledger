@@ -3,6 +3,9 @@
 package controller
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +19,50 @@ import (
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+func legacyCredentialsSeed(seedHex string) map[string][]byte {
+	seed, err := hex.DecodeString(seedHex)
+	if err != nil {
+		panic(err)
+	}
+	pub := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
+	hash := sha256.Sum256(pub)
+	return map[string][]byte{
+		keySeedHex: []byte(seedHex), keyPubKeyHex: []byte(hex.EncodeToString(pub)),
+		keyKeyID: []byte(hex.EncodeToString(hash[:8])),
+	}
+}
+
+func TestCredentialsSecretDeleteRejectsReplacement(t *testing.T) {
+	ns := createTestNamespace(t)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "credentials-uid-precondition", Namespace: ns}}
+	require.NoError(t, k8sClient.Create(ctx, secret))
+	inspected := &corev1.Secret{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(secret), inspected))
+	require.NoError(t, k8sClient.Delete(ctx, inspected))
+	replacement := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secret.Name, Namespace: ns}, Data: map[string][]byte{"marker": []byte("replacement")}}
+	require.NoError(t, k8sClient.Create(ctx, replacement))
+	require.NotEqual(t, inspected.UID, replacement.UID)
+	err := deleteCredentialsSecret(ctx, k8sClient, inspected)
+	require.True(t, apierrors.IsConflict(err), "stale UID must fail against the API server: %v", err)
+	actual := &corev1.Secret{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(replacement), actual))
+	require.Equal(t, replacement.UID, actual.UID)
+	require.Equal(t, replacement.Data, actual.Data)
+}
+
+func setLegacyCredentialsStatus(t *testing.T, name string, replica *corev1.Secret) {
+	t.Helper()
+	require.NoError(t, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &ledgerv1alpha1.Credentials{}
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name}, current); err != nil {
+			return err
+		}
+		current.Status.KeyID = string(replica.Data[keyKeyID])
+		current.Status.DistributedSecretRefs = []ledgerv1alpha1.SecretReference{{Namespace: replica.Namespace, Name: replica.Name}}
+		return k8sClient.Status().Update(ctx, current)
+	}))
+}
 
 func TestReconcile_CredentialsDistributesToAdditionalNamespace(t *testing.T) {
 	ns := createTestNamespace(t)
@@ -321,11 +368,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 				credentialsNameLabel: "legacy-credentials",
 			},
 		},
-		Data: map[string][]byte{
-			"seed.hex":   []byte("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"),
-			"pubkey.hex": []byte("11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"),
-			"key-id":     []byte("legacyseed12345"),
-		},
+		Data: legacyCredentialsSeed("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"),
 	}
 	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
 
@@ -335,6 +378,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 
 	credentials := newCredentials("legacy-credentials", []string{"read"}, map[string]string{"tier": "legacy"})
 	require.NoError(t, k8sClient.Create(ctx, credentials))
+	setLegacyCredentialsStatus(t, credentials.Name, legacyReplica)
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
@@ -373,16 +417,13 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T
 				credentialsNameLabel: "orphan-credentials",
 			},
 		},
-		Data: map[string][]byte{
-			"seed.hex":   []byte("cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"),
-			"pubkey.hex": []byte("f00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeed"),
-			"key-id":     []byte("orphanseedxxxxx"),
-		},
+		Data: legacyCredentialsSeed("cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"),
 	}
 	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
 
 	credentials := newCredentials("orphan-credentials", []string{"read"}, map[string]string{"tier": "never-matches"})
 	require.NoError(t, k8sClient.Create(ctx, credentials))
+	setLegacyCredentialsStatus(t, credentials.Name, legacyReplica)
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})

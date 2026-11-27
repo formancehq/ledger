@@ -129,6 +129,65 @@ audit records, backup formats, or service APIs.
 
 ## Derived object ownership
 
+### Credentials Secret ownership
+
+Canonical and replica Secrets created for a Credentials resource have a
+controller reference to its UID. The controller also records the canonical
+Secret UID and each replica UID in Credentials status. A Secret's owner
+reference is caller-supplied metadata, so it does not by itself authorize
+reading a seed, updating a Secret, or deleting one. A same-name
+Secret owned by another Credentials incarnation, or an unverified Secret in a
+desired namespace, blocks distribution and reports an error on Credentials.
+Unverified labeled Secrets outside desired namespaces are left untouched.
+The recorded UID and controller reference identify a current Secret when a
+label drifts; a desired Secret's label is repaired during reconciliation. Prior
+status references also locate replicas with missing labels for cleanup when
+their namespace is no longer desired. A same-name replacement with a different
+UID remains unverified even if it forges the controller reference.
+Deletes use the inspected Secret UID as a precondition, so replacement under
+the same name is retained for the next reconcile.
+
+On upgrade, a legacy Secret whose UID is not yet recorded can be claimed only
+when the existing Credentials status records its key ID, the seed derives that
+key ID and public key, and a replica's exact namespace and name appear in
+`status.distributedSecretRefs`. A current controller reference does not waive
+the seed check for these legacy entries. A verified canonical Secret is
+claimed by setting its controller reference before subsequent use. Its UID
+is recorded in the final status update after replica distribution and stale
+replica cleanup. Legacy Secrets lacking
+status key identity are not adopted or deleted. Recover them only after
+verifying the Secret and Credentials identity out of band and restoring the
+recorded status key ID and prior replica references. Adding an owner reference
+alone does not authenticate a Secret. A Credentials resource
+recreated under the same name cannot claim the prior incarnation's Secrets.
+When no targets remain, a preserved canonical seed keeps its key ID in status
+so a later reconcile can still verify it.
+If the canonical Secret is missing while status records a key ID, recovery
+requires a replica whose seed, public key, and key ID match that recorded
+identity. Otherwise reconciliation fails without creating a replacement key,
+including during pending bootstrap: a timed-out create may still complete, so
+the controller must not rotate the recorded identity. After confirming that no
+Secret was created and no key was published, an operator may clear both
+`status.keyID` and `status.bootstrapPending` to retry.
+When status has no key ID, reconciliation creates a fresh keypair instead of
+adopting a replica. Before writing the first Secret, it records the new key ID
+and `bootstrapPending` in status. If a later Secret or status write fails, a
+retry verifies any created Secrets against that key identity and resumes
+distribution. Successful
+distribution records the Secret UIDs and clears `bootstrapPending`. If the
+initial identity status write fails, no Secret is created. No seed is accepted
+solely because it has an owner reference.
+
+Bootstrap key identity status is durable before canonical creation. Canonical
+creation precedes replica writes, and the final status write records their UIDs
+after distribution and cleanup. A failed intermediate Secret write can leave a
+canonical and earlier replicas with `bootstrapPending` in status; their seed
+must match the recorded key before retry continues. A conflict on a metadata
+update leaves the old Secret unchanged and reconciliation retries.
+Replica and canonical deletes happen before finalizer removal; a failed delete
+keeps the finalizer for retry. No Ledger persisted, Raft, audit, or backup
+format changes are involved.
+
 Directly owned resources derived from a Cluster name carry a controller
 reference with that Cluster's UID; a name match is never proof of ownership.
 Pods instead carry the StatefulSet UID: the operator checks the Cluster to

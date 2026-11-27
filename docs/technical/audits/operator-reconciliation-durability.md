@@ -18,6 +18,24 @@ Filtered or internal logs can advance the cursor without external delivery;
 
 ## Reachability and proof
 
+For Credentials Secret identity, require the Secret UID recorded in prior
+Credentials status as well as the current controller reference. A controller
+reference alone is caller-supplied and cannot prove authorship. Legacy Secrets
+without recorded UIDs require prior status key identity, seed/public-key
+consistency, and an exact prior status reference for a replica. For a new key,
+check that the key ID and bootstrap marker reach status before the first seed
+write, and that a retry after partial distribution or a final status failure
+authenticates previously created Secrets before recording their UIDs. An
+ambiguous canonical Create result must not rotate the pending key identity if
+the next read is NotFound. Check canonical creation,
+replica update, no-target cleanup, finalizer deletion, same-name recreation,
+label repair on a current-UID owned Secret, and UID-preconditioned deletion
+separately. Prior status references may find owned replicas after label drift;
+verify them again before cleanup. A label or derived name is not
+ownership proof. Record whether an unverified Secret blocks distribution or is
+left alone outside desired namespaces; do not treat manual recovery as an
+automatic upgrade path.
+
 For each hypothesis, establish all of the following from the audited SHA:
 
 1. **Entry and identity:** an admitted CR, supported spec edit, deletion, child
