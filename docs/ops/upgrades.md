@@ -3,9 +3,11 @@
 ## Release requirement from v3.0.0-rc.1
 
 The new transaction and Numscript account-metadata validation activates with
-capability 1 after all members advertise support. New CreateTransaction and
-ExecuteNumscript proposals carry ID 1 in the Raft proposal and audit entry;
-historical proposals without it retain their original metadata validation.
+capability 1 after all members advertise support. Before activation commits,
+CreateTransaction and ExecuteNumscript proposals remain unmarked and retain
+their original metadata validation. After activation, new proposals carry ID 1
+in the Raft proposal and audit entry; historical unmarked proposals retain
+their original validation.
 Live CreateLedger apply keeps the initial account-type validation shipped in
 RC.5, including for unmarked proposals from an RC.5 leader. Historical audit
 replay retains the earlier creation rule only for unmarked entries; marked

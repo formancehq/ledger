@@ -83,7 +83,11 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 	supported := []capabilities.CapabilityID{capabilities.StrictAccountTypes}
 	for _, role := range []capabilities.MemberRole{capabilities.Voter, capabilities.Learner} {
 		members := []capabilities.Member{{NodeID: 1, Role: capabilities.Voter, Reachable: true, Capabilities: supported}, {NodeID: 2, Role: role, Reachable: true}}
-		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), capabilities.ErrCapabilityUnsupported)
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), "unmarked writes remain available during the rolling upgrade")
+		require.Empty(t, proposal.RequiredCapabilities())
+		decoded := new(raftcmdpb.Proposal)
+		require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
+		require.Empty(t, decoded.GetRequiredCapabilities())
 		members[1].Capabilities = supported
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(&commonpb.ClusterPolicy{}, proposal, members, supported), capabilities.ErrActivationPending)
 		inactive := &commonpb.ClusterPolicy{CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.StrictAccountTypes)}}}
@@ -99,12 +103,19 @@ func TestCapabilityActivationBarrierUntilCommitAfterDrain(t *testing.T) {
 		require.NoError(t, err)
 		members[1].Capabilities = nil
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, activation, members, supported), capabilities.ErrCapabilityUnsupported)
-		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrCapabilityUnsupported, "a member without the required capability cannot apply the proposal")
+		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), "unmarked writes remain available while an old member is present")
 		members[1].Capabilities = supported
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, activation, members, supported))
 		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrActivationPending, "submission does not release the barrier before commit")
 		inactive.CapabilityActivations[0].Active = true
 		require.NoError(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported))
+		require.Equal(t, supported, proposal.RequiredCapabilities())
+		decoded = new(raftcmdpb.Proposal)
+		require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
+		require.Equal(t, []uint32{uint32(capabilities.StrictAccountTypes)}, decoded.GetRequiredCapabilities())
+		members[1].Capabilities = nil
+		require.ErrorIs(t, validateProposalCapabilityAdmissionWithSupported(inactive, proposal, members, supported), capabilities.ErrCapabilityUnsupported)
+		members[1].Capabilities = supported
 	}
 }
 

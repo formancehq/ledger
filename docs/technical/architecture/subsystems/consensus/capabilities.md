@@ -1,9 +1,10 @@
 # Coordinated-upgrade capabilities
 
-Ledger's capability metadata is the protocol foundation for future incompatible
-features deployed with a coordinated stop-and-restart. It is separate from the
-client-facing gRPC protocol revision. This release does not implement a
-mixed-version rolling activation path.
+Ledger's capability metadata is the protocol foundation for changing FSM
+semantics after every member supports the new rule. It is separate from the
+client-facing gRPC protocol revision. Before activation commits, producers
+submit unmarked orders with the previous semantics while old and new voters
+coexist.
 
 ## Wire contract
 
@@ -14,11 +15,12 @@ predate this foundation. IDs are never reused; semantic dependencies must be
 declared even when they do not add bytes to a proposal.
 
 The producer must rebuild its plan first, derive the capabilities from that
-final plan, stamp `required_capabilities`, and pass the typed result alongside
-the serialized proposal. Admission reuses that result without decoding the
-proposal a second time. A payload that depends on a capability but omits its
-declaration is invalid; the shared builder and stamping helper are the
-enforcement boundary for producers.
+final plan, and prepare marked and unmarked forms from the same command.
+The serialized admission gate selects the form from committed activation state
+and passes its typed declaration alongside the bytes. Admission reuses that
+result without decoding the proposal a second time. A payload with an active
+semantic dependency but no declaration is invalid; the shared builder and
+stamping helper are the enforcement boundary for producers.
 
 ## Admission and membership
 
@@ -81,8 +83,8 @@ absent, then current membership is reevaluated. Lost responses and restart never
 cause a committed activation to be undone. No intermediate `requested` state is
 needed; the unreleased draft field is removed without reassigning its number.
 
-Capability ID 1 (`StrictAccountTypes`) marks every new CreateTransaction and
-ExecuteNumscript proposal. For marked transactions and Numscript executions,
+Capability ID 1 (`StrictAccountTypes`) marks CreateTransaction and
+ExecuteNumscript proposals after activation commits. For marked transactions and Numscript executions,
 the FSM checks the account type of every merged
 account-metadata address after syntax and metadata-budget validation and before
 metadata writes. Addresses are checked in lexical order so replicas select the
@@ -93,8 +95,11 @@ entry stores the declaration, and checker replay passes it to the processor;
 changing the currently active policy never changes replay of an old proposal.
 The marker is proposal-wide: each marked transaction or Numscript order uses
 the account-metadata validation rule. A batch with either order declares ID 1
-once. New transaction and Numscript executions require activation even without account
-metadata, because Numscript can produce metadata during apply.
+once. After activation, new transaction and Numscript executions carry ID 1
+even without account metadata, because Numscript can produce metadata during
+apply. The serialized proposal gate chooses the marked or unmarked wire form
+from the committed policy before reserving its Raft index. Both forms are built
+from the same final order batch before the proposal guard is acquired.
 
 1. The replicated `ClusterPolicy` controls whether the cluster may accept the
    behavior.

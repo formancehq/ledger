@@ -37,6 +37,33 @@ func TestProposalSetPredictedIndexPatchesSerializedPayload(t *testing.T) {
 	require.Equal(t, uint64(42), decoded.GetPredictedIndex())
 }
 
+func TestProposalSelectsCommittedCapabilityAfterPredictedIndex(t *testing.T) {
+	t.Parallel()
+	command := &raftcmdpb.Proposal{Id: 1, Orders: []*raftcmdpb.Order{{
+		Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{}},
+			}},
+		}},
+	}}}
+	proposal, err := NewProposal(1, command)
+	require.NoError(t, err)
+	proposal.SetPredictedIndex(42)
+	for _, active := range []bool{false, true, false} {
+		proposal.SelectActiveCapabilities(active)
+		decoded := new(raftcmdpb.Proposal)
+		require.NoError(t, decoded.UnmarshalVT(proposal.Data()))
+		require.Equal(t, uint64(42), decoded.GetPredictedIndex())
+		if active {
+			require.Equal(t, []uint32{uint32(capabilities.StrictAccountTypes)}, decoded.GetRequiredCapabilities())
+			require.Equal(t, []capabilities.CapabilityID{capabilities.StrictAccountTypes}, proposal.RequiredCapabilities())
+		} else {
+			require.Empty(t, decoded.GetRequiredCapabilities())
+			require.Empty(t, proposal.RequiredCapabilities())
+		}
+	}
+}
+
 func TestNewProposalAppendsPredictedIndexWithoutMutatingPrefix(t *testing.T) {
 	command := &raftcmdpb.Proposal{Id: 1}
 	proposal, err := NewProposal(1, command)

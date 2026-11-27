@@ -30,7 +30,13 @@ type Proposal struct {
 	// expectedTerm fences a drain preflight against a later leadership term.
 	expectedTerm         uint64
 	requiredCapabilities []capabilities.CapabilityID
-	hasBusinessOrders    bool
+	// legacyData is the same business proposal without a capability marker.
+	// The admission gate selects it while activation is not yet committed.
+	legacyData         []byte
+	markedData         []byte
+	markedCapabilities []capabilities.CapabilityID
+	legacySelected     bool
+	hasBusinessOrders  bool
 	// activePolicyCapabilities is populated by the proposal factory for
 	// SetClusterPolicy proposals/orders and capability activation transitions.
 	// Keeping the typed candidate alongside the
@@ -54,8 +60,9 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 }
 
 // NewProposal is the only public proposal factory. It derives the capability
-// declaration and serializes the same final command, making it impossible for
-// the typed admission metadata to diverge from the wire payload.
+// declaration and serializes both forms of a capability-dependent command.
+// The admission gate selects one form from committed activation state, keeping
+// the typed admission metadata aligned with the selected wire payload.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
 	prepared, err := capabilities.PrepareProposal(command)
 	if err != nil {
@@ -73,6 +80,18 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 	// cannot change the payload or its capability declaration.
 	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
 		return nil, err
+	}
+	if len(prepared.RequiredCapabilities()) > 0 {
+		legacy := command.CloneVT()
+		legacy.RequiredCapabilities = nil
+		legacyData, err := legacy.MarshalVT()
+		if err != nil {
+			return nil, err
+		}
+		proposal.legacyData = make([]byte, len(legacyData), len(legacyData)+protowire.SizeTag(predictedIndexField)+8)
+		copy(proposal.legacyData, legacyData)
+		proposal.markedData = proposal.data
+		proposal.markedCapabilities = prepared.RequiredCapabilities()
 	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0
 	if transition := command.GetCapabilityActivation(); transition != nil {
@@ -118,12 +137,40 @@ func (p *Proposal) SetPredictedIndex(index uint64) {
 		return
 	}
 
+	if p.legacyData != nil {
+		p.markedData = protowireutil.AppendFixed64(p.markedData, predictedIndexField, index)
+		p.legacyData = protowireutil.AppendFixed64(p.legacyData, predictedIndexField, index)
+		if p.legacySelected {
+			p.data = p.legacyData
+		} else {
+			p.data = p.markedData
+		}
+		return
+	}
 	p.data = protowireutil.AppendFixed64(p.data, predictedIndexField, index)
 }
 
-// RequiredCapabilities returns the capabilities derived by the producer from
-// the final command before it was serialized. Admission reuses this typed
-// value instead of decoding the serialized proposal a second time.
+// SelectActiveCapabilities chooses the persisted semantics at the serialized
+// admission boundary. Both wire variants were built from the same final command
+// before the proposal guard was acquired.
+func (p *Proposal) SelectActiveCapabilities(active bool) {
+	if p.legacyData == nil {
+		return
+	}
+	if active {
+		p.legacySelected = false
+		p.data = p.markedData
+		p.requiredCapabilities = append([]capabilities.CapabilityID(nil), p.markedCapabilities...)
+	} else {
+		p.legacySelected = true
+		p.data = p.legacyData
+		p.requiredCapabilities = nil
+	}
+}
+
+// RequiredCapabilities returns the capabilities selected by the admission
+// gate for the serialized proposal. Admission reuses this typed value instead
+// of decoding the serialized proposal a second time.
 func (p *Proposal) RequiredCapabilities() []capabilities.CapabilityID {
 	return append([]capabilities.CapabilityID(nil), p.requiredCapabilities...)
 }

@@ -1264,6 +1264,10 @@ func validateProposalCapabilityAdmissionWithSupported(policy *commonpb.ClusterPo
 	if err := state.Validate(); err != nil {
 		return err
 	}
+	// The committed activation selects the proposal's persisted semantics at
+	// the serialized admission boundary. Before activation, a rolling RC.5
+	// cluster must continue to admit unmarked transaction/Numscript writes.
+	proposal.SelectActiveCapabilities(state.Activations[capabilities.StrictAccountTypes])
 	if proposal.HasBusinessOrders() {
 		ready, err := capabilities.Ready(supported, members)
 		if err != nil {
