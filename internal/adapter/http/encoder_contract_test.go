@@ -49,7 +49,6 @@ var protojsonRoutes = []struct {
 	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &servicepb.IndexEntry{}},
 	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &servicepb.GetIndexStatusResponse{}},
 	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
-	{"GET /v3/_/signing-config", "handlers_get_signing_config.go", &servicepb.GetSigningConfigResponse{}},
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 

@@ -6,7 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -164,11 +165,11 @@ send $amount (
   destination = @platform:payouts
 )`, "1.0.0"),
 		actions.CreatePreparedQueryAction("customer-query", MarketplaceLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.AddressPrefixFilter("customer:"),
 		),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", MarketplaceLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 	}
@@ -353,7 +354,7 @@ send $amount (
 
 	// --- Raw Postings ---
 	if _, err := r.Step("RawPostings",
-		actions.CreateTransactionAction(MarketplaceLedger, []*commonpb.Posting{
+		actions.CreateTransactionAction(MarketplaceLedger, []*ledgerpb.Posting{
 			actions.NewPosting("customer:2", "customer:3", big.NewInt(50), "USD/2"),
 		}, nil, nil),
 	); err != nil {

@@ -82,7 +82,7 @@ func TestUnexpectedLogPayload(t *testing.T) {
 	require.Contains(t, got, "create-transaction apply returned an unexpected log payload type")
 	require.Contains(t, got, "ledger:l")
 	require.Contains(t, got, "operation:create-transaction")
-	require.Contains(t, got, "outer_payload_type:*commonpb.LogPayload_CreateLedger")
+	require.Contains(t, got, "outer_payload_type:*ledgerpb.LogPayload_CreateLedger")
 }
 
 func TestEmptyLogPayload(t *testing.T) {
@@ -100,7 +100,7 @@ func TestEmptyLogPayload(t *testing.T) {
 	require.Contains(t, got, "create-transaction apply returned a log with no payload body")
 	require.Contains(t, got, "ledger:l")
 	require.Contains(t, got, "operation:create-transaction")
-	require.Contains(t, got, "outer_payload_type:*commonpb.LogPayload_Apply")
+	require.Contains(t, got, "outer_payload_type:*ledgerpb.LogPayload_Apply")
 }
 
 func TestObservedPayloadDetails(t *testing.T) {
@@ -128,7 +128,7 @@ func TestObservedPayloadDetails(t *testing.T) {
 			want: map[string]any{
 				"ledger":             "ledger1",
 				"sequence":           uint64(7),
-				"outer_payload_type": "*commonpb.LogPayload_CreateLedger",
+				"outer_payload_type": "*ledgerpb.LogPayload_CreateLedger",
 			},
 		},
 		{
@@ -139,8 +139,8 @@ func TestObservedPayloadDetails(t *testing.T) {
 				"ledger":             "ledger1",
 				"transaction_id":     "5",
 				"sequence":           uint64(9),
-				"outer_payload_type": "*commonpb.LogPayload_Apply",
-				"inner_payload_type": "*commonpb.LedgerLogPayload_RevertedTransaction",
+				"outer_payload_type": "*ledgerpb.LogPayload_Apply",
+				"inner_payload_type": "*ledgerpb.LedgerLogPayload_RevertedTransaction",
 			},
 		},
 		{

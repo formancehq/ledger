@@ -8,8 +8,9 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -47,7 +48,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 
 	pgn := cmdutil.GetPaginationFlags(cmd)
 
-	keys, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.SigningKey, metadata.MD, error) {
+	keys, cursors, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*ledgerpb.SigningKey, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 

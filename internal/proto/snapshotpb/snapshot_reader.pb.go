@@ -70,7 +70,7 @@ func (l checkSnapshotReadinessRequestListReadonly) Range(yield func(int, CheckSn
 
 // NewCheckSnapshotReadinessRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCheckSnapshotReadinessRequestListReader(s []*CheckSnapshotReadinessRequest) CheckSnapshotReadinessRequestListReader {
+func NewCheckSnapshotReadinessRequestListReader(s []*CheckSnapshotReadinessRequest) checkSnapshotReadinessRequestListReadonly {
 	return checkSnapshotReadinessRequestListReadonly(s)
 }
 
@@ -147,7 +147,7 @@ func (l checkSnapshotReadinessResponseListReadonly) Range(yield func(int, CheckS
 
 // NewCheckSnapshotReadinessResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCheckSnapshotReadinessResponseListReader(s []*CheckSnapshotReadinessResponse) CheckSnapshotReadinessResponseListReader {
+func NewCheckSnapshotReadinessResponseListReader(s []*CheckSnapshotReadinessResponse) checkSnapshotReadinessResponseListReadonly {
 	return checkSnapshotReadinessResponseListReadonly(s)
 }
 
@@ -219,7 +219,7 @@ func (l prepareSnapshotRequestListReadonly) Range(yield func(int, PrepareSnapsho
 
 // NewPrepareSnapshotRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPrepareSnapshotRequestListReader(s []*PrepareSnapshotRequest) PrepareSnapshotRequestListReader {
+func NewPrepareSnapshotRequestListReader(s []*PrepareSnapshotRequest) prepareSnapshotRequestListReadonly {
 	return prepareSnapshotRequestListReadonly(s)
 }
 
@@ -295,7 +295,7 @@ func (l prepareSnapshotResponseListReadonly) Range(yield func(int, PrepareSnapsh
 
 // NewPrepareSnapshotResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPrepareSnapshotResponseListReader(s []*PrepareSnapshotResponse) PrepareSnapshotResponseListReader {
+func NewPrepareSnapshotResponseListReader(s []*PrepareSnapshotResponse) prepareSnapshotResponseListReadonly {
 	return prepareSnapshotResponseListReadonly(s)
 }
 
@@ -367,7 +367,7 @@ func (l fetchFileRequestListReadonly) Range(yield func(int, FetchFileRequestRead
 
 // NewFetchFileRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFetchFileRequestListReader(s []*FetchFileRequest) FetchFileRequestListReader {
+func NewFetchFileRequestListReader(s []*FetchFileRequest) fetchFileRequestListReadonly {
 	return fetchFileRequestListReadonly(s)
 }
 
@@ -444,7 +444,7 @@ func (l fetchFileResponseListReadonly) Range(yield func(int, FetchFileResponseRe
 
 // NewFetchFileResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFetchFileResponseListReader(s []*FetchFileResponse) FetchFileResponseListReader {
+func NewFetchFileResponseListReader(s []*FetchFileResponse) fetchFileResponseListReadonly {
 	return fetchFileResponseListReadonly(s)
 }
 
@@ -511,7 +511,7 @@ func (l closeSessionRequestListReadonly) Range(yield func(int, CloseSessionReque
 
 // NewCloseSessionRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCloseSessionRequestListReader(s []*CloseSessionRequest) CloseSessionRequestListReader {
+func NewCloseSessionRequestListReader(s []*CloseSessionRequest) closeSessionRequestListReadonly {
 	return closeSessionRequestListReadonly(s)
 }
 
@@ -573,7 +573,7 @@ func (l closeSessionResponseListReadonly) Range(yield func(int, CloseSessionResp
 
 // NewCloseSessionResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewCloseSessionResponseListReader(s []*CloseSessionResponse) CloseSessionResponseListReader {
+func NewCloseSessionResponseListReader(s []*CloseSessionResponse) closeSessionResponseListReadonly {
 	return closeSessionResponseListReadonly(s)
 }
 
@@ -640,7 +640,7 @@ func (l snapshotManifestListReadonly) Range(yield func(int, SnapshotManifestRead
 
 // NewSnapshotManifestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSnapshotManifestListReader(s []*SnapshotManifest) SnapshotManifestListReader {
+func NewSnapshotManifestListReader(s []*SnapshotManifest) snapshotManifestListReadonly {
 	return snapshotManifestListReadonly(s)
 }
 
@@ -712,4 +712,4 @@ func (l fileEntryListReadonly) Range(yield func(int, FileEntryReader) bool) {
 
 // NewFileEntryListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewFileEntryListReader(s []*FileEntry) FileEntryListReader { return fileEntryListReadonly(s) }
+func NewFileEntryListReader(s []*FileEntry) fileEntryListReadonly { return fileEntryListReadonly(s) }

@@ -2,12 +2,13 @@ package plan
 
 import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -90,7 +91,7 @@ func buildAttrResolvers(
 	}
 
 	return map[byte]attrResolver{
-		dal.SubAttrLedger: &protoAttrResolver[*commonpb.LedgerInfo]{
+		dal.SubAttrLedger: &protoAttrResolver[*ledgerpb.LedgerInfo]{
 			attrCode: dal.SubAttrLedger,
 			typeName: "ledgers",
 			cache:    c.Ledgers,
@@ -122,7 +123,7 @@ func buildAttrResolvers(
 			getValue: attrs.References.Get,
 			bloom:    filter(dal.SubAttrReference),
 		},
-		dal.SubAttrSinkConfig: &protoAttrResolver[*commonpb.SinkConfig]{
+		dal.SubAttrSinkConfig: &protoAttrResolver[*ledgerpb.SinkConfig]{
 			attrCode: dal.SubAttrSinkConfig,
 			typeName: "sink_configs",
 			cache:    c.SinkConfigs,
@@ -138,7 +139,7 @@ func buildAttrResolvers(
 			getValue: attrs.NumscriptVersion.Get,
 			bloom:    filter(dal.SubAttrNumscriptVersion),
 		},
-		dal.SubAttrNumscriptContent: &protoAttrResolver[*commonpb.NumscriptInfo]{
+		dal.SubAttrNumscriptContent: &protoAttrResolver[*ledgerpb.NumscriptInfo]{
 			attrCode: dal.SubAttrNumscriptContent,
 			typeName: "numscript_contents",
 			cache:    c.NumscriptContents,
@@ -154,7 +155,7 @@ func buildAttrResolvers(
 			getValue: attrs.Transaction.Get,
 			bloom:    filter(dal.SubAttrTransaction),
 		},
-		dal.SubAttrMetadata: &protoAttrResolver[*commonpb.MetadataValue]{
+		dal.SubAttrMetadata: &protoAttrResolver[*ledgerpb.MetadataValue]{
 			attrCode: dal.SubAttrMetadata,
 			typeName: "metadata",
 			cache:    c.AccountMetadata,
@@ -162,7 +163,7 @@ func buildAttrResolvers(
 			getValue: attrs.Metadata.Get,
 			bloom:    filter(dal.SubAttrMetadata),
 		},
-		dal.SubAttrPreparedQuery: &protoAttrResolver[*commonpb.PreparedQuery]{
+		dal.SubAttrPreparedQuery: &protoAttrResolver[*ledgerpb.PreparedQuery]{
 			attrCode: dal.SubAttrPreparedQuery,
 			typeName: "prepared_queries",
 			cache:    c.PreparedQueries,
@@ -170,7 +171,7 @@ func buildAttrResolvers(
 			getValue: attrs.PreparedQuery.Get,
 			bloom:    filter(dal.SubAttrPreparedQuery),
 		},
-		dal.SubAttrLedgerMetadata: &protoAttrResolver[*commonpb.MetadataValue]{
+		dal.SubAttrLedgerMetadata: &protoAttrResolver[*ledgerpb.MetadataValue]{
 			attrCode: dal.SubAttrLedgerMetadata,
 			typeName: "ledger_metadata",
 			cache:    c.LedgerMetadata,
@@ -178,7 +179,7 @@ func buildAttrResolvers(
 			getValue: attrs.LedgerMetadata.Get,
 			bloom:    filter(dal.SubAttrLedgerMetadata),
 		},
-		dal.SubAttrIndex: &protoAttrResolver[*commonpb.Index]{
+		dal.SubAttrIndex: &protoAttrResolver[*ledgerpb.Index]{
 			attrCode: dal.SubAttrIndex,
 			typeName: "indexes",
 			cache:    c.Indexes,

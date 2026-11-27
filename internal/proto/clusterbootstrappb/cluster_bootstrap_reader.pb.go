@@ -66,7 +66,7 @@ func (l getPeersRequestListReadonly) Range(yield func(int, GetPeersRequestReader
 
 // NewGetPeersRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetPeersRequestListReader(s []*GetPeersRequest) GetPeersRequestListReader {
+func NewGetPeersRequestListReader(s []*GetPeersRequest) getPeersRequestListReadonly {
 	return getPeersRequestListReadonly(s)
 }
 
@@ -133,7 +133,7 @@ func (l getPeersResponseListReadonly) Range(yield func(int, GetPeersResponseRead
 
 // NewGetPeersResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewGetPeersResponseListReader(s []*GetPeersResponse) GetPeersResponseListReader {
+func NewGetPeersResponseListReader(s []*GetPeersResponse) getPeersResponseListReadonly {
 	return getPeersResponseListReadonly(s)
 }
 
@@ -220,7 +220,7 @@ func (l peerInfoListReadonly) Range(yield func(int, PeerInfoReader) bool) {
 
 // NewPeerInfoListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPeerInfoListReader(s []*PeerInfo) PeerInfoListReader { return peerInfoListReadonly(s) }
+func NewPeerInfoListReader(s []*PeerInfo) peerInfoListReadonly { return peerInfoListReadonly(s) }
 
 // JoinAsLearnerRequestReader provides read-only access to JoinAsLearnerRequest.
 // Call Mutate() to obtain a mutable clone.
@@ -305,7 +305,7 @@ func (l joinAsLearnerRequestListReadonly) Range(yield func(int, JoinAsLearnerReq
 
 // NewJoinAsLearnerRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewJoinAsLearnerRequestListReader(s []*JoinAsLearnerRequest) JoinAsLearnerRequestListReader {
+func NewJoinAsLearnerRequestListReader(s []*JoinAsLearnerRequest) joinAsLearnerRequestListReadonly {
 	return joinAsLearnerRequestListReadonly(s)
 }
 
@@ -367,7 +367,7 @@ func (l joinAsLearnerResponseListReadonly) Range(yield func(int, JoinAsLearnerRe
 
 // NewJoinAsLearnerResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewJoinAsLearnerResponseListReader(s []*JoinAsLearnerResponse) JoinAsLearnerResponseListReader {
+func NewJoinAsLearnerResponseListReader(s []*JoinAsLearnerResponse) joinAsLearnerResponseListReadonly {
 	return joinAsLearnerResponseListReadonly(s)
 }
 
@@ -454,7 +454,7 @@ func (l refreshMembershipRequestListReadonly) Range(yield func(int, RefreshMembe
 
 // NewRefreshMembershipRequestListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRefreshMembershipRequestListReader(s []*RefreshMembershipRequest) RefreshMembershipRequestListReader {
+func NewRefreshMembershipRequestListReader(s []*RefreshMembershipRequest) refreshMembershipRequestListReadonly {
 	return refreshMembershipRequestListReadonly(s)
 }
 
@@ -516,6 +516,6 @@ func (l refreshMembershipResponseListReadonly) Range(yield func(int, RefreshMemb
 
 // NewRefreshMembershipResponseListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewRefreshMembershipResponseListReader(s []*RefreshMembershipResponse) RefreshMembershipResponseListReader {
+func NewRefreshMembershipResponseListReader(s []*RefreshMembershipResponse) refreshMembershipResponseListReadonly {
 	return refreshMembershipResponseListReadonly(s)
 }

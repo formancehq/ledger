@@ -5,6 +5,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -38,30 +40,30 @@ func redactSecret(s string) string {
 //
 // Call redactSinkConfig (which clones first) when handing the result to an
 // encoder; this in-place variant is for callers that already own a deep copy.
-func redactSinkConfigInPlace(cfg *commonpb.SinkConfig) {
+func redactSinkConfigInPlace(cfg *ledgerpb.SinkConfig) {
 	if cfg == nil {
 		return
 	}
 
 	switch t := cfg.GetType().(type) {
-	case *commonpb.SinkConfig_Kafka:
+	case *ledgerpb.SinkConfig_Kafka:
 		if t.Kafka != nil {
 			t.Kafka.SaslPassword = redactSecret(t.Kafka.GetSaslPassword())
 		}
-	case *commonpb.SinkConfig_Http:
+	case *ledgerpb.SinkConfig_Http:
 		if t.Http != nil {
 			t.Http.Endpoint = sensitive.Redact(t.Http).GetEndpoint()
 			t.Http.Secret = redactSecret(t.Http.GetSecret())
 		}
-	case *commonpb.SinkConfig_Clickhouse:
+	case *ledgerpb.SinkConfig_Clickhouse:
 		if t.Clickhouse != nil {
 			t.Clickhouse.Dsn = cmdutil.ObfuscateClickHouseDSN(t.Clickhouse.GetDsn())
 		}
-	case *commonpb.SinkConfig_Databricks:
+	case *ledgerpb.SinkConfig_Databricks:
 		if t.Databricks != nil {
 			redactDatabricksAuthInPlace(t.Databricks)
 		}
-	case *commonpb.SinkConfig_Nats:
+	case *ledgerpb.SinkConfig_Nats:
 		if t.Nats != nil {
 			t.Nats.Url = obfuscateNATSURLs(t.Nats.GetUrl())
 		}
@@ -84,11 +86,11 @@ func obfuscateNATSURLs(value string) string {
 // client secret depending on which auth variant is set. Public fields
 // (server hostname, HTTP path, catalog, schema, table, OAuth client_id) are
 // left visible.
-func redactDatabricksAuthInPlace(d *commonpb.DatabricksSinkConfig) {
+func redactDatabricksAuthInPlace(d *ledgerpb.DatabricksSinkConfig) {
 	switch a := d.GetAuth().(type) {
-	case *commonpb.DatabricksSinkConfig_Token:
+	case *ledgerpb.DatabricksSinkConfig_Token:
 		a.Token = redactSecret(a.Token)
-	case *commonpb.DatabricksSinkConfig_OauthM2M:
+	case *ledgerpb.DatabricksSinkConfig_OauthM2M:
 		if a.OauthM2M != nil {
 			a.OauthM2M.ClientSecret = redactSecret(a.OauthM2M.GetClientSecret())
 		}
@@ -104,7 +106,7 @@ func redactSinkConfig(cfg *commonpb.SinkConfig) *commonpb.SinkConfig {
 		return nil
 	}
 
-	cloned, _ := proto.Clone(cfg).(*commonpb.SinkConfig)
+	cloned, _ := proto.Clone(cfg).(*ledgerpb.SinkConfig)
 	redactSinkConfigInPlace(cloned)
 
 	return cloned

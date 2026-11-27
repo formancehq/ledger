@@ -6,7 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -148,11 +149,11 @@ func lendingWriteOff(ctx context.Context, client servicepb.BucketServiceClient, 
 // account types, and numscript library for the lending lifecycle scenario.
 func LendingLifecycleSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
-		actions.CreateLedgerWithSchemaAction(LendingLifecycleLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+		actions.CreateLedgerWithSchemaAction(LendingLifecycleLedger, nil, []*ledgerpb.SetMetadataFieldTypeCommand{
 			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				TargetType: ledgerpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "status",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Type:       ledgerpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}),
 		actions.AddAccountTypeAction(LendingLifecycleLedger, "funding", "funding:{type}"),
@@ -219,11 +220,11 @@ send $amount (
 )`, "1.0.0"),
 		actions.CreateAccountMetadataIndexAction(LendingLifecycleLedger, "status"),
 		actions.CreatePreparedQueryAction("loans-by-status", LendingLifecycleLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamStringMetadataFilter("status", "status_value"),
 		),
 		actions.CreatePreparedQueryAction("accounts-by-prefix", LendingLifecycleLedger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			actions.ParamAddressPrefixFilter("prefix"),
 		),
 	}

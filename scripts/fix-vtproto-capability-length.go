@@ -12,10 +12,17 @@ import (
 )
 
 func main() {
-	for _, path := range []string{
-		"internal/proto/auditpb/audit_vtproto.pb.go",
+	paths := []string{
+		"pkg/proto/v3/ledgerpb/audit_vtproto.pb.go",
 		"internal/proto/raftcmdpb/raft_cmd_vtproto.pb.go",
-	} {
+	}
+	if len(os.Args) > 1 {
+		paths = os.Args[1:]
+		if paths[0] == "--" {
+			paths = paths[1:]
+		}
+	}
+	for _, path := range paths {
 		if err := fix(path); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

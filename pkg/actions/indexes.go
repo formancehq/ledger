@@ -5,29 +5,30 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/pkg/proto/v3/ledgerpb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // AddressRoleToBuiltinIndex maps an AddressRole to its corresponding TransactionBuiltinIndex.
-func AddressRoleToBuiltinIndex(role commonpb.AddressRole) commonpb.TransactionBuiltinIndex {
+func AddressRoleToBuiltinIndex(role ledgerpb.AddressRole) ledgerpb.TransactionBuiltinIndex {
 	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+	case ledgerpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		return ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
+	case ledgerpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		return ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
 	default:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
+		return ledgerpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
 	}
 }
 
 // CreateAddressIndexAction creates a request for creating an address index on a ledger.
-func CreateAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb.Request {
+func CreateAddressIndexAction(ledger string, role ledgerpb.AddressRole) *servicepb.Request {
 	return CreateBuiltinTxIndexAction(ledger, AddressRoleToBuiltinIndex(role))
 }
 
 // DropAddressIndexAction creates a request for dropping an address index.
-func DropAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb.Request {
+func DropAddressIndexAction(ledger string, role ledgerpb.AddressRole) *servicepb.Request {
 	return DropBuiltinTxIndexAction(ledger, AddressRoleToBuiltinIndex(role))
 }
 
@@ -39,19 +40,19 @@ func CreateAccountAssetIndexAction(ledger string) *servicepb.Request {
 		Type: &servicepb.Request_CreateIndex{
 			CreateIndex: &servicepb.CreateIndexRequest{
 				Ledger: ledger,
-				Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET}},
+				Id:     &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_AccountBuiltin{AccountBuiltin: ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET}},
 			},
 		},
 	}
 }
 
 // CreateLogBuiltinIndexAction creates a request for creating a log builtin index.
-func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) *servicepb.Request {
+func CreateLogBuiltinIndexAction(ledger string, index ledgerpb.LogBuiltinIndex) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreateIndex{
 			CreateIndex: &servicepb.CreateIndexRequest{
 				Ledger: ledger,
-				Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_LogBuiltin{LogBuiltin: index}},
+				Id:     &ledgerpb.IndexID{Kind: &ledgerpb.IndexID_LogBuiltin{LogBuiltin: index}},
 			},
 		},
 	}
@@ -75,7 +76,7 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 // Each replica advances its IndexVersionState independently as soon as
 // its local backfill / rewrite finishes (EN-1323) — readiness is always
 // a per-replica question.
-func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, label string) error {
+func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*ledgerpb.IndexID) bool, label string) error {
 	entry := findIndexEntry(resp, ledger, matches)
 	if entry == nil {
 		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
@@ -97,7 +98,7 @@ func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, 
 // completion signal for any operation that replaces a live incarnation: the
 // previous current_version remains observable until the local builder consumes
 // the triggering log, so ordinary readiness can pass before work starts.
-func indexVersionAdvancedOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, preVersion uint32, label string) error {
+func indexVersionAdvancedOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*ledgerpb.IndexID) bool, preVersion uint32, label string) error {
 	entry := findIndexEntry(resp, ledger, matches)
 	if entry == nil {
 		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
@@ -115,7 +116,7 @@ func indexVersionAdvancedOnReplica(resp *servicepb.GetIndexStatusResponse, ledge
 	return nil
 }
 
-func findIndexEntry(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool) *servicepb.IndexEntry {
+func findIndexEntry(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*ledgerpb.IndexID) bool) *servicepb.IndexEntry {
 	for _, entry := range resp.GetIndexes() {
 		if entry.GetLedger() == ledger && matches(entry.GetIndex().GetId()) {
 			return entry
@@ -127,15 +128,15 @@ func findIndexEntry(resp *servicepb.GetIndexStatusResponse, ledger string, match
 
 // WaitForMetadataIndexReady polls until the metadata index has been
 // atomically switched into a live keyspace on the local replica.
-func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string) error {
+func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target ledgerpb.TargetType, key string) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
 		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 		if err != nil {
 			return err
 		}
 
-		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
-			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+		return indexReadyOnReplica(resp, ledger, func(id *ledgerpb.IndexID) bool {
+			m, ok := id.GetKind().(*ledgerpb.IndexID_Metadata)
 
 			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
 		}, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
@@ -156,14 +157,14 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 // can capture one replica's version and poll another whose different
 // number satisfies the inequality without any rewrite having run. Use a
 // per-node connection (as every caller in this repo does).
-func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string) (uint32, error) {
+func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target ledgerpb.TargetType, key string) (uint32, error) {
 	resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 	if err != nil {
 		return 0, err
 	}
 
-	entry := findIndexEntry(resp, ledger, func(id *commonpb.IndexID) bool {
-		m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	entry := findIndexEntry(resp, ledger, func(id *ledgerpb.IndexID) bool {
+		m, ok := id.GetKind().(*ledgerpb.IndexID_Metadata)
 
 		return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
 	})
@@ -184,15 +185,15 @@ func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketSer
 // readiness may still observe the previous live incarnation. preVersion must
 // come from MetadataIndexCurrentVersion over the SAME per-node connection —
 // see the replica-affinity requirement there.
-func WaitForMetadataIndexVersionAdvance(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+func WaitForMetadataIndexVersionAdvance(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target ledgerpb.TargetType, key string, preVersion uint32) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
 		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 		if err != nil {
 			return err
 		}
 
-		return indexVersionAdvancedOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
-			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+		return indexVersionAdvancedOnReplica(resp, ledger, func(id *ledgerpb.IndexID) bool {
+			m, ok := id.GetKind().(*ledgerpb.IndexID_Metadata)
 
 			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
 		}, preVersion, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
@@ -201,21 +202,21 @@ func WaitForMetadataIndexVersionAdvance(ctx context.Context, client servicepb.Bu
 
 // WaitForMetadataIndexRewrite is the retype-specific name for
 // WaitForMetadataIndexVersionAdvance.
-func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target ledgerpb.TargetType, key string, preVersion uint32) error {
 	return WaitForMetadataIndexVersionAdvance(ctx, client, ledger, target, key, preVersion)
 }
 
 // WaitForBuiltinIndexReady polls until a builtin transaction index has been
 // atomically switched into a live keyspace on the local replica.
-func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index commonpb.TransactionBuiltinIndex) error {
+func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index ledgerpb.TransactionBuiltinIndex) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
 		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 		if err != nil {
 			return err
 		}
 
-		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
-			b, ok := id.GetKind().(*commonpb.IndexID_TxBuiltin)
+		return indexReadyOnReplica(resp, ledger, func(id *ledgerpb.IndexID) bool {
+			b, ok := id.GetKind().(*ledgerpb.IndexID_TxBuiltin)
 
 			return ok && b.TxBuiltin == index
 		}, "tx_builtin:"+index.String())
@@ -224,7 +225,7 @@ func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServic
 
 // WaitForAddressIndexReady polls until an address index has been
 // atomically switched into a live keyspace on the local replica.
-func WaitForAddressIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, role commonpb.AddressRole) error {
+func WaitForAddressIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, role ledgerpb.AddressRole) error {
 	return WaitForBuiltinIndexReady(ctx, client, ledger, AddressRoleToBuiltinIndex(role))
 }
 
@@ -237,25 +238,25 @@ func WaitForAccountAssetIndexReady(ctx context.Context, client servicepb.BucketS
 			return err
 		}
 
-		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
-			b, ok := id.GetKind().(*commonpb.IndexID_AccountBuiltin)
+		return indexReadyOnReplica(resp, ledger, func(id *ledgerpb.IndexID) bool {
+			b, ok := id.GetKind().(*ledgerpb.IndexID_AccountBuiltin)
 
-			return ok && b.AccountBuiltin == commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET
-		}, "acct_builtin:"+commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET.String())
+			return ok && b.AccountBuiltin == ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET
+		}, "acct_builtin:"+ledgerpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET.String())
 	})
 }
 
 // WaitForLogBuiltinIndexReady polls until a log builtin index has been
 // atomically switched into a live keyspace on the local replica.
-func WaitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index commonpb.LogBuiltinIndex) error {
+func WaitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index ledgerpb.LogBuiltinIndex) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
 		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 		if err != nil {
 			return err
 		}
 
-		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
-			b, ok := id.GetKind().(*commonpb.IndexID_LogBuiltin)
+		return indexReadyOnReplica(resp, ledger, func(id *ledgerpb.IndexID) bool {
+			b, ok := id.GetKind().(*ledgerpb.IndexID_LogBuiltin)
 
 			return ok && b.LogBuiltin == index
 		}, "log_builtin:"+index.String())

@@ -108,4 +108,4 @@ func (l eventListReadonly) Range(yield func(int, EventReader) bool) {
 
 // NewEventListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewEventListReader(s []*Event) EventListReader { return eventListReadonly(s) }
+func NewEventListReader(s []*Event) eventListReadonly { return eventListReadonly(s) }
