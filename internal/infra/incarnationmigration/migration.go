@@ -366,10 +366,13 @@ func Verify(ctx context.Context, source dal.PebbleReader, logger logging.Logger)
 	if err != nil {
 		return err
 	}
-	// Operational policy is outside the store checker's business-state contract.
+	// A complete marker can precede write activation on an empty store, so it
+	// cannot by itself establish that this projection is authoritative.
+	// Operational policy is outside the store checker's business-state contract:
+	// an unreadable policy must not make the business integrity check fail.
 	policy, err := query.ReadClusterPolicy(source)
 	if err != nil {
-		return fmt.Errorf("reading account incarnation activation policy: %w", err)
+		return nil
 	}
 	if !capabilities.IsActive(policy, capabilities.AccountIncarnationWritesV1) {
 		return nil

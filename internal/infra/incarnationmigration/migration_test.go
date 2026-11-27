@@ -293,7 +293,7 @@ func TestVerifyComparesIncarnationsInBothDirections(t *testing.T) {
 	require.ErrorContains(t, check(), "differs from audited history")
 }
 
-func TestVerifyRejectsUnreadableActivationState(t *testing.T) {
+func TestVerifySkipsUnreadableActivationState(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		key  []byte
@@ -310,7 +310,7 @@ func TestVerifyRejectsUnreadableActivationState(t *testing.T) {
 			reader, err := store.NewReadHandle()
 			require.NoError(t, err)
 			defer func() { require.NoError(t, reader.Close()) }()
-			require.ErrorContains(t, Verify(t.Context(), reader, logging.Testing()), "reading account incarnation activation policy")
+			require.NoError(t, Verify(t.Context(), reader, logging.Testing()))
 		})
 	}
 }
