@@ -489,14 +489,20 @@ token, or a key that is not a valid position for the endpoint, is
 - `200 OK`: Request successful
 - `201 Created`: Resource created
 - `204 No Content`: Resource deleted successfully
-- `400 Bad Request`: Invalid request
+- `400 Bad Request`: Invalid request, including `CAPABILITY_UNSUPPORTED`
+  (gRPC `FailedPrecondition`) when a member cannot yet accept a
+  capability-dependent promotion
 - `401 Unauthorized`: Invalid credentials, or insufficient anonymous scopes
 - `403 Forbidden`: Authenticated caller lacks the required scope
 - `404 Not Found`: Resource not found
 - `409 Conflict`: Conflict (ex: resource already exists)
 - `429 Too Many Requests`: Write admission or authoritative allocator exhaustion;
   inspect `errorCode` before deciding whether retrying can help (see below)
-- `503 Service Unavailable`: the server cannot serve the request right now but a retry can succeed — no leader elected, admission cache horizon exceeded, any `KindUnavailable` domain error (index still building, writes blocked on clock skew, node syncing), or an internal forwarding failure surfaced as gRPC `Unavailable` (always with `Retry-After` header)
+- `503 Service Unavailable`: the server cannot serve the request right now but a
+  retry can succeed — no leader elected, admission cache horizon exceeded,
+  `CAPABILITY_ACTIVATION_PENDING`, any `KindUnavailable` domain error (index
+  still building, writes blocked on clock skew, node syncing), or an internal
+  forwarding failure surfaced as gRPC `Unavailable` (always with `Retry-After`)
 - `500 Internal Server Error`: Server error
 
 ### Resource-exhaustion response matrix
@@ -810,10 +816,11 @@ one code, because every enum reason reaches the wire through
 nothing else. The check stays reason-keyed rather than kind-keyed so a reason
 that must travel under a second code can be widened on its own, as the removed
 `READ_INDEX_NOT_CAUGHT_UP` did, without relaxing the kind mapping the encoder
-shares. The four reasons the server hand-builds an `ErrorInfo` for
-(`EXTERNAL_SERVICE_ERROR`, `RAFT_NODE_NOT_IN_CLUSTER`,
-`RAFT_NODE_REMOVAL_COMMITTED`) are not enum members, so they take the
-unknown-reason path and are never validated here.
+shares. The gRPC adapters also hand-build `ErrorInfo` for
+`EXTERNAL_SERVICE_ERROR`, `RAFT_NODE_NOT_IN_CLUSTER`,
+`RAFT_NODE_REMOVAL_COMMITTED`, `STALE_RAFT_PROGRESS`,
+`CAPABILITY_UNSUPPORTED`, and `CAPABILITY_ACTIVATION_PENDING`. These are not
+enum members, so they take the unknown-reason path and are never validated here.
 
 A reason arriving under a code outside its allowed set is a **protocol fault**,
 not a business outcome — the peer is not speaking this contract. The decoder
@@ -858,7 +865,7 @@ The `Retry-After` header is used to indicate when a client should retry a reques
 
 #### When It's Returned
 
-`handleError` (`internal/adapter/http/error_handler.go`) maps four error families to `503` + `Retry-After`:
+`handleError` (`internal/adapter/http/error_handler.go`) maps five error families to `503` + `Retry-After`:
 
 1. **No leader** (`errorCode: NO_LEADER`) — the Raft cluster has no elected leader: an election is in progress, a partition or insufficient nodes prevent a quorum, or the cluster is still starting up.
 
@@ -866,7 +873,9 @@ The `Retry-After` header is used to indicate when a client should retry a reques
 
 3. **`KindUnavailable` domain errors** (`errorCode` = the error's `Reason()`) — the whole kind shares the contract: an index still building, writes blocked on clock skew, a node syncing. Anything `kindToHTTPStatus` maps to `503` gets the header.
 
-4. **gRPC `Unavailable` statuses** (`errorCode: UNAVAILABLE`) — an internal forwarding failure surfaced by the read path: a forwarded stream torn down mid-transfer (peer connection churn during a syncing follower's leader fallback), or a peer connection missing from the pool. `errorMessage` uses a generic public message.
+4. **Capability activation pending** (`errorCode: CAPABILITY_ACTIVATION_PENDING`) — the promotion capability is supported by the members but has not yet been committed as active. The refusal is gRPC `Unavailable` and HTTP `503` on both local and forwarded requests.
+
+5. **Bare gRPC `Unavailable` statuses** (`errorCode: UNAVAILABLE`) — an internal forwarding failure surfaced by the read path: a forwarded stream torn down mid-transfer (peer connection churn during a syncing follower's leader fallback), or a peer connection missing from the pool. `errorMessage` uses a generic public message.
 
 #### Response Format
 
