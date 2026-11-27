@@ -6,7 +6,9 @@ For `ClusterService.Backup` and its `IncrementalBackup` checkpoint alias,
 leader-side admission excludes destinations whose endpoint differs only
 in URL scheme/host case. Contention returns the existing busy-destination error
 before storage access. No HTTP route, protobuf field or protocol revision
-changes; revision 40 and committed FSM job semantics remain unchanged.
+changes; revision 40 and the persisted FSM job keys remain unchanged. New
+backup Starts use physical-destination exclusion after capability 2 activates;
+historical unmarked Starts retain their released apply rule.
 
 > **URL prefix.** All business endpoints in this POC are served under the
 > `/v3` prefix (e.g. `POST /v3/{ledgerName}/transactions`). Ops endpoints

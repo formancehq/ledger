@@ -137,16 +137,18 @@ func (r *ExecutorRegistry) IsAlive(jobID uint64) bool {
 // while the new leader's cleanup loop frees the destination slot —
 // the second writer race flemzord raised on PR #401.
 type Orchestrator struct {
-	proposer     Proposer
-	store        *dal.Store
-	logger       logging.Logger
-	nodeID       uint64
-	registry     *ExecutorRegistry
-	jobs         StaleProvider
-	destinations map[string]struct{}
+	proposer        Proposer
+	store           *dal.Store
+	logger          logging.Logger
+	nodeID          uint64
+	registry        *ExecutorRegistry
+	jobs            *state.BackupJobsState
+	destinations    map[string]struct{}
+	waitLeaderReady func(context.Context) error
+	destinationMu   sync.Mutex
 
-	// mu guards leaderCtx / leaderCancel and destination admission. RunFull reads
-	// leaderCtx once and derive a child context for the run; the read
+	// mu guards leaderCtx / leaderCancel. RunFull reads
+	// leaderCtx once and derives a child context for the run; the read
 	// is under the lock so a concurrent OnLeadershipChange cannot
 	// swap leaderCtx in the middle of the read.
 	mu           sync.Mutex
@@ -164,39 +166,36 @@ type Orchestrator struct {
 // cancellation error. Bootstrap calls OnLeadershipChange on startup
 // (and on every transition thereafter) so the orchestrator's state
 // tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, jobs StaleProvider) *Orchestrator {
+func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, jobs *state.BackupJobsState, waitLeaderReady func(context.Context) error) *Orchestrator {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	return &Orchestrator{
-		proposer:     proposer,
-		store:        store,
-		logger:       logger.WithField("cmp", "backup-orchestrator"),
-		nodeID:       nodeID,
-		registry:     registry,
-		jobs:         jobs,
-		destinations: make(map[string]struct{}),
-		leaderCtx:    cancelled,
-		leaderCancel: cancel,
+		proposer:        proposer,
+		store:           store,
+		logger:          logger.WithField("cmp", "backup-orchestrator"),
+		nodeID:          nodeID,
+		registry:        registry,
+		jobs:            jobs,
+		destinations:    make(map[string]struct{}),
+		waitLeaderReady: waitLeaderReady,
+		leaderCtx:       cancelled,
+		leaderCancel:    cancel,
 	}
 }
 
 func (o *Orchestrator) reserveDestination(dst *raftcmdpb.BackupDestination) (string, error) {
 	key := admissionDestinationKey(dst)
-	o.mu.Lock()
-	defer o.mu.Unlock()
+	o.destinationMu.Lock()
+	defer o.destinationMu.Unlock()
 
 	if _, exists := o.destinations[key]; exists {
 		return "", state.ErrBackupInProgress
 	}
-	busy := false
-	o.jobs.ForEachActive(func(job *raftcmdpb.BackupJob) {
-		if admissionDestinationKey(job.GetDestination()) == key {
-			busy = true
+	for _, destination := range o.jobs.ActiveDestinations() {
+		if admissionDestinationKey(destination) == key {
+			return "", state.ErrBackupInProgress
 		}
-	})
-	if busy {
-		return "", state.ErrBackupInProgress
 	}
 	o.destinations[key] = struct{}{}
 
@@ -204,8 +203,8 @@ func (o *Orchestrator) reserveDestination(dst *raftcmdpb.BackupDestination) (str
 }
 
 func (o *Orchestrator) releaseDestination(key string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+	o.destinationMu.Lock()
+	defer o.destinationMu.Unlock()
 	delete(o.destinations, key)
 }
 
@@ -238,7 +237,7 @@ func (o *Orchestrator) OnLeadershipChange(isLeader bool) {
 // caller's ctx ends OR leadership is lost. The returned cancel must
 // be called by the caller (deferred) to release the watcher goroutine
 // even on the happy path.
-func (o *Orchestrator) runContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (o *Orchestrator) runContext(ctx context.Context) (context.Context, context.CancelFunc, context.Context) {
 	o.mu.Lock()
 	leaderCtx := o.leaderCtx
 	o.mu.Unlock()
@@ -253,7 +252,22 @@ func (o *Orchestrator) runContext(ctx context.Context) (context.Context, context
 		}
 	}()
 
-	return runCtx, cancel
+	return runCtx, cancel, leaderCtx
+}
+
+func (o *Orchestrator) waitForLeaderReady(ctx context.Context, generation context.Context) error {
+	if o.waitLeaderReady != nil {
+		if err := o.waitLeaderReady(ctx); err != nil {
+			return err
+		}
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.leaderCtx != generation || generation.Err() != nil {
+		return context.Canceled
+	}
+
+	return ctx.Err()
 }
 
 // RunFull proposes a full BackupOrder.Start, drives backup.RunBackup
@@ -265,20 +279,22 @@ func (o *Orchestrator) runContext(ctx context.Context) (context.Context, context
 // translating an RPC request into it. storage is the already-configured
 // driver (s3, filesystem...) that the inner runner uploads against.
 func (o *Orchestrator) RunFull(ctx context.Context, dst *raftcmdpb.BackupDestination, storage backup.Storage) (*backup.Result, error) {
-	key, err := o.reserveDestination(dst)
-	if err != nil {
-		return nil, fmt.Errorf("admit backup destination: %w", err)
-	}
-	defer o.releaseDestination(key)
-
 	jobID := commands.GenerateRandomID()
 
 	// Wrap the caller's ctx so leadership loss cancels the upload
 	// mid-flight — the S3 SDK respects ctx and aborts in-flight
 	// requests, so the second-writer race after a leadership transfer
 	// closes deterministically.
-	runCtx, cancelRun := o.runContext(ctx)
+	runCtx, cancelRun, generation := o.runContext(ctx)
 	defer cancelRun()
+	if err := o.waitForLeaderReady(runCtx, generation); err != nil {
+		return nil, fmt.Errorf("waiting for leader readiness: %w", err)
+	}
+	key, err := o.reserveDestination(dst)
+	if err != nil {
+		return nil, fmt.Errorf("admit backup destination: %w", err)
+	}
+	defer o.releaseDestination(key)
 
 	// Register BEFORE proposing Start so the cleanup tick — which can
 	// fire between Start-apply and the registration — never sees a

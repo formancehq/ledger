@@ -25,6 +25,32 @@ func TestNewProposalBindsCapabilitiesToSerializedCommand(t *testing.T) {
 	require.NotEqual(t, data, proposal.Data())
 }
 
+func TestBackupStartMarkerFollowsPreparationPolicy(t *testing.T) {
+	t.Parallel()
+	command := &raftcmdpb.Proposal{Id: 1, TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_BackupOrder{BackupOrder: &raftcmdpb.BackupOrder{
+			Op: &raftcmdpb.BackupOrder_Start{Start: &raftcmdpb.BackupOrderStart{JobId: 1}},
+		}},
+	}}}
+	_, err := NewProposal(1, command)
+	require.ErrorIs(t, err, capabilities.ErrInvalidDeclaration)
+
+	unmarked, err := NewProposalWithPolicy(1, command, &commonpb.ClusterPolicy{})
+	require.NoError(t, err)
+	require.Empty(t, unmarked.RequiredCapabilities())
+	decoded := new(raftcmdpb.Proposal)
+	require.NoError(t, decoded.UnmarshalVT(unmarked.Data()))
+	require.Empty(t, decoded.GetRequiredCapabilities())
+
+	marked, err := NewProposalWithPolicy(1, command, &commonpb.ClusterPolicy{
+		CapabilityActivations: []*commonpb.CapabilityActivation{{Id: uint32(capabilities.BackupDestinationAlias), Active: true}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []capabilities.CapabilityID{capabilities.BackupDestinationAlias}, marked.RequiredCapabilities())
+	require.NoError(t, decoded.UnmarshalVT(marked.Data()))
+	require.Equal(t, []uint32{uint32(capabilities.BackupDestinationAlias)}, decoded.GetRequiredCapabilities())
+}
+
 func TestProposalSetPredictedIndexPatchesSerializedPayload(t *testing.T) {
 	command := &raftcmdpb.Proposal{Id: 1}
 	proposal, err := NewProposal(1, command)

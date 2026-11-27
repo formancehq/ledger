@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -17,6 +18,10 @@ import (
 // CapabilityID is the stable numeric identity of a consensus capability.
 // The wire representation remains uint32 at protobuf and Raft JSON boundaries.
 type CapabilityID uint32
+
+// BackupDestinationAlias selects physical destination exclusion for new backup Starts.
+// ID 1 is reserved by the concurrent STRICT account-type capability change.
+const BackupDestinationAlias CapabilityID = 2
 
 // PreparedProposal is the opaque capability metadata produced while preparing
 // a final proposal. Callers can inspect it through RequiredCapabilities, but
@@ -32,10 +37,8 @@ func (p PreparedProposal) RequiredCapabilities() []CapabilityID {
 }
 
 // SupportedIDs is the immutable capability set implemented by this binary.
-// No protocol feature is activated yet; this empty registry keeps the
-// membership-evidence plumbing ready for the first real capability.
 func SupportedIDs() []CapabilityID {
-	return nil
+	return []CapabilityID{BackupDestinationAlias}
 }
 
 func MembershipRequiredIDs(policy *commonpb.ClusterPolicy) []uint32 {
@@ -117,6 +120,11 @@ func RequiredCapabilities(proposal *raftcmdpb.Proposal) ([]CapabilityID, error) 
 	if proposal == nil {
 		return nil, fmt.Errorf("%w: nil proposal", ErrInvalidDeclaration)
 	}
+	for _, update := range proposals.TechnicalUpdates(proposal) {
+		if update.GetBackupOrder().GetStart() != nil || update.GetIncrementalBackupOrder().GetStart() != nil {
+			return []CapabilityID{BackupDestinationAlias}, nil
+		}
+	}
 
 	return nil, nil
 }
@@ -143,6 +151,12 @@ func PrepareProposal(proposal *raftcmdpb.Proposal) (PreparedProposal, error) {
 // captured by the proposal factory. The factory runs this before queueing the
 // proposal, keeping full decoding off the Raft orchestrator.
 func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
+	return ValidateFinalProposalForActivation(data, declared, true)
+}
+
+// ValidateFinalProposalForActivation accepts an unmarked dependency only when
+// the producer observed that the committed capability was inactive.
+func ValidateFinalProposalForActivation(data []byte, declared []CapabilityID, active bool) error {
 	proposal := new(raftcmdpb.Proposal)
 	if err := proposal.UnmarshalVT(data); err != nil {
 		return fmt.Errorf("decode final proposal: %w", err)
@@ -150,6 +164,9 @@ func ValidateFinalProposal(data []byte, declared []CapabilityID) error {
 	expected, err := RequiredCapabilities(proposal)
 	if err != nil {
 		return err
+	}
+	if !active {
+		expected = nil
 	}
 	wire := make([]CapabilityID, len(proposal.GetRequiredCapabilities()))
 	for i, id := range proposal.GetRequiredCapabilities() {

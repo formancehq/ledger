@@ -1,12 +1,15 @@
 package node
 
 import (
+	"fmt"
+
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -53,13 +56,35 @@ func newProposal(commandID uint64, data []byte, required []capabilities.Capabili
 	}
 }
 
-// NewProposal is the only public proposal factory. It derives the capability
-// declaration and serializes the same final command, making it impossible for
-// the typed admission metadata to diverge from the wire payload.
+// NewProposal constructs commands without capability-dependent semantics.
+// Dependent producers must choose a marker from committed policy explicitly.
 func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, error) {
-	prepared, err := capabilities.PrepareProposal(command)
+	required, err := capabilities.RequiredCapabilities(command)
 	if err != nil {
 		return nil, err
+	}
+	if len(required) != 0 {
+		return nil, fmt.Errorf("%w: capability-dependent order requires an activation snapshot", capabilities.ErrInvalidDeclaration)
+	}
+
+	return NewProposalWithPolicy(commandID, command, nil)
+}
+
+// NewProposalWithPolicy freezes the committed activation state observed during
+// preparation into the serialized proposal's required capability declaration.
+func NewProposalWithPolicy(commandID uint64, command *raftcmdpb.Proposal, policy *commonpb.ClusterPolicy) (*Proposal, error) {
+	candidate, err := capabilities.RequiredCapabilities(command)
+	if err != nil {
+		return nil, err
+	}
+	active := capabilities.FromPolicy(policy).Activations[capabilities.BackupDestinationAlias]
+	var selected []capabilities.CapabilityID
+	command.RequiredCapabilities = nil
+	if active {
+		selected = candidate
+		for _, id := range selected {
+			command.RequiredCapabilities = append(command.RequiredCapabilities, uint32(id))
+		}
 	}
 
 	data, err := command.MarshalVT()
@@ -67,11 +92,11 @@ func NewProposal(commandID uint64, command *raftcmdpb.Proposal) (*Proposal, erro
 		return nil, err
 	}
 
-	proposal := newProposal(commandID, data, prepared.RequiredCapabilities())
+	proposal := newProposal(commandID, data, selected)
 	// Validate the complete serialized command before it enters the Raft queue.
 	// SetPredictedIndex only appends a fixed-width index field afterward; it
 	// cannot change the payload or its capability declaration.
-	if err := capabilities.ValidateFinalProposal(data, proposal.requiredCapabilities); err != nil {
+	if err := capabilities.ValidateFinalProposalForActivation(data, proposal.requiredCapabilities, active); err != nil {
 		return nil, err
 	}
 	proposal.hasBusinessOrders = len(proposals.BatchOrders(command)) != 0

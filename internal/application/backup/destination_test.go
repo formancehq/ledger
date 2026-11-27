@@ -147,6 +147,46 @@ func TestRunFull_RejectsRestoredEndpointAliases(t *testing.T) {
 	}
 }
 
+func TestRunFull_WaitsForInheritedStartBeforeDestinationScan(t *testing.T) {
+	t.Parallel()
+	fixture := newRecoveryFixture(t)
+	fixture.dst.GetS3().Endpoint = "http://localhost:9000"
+	fixture.orchestrator.jobs = fixture.jobs
+	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	fixture.orchestrator.waitLeaderReady = func(ctx context.Context) error {
+		close(entered)
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	var runErr error
+	go func() {
+		defer close(done)
+		_, runErr = fixture.full()
+	}()
+	<-entered
+	legacy := fixture.dst.CloneVT()
+	legacy.GetS3().Endpoint = "HTTP://LOCALHOST:9000"
+	require.Equal(t, admissionDestinationKey(legacy), admissionDestinationKey(fixture.dst))
+	batch := fixture.store.OpenWriteSession()
+	_, started, err := fixture.jobs.Start(batch, 1, raftcmdpb.BackupKind_BACKUP_KIND_FULL, &raftcmdpb.BackupOrderStart{JobId: 42, Destination: legacy})
+	require.NoError(t, err)
+	require.True(t, started)
+	require.NoError(t, batch.Commit())
+	require.Len(t, fixture.jobs.Snapshot(), 1)
+	_, reserveErr := fixture.orchestrator.reserveDestination(fixture.dst)
+	require.ErrorIs(t, reserveErr, state.ErrBackupInProgress)
+	close(release)
+	<-done
+	require.ErrorIs(t, runErr, state.ErrBackupInProgress)
+	require.Empty(t, fixture.starts, "alias must be rejected before proposal")
+	require.Zero(t, fixture.puts)
+	require.Zero(t, fixture.deletes)
+}
+
 func TestRunFull_EndpointAliasAfterUncertainProposal(t *testing.T) {
 	t.Parallel()
 	for _, fault := range []string{"start-ack", "lost-complete", "lost-fail"} {

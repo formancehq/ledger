@@ -41,10 +41,13 @@ remain case-sensitive. Both backup RPCs return the existing busy-destination
 error; retry after the running job completes or cleanup fails an orphan.
 
 Pause scheduled and manual backups and drain active jobs while older leaders
-can still accept requests. Resume only with an upgraded leader. No job-key or
-data migration is required, and rollback can read the same state; however,
-rollback restores the vulnerability, so keep backups paused until protection
-is restored. Validate or replace a backup suspected of concurrent publication:
+can still accept requests. Resume only with an upgraded leader. After every
+member advertises capability 2, its replicated activation makes new backup
+Starts use physical-destination exclusion in the FSM. No job-key or data
+migration is required. Before activation, rollback restores the vulnerable
+admission behavior; keep backups paused until protection is restored. After
+activation, rollback requires a binary that supports capability 2 and its FSM
+apply rule. Validate or replace a backup suspected of concurrent publication:
 the fix cannot reconstruct objects already pruned by another writer. See
 [destination admission](../technical/architecture/subsystems/backup/README.md#destination-identity-at-admission).
 

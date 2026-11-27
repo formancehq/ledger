@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -105,10 +106,30 @@ func extractFullOrder(p *raftcmdpb.Proposal) *raftcmdpb.BackupOrder {
 }
 
 func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), state.NewBackupJobsState())
+	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), state.NewBackupJobsState(), nil)
 	o.OnLeadershipChange(true)
 
 	return o
+}
+
+func TestLeadershipCancellationDoesNotWaitForDestinationAdmission(t *testing.T) {
+	t.Parallel()
+	o := newOrchestrator(nil, nil)
+	o.destinationMu.Lock()
+	defer o.destinationMu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		o.OnLeadershipChange(false)
+		close(done)
+	}()
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, time.Millisecond, "leadership callback waited for destination admission")
 }
 
 func TestProposalBuilders_Full(t *testing.T) {
@@ -220,7 +241,7 @@ func TestOrchestrator_LeadershipChangeCancelsRunCtx(t *testing.T) {
 		o := newOrchestrator(nil, nil)
 		o.OnLeadershipChange(true)
 
-		runCtx, cancel := o.runContext(context.Background())
+		runCtx, cancel, _ := o.runContext(context.Background())
 		defer cancel()
 		require.NoError(t, runCtx.Err(), "runCtx must be live while we are leader")
 
@@ -243,9 +264,9 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 		// Construct the orchestrator directly (not via newOrchestrator,
 		// which would call OnLeadershipChange(true)) so leaderCtx is the
 		// constructor's already-cancelled context.
-		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), state.NewBackupJobsState())
+		o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), state.NewBackupJobsState(), nil)
 
-		runCtx, cancel := o.runContext(context.Background())
+		runCtx, cancel, _ := o.runContext(context.Background())
 		defer cancel()
 
 		synctest.Wait()

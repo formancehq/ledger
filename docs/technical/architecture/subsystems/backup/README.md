@@ -31,21 +31,36 @@ while waiting for Raft, uploading, publishing or pruning. Unrelated destinations
 remain independent. A rejected or failed attempt releases its own local
 reservation. If Start committed but a terminal proposal did not, the durable
 RUNNING job still blocks retries until cleanup commits Fail.
+The destination mutex is separate from the leadership-context mutex, so the
+synchronous leadership-loss callback can cancel uploads during a scan. The FSM
+registry lock is held only while copying immutable active destination pointers;
+normalization and hashing run after that lock is released. A miss scans every
+active job, O(jobs × destination size); a match exits early. The representative
+`BenchmarkActiveDestinationIdentity` measures 0, 10 and 100 active jobs.
 
-The persisted `CanonicalDestinationKey`, destination payloads, job/history rows
-and FSM Start/Complete/Fail application are unchanged. In particular, old and
-new voters apply the same entry identically; admission must not rewrite stored
-keys or merge active records. This fixes writer exclusion without migrating
-transient jobs or changing checkpoint, snapshot, audit or business formats.
+The persisted `CanonicalDestinationKey`, destination payloads and job/history
+rows remain unchanged. Capability 2 selects physical-destination exclusion for
+new backup `Start` proposals. An unmarked historical `Start` keeps the released
+FSM rule during replay. A marked `Start` compares its normalized physical
+identity with every active job, including unmarked jobs, before storing a job
+under the released key. Complete and Fail retain their existing behavior.
+No persisted job migration or checkpoint, snapshot, audit or business format
+change is required.
 Protocol revision remains 40. Both published backup RPCs use this admission path.
 
-During rolling deployment the protection applies when the leader is upgraded.
-An older leader or rollback binary retains the original vulnerability. Pause
-scheduled/manual backups while an older leader can accept them, drain current
-jobs, and resume after leadership is on an upgraded binary. Rolling back this
-change requires no data conversion, but backups must remain paused until the
-destination-identity protection is restored. This change cannot repair objects
-already deleted by competing writers.
+During rolling deployment an upgraded leader still uses local destination
+admission before capability 2 activates. It waits for its current leadership
+generation to catch up before scanning inherited jobs. New `Start` proposals
+remain unmarked until the committed cluster policy activates capability 2 after
+every member advertises support; proposals prepared after activation carry the
+marker. A proposal prepared before activation retains its unmarked semantics
+even if submission or apply occurs afterward. An old
+leader retains the original vulnerability, so pause scheduled/manual backups
+while one can accept them, drain current jobs, and resume after leadership is
+upgraded. After activation, a binary without capability 2 cannot safely replay
+new marked entries or boot against the active policy. Rollback requires a
+capability-aware binary retaining the new apply branch. This change cannot
+repair objects already deleted by competing writers.
 
 `RunBackup` requires the committed audit key. It calls `Store.Flush` before
 `Store.CreateTemporaryCheckpoint`, which calls

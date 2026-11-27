@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/infra/capabilities"
 	"github.com/formancehq/ledger/v3/internal/pkg/proposals"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -34,6 +35,7 @@ import (
 // those and converts them into ApplyResult.Error so the proposer learns
 // about the rejection without an FSM-level abort.
 func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, batch *dal.WriteSession, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
+	physicalExclusion := slices.Contains(proposal.GetRequiredCapabilities(), uint32(capabilities.BackupDestinationAlias))
 	for i, tu := range proposals.TechnicalUpdates(proposal) {
 		scope, scopeErr := scopeFactory.NewScope(tu.GetCoverageBits())
 		if scopeErr != nil {
@@ -114,11 +116,11 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 				return fmt.Errorf("applying technical_updates[%d] idempotency eviction: %w", i, err)
 			}
 		case *raftcmdpb.TechnicalUpdate_BackupOrder:
-			if err := fsm.applyBackupOrder(batch, raftIndex, raftcmdpb.BackupKind_BACKUP_KIND_FULL, kind.BackupOrder); err != nil {
+			if err := fsm.applyBackupOrderWithPhysicalExclusion(batch, raftIndex, raftcmdpb.BackupKind_BACKUP_KIND_FULL, kind.BackupOrder, physicalExclusion); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] backup order: %w", i, err)
 			}
 		case *raftcmdpb.TechnicalUpdate_IncrementalBackupOrder:
-			if err := fsm.applyIncrementalBackupOrder(batch, raftIndex, kind.IncrementalBackupOrder); err != nil {
+			if err := fsm.applyIncrementalBackupOrderWithPhysicalExclusion(batch, raftIndex, kind.IncrementalBackupOrder, physicalExclusion); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] incremental backup order: %w", i, err)
 			}
 		default:

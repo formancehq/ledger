@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -131,6 +132,42 @@ func CanonicalDestinationKey(dst *raftcmdpb.BackupDestination) []byte {
 	return h.Sum(nil)
 }
 
+// PhysicalDestinationKey is the admission identity for endpoint case aliases.
+// It never replaces the released key stored in backup job rows.
+func PhysicalDestinationKey(dst *raftcmdpb.BackupDestination) string {
+	normalized := dst.CloneVT()
+	switch target := normalized.GetTarget().(type) {
+	case *raftcmdpb.BackupDestination_S3:
+		target.S3.Endpoint = physicalEndpoint(target.S3.GetEndpoint())
+	case *raftcmdpb.BackupDestination_Azure:
+		target.Azure.AccountName = strings.ToLower(target.Azure.GetAccountName())
+		endpoint := target.Azure.GetEndpoint()
+		if endpoint == "" {
+			endpoint = fmt.Sprintf("https://%s.blob.core.windows.net", target.Azure.GetAccountName())
+		}
+		target.Azure.Endpoint = physicalEndpoint(endpoint)
+	}
+
+	return string(CanonicalDestinationKey(normalized))
+}
+
+func physicalEndpoint(endpoint string) string {
+	trimmed := strings.TrimRight(endpoint, "/")
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return trimmed
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	if strings.HasPrefix(parsed.Host, "[") && strings.Contains(parsed.Host, "%") {
+		address, zone, _ := strings.Cut(parsed.Host, "%")
+		parsed.Host = strings.ToLower(address) + "%" + zone
+	} else {
+		parsed.Host = strings.ToLower(parsed.Host)
+	}
+
+	return parsed.String()
+}
+
 // canonicalEndpoint normalises any endpoint URL into a single form so
 // purely cosmetic differences (e.g. a trailing slash) do not hash into
 // distinct destination slots. The storage client treats
@@ -198,12 +235,32 @@ func (s *BackupJobsState) Start(
 	kind raftcmdpb.BackupKind,
 	start *raftcmdpb.BackupOrderStart,
 ) (*raftcmdpb.BackupJob, bool, error) {
+	return s.StartWithPhysicalExclusion(batch, raftIndex, kind, start, false)
+}
+
+// StartWithPhysicalExclusion applies the capability-selected check while
+// retaining the released destination key for storage and historical replay.
+func (s *BackupJobsState) StartWithPhysicalExclusion(
+	batch *dal.WriteSession,
+	raftIndex uint64,
+	kind raftcmdpb.BackupKind,
+	start *raftcmdpb.BackupOrderStart,
+	physicalExclusion bool,
+) (*raftcmdpb.BackupJob, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	key := CanonicalDestinationKey(start.GetDestination())
 	if existing, ok := s.active[string(key)]; ok {
 		return existing, false, ErrBackupInProgress
+	}
+	if physicalExclusion {
+		physicalKey := PhysicalDestinationKey(start.GetDestination())
+		for _, existing := range s.active {
+			if PhysicalDestinationKey(existing.GetDestination()) == physicalKey {
+				return existing, false, ErrBackupInProgress
+			}
+		}
 	}
 
 	// job_id must be unique across all active destinations: the lifecycle
@@ -372,6 +429,19 @@ func (s *BackupJobsState) ForEachActive(fn func(*raftcmdpb.BackupJob)) {
 	for _, job := range s.active {
 		fn(job)
 	}
+}
+
+// ActiveDestinations copies immutable destination pointers while holding the
+// registry lock; callers may normalize and hash them after the lock is released.
+func (s *BackupJobsState) ActiveDestinations() []*raftcmdpb.BackupDestination {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*raftcmdpb.BackupDestination, 0, len(s.active))
+	for _, job := range s.active {
+		out = append(out, job.GetDestination())
+	}
+
+	return out
 }
 
 // Reset clears the in-memory map. Called during snapshot restore before

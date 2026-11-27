@@ -118,7 +118,7 @@ stop all RC.4 voters and learners before starting RC.5 on the retained volumes.
 Startup migrates schema 2 to 3 atomically, then synchronizes the WAL before
 recovery, workers or listeners start. No history scan or external reconstruction
 is required. Keep the ordinary `ledger run` flags; there is no activation flag.
-The supported registry is empty until a separate feature registers an ID.
+The supported registry includes capability 2 for backup destination exclusion.
 
 Once every current member advertises a registered ID, the leader automatically
 commits a single activation control. Ordinary configuration keeps its own
@@ -510,12 +510,15 @@ validation passes. For RC.1 to RC.2, follow the
 For an upgrade that crosses a listed boundary, use the [operator-required stopped restart](#operator-required-stopped-restart).
 
 Capability metadata is the prerequisite for any future incompatible Raft entry,
-execution-plan, replay, or snapshot format. This release does not support
-mixed-version activation: stop every Ledger node, deploy the barrier-aware
-binary everywhere, and restart the complete cluster. Once every voter and
-learner has committed support evidence, the leader automatically requests and
-activates each supported capability. There is no activation flag or extra
-operator setting. See the [capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
+execution-plan, replay, or snapshot format. Capability 2 for backup destination
+exclusion supports a rolling upgrade: new leaders emit unmarked Starts until
+every voter and learner has committed support evidence and the leader
+automatically activates ID 2. Starts prepared after activation carry ID 2; old
+unmarked Starts keep their released replay behavior. Pause backups while an
+old leader can serve them. A rollback binary without ID 2 cannot boot or replay
+marked Starts after activation. Other incompatible features still require a
+validated rolling path or the operator-required stopped restart. See the
+[capability contract](../technical/architecture/subsystems/consensus/capabilities.md).
 
 Use this for RC updates after the mixed-version validation above passes:
 
