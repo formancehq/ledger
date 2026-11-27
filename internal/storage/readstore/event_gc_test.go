@@ -8,6 +8,8 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -269,15 +271,17 @@ func TestGCEventZone_ReclaimsDelBeforeAboveWatermarkTail(t *testing.T) {
 	require.Equal(t, before100, collect(t, s, prefix, 100))
 }
 
-// Benchmark the amount of work on one builder wake with a hot account/asset
-// group. Run with -benchtime=1x to measure a fresh 100k-event group.
+// Benchmark one builder wake with a hot account/asset group in a read store
+// configured like production. Flush the seeded history before timing GC.
+// Run with -benchtime=1x to measure a fresh 100k-event group.
 func BenchmarkGCEventZone_HotAssetSlice(b *testing.B) {
 	for b.Loop() {
 		b.StopTimer()
-		db, err := pebble.Open(b.TempDir(), &pebble.Options{})
+		store, err := New(b.TempDir(), logging.NopZap(), DefaultConfig())
 		if err != nil {
 			b.Fatal(err)
 		}
+		db := store.DB()
 		kb := dal.NewKeyBuilder()
 		batch := db.NewBatch()
 		for seq := uint64(1); seq <= 100_000; seq++ {
@@ -291,13 +295,16 @@ func BenchmarkGCEventZone_HotAssetSlice(b *testing.B) {
 		if err := batch.Close(); err != nil {
 			b.Fatal(err)
 		}
+		if err := db.Flush(); err != nil {
+			b.Fatal(err)
+		}
 		b.StartTimer()
 		changed, next, err := GCEventZone(db, PrefixAccountByAsset, nil, 100_001, 4096)
 		b.StopTimer()
 		if err != nil || changed != 4095 || next == nil {
 			b.Fatalf("GC slice: changed=%d next=%x err=%v", changed, next, err)
 		}
-		if err := db.Close(); err != nil {
+		if err := store.Close(); err != nil {
 			b.Fatal(err)
 		}
 		b.StartTimer()

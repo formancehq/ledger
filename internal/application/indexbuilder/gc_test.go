@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -156,16 +157,21 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 		key    = "status"
 	)
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
-	for _, entity := range []string{"a", "c", "d"} {
+	// The first slice sees two rows in a with no reclaimable predecessor, so
+	// it skips that entire group and resumes after it. The late pair below is
+	// then physically behind the resume key.
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 5, readstore.IndexEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 11, readstore.IndexEventAdd)
+	for _, entity := range []string{"c", "d"} {
 		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 5, readstore.IndexEventAdd)
 		seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte(entity), 6, readstore.IndexEventDel)
 	}
 
 	behindAdd := cloneBytes(readstore.MetadataIndexEventKeyV(
-		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("b"), 5, readstore.IndexEventAdd,
+		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 1, readstore.IndexEventAdd,
 	))
 	behindDel := cloneBytes(readstore.MetadataIndexEventKeyV(
-		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("b"), 6, readstore.IndexEventDel,
+		b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, []byte("a"), 2, readstore.IndexEventDel,
 	))
 
 	metadataCalls := 0
@@ -177,7 +183,9 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 
 		metadataCalls++
 		if metadataCalls == 1 {
-			require.NotNil(t, next, "fixture must split before the late event's position")
+			require.NotNil(t, next, "fixture must split after the skipped group")
+			require.Negative(t, bytes.Compare(behindAdd, next), "late ADD must sort behind resume")
+			require.Negative(t, bytes.Compare(behindDel, next), "late DEL must sort behind resume")
 			late := b.readStore.NewBatch()
 			require.NoError(t, late.SetBytes(behindAdd, nil))
 			require.NoError(t, late.SetBytes(behindDel, nil))
@@ -195,9 +203,10 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			break
 		}
 	}
-	// The bounded GC may revisit this group within the active cycle and
-	// reclaim the late pair already. The write epoch still requires a follow-up
-	// full pass if it arrived behind a cursor that has moved beyond the group.
+	state := b.eventGCCycle(readstore.PrefixMetadataIndex)
+	require.True(t, state.completed && state.completedWriteEpoch == 0 && !state.active, "first cycle must finish without revisiting a")
+	assertReadStoreValue(t, b, behindAdd, nil)
+	assertReadStoreValue(t, b, behindDel, nil)
 
 	for range 20 {
 		b.runEventGC(10)
@@ -206,6 +215,8 @@ func TestRunEventGC_FollowUpCycleVisitsEventWrittenBehindResume(t *testing.T) {
 			break
 		}
 	}
+	state = b.eventGCCycle(readstore.PrefixMetadataIndex)
+	require.True(t, state.completed && state.completedWriteEpoch == 1 && !state.active, "follow-up cycle must finish")
 	assertReadStoreMissing(t, b, behindAdd)
 	assertReadStoreMissing(t, b, behindDel)
 }
