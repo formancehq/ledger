@@ -679,6 +679,7 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 		if detailErr == nil {
 			return st.Err()
 		}
+
 		return status.Error(codes.FailedPrecondition, capabilities.ErrCapabilityUnsupported.Error())
 	}
 	if errors.Is(err, capabilities.ErrActivationPending) {
@@ -687,6 +688,7 @@ func classifyGRPCError(ctx context.Context, err error, logger logging.Logger) er
 		if detailErr == nil {
 			return st.Err()
 		}
+
 		return status.Error(codes.Unavailable, capabilities.ErrActivationPending.Error())
 	}
 
