@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator test-reader-generator test-buf-plugin lint-proto operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator test-reader-generator test-ledger-validate-generator test-buf-plugin lint-proto operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Compare the service contract with the current PR or merge-queue target.
@@ -389,7 +389,7 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
+    rm -f internal/proto/input_validation_errors.pb.go internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
     mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
@@ -398,6 +398,7 @@ generate-proto:
     @cd tools/protoc-gen-ledger-log-category && go build -o ../../build/protoc-gen-ledger-log-category .
     @cd tools/protoc-gen-ledger-json && go build -o ../../build/protoc-gen-ledger-json .
     @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
+    @cd tools/protoc-gen-ledger-validate && go build -o ../../build/protoc-gen-ledger-validate .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
@@ -436,6 +437,9 @@ generate-proto:
         --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
         --rpcauth_out=. \
         --rpcauth_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-ledger-validate=build/protoc-gen-ledger-validate \
+        --ledger-validate_out=. \
+        --ledger-validate_opt=module=github.com/formancehq/ledger/v3 \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
@@ -456,6 +460,9 @@ test-rpcauth-generator:
 
 test-reader-generator:
     go -C tools/protoc-gen-reader test -race ./...
+
+test-ledger-validate-generator:
+    go -C tools/protoc-gen-ledger-validate test -race ./...
 
 # Initial-layout conventions for new protobuf types via the buf check plugin
 # in tools/buf-plugin-ledger; existing types retain their published numbers.

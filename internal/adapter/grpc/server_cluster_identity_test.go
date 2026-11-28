@@ -3,12 +3,15 @@ package grpc
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -134,4 +137,33 @@ func TestTransferLeadershipRejectsZeroAndUnknownLeader(t *testing.T) {
 	response, err = impl.TransferLeadership(context.Background(), &clusterpb.TransferLeadershipRequest{Transferee: 1<<32 + 1})
 	require.Nil(t, response)
 	require.ErrorIs(t, err, commonpb.ErrNoLeader)
+}
+
+func TestDrainRejectsMissingAndOversizedEpoch(t *testing.T) {
+	t.Parallel()
+	impl := &ClusterServiceServerImpl{}
+	for _, tt := range []struct {
+		name string
+		call func(string) error
+	}{
+		{"begin", func(epoch string) error {
+			_, err := impl.BeginDrain(context.Background(), &clusterpb.BeginDrainRequest{Epoch: epoch})
+
+			return err
+		}},
+		{"end", func(epoch string) error {
+			_, err := impl.EndDrain(context.Background(), &clusterpb.EndDrainRequest{Epoch: epoch})
+
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for _, epoch := range []string{"", strings.Repeat("e", 129)} {
+				err := tt.call(epoch)
+				require.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.EqualError(t, err, "rpc error: code = InvalidArgument desc = drain epoch must contain 1 to 128 bytes")
+			}
+		})
+	}
 }

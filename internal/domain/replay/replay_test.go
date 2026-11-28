@@ -17,14 +17,21 @@ import (
 // writerStub satisfies replay.Writer with no-ops; the index hooks are
 // overridable so the dispatch tests can observe calls and inject failures.
 type writerStub struct {
-	createIndex func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
-	dropIndex   func(ledger string, id *commonpb.IndexID) error
-	setMetadata func(key []byte, value *commonpb.MetadataValue) error
+	addVolumeDelta func(input, output *big.Int) error
+	createIndex    func(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
+	dropIndex      func(ledger string, id *commonpb.IndexID) error
+	setMetadata    func(key []byte, value *commonpb.MetadataValue) error
 
 	removedFieldTypes int
 }
 
-func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return nil }
+func (w *writerStub) AddVolumeDelta(_ []byte, input, output *big.Int) error {
+	if w.addVolumeDelta != nil {
+		return w.addVolumeDelta(input, output)
+	}
+
+	return nil
+}
 func (w *writerStub) GetVolume([]byte) (*raftcmdpb.VolumePair, error) { return nil, nil }
 func (w *writerStub) DeleteVolume([]byte) error                       { return nil }
 func (w *writerStub) MoveVolume([]byte, []byte) error                 { return nil }
@@ -97,6 +104,26 @@ func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload 
 	return replay.ReplayLedgerLog("ledger", 1, payload, date, w,
 		map[string]map[string]*commonpb.AccountType{},
 		map[string][]accounttype.CompiledType{}, nil)
+}
+
+func TestReplayLedgerLog_HistoricalPostingWithoutAmountIsZero(t *testing.T) {
+	t.Parallel()
+	deltas := 0
+	w := &writerStub{addVolumeDelta: func(input, output *big.Int) error {
+		require.Zero(t, input.Sign())
+		require.Zero(t, output.Sign())
+		deltas++
+
+		return nil
+	}}
+	posting := &commonpb.Posting{Source: "world", Destination: "users:alice", Asset: "USD"}
+	// Historical logs bypass new-input validation and retain nil-as-zero decoding.
+	require.NoError(t, replayOne(t, w, &commonpb.Timestamp{Data: 1}, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+			Transaction: &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+		}},
+	}))
+	require.Equal(t, 2, deltas)
 }
 
 func TestReplayLedgerLog_AccountMetadataUpdated(t *testing.T) {

@@ -1,7 +1,6 @@
 package admission
 
 import (
-	"crypto/ed25519"
 	"maps"
 	"net/url"
 	"slices"
@@ -178,8 +177,10 @@ func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
 			return domain.ErrAccountTypePatternTooLong
 		}
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-		if len(d.RemoveAccountType.GetName()) > domain.MaxAccountTypeNameLength {
-			return domain.ErrAccountTypeNameTooLong
+		if d.RemoveAccountType != nil {
+			if err := d.RemoveAccountType.ValidateInput(); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -226,6 +227,9 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 	ls := order.GetLedgerScoped()
 	if ls == nil {
 		return nil
+	}
+	if err := ls.ValidateInput(); err != nil {
+		return err
 	}
 
 	if err := domain.ValidateLedgerName(ls.GetLedger()); err != nil {
@@ -284,7 +288,9 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 // content source (no postings, no inline script, no script reference) and
 // orders that combine explicit postings with a script — both shapes silently
 // produce an unintended transaction at the FSM (#452).
-// Explicit postings must carry an amount; a present zero is valid.
+// Explicit postings must carry an amount, source, destination and asset; a
+// present zero amount is valid. Their address and asset shape is checked here;
+// the FSM repeats it for postings produced by Numscript and historical orders.
 //
 // The "result must contain ≥1 posting" invariant — needed to catch numscripts
 // that execute fine but emit no postings — lives on the FSM
@@ -300,14 +306,21 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	switch data := apply.Apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		o = data.CreateTransaction
+		if o != nil {
+			if err := o.ValidateInput(); err != nil {
+				return err
+			}
+		}
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
 		execute = true
+		if data.ExecuteNumscript != nil {
+			if err := data.ExecuteNumscript.ValidateInput(); err != nil {
+				return err
+			}
+		}
 		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
 	default:
 		return nil
-	}
-	if len(o.GetReference()) > domain.MaxTransactionReferenceLength {
-		return domain.ErrTransactionReferenceTooLong
 	}
 	hasPostings := len(o.GetPostings()) > 0
 	hasInlineScript := o.GetScript() != nil && o.GetScript().GetPlain() != ""
@@ -332,8 +345,17 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	for _, posting := range o.GetPostings() {
-		if posting.GetAmount() == nil {
-			return ErrPostingAmountRequired
+		if err := posting.ValidateInput(); err != nil {
+			return err
+		}
+		if err := domain.ValidateAccountAddress(posting.GetSource()); err != nil {
+			return err
+		}
+		if err := domain.ValidateAccountAddress(posting.GetDestination()); err != nil {
+			return err
+		}
+		if err := domain.ValidateAsset(posting.GetAsset()); err != nil {
+			return err
 		}
 	}
 
@@ -388,9 +410,12 @@ func validateOrderCreateIndex(order *raftcmdpb.Order) domain.Describable {
 func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	switch p := order.GetLedgerScoped().GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
+		if err := p.CreatePreparedQuery.ValidateInput(); err != nil {
+			return err
+		}
 		q := p.CreatePreparedQuery.GetQuery()
-		if q == nil {
-			return domain.ErrPreparedQueryRequired
+		if err := q.ValidateInput(); err != nil {
+			return err
 		}
 
 		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
@@ -413,6 +438,9 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 
 		return domain.ValidateFilterAdmissionShape(q.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
+		if err := p.UpdatePreparedQuery.ValidateInput(); err != nil {
+			return err
+		}
 		if err := domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName()); err != nil {
 			return err
 		}
@@ -430,6 +458,10 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
+		if err := p.DeletePreparedQuery.ValidateInput(); err != nil {
+			return err
+		}
+
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
 	default:
 		return nil
@@ -504,8 +536,8 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	if iam.GetRegion() == "" {
-		return ErrMirrorIAMRegionRequired
+	if err := iam.ValidateInput(); err != nil {
+		return err
 	}
 
 	// Driver option and IAM TLS validation belong to source construction. The
@@ -524,8 +556,8 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	if len(reg.RegisterSigningKey.GetPublicKey()) != ed25519.PublicKeySize {
-		return ErrSigningKeyInvalidLength
+	if err := reg.RegisterSigningKey.ValidateInput(); err != nil {
+		return err
 	}
 
 	return nil

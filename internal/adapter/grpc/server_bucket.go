@@ -291,8 +291,8 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
-	if req.GetLedger() == "" {
-		return nil, domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return nil, err
 	}
 
 	var (
@@ -493,8 +493,8 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if req.GetLedger() == "" {
-		return domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return err
 	}
 
 	opts := req.GetOptions()
@@ -601,8 +601,8 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	ctx, span := bucketTracer.Start(ctx, "grpc.GetLedger")
 	defer span.End()
 
-	if req.GetLedger() == "" {
-		return nil, domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return nil, err
 	}
 
 	read := req.GetRead()
@@ -622,8 +622,8 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
-	if req.GetLedger() == "" {
-		return nil, domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return nil, err
 	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
@@ -647,8 +647,8 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if req.GetLedger() == "" {
-		return domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return err
 	}
 
 	opts := req.GetOptions()
@@ -874,8 +874,8 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	}
 	defer cleanup()
 
-	if req.GetLedger() == "" {
-		return domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return err
 	}
 
 	page, err := query.DecodeCursor(opts.GetCursor())
@@ -991,8 +991,8 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccountsRequest, stream servicepb.BucketService_AnalyzeAccountsServer) error {
-	if req.GetLedger() == "" {
-		return domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return err
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -1018,8 +1018,8 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeTransactionsRequest, stream servicepb.BucketService_AnalyzeTransactionsServer) error {
-	if req.GetLedger() == "" {
-		return domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return err
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -1071,8 +1071,8 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 }
 
 func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
-	if req.GetLedger() == "" {
-		return nil, domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return nil, err
 	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
@@ -1088,8 +1088,8 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if req.GetLedger() == "" {
-		return nil, domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return nil, err
 	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
@@ -1198,8 +1198,8 @@ func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, 
 }
 
 func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
-	if req.GetLedger() == "" {
-		return nil, domain.ErrLedgerNameRequired
+	if err := req.ValidateInput(); err != nil {
+		return nil, err
 	}
 
 	if req.GetMetadataKey() == "" {

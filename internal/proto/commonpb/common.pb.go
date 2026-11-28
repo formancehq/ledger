@@ -22603,6 +22603,54 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 	},
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71006,
+		Name:          "common.required_for_input",
+		Tag:           "varint,71006,opt,name=required_for_input",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         71007,
+		Name:          "common.non_zero_for_input",
+		Tag:           "varint,71007,opt,name=non_zero_for_input",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*uint32)(nil),
+		Field:         71008,
+		Name:          "common.max_bytes_for_input",
+		Tag:           "varint,71008,opt,name=max_bytes_for_input",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*uint32)(nil),
+		Field:         71009,
+		Name:          "common.exact_bytes_for_input",
+		Tag:           "varint,71009,opt,name=exact_bytes_for_input",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         71010,
+		Name:          "common.input_error_message",
+		Tag:           "bytes,71010,opt,name=input_error_message",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         71011,
+		Name:          "common.input_error_code",
+		Tag:           "bytes,71011,opt,name=input_error_code",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: ([]QueryTarget)(nil),
 		Field:         50123,
 		Name:          "common.allowed_query_targets",
@@ -22673,34 +22721,46 @@ var (
 
 // Extension fields to descriptorpb.FieldOptions.
 var (
+	// optional bool required_for_input = 71006;
+	E_RequiredForInput = &file_common_proto_extTypes[4]
+	// optional bool non_zero_for_input = 71007;
+	E_NonZeroForInput = &file_common_proto_extTypes[5]
+	// optional uint32 max_bytes_for_input = 71008;
+	E_MaxBytesForInput = &file_common_proto_extTypes[6]
+	// optional uint32 exact_bytes_for_input = 71009;
+	E_ExactBytesForInput = &file_common_proto_extTypes[7]
+	// optional string input_error_message = 71010;
+	E_InputErrorMessage = &file_common_proto_extTypes[8]
+	// optional string input_error_code = 71011;
+	E_InputErrorCode = &file_common_proto_extTypes[9]
 	// repeated common.QueryTarget allowed_query_targets = 50123;
-	E_AllowedQueryTargets = &file_common_proto_extTypes[4]
+	E_AllowedQueryTargets = &file_common_proto_extTypes[10]
 	// valid_on_no_query_target declares that an arm is intentionally valid on no
 	// QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
 	// requires instead of inferring "valid nowhere" from a missing annotation.
 	//
 	// optional bool valid_on_no_query_target = 50124;
-	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[5]
+	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[11]
 	// ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
 	// Explicit false classifies CONTROL; true classifies HISTORY. The generator
 	// rejects a missing annotation, so proto's false default cannot classify by
 	// accident.
 	//
 	// optional bool ledger_log_is_history = 50125;
-	E_LedgerLogIsHistory = &file_common_proto_extTypes[6]
+	E_LedgerLogIsHistory = &file_common_proto_extTypes[12]
 	// Sensitive projections reuse the detached public-view contract from EN-1632.
 	// Strings are masked; other field kinds are cleared. Never use for persistence.
 	//
 	// optional bool sensitive = 50126;
-	E_Sensitive = &file_common_proto_extTypes[7]
+	E_Sensitive = &file_common_proto_extTypes[13]
 	// Mask credentials in URL or PostgreSQL keyword/value connection strings.
 	//
 	// optional bool sensitive_url = 50127;
-	E_SensitiveUrl = &file_common_proto_extTypes[8]
+	E_SensitiveUrl = &file_common_proto_extTypes[14]
 	// Allowed coarse reasons for each typed audited failure variant.
 	//
 	// optional common.ErrorReason failure_reason = 50128;
-	E_FailureReason = &file_common_proto_extTypes[9]
+	E_FailureReason = &file_common_proto_extTypes[15]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -22746,12 +22806,12 @@ const file_common_proto_rawDesc = "" +
 	"\x02v0\x18\x01 \x01(\x06R\x02v0\x12\x0e\n" +
 	"\x02v1\x18\x02 \x01(\x06R\x02v1\x12\x0e\n" +
 	"\x02v2\x18\x03 \x01(\x06R\x02v2\x12\x0e\n" +
-	"\x02v3\x18\x04 \x01(\x06R\x02v3\"\x98\x01\n" +
-	"\aPosting\x12\x16\n" +
-	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
-	"\vdestination\x18\x02 \x01(\tR\vdestination\x12'\n" +
-	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256R\x06amount\x12\x14\n" +
-	"\x05asset\x18\x04 \x01(\tR\x05asset\x12\x14\n" +
+	"\x02v3\x18\x04 \x01(\x06R\x02v3\"\xdb\x03\n" +
+	"\aPosting\x12a\n" +
+	"\x06source\x18\x01 \x01(\tBI\xf8\xd5\"\x01\x92\xd6\"(ledger account address must not be empty\x9a\xd6\"\x15ACCOUNT_ADDRESS_EMPTYR\x06source\x12k\n" +
+	"\vdestination\x18\x02 \x01(\tBI\xf8\xd5\"\x01\x92\xd6\"(ledger account address must not be empty\x9a\xd6\"\x15ACCOUNT_ADDRESS_EMPTYR\vdestination\x12f\n" +
+	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256B=\xf0\xd5\"\x01\x92\xd6\"\x1aposting amount is required\x9a\xd6\"\x17POSTING_AMOUNT_REQUIREDR\x06amount\x12\x81\x01\n" +
+	"\x05asset\x18\x04 \x01(\tBk\xf8\xd5\"\x01\x92\xd6\"Rasset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]\x9a\xd6\"\rASSET_INVALIDR\x05asset\x12\x14\n" +
 	"\x05color\x18\x05 \x01(\tR\x05color\"\x96\x05\n" +
 	"\vTransaction\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12=\n" +
@@ -23008,10 +23068,10 @@ const file_common_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
 	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex:\x04\xd8\xd5\"\x01\"F\n" +
 	"\x19DeletedQueryCheckpointLog\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId:\x04\xd8\xd5\"\x01\"\xf1\x03\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId:\x04\xd8\xd5\"\x01\"\xbd\x04\n" +
 	"\n" +
-	"SinkConfig\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +
+	"SinkConfig\x12^\n" +
+	"\x04name\x18\x01 \x01(\tBJ\xf8\xd5\"\x01\x92\xd6\"(sink name and one sink type are required\x9a\xd6\"\x16SINK_CONFIG_INCOMPLETER\x04name\x12,\n" +
 	"\x04nats\x18\x02 \x01(\v2\x16.common.NatsSinkConfigH\x00R\x04nats\x12>\n" +
 	"\n" +
 	"clickhouse\x18\x03 \x01(\v2\x1c.common.ClickHouseSinkConfigH\x00R\n" +
@@ -23935,9 +23995,9 @@ const file_common_proto_rawDesc = "" +
 	"\x1aPostgresMirrorSourceConfig\x12\x16\n" +
 	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12<\n" +
 	"\faws_iam_auth\x18\x02 \x01(\v2\x1a.common.PostgresAwsIamAuthR\n" +
-	"awsIamAuth:\x04\xd8\xd5\"\x01\"Z\n" +
-	"\x12PostgresAwsIamAuth\x12\x16\n" +
-	"\x06region\x18\x01 \x01(\tR\x06region\x12&\n" +
+	"awsIamAuth:\x04\xd8\xd5\"\x01\"\xcd\x01\n" +
+	"\x12PostgresAwsIamAuth\x12\x88\x01\n" +
+	"\x06region\x18\x01 \x01(\tBp\xf8\xd5\"\x01\x92\xd6\"JmirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set\x9a\xd6\"\x1aMIRROR_IAM_REGION_REQUIREDR\x06region\x12&\n" +
 	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn:\x04\xd8\xd5\"\x01\"e\n" +
 	"\x0fMirrorSyncError\x12\x1e\n" +
 	"\amessage\x18\x01 \x01(\tB\x04\xf0\xbc\x18\x01R\amessage\x122\n" +
@@ -24126,9 +24186,9 @@ const file_common_proto_rawDesc = "" +
 	"\vparam_exact\x18\x04 \x01(\tH\x00R\n" +
 	"paramExact\x12'\n" +
 	"\x04role\x18\x05 \x01(\x0e2\x13.common.AddressRoleR\x04roleB\a\n" +
-	"\x05match\"}\n" +
-	"\rPreparedQuery\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
+	"\x05match\"\xc6\x01\n" +
+	"\rPreparedQuery\x12[\n" +
+	"\x04name\x18\x01 \x01(\tBG\xf8\xd5\"\x01\x92\xd6\"\x1fprepared query name is required\x9a\xd6\"\x1cPREPARED_QUERY_NAME_REQUIREDR\x04name\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12+\n" +
 	"\x06target\x18\x03 \x01(\x0e2\x13.common.QueryTargetR\x06target\"\x8e\x01\n" +
 	"\x10AggregatedVolume\x12\x14\n" +
@@ -24408,7 +24468,13 @@ const file_common_proto_rawDesc = "" +
 	"\vledger_json\x12\x1f.google.protobuf.MessageOptions\x18۪\x04 \x01(\bR\n" +
 	"ledgerJson:N\n" +
 	"\x13ledger_json_default\x12\x1c.google.protobuf.FileOptions\x18ܪ\x04 \x01(\bR\x11ledgerJsonDefault:O\n" +
-	"\x12ledger_json_manual\x12\x1f.google.protobuf.MessageOptions\x18ݪ\x04 \x01(\bR\x10ledgerJsonManual:h\n" +
+	"\x12ledger_json_manual\x12\x1f.google.protobuf.MessageOptions\x18ݪ\x04 \x01(\bR\x10ledgerJsonManual:M\n" +
+	"\x12required_for_input\x12\x1d.google.protobuf.FieldOptions\x18ު\x04 \x01(\bR\x10requiredForInput:L\n" +
+	"\x12non_zero_for_input\x12\x1d.google.protobuf.FieldOptions\x18ߪ\x04 \x01(\bR\x0fnonZeroForInput:N\n" +
+	"\x13max_bytes_for_input\x12\x1d.google.protobuf.FieldOptions\x18\xe0\xaa\x04 \x01(\rR\x10maxBytesForInput:R\n" +
+	"\x15exact_bytes_for_input\x12\x1d.google.protobuf.FieldOptions\x18\xe1\xaa\x04 \x01(\rR\x12exactBytesForInput:O\n" +
+	"\x13input_error_message\x12\x1d.google.protobuf.FieldOptions\x18\xe2\xaa\x04 \x01(\tR\x11inputErrorMessage:I\n" +
+	"\x10input_error_code\x12\x1d.google.protobuf.FieldOptions\x18\xe3\xaa\x04 \x01(\tR\x0einputErrorCode:h\n" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
@@ -25231,19 +25297,25 @@ var file_common_proto_depIdxs = []int32{
 	358, // 434: common.ledger_json:extendee -> google.protobuf.MessageOptions
 	359, // 435: common.ledger_json_default:extendee -> google.protobuf.FileOptions
 	358, // 436: common.ledger_json_manual:extendee -> google.protobuf.MessageOptions
-	360, // 437: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	360, // 438: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	360, // 439: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	360, // 440: common.sensitive:extendee -> google.protobuf.FieldOptions
-	360, // 441: common.sensitive_url:extendee -> google.protobuf.FieldOptions
-	360, // 442: common.failure_reason:extendee -> google.protobuf.FieldOptions
-	18,  // 443: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 444: common.allowed_query_targets:type_name -> common.QueryTarget
-	11,  // 445: common.failure_reason:type_name -> common.ErrorReason
-	446, // [446:446] is the sub-list for method output_type
-	446, // [446:446] is the sub-list for method input_type
-	443, // [443:446] is the sub-list for extension type_name
-	433, // [433:443] is the sub-list for extension extendee
+	360, // 437: common.required_for_input:extendee -> google.protobuf.FieldOptions
+	360, // 438: common.non_zero_for_input:extendee -> google.protobuf.FieldOptions
+	360, // 439: common.max_bytes_for_input:extendee -> google.protobuf.FieldOptions
+	360, // 440: common.exact_bytes_for_input:extendee -> google.protobuf.FieldOptions
+	360, // 441: common.input_error_message:extendee -> google.protobuf.FieldOptions
+	360, // 442: common.input_error_code:extendee -> google.protobuf.FieldOptions
+	360, // 443: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	360, // 444: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	360, // 445: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	360, // 446: common.sensitive:extendee -> google.protobuf.FieldOptions
+	360, // 447: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	360, // 448: common.failure_reason:extendee -> google.protobuf.FieldOptions
+	18,  // 449: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 450: common.allowed_query_targets:type_name -> common.QueryTarget
+	11,  // 451: common.failure_reason:type_name -> common.ErrorReason
+	452, // [452:452] is the sub-list for method output_type
+	452, // [452:452] is the sub-list for method input_type
+	449, // [449:452] is the sub-list for extension type_name
+	433, // [433:449] is the sub-list for extension extendee
 	0,   // [0:433] is the sub-list for field type_name
 }
 
@@ -25698,7 +25770,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   338,
-			NumExtensions: 10,
+			NumExtensions: 16,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

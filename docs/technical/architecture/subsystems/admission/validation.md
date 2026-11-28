@@ -2,6 +2,12 @@
 
 ## Principle
 
+Generated `ValidateInput` errors carry a protobuf message identity, field path,
+rule, and public message declared beside the rule in the schema. Admission
+returns generated semantic error types from `internal/proto` directly, without a field lookup table.
+The adapter retains the validation reason, public presentation, and existing
+sentinel comparisons. A new rule must declare its public message explicitly.
+
 Every write request is validated **twice**: once at admission (before consensus), once at the FSM (after consensus). The two layers don't duplicate each other — they catch different things, on purpose.
 
 | Layer | Validates | Why here |
@@ -40,9 +46,15 @@ not move any validator or change client behavior.
 
 | Rule | Admission | FSM | Notes |
 |------|-----------|-----|-------|
-| Explicit posting amount presence | ✅ | — | Every caller-supplied posting must carry a non-nil `amount`. HTTP omission or `null` and an absent gRPC message return `VALIDATION` (HTTP 400 / gRPC `InvalidArgument`). Numeric zero, decimal string `"0"` and a present empty gRPC `Uint256` remain valid. The entire batch is rejected before proposal, without an audit log, transaction, or frozen idempotency result. Historical committed nil amounts retain their zero interpretation during apply and replay. |
-| Account address shape (length, allowed chars) | ✅ | — | `ValidateAccountAddress` (`internal/domain/validation.go`). |
-| Asset code shape and precision range | ✅ | — | `ValidateAsset`. Precision encoded as `uint8` in Pebble keys; admission ensures it fits. |
+| Explicit posting amount presence | ✅ | — | `Posting.ValidateInput` requires a non-nil `amount` on newly admitted orders. HTTP omission or `null` and an absent gRPC message return the existing `VALIDATION` error (HTTP 400 / gRPC `InvalidArgument`). Numeric zero, decimal string `"0"` and a present empty gRPC `Uint256` remain valid. The entire batch is rejected before proposal, without an audit log, transaction, or frozen idempotency result. Historical committed nil amounts retain their zero interpretation during apply and replay. |
+| Explicit posting source, destination and asset | ✅ | ✅ | `Posting.ValidateInput` rejects empty values on new explicit postings. Admission then checks address and asset shape. These malformed requests now stop before Raft and do not create an audit entry. The FSM retains `validatePostings` for Numscript output and historical committed orders; its failures remain audited. The public account-address and asset error sentinels are unchanged. |
+| Transaction reference, account-type removal name and signing public-key byte lengths | ✅ | Varies | Generated `max_bytes_for_input` and `exact_bytes_for_input` checks run at the existing order-admission positions and retain the same public sentinels. The transaction and account-type bounds remain in the FSM for committed or replayed orders. New input-only annotations do not change persisted bytes or mixed-version apply behavior. |
+| Prepared-query update target presence | ✅ | — | `UpdatePreparedQueryRequest.ValidateInput` requires an explicit target before conversion to an order. `QUERY_TARGET_ACCOUNTS = 0` is valid when present. A missing target retains the existing public validation error; historical orders are not passed to this input validator. |
+| Prepared-query creation and sink configuration presence | ✅ | — | Generated checks on the converted orders reject a nil `query` or sink `config` at their existing admission positions. They retain the existing public errors and do not run during apply or replay. |
+| Prepared-query and sink names | ✅ | — | The generated scalar rule rejects empty names on new input. Existing prepared-query name shape checks and the sink oneof check remain in place, with their existing public errors. |
+| Mirror IAM region | ✅ | — | The generated scalar rule rejects an empty region only when IAM authentication is configured on a new mirror source. Existing committed mirror configurations are not revalidated. |
+| Account address shape (length, allowed chars) | ✅ | ✅ | `ValidateAccountAddress` (`internal/domain/validation.go`) checks explicit postings at admission and resolved postings in the FSM. |
+| Asset code shape and precision range | ✅ | ✅ | `ValidateAsset` checks explicit postings at admission and resolved postings in the FSM. Precision encoded as `uint8` in Pebble keys. |
 | Metadata key shape (non-empty, charset `[a-zA-Z0-9._:/-]`) | ✅ | — | `ValidateMetadataKey`. Characters outside the set — a null byte above all — would break Pebble key boundaries. Shape only: the key's *size* is a separate rule, below. |
 | Metadata value shape (no null byte) | ✅ | — | `ValidateMetadataValue`. |
 | Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | — | ✅ | Existing handlers check the policy committed at apply after idempotency lookup. Fresh refusals are audited; retained outcomes replay. Public admission retains structural checks. Mirror workers keep their separate preflight and retry contract. See [metadata limits](metadata-limits.md). |
@@ -50,7 +62,7 @@ not move any validator or change client behavior.
 | Event sink name and type | ✅ | — | New `AddEventsSink` orders require a nonempty name and one sink variant. |
 | Ledger mode and mirror source | ✅ | — | `MIRROR` creation requires a source configuration; `NORMAL` creation must omit it. |
 | HTTP mirror base URL syntax, HTTP(S) scheme and nonempty hostname | ✅ | — | Rejected with a safe `VALIDATION` error before Raft or ledger creation. No connectivity probe or configuration rewrite; raw URL parser errors may contain credentials and must not be exposed. |
-| Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |
+| Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `LedgerScopedOrder.ValidateInput` rejects an empty name at admission; `ValidateLedgerName` retains the character and length checks and their public errors. The fixed size matters because ledger names pad into Pebble keys. |
 | Account type name ≤ 256 bytes and pattern ≤ 4096 bytes | ✅ | ✅ | Admission rejects oversized inputs before consensus. The FSM repeats the bounds for replay and directly proposed orders so error facts retain the original value rather than a digest. |
 | Transaction reference ≤ 4096 bytes | ✅ | ✅ | The conflict fact contains the exact reference; both layers reject an oversized reference before a conflict can be audited. |
 | Idempotency key (UTF-8, ≤ 256 bytes) | ✅ | — | The *uniqueness* of the key is checked at FSM time against `SubIdempKeys`; the *shape* is checked at admission. |

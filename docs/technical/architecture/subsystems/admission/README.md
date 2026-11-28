@@ -4,6 +4,16 @@ Admission (`internal/application/admission`) prepares Raft proposals. Client `Ap
 
 ## Documents
 
+Admission invokes generated `ValidateInput` checks for ledger-scoped order
+names, explicit posting amounts, addresses and assets, prepared-query update targets, query presence and names,
+sink configuration presence and names, mirror IAM regions, transaction reference
+lengths, account-type removal names, and signing public-key lengths before proposing
+new orders. It maps
+failures through a generic adapter that retains the existing public validation errors. Validators on order messages
+run only in admission; the FSM does not invoke them, so historical orders retain
+their replay semantics. The FSM continues to validate postings produced by
+Numscript and historical orders after resolution.
+
 | Document | Description |
 |----------|-------------|
 | [pipeline.md](pipeline.md) | End-to-end pipeline from gRPC request to Raft proposal: gate, signature, order conversion, numscript, preload, proposal guard, predicted-index trick. |

@@ -2297,8 +2297,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 	if update, ok := req.GetType().(*servicepb.Request_UpdatePreparedQuery); ok {
-		if update.UpdatePreparedQuery == nil || update.UpdatePreparedQuery.Target == nil {
-			return nil, domain.ErrPreparedQueryTargetRequired
+		if err := update.UpdatePreparedQuery.ValidateInput(); err != nil {
+			return nil, err
 		}
 	}
 

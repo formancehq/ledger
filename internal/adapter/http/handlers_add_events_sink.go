@@ -27,7 +27,12 @@ func (s *Server) handleAddEventsSink(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if config.GetName() == "" || config.GetType() == nil {
+	if err := config.ValidateInput(); err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
+	}
+	if config.GetType() == nil {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("sink name and one sink type are required"))
 
 		return

@@ -10,9 +10,49 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestGeneratedInputByteLimitBoundaries(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		valid    func() error
+		invalid  func() error
+		wantRule string
+	}{
+		{"transaction reference", func() error {
+			return (&raftcmdpb.CreateTransactionOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.CreateTransactionOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1)}).ValidateInput()
+		}, "max_bytes"},
+		{"script reference", func() error {
+			return (&raftcmdpb.ExecuteNumscriptOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.ExecuteNumscriptOrder{Reference: strings.Repeat("r", domain.MaxTransactionReferenceLength+1)}).ValidateInput()
+		}, "max_bytes"},
+		{"account type name", func() error {
+			return (&raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", domain.MaxAccountTypeNameLength)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.RemoveAccountTypeOrder{Name: strings.Repeat("a", domain.MaxAccountTypeNameLength+1)}).ValidateInput()
+		}, "max_bytes"},
+		{"signing key", func() error {
+			return (&raftcmdpb.RegisterSigningKeyOrder{PublicKey: bytes.Repeat([]byte{1}, 32)}).ValidateInput()
+		}, func() error {
+			return (&raftcmdpb.RegisterSigningKeyOrder{PublicKey: bytes.Repeat([]byte{1}, 31)}).ValidateInput()
+		}, "exact_bytes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, tc.valid())
+			var fieldErr *proto.FieldError
+			require.ErrorAs(t, tc.invalid(), &fieldErr)
+			require.Equal(t, tc.wantRule, fieldErr.Rule)
+		})
+	}
+}
 
 func TestValidateOrder_AccountTypeFactBounds(t *testing.T) {
 	t.Parallel()
@@ -1045,6 +1085,41 @@ func TestValidateOrderContent(t *testing.T) {
 				Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD"}},
 			},
 			wantErr: ErrPostingAmountRequired,
+		},
+		{
+			name: "posting without source",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAccountAddressEmpty,
+		},
+		{
+			name: "posting without destination",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "world", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAccountAddressEmpty,
+		},
+		{
+			name: "posting without asset",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAssetInvalid,
+		},
+		{
+			name: "posting with malformed source",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "bad source", Destination: "users:alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAccountAddressInvalidChar,
+		},
+		{
+			name: "posting with malformed asset",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "usd", Amount: commonpb.NewUint256FromUint64(1)}},
+			},
+			wantErr: domain.ErrAssetInvalid,
 		},
 		{
 			name: "second posting without amount",

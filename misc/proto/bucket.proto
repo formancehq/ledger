@@ -195,7 +195,7 @@ service BucketService {
 // ============================================================================
 
 message GetAccountRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   string address = 2;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 3;
@@ -206,7 +206,7 @@ message GetAccountRequest {
 }
 
 message GetTransactionRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   fixed64 transaction_id = 2;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 3;
@@ -218,12 +218,12 @@ message GetTransactionResponse {
 }
 
 message ListTransactionsRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   common.ListOptions options = 2;
 }
 
 message ListAccountsRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   common.ListOptions options = 2;
 }
 
@@ -248,7 +248,7 @@ message ListLedgersRequest {
 }
 
 message GetLedgerRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   common.ReadOptions read = 2;
 }
 
@@ -1077,7 +1077,7 @@ message GetAuditEntryRequest {
 
 message ListLogsRequest {
   // ledger is the required ledger name to scope the log listing.
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   common.ListOptions options = 2;
 }
 
@@ -1124,7 +1124,7 @@ message MetadataFieldStatus {
 // ============================================================================
 
 message AnalyzeAccountsRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   // variable_threshold is the max distinct children before a trie node is classified
   // as variable. 0 uses the default (10).
   uint32 variable_threshold = 2;
@@ -1188,7 +1188,7 @@ enum PatternSegmentType {
 // ============================================================================
 
 message AnalyzeTransactionsRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   // variable_threshold is the max distinct children before a trie node is classified
   // as variable. 0 uses the default (10).
   uint32 variable_threshold = 2;
@@ -1270,7 +1270,7 @@ message UpdatePreparedQueryRequest {
   common.QueryFilter filter = 3;
   // Required by admission: replaces the query target along with the filter.
   // Presence is tracked so omission can be rejected even when ACCOUNTS is 0.
-  optional common.QueryTarget target = 4;
+  optional common.QueryTarget target = 4 [(common.required_for_input) = true, (common.input_error_message) = "prepared query target is required", (common.input_error_code) = "PREPARED_QUERY_TARGET_REQUIRED"];
 }
 
 message DeletePreparedQueryRequest {
@@ -1398,13 +1398,13 @@ message ListIndexesRequest {
 }
 
 message GetLedgerStatsRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 2;
 }
 
 message AggregateVolumesRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   common.QueryFilter filter = 2;
   // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
   // under the highest precision observed, with lower-precision amounts rescaled.
@@ -1579,7 +1579,7 @@ enum InspectIndexMode {
 }
 
 message InspectIndexRequest {
-  string ledger = 1;
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   common.TargetType target_type = 2;
   string metadata_key = 3;
   InspectIndexMode mode = 4;
