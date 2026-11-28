@@ -79,6 +79,7 @@ extend google.protobuf.FieldOptions {
   uint32 max_bytes_for_input = 71008;
   uint32 exact_bytes_for_input = 71009;
   string input_error_message = 71010;
+  string input_error_code = 71011;
 }
 
 // ============================================================================
@@ -134,10 +135,10 @@ message Uint256 {
 
 // Posting represents a single posting in a transaction
 message Posting {
-  string source = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger account address must not be empty"];
-  string destination = 2 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger account address must not be empty"];
-  Uint256 amount = 3 [(common.required_for_input) = true, (common.input_error_message) = "posting amount is required"];
-  string asset = 4 [(common.non_zero_for_input) = true, (common.input_error_message) = "asset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]"];
+  string source = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger account address must not be empty", (common.input_error_code) = "ACCOUNT_ADDRESS_EMPTY"];
+  string destination = 2 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger account address must not be empty", (common.input_error_code) = "ACCOUNT_ADDRESS_EMPTY"];
+  Uint256 amount = 3 [(common.required_for_input) = true, (common.input_error_message) = "posting amount is required", (common.input_error_code) = "POSTING_AMOUNT_REQUIRED"];
+  string asset = 4 [(common.non_zero_for_input) = true, (common.input_error_message) = "asset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]", (common.input_error_code) = "ASSET_INVALID"];
   // Color of the funds being moved. The empty string is the "uncolored" bucket
   // and is treated as just another color from a segregation standpoint.
   // Color values are constrained to ^[A-Z]*$ at admission time.
@@ -697,7 +698,7 @@ message DeletedQueryCheckpointLog {
 // SinkConfig wraps a single sink configuration with per-sink settings.
 message SinkConfig {
 	option (ledger_json) = true;
-  string name = 1 [(non_zero_for_input) = true, (input_error_message) = "sink name and one sink type are required"];  // Stable identifier for per-sink cursor and status keys
+  string name = 1 [(non_zero_for_input) = true, (input_error_message) = "sink name and one sink type are required", (input_error_code) = "SINK_CONFIG_INCOMPLETE"];  // Stable identifier for per-sink cursor and status keys
   oneof type {
     NatsSinkConfig nats = 2;
     ClickHouseSinkConfig clickhouse = 3;
@@ -2020,7 +2021,7 @@ message PostgresMirrorSourceConfig {
 
 message PostgresAwsIamAuth {
 	option (ledger_json) = true;
-  string region = 1 [(non_zero_for_input) = true, (input_error_message) = "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set"];  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
+  string region = 1 [(non_zero_for_input) = true, (input_error_message) = "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set", (input_error_code) = "MIRROR_IAM_REGION_REQUIRED"];  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
   // Optional STS role ARN to assume before minting the RDS IAM token. When
   // set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
   // with the assumed credentials, decoupling the per-mirror IAM identity from
@@ -2701,7 +2702,7 @@ enum QueryMode {
 // (where the query is being created or invoked) on the surrounding request /
 // LedgerScopedOrder; it is intentionally NOT a field on the value itself.
 message PreparedQuery {
-  string name = 1 [(non_zero_for_input) = true, (input_error_message) = "prepared query name is required"];
+  string name = 1 [(non_zero_for_input) = true, (input_error_message) = "prepared query name is required", (input_error_code) = "PREPARED_QUERY_NAME_REQUIRED"];
   // Nil means match all entities in target. Empty/conditionless messages are
   // invalid and must not be used as a match-all representation.
   QueryFilter filter = 2;

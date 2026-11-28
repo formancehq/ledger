@@ -4,7 +4,7 @@
 
 Generated `ValidateInput` errors carry a protobuf message identity, field path,
 rule, and public message declared beside the rule in the schema. Admission
-converts them through `domain.InputValidation` without a field lookup table.
+returns generated semantic error types from `internal/proto` directly, without a field lookup table.
 The adapter retains the validation reason, public presentation, and existing
 sentinel comparisons. A new rule must declare its public message explicitly.
 

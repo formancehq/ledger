@@ -179,7 +179,7 @@ func validateOrderAccountType(order *raftcmdpb.Order) domain.Describable {
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 		if d.RemoveAccountType != nil {
 			if err := d.RemoveAccountType.ValidateInput(); err != nil {
-				return domain.InputValidation(err)
+				return err
 			}
 		}
 	}
@@ -229,7 +229,7 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 	if err := ls.ValidateInput(); err != nil {
-		return domain.InputValidation(err)
+		return err
 	}
 
 	if err := domain.ValidateLedgerName(ls.GetLedger()); err != nil {
@@ -308,14 +308,14 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		o = data.CreateTransaction
 		if o != nil {
 			if err := o.ValidateInput(); err != nil {
-				return domain.InputValidation(err)
+				return err
 			}
 		}
 	case *raftcmdpb.LedgerApplyOrder_ExecuteNumscript:
 		execute = true
 		if data.ExecuteNumscript != nil {
 			if err := data.ExecuteNumscript.ValidateInput(); err != nil {
-				return domain.InputValidation(err)
+				return err
 			}
 		}
 		o = &raftcmdpb.CreateTransactionOrder{Script: data.ExecuteNumscript.GetScript(), NumscriptReference: data.ExecuteNumscript.GetNumscriptReference(), Reference: data.ExecuteNumscript.GetReference()}
@@ -346,7 +346,7 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 
 	for _, posting := range o.GetPostings() {
 		if err := posting.ValidateInput(); err != nil {
-			return domain.InputValidation(err)
+			return err
 		}
 		if err := domain.ValidateAccountAddress(posting.GetSource()); err != nil {
 			return err
@@ -411,11 +411,11 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	switch p := order.GetLedgerScoped().GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
 		if err := p.CreatePreparedQuery.ValidateInput(); err != nil {
-			return domain.InputValidation(err)
+			return err
 		}
 		q := p.CreatePreparedQuery.GetQuery()
 		if err := q.ValidateInput(); err != nil {
-			return domain.InputValidation(err)
+			return err
 		}
 
 		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
@@ -439,7 +439,7 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		return domain.ValidateFilterAdmissionShape(q.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
 		if err := p.UpdatePreparedQuery.ValidateInput(); err != nil {
-			return domain.InputValidation(err)
+			return err
 		}
 		if err := domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName()); err != nil {
 			return err
@@ -459,7 +459,7 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		return domain.ValidateFilterAdmissionShape(p.UpdatePreparedQuery.GetFilter())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		if err := p.DeletePreparedQuery.ValidateInput(); err != nil {
-			return domain.InputValidation(err)
+			return err
 		}
 
 		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
@@ -537,7 +537,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	if err := iam.ValidateInput(); err != nil {
-		return domain.InputValidation(err)
+		return err
 	}
 
 	// Driver option and IAM TLS validation belong to source construction. The
@@ -557,7 +557,7 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	if err := reg.RegisterSigningKey.ValidateInput(); err != nil {
-		return domain.InputValidation(err)
+		return err
 	}
 
 	return nil

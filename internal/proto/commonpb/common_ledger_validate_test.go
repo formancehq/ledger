@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
+	"github.com/formancehq/ledger/v3/internal/proto"
 )
 
 func TestPostingValidateInputPresence(t *testing.T) {
@@ -22,7 +22,7 @@ func TestPostingValidateInputPresence(t *testing.T) {
 		{"missing asset", &Posting{Source: "world", Destination: "users:alice", Amount: &Uint256{}}, "asset"},
 	} {
 		err := tt.posting.ValidateInput()
-		var fieldErr *inputvalidation.FieldError
+		var fieldErr *proto.FieldError
 		if !errors.As(err, &fieldErr) || fieldErr.Path != tt.field {
 			t.Fatalf("%s: expected %s field error, got %v", tt.name, tt.field, err)
 		}

@@ -2,46 +2,46 @@
 package commonpb
 
 import (
-	inputvalidation "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
+	proto "github.com/formancehq/ledger/v3/internal/proto"
 )
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *Posting) ValidateInput() error {
+func (m *Posting) ValidateInput() proto.ValidationError {
 	if m == nil || m.Source == "" {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "source", Rule: "non_zero", PublicMessage: "ledger account address must not be empty"}
+		return &proto.AccountAddressEmpty{FieldError: proto.FieldError{Message: "common.Posting", Path: "source", Rule: "non_zero", PublicMessage: "ledger account address must not be empty", Code: "ACCOUNT_ADDRESS_EMPTY"}}
 	}
 	if m == nil || m.Destination == "" {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "destination", Rule: "non_zero", PublicMessage: "ledger account address must not be empty"}
+		return &proto.AccountAddressEmpty{FieldError: proto.FieldError{Message: "common.Posting", Path: "destination", Rule: "non_zero", PublicMessage: "ledger account address must not be empty", Code: "ACCOUNT_ADDRESS_EMPTY"}}
 	}
 	if m == nil || m.Amount == nil {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "amount", Rule: "required", PublicMessage: "posting amount is required"}
+		return &proto.PostingAmountRequired{FieldError: proto.FieldError{Message: "common.Posting", Path: "amount", Rule: "required", PublicMessage: "posting amount is required", Code: "POSTING_AMOUNT_REQUIRED"}}
 	}
 	if m == nil || m.Asset == "" {
-		return &inputvalidation.FieldError{Message: "common.Posting", Path: "asset", Rule: "non_zero", PublicMessage: "asset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]"}
+		return &proto.AssetInvalid{FieldError: proto.FieldError{Message: "common.Posting", Path: "asset", Rule: "non_zero", PublicMessage: "asset must match [A-Z][A-Z0-9]{0,16}(/[1-9][0-9]{0,2})? with precision in [1, 255]", Code: "ASSET_INVALID"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *SinkConfig) ValidateInput() error {
+func (m *SinkConfig) ValidateInput() proto.ValidationError {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Message: "common.SinkConfig", Path: "name", Rule: "non_zero", PublicMessage: "sink name and one sink type are required"}
+		return &proto.SinkConfigIncomplete{FieldError: proto.FieldError{Message: "common.SinkConfig", Path: "name", Rule: "non_zero", PublicMessage: "sink name and one sink type are required", Code: "SINK_CONFIG_INCOMPLETE"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *PostgresAwsIamAuth) ValidateInput() error {
+func (m *PostgresAwsIamAuth) ValidateInput() proto.ValidationError {
 	if m == nil || m.Region == "" {
-		return &inputvalidation.FieldError{Message: "common.PostgresAwsIamAuth", Path: "region", Rule: "non_zero", PublicMessage: "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set"}
+		return &proto.MirrorIamRegionRequired{FieldError: proto.FieldError{Message: "common.PostgresAwsIamAuth", Path: "region", Rule: "non_zero", PublicMessage: "mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set", Code: "MIRROR_IAM_REGION_REQUIRED"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *PreparedQuery) ValidateInput() error {
+func (m *PreparedQuery) ValidateInput() proto.ValidationError {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Message: "common.PreparedQuery", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required"}
+		return &proto.PreparedQueryNameRequired{FieldError: proto.FieldError{Message: "common.PreparedQuery", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required", Code: "PREPARED_QUERY_NAME_REQUIRED"}}
 	}
 	return nil
 }

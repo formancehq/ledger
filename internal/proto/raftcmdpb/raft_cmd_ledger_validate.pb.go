@@ -2,77 +2,77 @@
 package raftcmdpb
 
 import (
-	inputvalidation "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
+	proto "github.com/formancehq/ledger/v3/internal/proto"
 )
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *LedgerScopedOrder) ValidateInput() error {
+func (m *LedgerScopedOrder) ValidateInput() proto.ValidationError {
 	if m == nil || m.Ledger == "" {
-		return &inputvalidation.FieldError{Message: "raft.LedgerScopedOrder", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required"}
+		return &proto.LedgerNameRequired{FieldError: proto.FieldError{Message: "raft.LedgerScopedOrder", Path: "ledger", Rule: "non_zero", PublicMessage: "ledger name is required", Code: "LEDGER_NAME_REQUIRED"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *CreatePreparedQueryOrder) ValidateInput() error {
+func (m *CreatePreparedQueryOrder) ValidateInput() proto.ValidationError {
 	if m == nil || m.Query == nil {
-		return &inputvalidation.FieldError{Message: "raft.CreatePreparedQueryOrder", Path: "query", Rule: "required", PublicMessage: "prepared query payload is required"}
+		return &proto.PreparedQueryRequired{FieldError: proto.FieldError{Message: "raft.CreatePreparedQueryOrder", Path: "query", Rule: "required", PublicMessage: "prepared query payload is required", Code: "PREPARED_QUERY_REQUIRED"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *UpdatePreparedQueryOrder) ValidateInput() error {
+func (m *UpdatePreparedQueryOrder) ValidateInput() proto.ValidationError {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Message: "raft.UpdatePreparedQueryOrder", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required"}
+		return &proto.PreparedQueryNameRequired{FieldError: proto.FieldError{Message: "raft.UpdatePreparedQueryOrder", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required", Code: "PREPARED_QUERY_NAME_REQUIRED"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *DeletePreparedQueryOrder) ValidateInput() error {
+func (m *DeletePreparedQueryOrder) ValidateInput() proto.ValidationError {
 	if m == nil || m.Name == "" {
-		return &inputvalidation.FieldError{Message: "raft.DeletePreparedQueryOrder", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required"}
+		return &proto.PreparedQueryNameRequired{FieldError: proto.FieldError{Message: "raft.DeletePreparedQueryOrder", Path: "name", Rule: "non_zero", PublicMessage: "prepared query name is required", Code: "PREPARED_QUERY_NAME_REQUIRED"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *AddEventsSinkOrder) ValidateInput() error {
+func (m *AddEventsSinkOrder) ValidateInput() proto.ValidationError {
 	if m == nil || m.Config == nil {
-		return &inputvalidation.FieldError{Message: "raft.AddEventsSinkOrder", Path: "config", Rule: "required", PublicMessage: "sink name and one sink type are required"}
+		return &proto.SinkConfigIncomplete{FieldError: proto.FieldError{Message: "raft.AddEventsSinkOrder", Path: "config", Rule: "required", PublicMessage: "sink name and one sink type are required", Code: "SINK_CONFIG_INCOMPLETE"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *RegisterSigningKeyOrder) ValidateInput() error {
+func (m *RegisterSigningKeyOrder) ValidateInput() proto.ValidationError {
 	if m == nil || len(m.PublicKey) != 32 {
-		return &inputvalidation.FieldError{Message: "raft.RegisterSigningKeyOrder", Path: "public_key", Rule: "exact_bytes", PublicMessage: "signing key public_key must be exactly 32 bytes (Ed25519)"}
+		return &proto.SigningKeyInvalidLength{FieldError: proto.FieldError{Message: "raft.RegisterSigningKeyOrder", Path: "public_key", Rule: "exact_bytes", PublicMessage: "signing key public_key must be exactly 32 bytes (Ed25519)", Code: "SIGNING_KEY_INVALID_LENGTH"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *RemoveAccountTypeOrder) ValidateInput() error {
+func (m *RemoveAccountTypeOrder) ValidateInput() proto.ValidationError {
 	if m == nil || len(m.Name) > 256 {
-		return &inputvalidation.FieldError{Message: "raft.RemoveAccountTypeOrder", Path: "name", Rule: "max_bytes", PublicMessage: "account type name exceeds maximum length of 256 bytes"}
+		return &proto.AccountTypeNameTooLong{FieldError: proto.FieldError{Message: "raft.RemoveAccountTypeOrder", Path: "name", Rule: "max_bytes", PublicMessage: "account type name exceeds maximum length of 256 bytes", Code: "ACCOUNT_TYPE_NAME_TOO_LONG"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *CreateTransactionOrder) ValidateInput() error {
+func (m *CreateTransactionOrder) ValidateInput() proto.ValidationError {
 	if m == nil || len(m.Reference) > 4096 {
-		return &inputvalidation.FieldError{Message: "raft.CreateTransactionOrder", Path: "reference", Rule: "max_bytes", PublicMessage: "transaction reference exceeds maximum length of 4096 bytes"}
+		return &proto.TransactionReferenceTooLong{FieldError: proto.FieldError{Message: "raft.CreateTransactionOrder", Path: "reference", Rule: "max_bytes", PublicMessage: "transaction reference exceeds maximum length of 4096 bytes", Code: "TRANSACTION_REFERENCE_TOO_LONG"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *ExecuteNumscriptOrder) ValidateInput() error {
+func (m *ExecuteNumscriptOrder) ValidateInput() proto.ValidationError {
 	if m == nil || len(m.Reference) > 4096 {
-		return &inputvalidation.FieldError{Message: "raft.ExecuteNumscriptOrder", Path: "reference", Rule: "max_bytes", PublicMessage: "transaction reference exceeds maximum length of 4096 bytes"}
+		return &proto.TransactionReferenceTooLong{FieldError: proto.FieldError{Message: "raft.ExecuteNumscriptOrder", Path: "reference", Rule: "max_bytes", PublicMessage: "transaction reference exceeds maximum length of 4096 bytes", Code: "TRANSACTION_REFERENCE_TOO_LONG"}}
 	}
 	return nil
 }

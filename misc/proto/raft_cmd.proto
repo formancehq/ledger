@@ -91,7 +91,7 @@ message OrderTechnical {
 // attribution and admission scope checks; payload sub-messages must not carry
 // their own ledger field.
 message LedgerScopedOrder {
-  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required"];
+  string ledger = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "ledger name is required", (common.input_error_code) = "LEDGER_NAME_REQUIRED"];
   oneof payload {
     LedgerApplyOrder apply = 2;
     CreateLedgerOrder create_ledger = 3;
@@ -127,11 +127,11 @@ message SystemScopedOrder {
 }
 
 message CreatePreparedQueryOrder {
-  common.PreparedQuery query = 1 [(common.required_for_input) = true, (common.input_error_message) = "prepared query payload is required"];
+  common.PreparedQuery query = 1 [(common.required_for_input) = true, (common.input_error_message) = "prepared query payload is required", (common.input_error_code) = "PREPARED_QUERY_REQUIRED"];
 }
 
 message UpdatePreparedQueryOrder {
-  string name = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "prepared query name is required"];
+  string name = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "prepared query name is required", (common.input_error_code) = "PREPARED_QUERY_NAME_REQUIRED"];
   common.QueryFilter filter = 2;
   // Omitted by historical orders and existing clients, in which case the
   // stored target is retained. New updates may replace the target atomically.
@@ -139,11 +139,11 @@ message UpdatePreparedQueryOrder {
 }
 
 message DeletePreparedQueryOrder {
-  string name = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "prepared query name is required"];
+  string name = 1 [(common.non_zero_for_input) = true, (common.input_error_message) = "prepared query name is required", (common.input_error_code) = "PREPARED_QUERY_NAME_REQUIRED"];
 }
 
 message AddEventsSinkOrder {
-  common.SinkConfig config = 1 [(common.required_for_input) = true, (common.input_error_message) = "sink name and one sink type are required"];
+  common.SinkConfig config = 1 [(common.required_for_input) = true, (common.input_error_message) = "sink name and one sink type are required", (common.input_error_code) = "SINK_CONFIG_INCOMPLETE"];
 }
 
 message RemoveEventsSinkOrder {
@@ -154,7 +154,7 @@ message RemoveEventsSinkOrder {
 // Signing key management orders
 message RegisterSigningKeyOrder {
   string key_id = 1;
-  bytes public_key = 2 [(common.exact_bytes_for_input) = 32, (common.input_error_message) = "signing key public_key must be exactly 32 bytes (Ed25519)"];
+  bytes public_key = 2 [(common.exact_bytes_for_input) = 32, (common.input_error_message) = "signing key public_key must be exactly 32 bytes (Ed25519)", (common.input_error_code) = "SIGNING_KEY_INVALID_LENGTH"];
   string parent_key_id = 3;
 }
 
@@ -333,7 +333,7 @@ message AddAccountTypeOrder {
 
 // RemoveAccountTypeOrder removes an account type from the ledger.
 message RemoveAccountTypeOrder {
-  string name = 1 [(common.max_bytes_for_input) = 256, (common.input_error_message) = "account type name exceeds maximum length of 256 bytes"];
+  string name = 1 [(common.max_bytes_for_input) = 256, (common.input_error_message) = "account type name exceeds maximum length of 256 bytes", (common.input_error_code) = "ACCOUNT_TYPE_NAME_TOO_LONG"];
 }
 
 // UpdateDefaultEnforcementModeOrder updates the ledger's default enforcement mode for unmatched accounts.
@@ -357,7 +357,7 @@ message CreateTransactionOrder {
   repeated common.Posting postings = 1;
   common.Script script = 2;
   common.Timestamp timestamp = 3;
-  string reference = 4 [(common.max_bytes_for_input) = 4096, (common.input_error_message) = "transaction reference exceeds maximum length of 4096 bytes"];
+  string reference = 4 [(common.max_bytes_for_input) = 4096, (common.input_error_message) = "transaction reference exceeds maximum length of 4096 bytes", (common.input_error_code) = "TRANSACTION_REFERENCE_TOO_LONG"];
   map<string, common.MetadataValue> metadata = 5;
   map<string, common.MetadataMap> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
@@ -373,7 +373,7 @@ message ExecuteNumscriptOrder {
   common.Timestamp timestamp = 3;
   map<string, common.MetadataValue> metadata = 4;
   map<string, common.MetadataMap> account_metadata = 5;
-  string reference = 6 [(common.max_bytes_for_input) = 4096, (common.input_error_message) = "transaction reference exceeds maximum length of 4096 bytes"];
+  string reference = 6 [(common.max_bytes_for_input) = 4096, (common.input_error_message) = "transaction reference exceeds maximum length of 4096 bytes", (common.input_error_code) = "TRANSACTION_REFERENCE_TOO_LONG"];
 }
 
 // NumscriptReference identifies a numscript from the library to use for a

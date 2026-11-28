@@ -10,8 +10,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -47,7 +47,7 @@ func TestGeneratedInputByteLimitBoundaries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.NoError(t, tc.valid())
-			var fieldErr *inputvalidation.FieldError
+			var fieldErr *proto.FieldError
 			require.ErrorAs(t, tc.invalid(), &fieldErr)
 			require.Equal(t, tc.wantRule, fieldErr.Rule)
 		})

@@ -80,10 +80,11 @@ type errValidation struct {
 	err  error
 }
 
-func (e *errValidation) Error() string { return e.err.Error() }
-func (e *errValidation) Unwrap() error { return e.err }
-func (*errValidation) Kind() ErrorKind { return KindValidation }
-func (*errValidation) Reason() string  { return ErrReasonValidation }
+func (e *errValidation) Error() string          { return e.err.Error() }
+func (e *errValidation) ValidationCode() string { return e.code }
+func (e *errValidation) Unwrap() error          { return e.err }
+func (*errValidation) Kind() ErrorKind          { return KindValidation }
+func (*errValidation) Reason() string           { return ErrReasonValidation }
 func (e *errValidation) FailureDetails() *commonpb.FailureDetails {
 	return mustFailureDetails(e.code, nil)
 }

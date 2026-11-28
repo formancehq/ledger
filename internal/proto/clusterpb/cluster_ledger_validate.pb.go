@@ -2,29 +2,29 @@
 package clusterpb
 
 import (
-	inputvalidation "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"
+	proto "github.com/formancehq/ledger/v3/internal/proto"
 )
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *BeginDrainRequest) ValidateInput() error {
+func (m *BeginDrainRequest) ValidateInput() proto.ValidationError {
 	if m == nil || m.Epoch == "" {
-		return &inputvalidation.FieldError{Message: "cluster.BeginDrainRequest", Path: "epoch", Rule: "non_zero", PublicMessage: "drain epoch must contain 1 to 128 bytes"}
+		return &proto.DrainEpochInvalid{FieldError: proto.FieldError{Message: "cluster.BeginDrainRequest", Path: "epoch", Rule: "non_zero", PublicMessage: "drain epoch must contain 1 to 128 bytes", Code: "DRAIN_EPOCH_INVALID"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *EndDrainRequest) ValidateInput() error {
+func (m *EndDrainRequest) ValidateInput() proto.ValidationError {
 	if m == nil || m.Epoch == "" {
-		return &inputvalidation.FieldError{Message: "cluster.EndDrainRequest", Path: "epoch", Rule: "non_zero", PublicMessage: "drain epoch must contain 1 to 128 bytes"}
+		return &proto.DrainEpochInvalid{FieldError: proto.FieldError{Message: "cluster.EndDrainRequest", Path: "epoch", Rule: "non_zero", PublicMessage: "drain epoch must contain 1 to 128 bytes", Code: "DRAIN_EPOCH_INVALID"}}
 	}
 	return nil
 }
 
 // ValidateInput checks declared direct-field input requirements.
-func (m *TransferLeadershipRequest) ValidateInput() error {
+func (m *TransferLeadershipRequest) ValidateInput() proto.ValidationError {
 	if m == nil || m.Transferee == 0 {
-		return &inputvalidation.FieldError{Message: "cluster.TransferLeadershipRequest", Path: "transferee", Rule: "non_zero", PublicMessage: "transferee node ID must be non-zero"}
+		return &proto.TransfereeNodeIdRequired{FieldError: proto.FieldError{Message: "cluster.TransferLeadershipRequest", Path: "transferee", Rule: "non_zero", PublicMessage: "transferee node ID must be non-zero", Code: "TRANSFEREE_NODE_ID_REQUIRED"}}
 	}
 	return nil
 }

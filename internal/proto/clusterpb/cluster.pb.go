@@ -2422,14 +2422,14 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"\rcluster.proto\x12\acluster\x1a\fcommon.proto\"1\n" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"Z\n" +
-	"\x11BeginDrainRequest\x12E\n" +
-	"\x05epoch\x18\x01 \x01(\tB/\xf8\xd5\"\x01\x92\xd6\"'drain epoch must contain 1 to 128 bytesR\x05epoch\"W\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"q\n" +
+	"\x11BeginDrainRequest\x12\\\n" +
+	"\x05epoch\x18\x01 \x01(\tBF\xf8\xd5\"\x01\x92\xd6\"'drain epoch must contain 1 to 128 bytes\x9a\xd6\"\x13DRAIN_EPOCH_INVALIDR\x05epoch\"W\n" +
 	"\x12BeginDrainResponse\x12!\n" +
 	"\fcutoff_index\x18\x01 \x01(\x06R\vcutoffIndex\x12\x18\n" +
-	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"X\n" +
-	"\x0fEndDrainRequest\x12E\n" +
-	"\x05epoch\x18\x01 \x01(\tB/\xf8\xd5\"\x01\x92\xd6\"'drain epoch must contain 1 to 128 bytesR\x05epoch\"W\n" +
+	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"o\n" +
+	"\x0fEndDrainRequest\x12\\\n" +
+	"\x05epoch\x18\x01 \x01(\tBF\xf8\xd5\"\x01\x92\xd6\"'drain epoch must contain 1 to 128 bytes\x9a\xd6\"\x13DRAIN_EPOCH_INVALIDR\x05epoch\"W\n" +
 	"\x10EndDrainResponse\x12#\n" +
 	"\rrelease_index\x18\x01 \x01(\x06R\freleaseIndex\x12\x18\n" +
 	"\amembers\x18\x02 \x03(\x04R\amembers:\x04\xd8\xd5\"\x01\"\x17\n" +
@@ -2507,10 +2507,10 @@ const file_cluster_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12%\n" +
 	"\x0ebytes_received\x18\x02 \x01(\x06R\rbytesReceived\x12\x1f\n" +
 	"\vbytes_total\x18\x03 \x01(\x06R\n" +
-	"bytesTotal:\x04\xd8\xd5\"\x01\"h\n" +
-	"\x19TransferLeadershipRequest\x12K\n" +
+	"bytesTotal:\x04\xd8\xd5\"\x01\"\x87\x01\n" +
+	"\x19TransferLeadershipRequest\x12j\n" +
 	"\n" +
-	"transferee\x18\x01 \x01(\x04B+\xf8\xd5\"\x01\x92\xd6\"#transferee node ID must be non-zeroR\n" +
+	"transferee\x18\x01 \x01(\x04BJ\xf8\xd5\"\x01\x92\xd6\"#transferee node ID must be non-zero\x9a\xd6\"\x1bTRANSFEREE_NODE_ID_REQUIREDR\n" +
 	"transferee\";\n" +
 	"\x1aTransferLeadershipResponse\x12\x1d\n" +
 	"\n" +

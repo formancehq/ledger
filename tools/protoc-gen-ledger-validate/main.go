@@ -3,7 +3,9 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"slices"
+	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
@@ -19,6 +21,7 @@ const (
 	maxBytesExtensionName     = "common.max_bytes_for_input"
 	exactBytesExtensionName   = "common.exact_bytes_for_input"
 	errorMessageExtensionName = "common.input_error_message"
+	errorCodeExtensionName    = "common.input_error_code"
 )
 
 type fieldRule struct {
@@ -27,6 +30,7 @@ type fieldRule struct {
 	maxBytes     uint64
 	exactBytes   uint64
 	errorMessage string
+	errorCode    string
 }
 
 type messageRules struct {
@@ -38,7 +42,7 @@ func main() { protogen.Options{}.Run(generate) }
 
 func generate(gen *protogen.Plugin) error {
 	gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
-	var requiredExtension, nonZeroExtension, maxBytesExtension, exactBytesExtension, errorMessageExtension protoreflect.ExtensionDescriptor
+	var requiredExtension, nonZeroExtension, maxBytesExtension, exactBytesExtension, errorMessageExtension, errorCodeExtension protoreflect.ExtensionDescriptor
 	for _, file := range gen.Files {
 		for _, candidate := range file.Extensions {
 			switch string(candidate.Desc.FullName()) {
@@ -52,20 +56,24 @@ func generate(gen *protogen.Plugin) error {
 				exactBytesExtension = candidate.Desc
 			case errorMessageExtensionName:
 				errorMessageExtension = candidate.Desc
+			case errorCodeExtensionName:
+				errorCodeExtension = candidate.Desc
 			}
 		}
 	}
-	if requiredExtension == nil || nonZeroExtension == nil || maxBytesExtension == nil || exactBytesExtension == nil || errorMessageExtension == nil {
+	if requiredExtension == nil || nonZeroExtension == nil || maxBytesExtension == nil || exactBytesExtension == nil || errorMessageExtension == nil || errorCodeExtension == nil {
 		return fmt.Errorf("input validation extensions not found")
 	}
 	resolver := &protoregistry.Types{}
+	codes := make(map[string]string)
+	typeNames := make(map[string]string)
 	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(requiredExtension)); err != nil {
 		return fmt.Errorf("register extension: %w", err)
 	}
 	if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(nonZeroExtension)); err != nil {
 		return fmt.Errorf("register extension: %w", err)
 	}
-	for _, extension := range []protoreflect.ExtensionDescriptor{maxBytesExtension, exactBytesExtension, errorMessageExtension} {
+	for _, extension := range []protoreflect.ExtensionDescriptor{maxBytesExtension, exactBytesExtension, errorMessageExtension, errorCodeExtension} {
 		if err := resolver.RegisterExtension(dynamicpb.NewExtensionType(extension)); err != nil {
 			return fmt.Errorf("register extension: %w", err)
 		}
@@ -102,6 +110,10 @@ func generate(gen *protogen.Plugin) error {
 				if err != nil {
 					return err
 				}
+				codePresent, errorCode, err := readStringRule(field, errorCodeExtension, resolver)
+				if err != nil {
+					return err
+				}
 				if present && !required {
 					return fmt.Errorf("%s: required_for_input=false is invalid; remove the annotation", field.Desc.FullName())
 				}
@@ -112,8 +124,8 @@ func generate(gen *protogen.Plugin) error {
 					return fmt.Errorf("%s: required_for_input and non_zero_for_input cannot be combined", field.Desc.FullName())
 				}
 				if !present && !nonZeroPresent && !maxPresent && !exactPresent {
-					if messagePresent {
-						return fmt.Errorf("%s: input_error_message requires an input validation rule", field.Desc.FullName())
+					if messagePresent || codePresent {
+						return fmt.Errorf("%s: input error declaration requires an input validation rule", field.Desc.FullName())
 					}
 					continue
 				}
@@ -141,7 +153,23 @@ func generate(gen *protogen.Plugin) error {
 				if !messagePresent || errorMessage == "" {
 					return fmt.Errorf("%s: input validation requires a non-empty input_error_message", field.Desc.FullName())
 				}
-				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent, maxBytes: maxBytes, exactBytes: exactBytes, errorMessage: errorMessage})
+				if !codePresent || errorCode == "" {
+					return fmt.Errorf("%s: input validation requires a non-empty input_error_code", field.Desc.FullName())
+				}
+				for _, part := range strings.Split(errorCode, "_") {
+					if part == "" || part[0] < 'A' || part[0] > 'Z' || strings.Trim(part, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
+						return fmt.Errorf("%s: input_error_code must be UPPER_SNAKE_CASE", field.Desc.FullName())
+					}
+				}
+				if previous, exists := codes[errorCode]; exists && previous != errorMessage {
+					return fmt.Errorf("%s: input_error_code %s has conflicting public messages", field.Desc.FullName(), errorCode)
+				}
+				codes[errorCode] = errorMessage
+				if previous, exists := typeNames[errorTypeName(errorCode)]; exists && previous != errorCode {
+					return fmt.Errorf("%s: input_error_code collides with generated type for %s", field.Desc.FullName(), previous)
+				}
+				typeNames[errorTypeName(errorCode)] = errorCode
+				fields = append(fields, fieldRule{field: field, nonZero: nonZeroPresent, maxBytes: maxBytes, exactBytes: exactBytes, errorMessage: errorMessage, errorCode: errorCode})
 			}
 			if len(fields) > 0 {
 				for _, field := range message.Fields {
@@ -172,7 +200,7 @@ func generate(gen *protogen.Plugin) error {
 		g.P("package ", file.GoPackageName)
 		for _, item := range messages {
 			g.P("// ValidateInput checks declared direct-field input requirements.")
-			g.P("func (m *", item.message.GoIdent.GoName, ") ValidateInput() error {")
+			g.P("func (m *", item.message.GoIdent.GoName, ") ValidateInput() ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "ValidationError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto"}), " {")
 			for _, rule := range item.fields {
 				condition := ""
 				errorRule := "required"
@@ -194,14 +222,33 @@ func generate(gen *protogen.Plugin) error {
 					condition = "m." + rule.field.GoName + " == nil"
 				}
 				g.P("if m == nil || ", condition, " {")
-				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto/inputvalidation"}), "{Message: ", fmt.Sprintf("%q", item.message.Desc.FullName()), ", Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), ", Rule: ", fmt.Sprintf("%q", errorRule), ", PublicMessage: ", fmt.Sprintf("%q", rule.errorMessage), "}")
+				g.P("return &", g.QualifiedGoIdent(protogen.GoIdent{GoName: errorTypeName(rule.errorCode), GoImportPath: "github.com/formancehq/ledger/v3/internal/proto"}), "{FieldError: ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "FieldError", GoImportPath: "github.com/formancehq/ledger/v3/internal/proto"}), "{Message: ", fmt.Sprintf("%q", item.message.Desc.FullName()), ", Path: ", fmt.Sprintf("%q", rule.field.Desc.Name()), ", Rule: ", fmt.Sprintf("%q", errorRule), ", PublicMessage: ", fmt.Sprintf("%q", rule.errorMessage), ", Code: ", fmt.Sprintf("%q", rule.errorCode), "}}")
 				g.P("}")
 			}
 			g.P("return nil")
 			g.P("}")
 		}
 	}
+	if len(codes) > 0 {
+		g := gen.NewGeneratedFile("github.com/formancehq/ledger/v3/internal/proto/input_validation_errors.pb.go", "github.com/formancehq/ledger/v3/internal/proto")
+		g.P("// Code generated by protoc-gen-ledger-validate. DO NOT EDIT.")
+		g.P("package proto")
+		for _, code := range slices.Sorted(maps.Keys(codes)) {
+			name := errorTypeName(code)
+			g.P("type ", name, " struct { FieldError }")
+			g.P("func (e *", name, ") Unwrap() error { return &e.FieldError }")
+		}
+	}
 	return nil
+}
+
+func errorTypeName(code string) string {
+	var name strings.Builder
+	for _, part := range strings.Split(code, "_") {
+		name.WriteString(strings.ToUpper(part[:1]))
+		name.WriteString(strings.ToLower(part[1:]))
+	}
+	return name.String()
 }
 
 func nonZeroCondition(field *protogen.Field) string {

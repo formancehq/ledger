@@ -9,7 +9,14 @@ type invalidIntegrationConfig struct {
 	message string
 }
 
-func (e *invalidIntegrationConfig) Error() string        { return e.message }
+func (e *invalidIntegrationConfig) Error() string { return e.message }
+func (e *invalidIntegrationConfig) ValidationCode() string {
+	if e == ErrSinkConfigIncomplete {
+		return "SINK_CONFIG_INCOMPLETE"
+	}
+
+	return ""
+}
 func (*invalidIntegrationConfig) Kind() domain.ErrorKind { return domain.KindValidation }
 func (*invalidIntegrationConfig) Reason() string         { return domain.ErrReasonValidation }
 func (e *invalidIntegrationConfig) PublicDetails() (string, map[string]string, bool) {
